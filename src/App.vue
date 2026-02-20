@@ -1,30 +1,43 @@
-<script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
-</script>
-
 <template>
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
+  <!-- Loading inicial ANTES del login -->
+  <AppBootLoader v-if="booting" />
+
+  <component v-else :is="layout">
+    <router-view />
+  </component>
 </template>
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
-</style>
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { useRoute } from "vue-router";
+import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
+
+import AppBootLoader from "@/components/loading/AppBootLoader.vue";
+import AuthLayout from "@/layouts/AuthLayout.vue";
+import AppLayout from "@/layouts/AppLayout.vue";
+
+const route = useRoute();
+const auth = useAuthStore();
+const menu = useMenuStore();
+
+const booting = ref(true);
+
+const layout = computed(() => {
+  const l = route.meta.layout;
+  return l === "app" ? AppLayout : AuthLayout;
+});
+
+onMounted(async () => {
+  auth.bootstrapFromStorage();
+
+  // Simula carga de componentes/estado inicial (lo que pediste como loading antes del login)
+  // + si hay sesión válida, carga menú.
+  if (auth.isAuthenticated && auth.userId) {
+    await menu.loadMenuTree(auth.userId);
+  }
+
+  // Pequeño delay opcional para que el loading se “note” y no parpadee
+  setTimeout(() => (booting.value = false), 400);
+});
+</script>
