@@ -1,10 +1,10 @@
 <template>
-  <!-- Loading inicial ANTES del login -->
-  <AppBootLoader v-if="booting" />
-
-  <component v-else :is="layout">
-    <router-view />
-  </component>
+  <v-app>
+    <AppBootLoader v-if="booting" />
+    <component v-else :is="layout">
+      <router-view />
+    </component>
+  </v-app>
 </template>
 
 <script setup lang="ts">
@@ -20,24 +20,17 @@ import AppLayout from "@/layouts/AppLayout.vue";
 const route = useRoute();
 const auth = useAuthStore();
 const menu = useMenuStore();
-
 const booting = ref(true);
 
-const layout = computed(() => {
-  const l = route.meta.layout;
-  return l === "app" ? AppLayout : AuthLayout;
-});
+const layout = computed(() => (route.meta.layout === "app" ? AppLayout : AuthLayout));
 
 onMounted(async () => {
   auth.bootstrapFromStorage();
 
-  // Simula carga de componentes/estado inicial (lo que pediste como loading antes del login)
-  // + si hay sesión válida, carga menú.
   if (auth.isAuthenticated && auth.userId) {
     await menu.loadMenuTree(auth.userId);
   }
 
-  // Pequeño delay opcional para que el loading se “note” y no parpadee
-  setTimeout(() => (booting.value = false), 400);
+  setTimeout(() => (booting.value = false), 250);
 });
 </script>
