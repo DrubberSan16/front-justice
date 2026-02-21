@@ -1,16 +1,16 @@
 <template>
   <v-layout class="app-layout">
     <!-- SIDEBAR -->
-    <v-navigation-drawer
-      v-model="drawer"
-      :temporary="isMobile"
-      :width="300"
-      elevation="1"
-    >
-      <div class="px-4 pt-4 pb-2">
-        <div class="text-subtitle-1 font-weight-bold">KPI Security</div>
-        <div class="text-caption text-medium-emphasis">
-          {{ auth.user?.nameSurname }}
+    <v-navigation-drawer v-model="drawer" :temporary="isMobile" :width="300" elevation="1">
+      <div class="px-4 pt-4 pb-2 d-flex align-center">
+        <v-img :src="logo" max-width="40" class="mr-3" contain />
+        <div>
+          <div class="text-subtitle-1 font-weight-bold">
+            KPI System
+          </div>
+          <div class="text-caption text-medium-emphasis">
+            {{ auth.user?.nameSurname }}
+          </div>
         </div>
       </div>
 
@@ -51,6 +51,7 @@ import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import logo from "@/assets/logo-justice.png";
 import SidebarMenu from "@/components/menu/SidebarMenu.vue";
 
 const router = useRouter();

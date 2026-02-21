@@ -23,6 +23,12 @@ export const router = createRouter({
           name: "dashboard",
           component: () => import("@/views/dashboard/DashboardView.vue"),
         },
+        {
+          path: "usuarios",
+          name: "usuarios",
+          component: () => import("@/views/admin/UsersView.vue"),
+          meta: { title: "Usuarios" },
+        },
 
         // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
@@ -35,6 +41,13 @@ export const router = createRouter({
       redirect: { name: "login" },
     },
   ],
+});
+
+router.afterEach((to) => {
+  const baseTitle = "Análisis KPI";
+  document.title = to.meta?.title
+    ? `${to.meta.title} | ${baseTitle}`
+    : baseTitle;
 });
 
 applyGuards(router);

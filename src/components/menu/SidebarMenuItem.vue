@@ -44,7 +44,7 @@ function goToComponent(urlComponent: string) {
   // Aquí defines tu mapping rápido hacia rutas reales.
   const map: Record<string, { name: string }> = {
     Dashboard: { name: "dashboard" },
-    // Usuarios: { name: "usuarios" },
+    Usuarios: { name: "usuarios" },
     // Menu: { name: "menu" },
     // Rol: { name: "rol" },
   };

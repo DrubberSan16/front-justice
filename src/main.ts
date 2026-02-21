@@ -7,9 +7,11 @@ import App from "./App.vue";
 // Vuetify 3
 import "vuetify/styles";
 import "@mdi/font/css/materialdesignicons.css";
+import { VDataTable } from "vuetify/components";
 import { createVuetify } from "vuetify";
 
 const vuetify = createVuetify({  
+  components: { VDataTable },
 });
 
 createApp(App)
