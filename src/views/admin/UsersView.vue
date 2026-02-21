@@ -1,5 +1,9 @@
 <template>
-  <v-card rounded="xl" class="pa-4">
+  <v-alert v-if="!canRead" type="warning" variant="tonal">
+    No tienes permisos para visualizar el módulo de Usuarios.
+  </v-alert>
+
+  <v-card v-else rounded="xl" class="pa-4">
     <div class="d-flex align-center justify-space-between mb-3">
       <div>
         <div class="text-h6 font-weight-bold">Usuarios</div>
@@ -8,7 +12,13 @@
         </div>
       </div>
 
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">
+      <!-- OCULTAR si no puede crear -->
+      <v-btn
+        v-if="canCreate"
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="openCreate"
+      >
         Nuevo usuario
       </v-btn>
     </div>
@@ -91,9 +101,23 @@
         {{ roles.getRoleName(item.roleId) }}
       </template>
 
+      <!-- ACCIONES: OCULTAR según permisos + si está eliminado -->
       <template #item.actions="{ item }">
-        <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item)" />
-        <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item)" />
+        <div class="d-flex align-center" style="gap: 6px;">
+          <v-btn
+            v-if="canEdit && !item.isDeleted"
+            icon="mdi-pencil"
+            variant="text"
+            @click="openEdit(item)"
+          />
+          <v-btn
+            v-if="canDelete && !item.isDeleted"
+            icon="mdi-delete"
+            variant="text"
+            color="error"
+            @click="openDelete(item)"
+          />
+        </div>
       </template>
 
       <template #bottom>
@@ -137,14 +161,25 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+
 import { useUsersStore } from "@/app/stores/users.store";
 import { useRolesStore } from "@/app/stores/roles.store";
+import { useMenuStore } from "@/app/stores/menu.store";
+import { useAuthStore } from "@/app/stores/auth.store";
+import { useUiStore } from "@/app/stores/ui.store";
+
+import { getPermissionsForComponent } from "@/app/utils/menu-permissions";
+import { createLogTransact } from "@/app/services/log-transacts.service";
+
 import type { User } from "@/app/types/users.types";
 import UserFormDialog from "@/components/users/UserFormDialog.vue";
 import UserDeleteDialog from "@/components/users/UserDeleteDialog.vue";
 
 const users = useUsersStore();
 const roles = useRolesStore();
+const menuStore = useMenuStore();
+const auth = useAuthStore();
+const ui = useUiStore();
 
 const itemsPerPage = ref(10);
 
@@ -170,16 +205,22 @@ const roleItems = computed(() => {
   return base.concat(list);
 });
 
+// PERMISOS según menú (urlComponent = "Usuarios")
+const perms = computed(() => getPermissionsForComponent(menuStore.tree, "Usuarios"));
+const canRead = computed(() => perms.value.isReaded);
+const canCreate = computed(() => perms.value.isCreated);
+const canEdit = computed(() => perms.value.isEdited);
+const canDelete = computed(() => perms.value.permitDeleted);
+
 const formDialog = ref(false);
 const deleteDialog = ref(false);
 const selectedUser = ref<User | null>(null);
 
 onMounted(async () => {
-  // carga roles y usuarios
+  if (!canRead.value) return;
+
   if (!roles.items.length) {
-    try {
-      await roles.fetchAll(false);
-    } catch {}
+    try { await roles.fetchAll(false); } catch {}
   }
   if (!users.items.length) {
     await users.fetchAll();
@@ -190,20 +231,39 @@ function openCreate() {
   selectedUser.value = null;
   formDialog.value = true;
 }
-
 function openEdit(u: User) {
   selectedUser.value = u;
   formDialog.value = true;
 }
-
 function openDelete(u: User) {
   selectedUser.value = u;
   deleteDialog.value = true;
 }
 
+function currentUserName() {
+  return auth.user?.nameUser || "admin";
+}
+
+async function logAndShowTechnicalError(typeLog: string, description: string) {
+  const ticket = await createLogTransact({
+    moduleMicroservice: "kpi_security",
+    status: "ACTIVE",
+    typeLog,
+    description,
+    createdBy: currentUserName(),
+  });
+
+  ui.error(
+    ticket
+      ? `Error técnico, información enviada al equipo técnico TICKET: ${ticket}`
+      : "Error técnico, enviar detalles al equipo técnico"
+  );
+}
+
 async function onSubmitForm(payload: any) {
   try {
     if (!selectedUser.value) {
+      // CREATE
       await users.createUser({
         nameUser: payload.nameUser,
         passUser: payload.passUser,
@@ -213,7 +273,10 @@ async function onSubmitForm(payload: any) {
         status: payload.status,
         dateBirthday: payload.dateBirthday,
       });
+
+      ui.success("Guardado con éxito");
     } else {
+      // UPDATE
       const updatePayload: any = {
         nameUser: payload.nameUser,
         nameSurname: payload.nameSurname,
@@ -225,20 +288,40 @@ async function onSubmitForm(payload: any) {
       if (payload.passUser?.trim()) updatePayload.passUser = payload.passUser;
 
       await users.updateUser(selectedUser.value.id, updatePayload);
+
+      ui.success("Guardado con éxito");
     }
+
     formDialog.value = false;
-  } catch {
-    // error queda en store
+  } catch (e: any) {
+    const details =
+      `Users module error\n` +
+      `action=${selectedUser.value ? "UPDATE" : "CREATE"}\n` +
+      `payload=${JSON.stringify({ ...payload, passUser: payload.passUser ? "***" : "" })}\n` +
+      `apiError=${e?.response?.data?.message || e?.message || "unknown"}`;
+
+    await logAndShowTechnicalError(
+      selectedUser.value ? "USER_UPDATE" : "USER_CREATE",
+      details
+    );
   }
 }
 
 async function onConfirmDelete() {
   if (!selectedUser.value) return;
+
   try {
     await users.deleteUser(selectedUser.value.id);
     deleteDialog.value = false;
-  } catch {
-    // error queda en store
+    ui.success("Eliminado con éxito");
+  } catch (e: any) {
+    const details =
+      `Users module error\n` +
+      `action=DELETE\n` +
+      `userId=${selectedUser.value.id}\n` +
+      `apiError=${e?.response?.data?.message || e?.message || "unknown"}`;
+
+    await logAndShowTechnicalError("USER_DELETE", details);
   }
 }
 </script>
