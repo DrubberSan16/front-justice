@@ -255,8 +255,8 @@ async function logAndShowTechnicalError(typeLog: string, description: string) {
 
   ui.error(
     ticket
-      ? `Error técnico, información enviada al equipo técnico TICKET: ${ticket}`
-      : "Error técnico, enviar detalles al equipo técnico"
+      ? `Error técnico, información enviada al equipo de soporte TICKET: ${ticket}`
+      : "Error técnico, enviar detalles al equipo de soporte"
   );
 }
 
