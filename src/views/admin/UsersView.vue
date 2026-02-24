@@ -169,7 +169,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store";
 
-import { getPermissionsForComponent } from "@/app/utils/menu-permissions";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 
 import type { User } from "@/app/types/users.types";
@@ -185,15 +185,17 @@ const menuUsersProfile = useMenuUsersProfileStore();
 
 const itemsPerPage = ref(10);
 
-const headers = [
+const headers = computed(() => [
   { title: "Usuario", key: "nameUser" },
   { title: "Nombre", key: "nameSurname" },
   { title: "Email", key: "email" },
   { title: "Rol", key: "role" },
   { title: "Estado", key: "status" },
   { title: "Eliminado", key: "isDeleted" },
-  { title: "Acciones", key: "actions", sortable: false },
-];
+  ...(canEdit.value || canDelete.value
+    ? [{ title: "Acciones", key: "actions", sortable: false }]
+    : []),
+]);
 
 const statusItems = [
   { title: "Todos", value: "ALL" },
@@ -207,8 +209,10 @@ const roleItems = computed(() => {
   return base.concat(list);
 });
 
-// PERMISOS según menú (urlComponent = "Usuarios")
-const perms = computed(() => getPermissionsForComponent(menuStore.tree, "Usuarios"));
+// PERMISOS según menú (acepta alias de urlComponent)
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, ["Usuarios", "Usuario"])
+);
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);

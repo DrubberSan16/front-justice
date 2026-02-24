@@ -35,6 +35,12 @@ export const router = createRouter({
           component: () => import("@/views/admin/RolesView.vue"),
           meta: { title: "Roles" },
         },
+        {
+          path: "menu",
+          name: "menu",
+          component: () => import("@/views/admin/MenusView.vue"),
+          meta: { title: "Menú" },
+        },
 
         // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
