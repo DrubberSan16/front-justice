@@ -36,7 +36,7 @@
           Cancelar
         </v-btn>
 
-        <v-btn color="primary" :loading="saving" @click="save">
+        <v-btn color="primary" :loading="saving" @click="save" :disabled="saving">
           Guardar
         </v-btn>
       </v-card-actions>

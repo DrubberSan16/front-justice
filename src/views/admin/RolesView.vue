@@ -206,6 +206,7 @@ async function logAndShowTechnicalError(typeLog: string, description: string) {
 }
 
 async function onSubmitRole(payload: any) {
+    if (busy.value) return;   
   busy.value = true;
   formError.value = null;
 
@@ -223,7 +224,7 @@ async function onSubmitRole(payload: any) {
 
       ui.success("Guardado con éxito");
       formDialog.value = false;
-      await roles.fetchAll(false);
+      
     } else {
       // UPDATE ROLE
       await roles.updateRole(selectedRole.value.id, {
@@ -237,9 +238,9 @@ async function onSubmitRole(payload: any) {
       await menuRoles.sync(selectedRole.value.id, currentUserName());
 
       ui.success("Guardado con éxito");
-      formDialog.value = false;
-      await roles.fetchAll(false);
+      formDialog.value = false;      
     }
+    await roles.fetchAll(false); // refrescar lista
   } catch (e: any) {
     const details =
       `Roles module error\n` +
