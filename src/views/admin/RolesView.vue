@@ -118,7 +118,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
 
-import { getPermissionsForComponent } from "@/app/utils/menu-permissions";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 
 import type { Role } from "@/app/types/roles.types";
@@ -134,12 +134,14 @@ const ui = useUiStore();
 
 const itemsPerPage = ref(10);
 
-const headers = [
+const headers = computed(() => [
   { title: "Nombre", key: "nombre" },
   { title: "Descripción", key: "descripcion" },
   { title: "Estado", key: "status" },
-  { title: "Acciones", key: "actions", sortable: false },
-];
+  ...(canEdit.value || canDelete.value
+    ? [{ title: "Acciones", key: "actions", sortable: false }]
+    : []),
+]);
 
 const statusItems = [
   { title: "Todos", value: "ALL" },
@@ -147,8 +149,10 @@ const statusItems = [
   { title: "INACTIVE", value: "INACTIVE" },
 ];
 
-// permisos del módulo Roles (urlComponent = "Rol")
-const perms = computed(() => getPermissionsForComponent(menuStore.tree, "Rol"));
+// permisos del módulo Roles (acepta alias de urlComponent)
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, ["Rol", "Roles"])
+);
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
