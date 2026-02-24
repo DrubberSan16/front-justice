@@ -206,41 +206,42 @@ async function logAndShowTechnicalError(typeLog: string, description: string) {
 }
 
 async function onSubmitRole(payload: any) {
-    if (busy.value) return;   
+  if (busy.value) return;
   busy.value = true;
   formError.value = null;
 
   try {
+    let roleId: string;
+
     if (!selectedRole.value) {
-      // CREATE ROLE
       const created = await roles.createRole({
         nombre: payload.nombre,
         descripcion: payload.descripcion,
         status: payload.status,
       });
 
-      // SAVE PROFILE (menu-roles)
-      await menuRoles.sync(created.id, currentUserName());
-
-      ui.success("Guardado con éxito");
-      formDialog.value = false;
-      
+      roleId = created.id;
     } else {
-      // UPDATE ROLE
-      await roles.updateRole(selectedRole.value.id, {
+      roleId = selectedRole.value.id;
+
+      await roles.updateRole(roleId, {
         nombre: payload.nombre,
         descripcion: payload.descripcion,
         status: payload.status,
         createdBy: currentUserName(),
       });
-
-      // SAVE PROFILE (menu-roles)
-      await menuRoles.sync(selectedRole.value.id, currentUserName());
-
-      ui.success("Guardado con éxito");
-      formDialog.value = false;      
     }
-    await roles.fetchAll(false); // refrescar lista
+
+    // 🔥 SINCRONIZACIÓN UNA SOLA VEZ
+    await menuRoles.sync(roleId, currentUserName());
+
+    ui.success("Guardado con éxito");
+
+    formDialog.value = false;
+
+    // refrescar listado una sola vez
+    await roles.fetchAll(false);
+
   } catch (e: any) {
     const details =
       `Roles module error\n` +

@@ -6,57 +6,70 @@
       </v-card-title>
 
       <v-card-text>
-        <v-row>
-          <v-col cols="6">
-            <v-text-field v-model="form.nombre" label="Nombre" />
-          </v-col>
+        <v-form @submit.prevent="submit">
+          <v-row>
+            <v-col cols="6">
+              <v-text-field
+                v-model="form.nombre"
+                label="Nombre"
+                required
+              />
+            </v-col>
 
-          <v-col cols="6">
-            <v-select
-              v-model="form.status"
-              :items="['ACTIVE','INACTIVE']"
-              label="Estado"
-            />
-          </v-col>
+            <v-col cols="6">
+              <v-select
+                v-model="form.status"
+                :items="['ACTIVE','INACTIVE']"
+                label="Estado"
+              />
+            </v-col>
 
-          <v-col cols="12">
-            <v-textarea v-model="form.descripcion" label="Descripción" />
-          </v-col>
-        </v-row>
+            <v-col cols="12">
+              <v-textarea
+                v-model="form.descripcion"
+                label="Descripción"
+              />
+            </v-col>
+          </v-row>
 
-        <MenuPermissionsCascade
-          :tree="menus.tree"
-          :get-draft="menuRoles.getDraft"
-          :menus-loading="menus.loading"
-        />
+          <MenuPermissionsCascade
+            :tree="menus.tree"
+            :get-draft="menuRoles.getDraft"
+            :menus-loading="menus.loading"
+          />
+
+          <v-card-actions class="justify-end mt-4">
+            <v-btn variant="text" @click="dialog = false">
+              Cancelar
+            </v-btn>
+
+            <!-- SOLO submit -->
+            <v-btn
+              color="primary"
+              type="submit"
+              :loading="loading"
+              :disabled="loading"
+            >
+              Guardar
+            </v-btn>
+          </v-card-actions>
+        </v-form>
       </v-card-text>
-
-      <v-card-actions class="justify-end">
-        <v-btn variant="text" @click="dialog = false">
-          Cancelar
-        </v-btn>
-
-        <v-btn color="primary" :loading="saving" @click="save" :disabled="saving">
-          Guardar
-        </v-btn>
-      </v-card-actions>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
-import { useRolesStore } from "@/app/stores/roles.store";
 import { useMenuRolesStore } from "@/app/stores/menu-roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
-import { useAuthStore } from "@/app/stores/auth.store";
 
 import MenuPermissionsCascade from "@/components/roles/MenuPermissionsCascade.vue";
-
 
 const props = defineProps<{
   modelValue: boolean;
   role?: any | null;
+  loading?: boolean;
 }>();
 
 const emit = defineEmits(["update:modelValue","submit"]);
@@ -66,17 +79,10 @@ const dialog = computed({
   set: (val: boolean) => emit("update:modelValue", val),
 });
 
-
-
-
-const roles = useRolesStore();
-const menuRoles = useMenuRolesStore();
-const menus = useMenusFullStore();
-const auth = useAuthStore();
-
 const isEdit = computed(() => !!props.role);
 
-const saving = ref(false);
+const menus = useMenusFullStore();
+const menuRoles = useMenuRolesStore();
 
 const form = ref({
   nombre: "",
@@ -110,40 +116,9 @@ watch(
   }
 );
 
-async function save() {
-  saving.value = true;
+const loading = computed(() => props.loading ?? false);
 
-  try {
-    let roleId: string;
-
-    if (isEdit.value) {
-      roleId = props.role!.id;
-
-      await roles.updateRole(roleId, {
-        nombre: form.value.nombre,
-        descripcion: form.value.descripcion,
-        status: form.value.status,
-        createdBy: auth.user?.nameUser || "admin",
-      });
-
-    } else {
-      const created = await roles.createRole({
-        nombre: form.value.nombre,
-        descripcion: form.value.descripcion,
-        status: form.value.status,
-      });
-
-      roleId = created.id;
-    }
-
-    // 🔹 sincroniza permisos menu-role
-    await menuRoles.sync(roleId, auth.user?.nameUser || "admin");
-
-    emit("submit", form.value);
-    dialog.value = false;
-
-  } finally {
-    saving.value = false;
-  }
+function submit() {
+  emit("submit", { ...form.value });
 }
 </script>
