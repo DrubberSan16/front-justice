@@ -223,6 +223,7 @@ async function onSubmitRole(payload: any) {
 
       ui.success("Guardado con éxito");
       formDialog.value = false;
+      await roles.fetchAll(false);
     } else {
       // UPDATE ROLE
       await roles.updateRole(selectedRole.value.id, {
@@ -237,6 +238,7 @@ async function onSubmitRole(payload: any) {
 
       ui.success("Guardado con éxito");
       formDialog.value = false;
+      await roles.fetchAll(false);
     }
   } catch (e: any) {
     const details =
@@ -265,6 +267,8 @@ async function onConfirmDelete() {
     await roles.deleteRole(selectedRole.value.id);
     ui.success("Eliminado con éxito");
     deleteDialog.value = false;
+    // NOTA: el store de roles al eliminar hace un fetchAll() para refrescar la lista
+    await roles.fetchAll(false);
   } catch (e: any) {
     const details =
       `Roles module error\n` +
