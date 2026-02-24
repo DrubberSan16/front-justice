@@ -54,12 +54,22 @@
       :items-per-page="20"
       class="elevation-0"
     >
+      <template #item.icon="{ item }">
+        <div class="d-flex align-center" style="gap:8px;">
+          <v-icon :icon="resolveIcon(item.icon ?? undefined)" />
+          <span class="text-caption">{{ item.icon }}</span>
+        </div>
+      </template>
+
       <template #item.nombre="{ item }">
         <div :style="`padding-left: ${item.depth * 18}px`" class="d-flex align-center" style="gap:8px;">
           <v-icon v-if="item.depth > 0" size="16" icon="mdi-subdirectory-arrow-right" />
           <span>{{ item.nombre }}</span>
         </div>
       </template>
+
+
+      
 
       <template #item.status="{ item }">
         <v-chip size="small" :color="item.status === 'ACTIVE' ? 'green' : 'grey'" variant="tonal">
@@ -124,7 +134,11 @@
             />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="form.icon" label="Icon" variant="outlined" />
+            <v-text-field v-model="form.icon" label="Icon" variant="outlined">
+              <template #prepend-inner>
+                <v-icon :icon="resolveIcon(form.icon)" />
+              </template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" md="6">
             <v-text-field v-model="form.urlComponent" label="Url Component" variant="outlined" />
@@ -176,6 +190,8 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { createLogTransact } from "@/app/services/log-transacts.service";
+import { resolveIcon } from "@/app/config/icons";
+
 import type { MenuNodeFull } from "@/app/types/menus-full.types";
 
 const menus = useMenusStore();
@@ -194,6 +210,7 @@ const canDelete = computed(() => perms.value.permitDeleted);
 const headers = computed(() => [
   { title: "Nombre", key: "nombre" },
   { title: "Descripción", key: "descripcion" },
+  { title: "Ícono", key: "icon" },
   { title: "Url Component", key: "urlComponent" },
   { title: "Posición", key: "menuPosition" },
   { title: "Estado", key: "status" },
