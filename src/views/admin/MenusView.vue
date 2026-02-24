@@ -54,6 +54,13 @@
       :items-per-page="20"
       class="elevation-0"
     >
+      <template #item.icon="{ item }">
+        <div class="d-flex align-center" style="gap:8px;">
+          <v-icon :icon="resolveIcon(item.icon ?? undefined)" />
+          <span class="text-caption">{{ item.icon }}</span>
+        </div>
+      </template>
+
       <template #item.nombre="{ item }">
         <div :style="`padding-left: ${item.depth * 18}px`" class="d-flex align-center" style="gap:8px;">
           <v-icon v-if="item.depth > 0" size="16" icon="mdi-subdirectory-arrow-right" />
@@ -62,12 +69,7 @@
       </template>
 
 
-      <template #item.icon="{ item }">
-        <div class="d-flex align-center" style="gap:8px;">
-          <v-icon :icon="resolveIcon(item.icon ?? undefined)" />
-          <span class="text-caption">{{ item.icon }}</span>
-        </div>
-      </template>
+      
 
       <template #item.status="{ item }">
         <v-chip size="small" :color="item.status === 'ACTIVE' ? 'green' : 'grey'" variant="tonal">
@@ -189,6 +191,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 import { resolveIcon } from "@/app/config/icons";
+
 import type { MenuNodeFull } from "@/app/types/menus-full.types";
 
 const menus = useMenusStore();
