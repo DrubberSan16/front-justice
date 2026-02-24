@@ -45,8 +45,12 @@ function goToComponent(urlComponent: string) {
   const map: Record<string, { name: string }> = {
     Dashboard: { name: "dashboard" },
     Usuarios: { name: "usuarios" },
-    // Menu: { name: "menu" },
+    Usuario: { name: "usuarios" },
+    Menu: { name: "menu" },
+    Menú: { name: "menu" },
+    Menus: { name: "menu" },
     Rol: { name: "roles" },
+    Roles: { name: "roles" },
   };
 
   const target = map[urlComponent];

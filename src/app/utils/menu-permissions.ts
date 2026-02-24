@@ -33,3 +33,15 @@ export function getPermissionsForComponent(tree: MenuNode[], urlComponent: strin
   const node = findMenuNodeByComponent(tree, urlComponent);
   return (node?.permissions as MenuPermissions) ?? defaultPerms;
 }
+
+export function getPermissionsForAnyComponent(
+  tree: MenuNode[],
+  urlComponents: string[]
+): MenuPermissions {
+  for (const name of urlComponents) {
+    const node = findMenuNodeByComponent(tree, name);
+    if (node?.permissions) return node.permissions as MenuPermissions;
+  }
+
+  return defaultPerms;
+}
