@@ -1,16 +1,4 @@
 
-import {
-  mdiViewDashboard,
-  mdiShieldAccount,
-  mdiAccount,
-  mdiFormatListBulleted,
-  mdiCheckDecagram,
-  mdiAlert,
-  mdiAccountWrench,
-  mdiCircleSmall,
-  mdiHelpCircleOutline,
-} from "@mdi/js";
-
 /**
  * Backend envía icon strings tipo "$mdiDashboard".
  * Esta utilidad los transforma a formatos válidos para Vuetify <v-icon :icon="..."/>.
