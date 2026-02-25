@@ -1,3 +1,16 @@
+
+import {
+  mdiViewDashboard,
+  mdiShieldAccount,
+  mdiAccount,
+  mdiFormatListBulleted,
+  mdiCheckDecagram,
+  mdiAlert,
+  mdiAccountWrench,
+  mdiCircleSmall,
+  mdiHelpCircleOutline,
+} from "@mdi/js";
+
 /**
  * Backend envía icon strings tipo "$mdiDashboard".
  * Esta utilidad los transforma a formatos válidos para Vuetify <v-icon :icon="..."/>.
@@ -45,6 +58,7 @@ const normalizeBackendIcon = (backendIcon?: string): string | null => {
   return normalized.length ? normalized : null;
 };
 
+
 const toKebab = (value: string) =>
   value
     .replace(/^[A-Z]/, (m) => m.toLowerCase())
@@ -54,6 +68,7 @@ const toKebab = (value: string) =>
 export const resolveIcon = (backendIcon?: string) => {
   const normalized = normalizeBackendIcon(backendIcon);
   if (!normalized) return ICON_FALLBACK;
+
 
   // Caso 1: mapeo explícito de tokens usados por backend.
   if (iconMap[normalized]) return iconMap[normalized];
@@ -72,4 +87,5 @@ export const resolveIcon = (backendIcon?: string) => {
   }
 
   return ICON_FALLBACK;
+
 };
