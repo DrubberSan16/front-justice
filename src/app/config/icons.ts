@@ -77,3 +77,31 @@ export const resolveIcon = (backendIcon?: string) => {
   return ICON_FALLBACK;
 
 };
+
+const normalizeModuleName = (moduleName?: string): string => {
+  if (!moduleName) return "";
+
+  return moduleName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+};
+
+export const resolveModuleIconColor = (moduleName?: string): string => {
+  const normalized = normalizeModuleName(moduleName);
+
+  if (normalized.includes("seguridad") || normalized.includes("administracion")) {
+    return "#1565C0";
+  }
+
+  if (normalized.includes("mantenimiento")) {
+    return "#2E7D32";
+  }
+
+  if (normalized.includes("notificaciones") || normalized.includes("notificacion")) {
+    return "#EF6C00";
+  }
+
+  return "#607D8B";
+};
