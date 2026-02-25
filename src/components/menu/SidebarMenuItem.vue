@@ -46,11 +46,8 @@ function goToComponent(urlComponent: string) {
     Dashboard: { name: "dashboard" },
     Usuarios: { name: "usuarios" },
     Usuario: { name: "usuarios" },
-    Menu: { name: "menu" },
-    Menú: { name: "menu" },
-    Menus: { name: "menu" },
-    Rol: { name: "roles" },
-    Roles: { name: "roles" },
+    Menu: { name: "menu" },    
+    Rol: { name: "roles" },    
   };
 
   const target = map[urlComponent];
