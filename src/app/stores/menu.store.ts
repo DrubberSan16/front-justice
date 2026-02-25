@@ -26,13 +26,21 @@ export const useMenuStore = defineStore("menu", {
           `/kpi_security/menu-users/tree/by-user/${userId}`
         );
 
+        const normalizeNode = (node: any): MenuNode => ({
+          ...node,
+          icon: node.icon ?? node.Icon ?? node.icono ?? node.menuIcon ?? "",
+          children: Array.isArray(node.children)
+            ? node.children.map((child: any) => normalizeNode(child))
+            : [],
+        });
+
         // Orden por menuPosition si viene como string
         const sortTree = (nodes: MenuNode[]): MenuNode[] =>
           [...nodes]
             .sort((a, b) => Number(a.menuPosition) - Number(b.menuPosition))
             .map((n) => ({ ...n, children: n.children ? sortTree(n.children) : [] }));
 
-        this.tree = sortTree(data ?? []);
+        this.tree = sortTree((data ?? []).map((node) => normalizeNode(node)));
         this.loadedForUserId = userId;
       } finally {
         this.loading = false;
