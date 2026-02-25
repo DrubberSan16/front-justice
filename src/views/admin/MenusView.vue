@@ -55,10 +55,7 @@
       class="elevation-0"
     >
       <template #item.icon="{ item }">
-        <div class="d-flex align-center" style="gap:8px;">
-          <v-icon :icon="resolveIcon(item.icon ?? undefined)" />
-          <span class="text-caption">{{ item.icon }}</span>
-        </div>
+        <v-icon :icon="resolveIcon(item.icon ?? undefined)" />
       </template>
 
       <template #item.nombre="{ item }">
