@@ -3,7 +3,7 @@
     <template #activator="{ props }">
       <v-list-item v-bind="props" :title="node.nombre" :subtitle="node.descripcion">
         <template #prepend>
-          <v-icon :icon="icon" />
+          <v-icon :icon="icon" :color="iconColor" />
         </template>
       </v-list-item>
     </template>
@@ -12,6 +12,7 @@
       v-for="child in node.children"
       :key="child.id"
       :node="child"
+      :module-scope="moduleScope"
     />
   </v-list-group>
 
@@ -22,7 +23,7 @@
     @click="goToComponent(node.urlComponent)"
   >
     <template #prepend>
-      <v-icon :icon="icon" />
+      <v-icon :icon="icon" :color="iconColor" />
     </template>
   </v-list-item>
 </template>
@@ -31,13 +32,15 @@
 import { computed } from "vue";
 import { useRouter } from "vue-router";
 import type { MenuNode } from "@/app/types/menu.types";
-import { resolveIcon } from "@/app/config/icons";
+import { resolveIcon, resolveModuleIconColor } from "@/app/config/icons";
 
-const props = defineProps<{ node: MenuNode }>();
+const props = defineProps<{ node: MenuNode; moduleScope?: string }>();
 const router = useRouter();
 
 const hasChildren = computed(() => (props.node.children?.length ?? 0) > 0);
 const icon = computed(() => resolveIcon(props.node.icon));
+const moduleScope = computed(() => props.moduleScope ?? props.node.nombre);
+const iconColor = computed(() => resolveModuleIconColor(moduleScope.value));
 
 function goToComponent(urlComponent: string) {
   // Backend trae cosas como "Dashboard", "Usuarios" o "/"
