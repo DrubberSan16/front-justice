@@ -48,7 +48,6 @@ export const router = createRouter({
           component: () => import("@/views/admin/ProductsView.vue"),
           meta: { title: "Productos" },
         },
-
         {
           path: "sucursales",
           name: "sucursales",
@@ -105,6 +104,7 @@ export const router = createRouter({
           props: { moduleKey: "terceros" },
           meta: { title: "Terceros" },
         },
+
 
         // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
