@@ -49,6 +49,12 @@ export const router = createRouter({
           meta: { title: "Productos" },
         },
         {
+          path: "kardex",
+          name: "kardex",
+          component: () => import("@/views/admin/KardexView.vue"),
+          meta: { title: "Kardex" },
+        },
+        {
           path: "sucursales",
           name: "sucursales",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),
