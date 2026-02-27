@@ -104,8 +104,6 @@ export const router = createRouter({
           props: { moduleKey: "terceros" },
           meta: { title: "Terceros" },
         },
-
-
         // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
         // { path: "menu", name: "menu", component: () => import("@/views/admin/MenuView.vue") },

@@ -42,18 +42,73 @@ const icon = computed(() => resolveIcon(props.node.icon));
 const moduleScope = computed(() => props.moduleScope ?? props.node.nombre);
 const iconColor = computed(() => resolveModuleIconColor(moduleScope.value));
 
+function normalizeRouteKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/^app\//, "")
+    .replace(/[\s_]+/g, "-");
+}
+
 function goToComponent(urlComponent: string) {
-  // Backend trae cosas como "Dashboard", "Usuarios" o "/"
-  // Aquí defines tu mapping rápido hacia rutas reales.
+  const key = normalizeRouteKey(urlComponent);
+
   const map: Record<string, { name: string }> = {
-    Dashboard: { name: "dashboard" },
-    Usuarios: { name: "usuarios" },
-    Usuario: { name: "usuarios" },
-    Menu: { name: "menu" },    
-    Rol: { name: "roles" },    
+    dashboard: { name: "dashboard" },
+    usuarios: { name: "usuarios" },
+    usuario: { name: "usuarios" },
+    menu: { name: "menu" },
+    menus: { name: "menu" },
+    rol: { name: "roles" },
+    roles: { name: "roles" },
+
+    productos: { name: "productos" },
+    producto: { name: "productos" },
+
+    sucursales: { name: "sucursales" },
+    sucursal: { name: "sucursales" },
+
+    bodegas: { name: "bodegas" },
+    bodega: { name: "bodegas" },
+
+    lineas: { name: "lineas" },
+    linea: { name: "lineas" },
+
+    categorias: { name: "categorias" },
+    categoria: { name: "categorias" },
+
+    marcas: { name: "marcas" },
+    marca: { name: "marcas" },
+
+    "unidades-medida": { name: "unidades-medida" },
+    "unidad-medida": { name: "unidades-medida" },
+    unidades: { name: "unidades-medida" },
+
+    "stock-bodega": { name: "stock-bodega" },
+    stock: { name: "stock-bodega" },
+
+    terceros: { name: "terceros" },
+    tercero: { name: "terceros" },
   };
 
-  const target = map[urlComponent];
-  if (target) router.push(target);
+  const target = map[key];
+  if (target) {
+    router.push(target);
+    return;
+  }
+
+  const directByName = router.getRoutes().find((r) => r.name === urlComponent);
+  if (directByName?.name) {
+    router.push({ name: directByName.name as string });
+    return;
+  }
+
+  const directByPath = router.getRoutes().find((r) => r.path.replace(/^\//, "") === key);
+  if (directByPath?.name) {
+    router.push({ name: directByPath.name as string });
+  }
 }
 </script>
