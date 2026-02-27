@@ -30,8 +30,8 @@
     <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0">
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
-          <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item.raw)" />
-          <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item.raw)" />
+          <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item)" />
+          <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item)" />
         </div>
       </template>
     </v-data-table>
@@ -258,7 +258,7 @@ function openCreate() {
   dialog.value = true;
 }
 
-function openEdit(item: any) {
+function openEdit(item: any) {  
   editingId.value = item.id;
   resetForm();
   for (const field of moduleConfig.value?.fields ?? []) {
