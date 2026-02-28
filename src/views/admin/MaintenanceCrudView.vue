@@ -30,8 +30,8 @@
     <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0">
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
-          <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item)" />
-          <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item)" />
+          <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
+          <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item._raw ?? item)" />
         </div>
       </template>
     </v-data-table>
@@ -202,6 +202,7 @@ const rows = computed(() => {
   return records.value
     .map((r) => {
       const out: any = { ...r };
+      out._raw = r;
       for (const field of cfg.fields) {
         if (field.type === "select" && field.relation && r[field.key]) {
           const opt = (relationOptions.value[field.key] ?? []).find((x) => x.value === r[field.key]);
