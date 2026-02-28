@@ -92,6 +92,7 @@ function goToComponent(urlComponent: string) {
 
     terceros: { name: "terceros" },
     tercero: { name: "terceros" },
+    kardex: { name: "kardex" },
   };
 
   const target = map[key];
