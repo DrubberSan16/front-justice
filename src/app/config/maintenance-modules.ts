@@ -18,6 +18,9 @@ export type MaintenanceModuleConfig = {
   title: string;
   endpoint: string;
   fields: MaintenanceField[];
+  allowCreate?: boolean;
+  allowEdit?: boolean;
+  allowDelete?: boolean;
 };
 
 const statusField: MaintenanceField = {
@@ -136,6 +139,72 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "telefono", label: "Teléfono", type: "text" },
       { key: "email", label: "Email", type: "text" },
       { key: "direccion", label: "Dirección", type: "text" },
+    ],
+  },
+  {
+    key: "equipos",
+    title: "Equipos",
+    endpoint: "/kpi_maintenance/equipos",
+    fields: [
+      { key: "codigo", label: "Código", type: "text", required: true },
+      { key: "nombre", label: "Nombre", type: "text", required: true },
+      { key: "equipo_tipo_id", label: "Tipo de equipo (ID)", type: "text", required: true },
+      { key: "location_id", label: "Ubicación (ID)", type: "text" },
+      { key: "criticidad", label: "Criticidad", type: "text" },
+      { key: "estado_operativo", label: "Estado operativo", type: "text" },
+      { key: "horometro_actual", label: "Horómetro actual", type: "number" },
+    ],
+  },
+  {
+    key: "planes",
+    title: "Planes de mantenimiento",
+    endpoint: "/kpi_maintenance/planes",
+    fields: [
+      { key: "codigo", label: "Código", type: "text", required: true },
+      { key: "nombre", label: "Nombre", type: "text", required: true },
+      { key: "tipo", label: "Tipo", type: "text" },
+      { key: "frecuencia_tipo", label: "Frecuencia tipo", type: "text" },
+      { key: "frecuencia_valor", label: "Frecuencia valor", type: "number" },
+    ],
+  },
+  {
+    key: "programaciones",
+    title: "Programaciones",
+    endpoint: "/kpi_maintenance/programaciones",
+    fields: [
+      { key: "equipo_id", label: "Equipo (ID)", type: "text", required: true },
+      { key: "plan_id", label: "Plan (ID)", type: "text", required: true },
+      { key: "ultima_ejecucion_fecha", label: "Últ. ejecución fecha", type: "text" },
+      { key: "ultima_ejecucion_horas", label: "Últ. ejecución horas", type: "number" },
+      { key: "proxima_fecha", label: "Próxima fecha", type: "text" },
+      { key: "proxima_horas", label: "Próximas horas", type: "number" },
+      { key: "activo", label: "Activo", type: "boolean" },
+    ],
+  },
+  {
+    key: "alertas",
+    title: "Alertas",
+    endpoint: "/kpi_maintenance/alertas",
+    allowCreate: false,
+    allowEdit: false,
+    allowDelete: false,
+    fields: [
+      { key: "estado", label: "Estado", type: "text" },
+      { key: "tipo_alerta", label: "Tipo alerta", type: "text" },
+      { key: "equipo_id", label: "Equipo (ID)", type: "text" },
+    ],
+  },
+  {
+    key: "work-orders",
+    title: "Work Orders",
+    endpoint: "/kpi_maintenance/work-orders",
+    allowCreate: false,
+    allowEdit: false,
+    allowDelete: false,
+    fields: [
+      { key: "equipo_id", label: "Equipo (ID)", type: "text" },
+      { key: "estado", label: "Estado", type: "text" },
+      { key: "maintenance_kind", label: "Tipo mantención", type: "text" },
     ],
   },
 ];
