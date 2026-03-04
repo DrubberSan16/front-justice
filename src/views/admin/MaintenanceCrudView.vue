@@ -9,7 +9,14 @@
         <div class="text-h6 font-weight-bold">{{ moduleConfig.title }}</div>
         <div class="text-body-2 text-medium-emphasis">Mantenimiento de {{ moduleConfig.title.toLowerCase() }}.</div>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">Nuevo</v-btn>
+      <v-btn
+        v-if="canCreate"
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="openCreate"
+      >
+        Nuevo
+      </v-btn>
     </div>
 
     <v-row dense class="mb-2">
@@ -30,8 +37,19 @@
     <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0">
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
-          <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
-          <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item._raw ?? item)" />
+          <v-btn
+            v-if="canEdit"
+            icon="mdi-pencil"
+            variant="text"
+            @click="openEdit(item._raw ?? item)"
+          />
+          <v-btn
+            v-if="canDelete"
+            icon="mdi-delete"
+            variant="text"
+            color="error"
+            @click="openDelete(item._raw ?? item)"
+          />
         </div>
       </template>
     </v-data-table>
@@ -106,6 +124,9 @@ const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
 
 const moduleConfig = computed(() => getMaintenanceModule(props.moduleKey));
+const canCreate = computed(() => moduleConfig.value?.allowCreate !== false);
+const canEdit = computed(() => moduleConfig.value?.allowEdit !== false);
+const canDelete = computed(() => moduleConfig.value?.allowDelete !== false);
 const records = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -191,6 +212,7 @@ const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
   const base = cfg.fields.slice(0, 6).map((f) => ({ title: f.label, key: f.key }));
+  if (!canEdit.value && !canDelete.value) return base;
   return [...base, { title: "Acciones", key: "actions", sortable: false }];
 });
 

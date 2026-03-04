@@ -92,6 +92,23 @@ function goToComponent(urlComponent: string) {
 
     terceros: { name: "terceros" },
     tercero: { name: "terceros" },
+
+    equipos: { name: "equipos" },
+    equipo: { name: "equipos" },
+
+    planes: { name: "planes" },
+    plan: { name: "planes" },
+
+    programaciones: { name: "programaciones" },
+    programacion: { name: "programaciones" },
+
+    alertas: { name: "alertas" },
+    alerta: { name: "alertas" },
+
+    "work-orders": { name: "work-orders" },
+    "work-order": { name: "work-orders" },
+    ots: { name: "work-orders" },
+
     kardex: { name: "kardex" },
   };
 

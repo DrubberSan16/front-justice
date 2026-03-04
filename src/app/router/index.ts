@@ -110,6 +110,42 @@ export const router = createRouter({
           props: { moduleKey: "terceros" },
           meta: { title: "Terceros" },
         },
+
+        {
+          path: "equipos",
+          name: "equipos",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "equipos" },
+          meta: { title: "Equipos" },
+        },
+        {
+          path: "planes",
+          name: "planes",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "planes" },
+          meta: { title: "Planes" },
+        },
+        {
+          path: "programaciones",
+          name: "programaciones",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "programaciones" },
+          meta: { title: "Programaciones" },
+        },
+        {
+          path: "alertas",
+          name: "alertas",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "alertas" },
+          meta: { title: "Alertas" },
+        },
+        {
+          path: "work-orders",
+          name: "work-orders",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "work-orders" },
+          meta: { title: "Work Orders" },
+        },
         // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
         // { path: "menu", name: "menu", component: () => import("@/views/admin/MenuView.vue") },
