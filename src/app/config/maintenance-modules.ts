@@ -34,7 +34,7 @@ const statusField: MaintenanceField = {
   ],
 };
 
-export const maintenanceModules: MaintenanceModuleConfig[] = [
+export const inventoryModules: MaintenanceModuleConfig[] = [
   {
     key: "sucursales",
     title: "Sucursales",
@@ -141,6 +141,9 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "direccion", label: "Dirección", type: "text" },
     ],
   },
+];
+
+export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "equipos",
     title: "Equipos",
@@ -208,6 +211,10 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     ],
   },
 ];
+
+export function getInventoryModule(key: string): MaintenanceModuleConfig | null {
+  return inventoryModules.find((m) => m.key === key) ?? null;
+}
 
 export function getMaintenanceModule(key: string): MaintenanceModuleConfig | null {
   return maintenanceModules.find((m) => m.key === key) ?? null;
