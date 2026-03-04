@@ -77,9 +77,9 @@ function toText(v: any): string {
 
 export async function fetchProductsWithStock() {
   const [productos, bodegas, stocks] = await Promise.all([
-    listAll("/kpi_maintenance/productos"),
-    listAll("/kpi_maintenance/bodegas"),
-    listAll("/kpi_maintenance/stock-bodega"),
+    listAll("/kpi_inventory/productos"),
+    listAll("/kpi_inventory/bodegas"),
+    listAll("/kpi_inventory/stock-bodega"),
   ]);
 
   const stockByProduct = new Map<string, number>();
@@ -113,9 +113,9 @@ async function registerMovementAndKardex(args: MovementArgs) {
   if (args.tipo === "INGRESO") movPayload.bodega_destino_id = args.bodegaId;
   if (args.tipo === "SALIDA") movPayload.bodega_origen_id = args.bodegaId;
 
-  const { data: movimiento } = await api.post("/kpi_maintenance/movimientos-inventario", movPayload);
+  const { data: movimiento } = await api.post("/kpi_inventory/movimientos-inventario", movPayload);
 
-  const { data: detalle } = await api.post("/kpi_maintenance/movimientos-inventario-det", {
+  const { data: detalle } = await api.post("/kpi_inventory/movimientos-inventario-det", {
     status: "ACTIVE",
     movimiento_id: movimiento?.id,
     producto_id: args.productoId,
@@ -125,7 +125,7 @@ async function registerMovementAndKardex(args: MovementArgs) {
     observacion: args.movimientoObservacion ?? null,
   });
 
-  await api.post("/kpi_maintenance/kardex", {
+  await api.post("/kpi_inventory/kardex", {
     status: "ACTIVE",
     fecha: now,
     bodega_id: args.bodegaId,
@@ -144,7 +144,7 @@ async function registerMovementAndKardex(args: MovementArgs) {
   });
 
   await createLogTransact({
-    moduleMicroservice: "kpi_maintenance",
+    moduleMicroservice: "kpi_inventory",
     status: "ACTIVE",
     typeLog: args.tipo === "INGRESO" ? "PRODUCT_ENTRY" : "PRODUCT_EXIT",
     description: `${args.tipo} producto=${args.productoId} bodega=${args.bodegaId} cantidad=${args.cantidad} (${args.stockAnterior} -> ${args.stockNuevo})`,
@@ -161,7 +161,7 @@ export async function performManualMovement(payload: {
   observacion?: string;
   userName: string;
 }) {
-  const stocks = (await listAll("/kpi_maintenance/stock-bodega")) as StockRow[];
+  const stocks = (await listAll("/kpi_inventory/stock-bodega")) as StockRow[];
   const current = stocks.find((s) => s.producto_id === payload.productoId && s.bodega_id === payload.bodegaId);
 
   const stockAnterior = parseNumber(current?.stock_actual, 0);
@@ -173,7 +173,7 @@ export async function performManualMovement(payload: {
   }
 
   if (!current) {
-    const { data: createdStock } = await api.post("/kpi_maintenance/stock-bodega", {
+    const { data: createdStock } = await api.post("/kpi_inventory/stock-bodega", {
       status: "ACTIVE",
       bodega_id: payload.bodegaId,
       producto_id: payload.productoId,
@@ -200,7 +200,7 @@ export async function performManualMovement(payload: {
     return;
   }
 
-  await api.patch(`/kpi_maintenance/stock-bodega/${current.id}`, {
+  await api.patch(`/kpi_inventory/stock-bodega/${current.id}`, {
     stock_actual: String(stockNuevo),
     costo_promedio_bodega: String(payload.costoUnitario),
   });
@@ -236,13 +236,13 @@ function rowVal(row: Record<string, any>, headers: string[]): any {
 }
 
 export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: string) {
-  const sucursales = await listAll("/kpi_maintenance/sucursales");
-  const bodegas = await listAll("/kpi_maintenance/bodegas");
-  const lineas = await listAll("/kpi_maintenance/lineas");
-  const categorias = await listAll("/kpi_maintenance/categorias");
-  const unidades = await listAll("/kpi_maintenance/unidades-medida");
-  const productos = await listAll("/kpi_maintenance/productos");
-  const stocks = (await listAll("/kpi_maintenance/stock-bodega")) as StockRow[];
+  const sucursales = await listAll("/kpi_inventory/sucursales");
+  const bodegas = await listAll("/kpi_inventory/bodegas");
+  const lineas = await listAll("/kpi_inventory/lineas");
+  const categorias = await listAll("/kpi_inventory/categorias");
+  const unidades = await listAll("/kpi_inventory/unidades-medida");
+  const productos = await listAll("/kpi_inventory/productos");
+  const stocks = (await listAll("/kpi_inventory/stock-bodega")) as StockRow[];
 
   const stats = { creados: 0, actualizados: 0, ingresos: 0, salidas: 0 };
 
@@ -270,7 +270,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
 
     let sucursal = sucursales.find((s) => s.codigo === codSucursal);
     if (!sucursal) {
-      const { data } = await api.post("/kpi_maintenance/sucursales", {
+      const { data } = await api.post("/kpi_inventory/sucursales", {
         status: "ACTIVE",
         codigo: codSucursal,
         nombre: nomSucursal || codSucursal,
@@ -281,7 +281,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
 
     let bodega = bodegas.find((b) => b.codigo === codBodega && b.sucursal_id === sucursal.id);
     if (!bodega) {
-      const { data } = await api.post("/kpi_maintenance/bodegas", {
+      const { data } = await api.post("/kpi_inventory/bodegas", {
         status: "ACTIVE",
         sucursal_id: sucursal.id,
         codigo: codBodega,
@@ -294,7 +294,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
 
     let linea = lineas.find((l) => l.nombre === nomLinea);
     if (!linea) {
-      const { data } = await api.post("/kpi_maintenance/lineas", {
+      const { data } = await api.post("/kpi_inventory/lineas", {
         status: "ACTIVE",
         codigo: nomLinea || `L-${Date.now()}`,
         nombre: nomLinea || "GENERAL",
@@ -305,7 +305,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
 
     let categoria = categorias.find((c) => c.nombre === nomCategoria);
     if (!categoria) {
-      const { data } = await api.post("/kpi_maintenance/categorias", {
+      const { data } = await api.post("/kpi_inventory/categorias", {
         status: "ACTIVE",
         nombre: nomCategoria || "GENERAL",
       });
@@ -315,7 +315,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
 
     let unidad = unidades.find((u) => u.nombre === tipoUnidad);
     if (!unidad) {
-      const { data } = await api.post("/kpi_maintenance/unidades-medida", {
+      const { data } = await api.post("/kpi_inventory/unidades-medida", {
         status: "ACTIVE",
         nombre: tipoUnidad || "UNIDAD",
         es_base: true,
@@ -328,7 +328,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
 
     let producto = productos.find((p) => p.codigo === codItem);
     if (!producto) {
-      const { data } = await api.post("/kpi_maintenance/productos", {
+      const { data } = await api.post("/kpi_inventory/productos", {
         status: "ACTIVE",
         codigo: codItem,
         nombre: nomItem,
@@ -348,7 +348,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
       productos.push(data);
       stats.creados += 1;
     } else {
-      await api.patch(`/kpi_maintenance/productos/${producto.id}`, {
+      await api.patch(`/kpi_inventory/productos/${producto.id}`, {
         nombre: nomItem,
         linea_id: linea.id,
         categoria_id: categoria.id,
@@ -366,7 +366,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
     const stockAnterior = parseNumber(stockRow?.stock_actual, 0);
 
     if (!stockRow) {
-      const { data } = await api.post("/kpi_maintenance/stock-bodega", {
+      const { data } = await api.post("/kpi_inventory/stock-bodega", {
         status: "ACTIVE",
         bodega_id: bodega.id,
         producto_id: producto.id,
@@ -380,7 +380,7 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
       stockRow = data;
       stocks.push(data);
     } else {
-      await api.patch(`/kpi_maintenance/stock-bodega/${stockRow.id}`, {
+      await api.patch(`/kpi_inventory/stock-bodega/${stockRow.id}`, {
         stock_actual: String(stock),
         stock_min_bodega: String(stockMinBodega),
         stock_max_bodega: String(stockMaxBodega),

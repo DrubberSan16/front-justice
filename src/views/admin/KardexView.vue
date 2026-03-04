@@ -251,7 +251,7 @@ async function loadBaseData() {
 async function loadKardex() {
   loadingKardex.value = true;
   try {
-    kardex.value = (await listAll("/kpi_maintenance/kardex")) as KardexRow[];
+    kardex.value = (await listAll("/kpi_inventory/kardex")) as KardexRow[];
   } catch (error: any) {
     ui.error(error?.response?.data?.message || "No se pudo cargar kardex.");
   } finally {

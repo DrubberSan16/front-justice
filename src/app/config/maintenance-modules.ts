@@ -38,16 +38,16 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "sucursales",
     title: "Sucursales",
-    endpoint: "/kpi_maintenance/sucursales",
+    endpoint: "/kpi_inventory/sucursales",
     fields: [statusField, { key: "codigo", label: "Código", type: "text", required: true }, { key: "nombre", label: "Nombre", type: "text", required: true }],
   },
   {
     key: "bodegas",
     title: "Bodegas",
-    endpoint: "/kpi_maintenance/bodegas",
+    endpoint: "/kpi_inventory/bodegas",
     fields: [
       statusField,
-      { key: "sucursal_id", label: "Sucursal", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/sucursales" } },
+      { key: "sucursal_id", label: "Sucursal", type: "select", required: true, relation: { endpoint: "/kpi_inventory/sucursales" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "direccion", label: "Dirección", type: "text" },
@@ -57,25 +57,25 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "lineas",
     title: "Líneas",
-    endpoint: "/kpi_maintenance/lineas",
+    endpoint: "/kpi_inventory/lineas",
     fields: [statusField, { key: "codigo", label: "Código", type: "text", required: true }, { key: "nombre", label: "Nombre", type: "text", required: true }],
   },
   {
     key: "categorias",
     title: "Categorías",
-    endpoint: "/kpi_maintenance/categorias",
+    endpoint: "/kpi_inventory/categorias",
     fields: [statusField, { key: "codigo", label: "Código", type: "text" }, { key: "nombre", label: "Nombre", type: "text", required: true }, { key: "descripcion", label: "Descripción", type: "text" }],
   },
   {
     key: "marcas",
     title: "Marcas",
-    endpoint: "/kpi_maintenance/marcas",
+    endpoint: "/kpi_inventory/marcas",
     fields: [statusField, { key: "nombre", label: "Nombre", type: "text", required: true }],
   },
   {
     key: "unidades-medida",
     title: "Unidades de medida",
-    endpoint: "/kpi_maintenance/unidades-medida",
+    endpoint: "/kpi_inventory/unidades-medida",
     fields: [
       statusField,
       { key: "codigo", label: "Código", type: "text" },
@@ -87,17 +87,17 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "productos",
     title: "Productos",
-    endpoint: "/kpi_maintenance/productos",
+    endpoint: "/kpi_inventory/productos",
     fields: [
       statusField,
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "descripcion", label: "Descripción", type: "text" },
-      { key: "linea_id", label: "Línea", type: "select", relation: { endpoint: "/kpi_maintenance/lineas" } },
-      { key: "categoria_id", label: "Categoría", type: "select", relation: { endpoint: "/kpi_maintenance/categorias" } },
-      { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_maintenance/marcas" } },
+      { key: "linea_id", label: "Línea", type: "select", relation: { endpoint: "/kpi_inventory/lineas" } },
+      { key: "categoria_id", label: "Categoría", type: "select", relation: { endpoint: "/kpi_inventory/categorias" } },
+      { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
       { key: "registro_sanitario", label: "Registro sanitario", type: "text" },
-      { key: "unidad_medida_id", label: "Unidad de medida", type: "select", relation: { endpoint: "/kpi_maintenance/unidades-medida" } },
+      { key: "unidad_medida_id", label: "Unidad de medida", type: "select", relation: { endpoint: "/kpi_inventory/unidades-medida" } },
       { key: "por_contenedores", label: "Por contenedores", type: "boolean", required: true },
       { key: "sku", label: "SKU", type: "text" },
       { key: "codigo_barras", label: "Código barras", type: "text" },
@@ -113,11 +113,11 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "stock-bodega",
     title: "Stock por bodega",
-    endpoint: "/kpi_maintenance/stock-bodega",
+    endpoint: "/kpi_inventory/stock-bodega",
     fields: [
       statusField,
-      { key: "bodega_id", label: "Bodega", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/bodegas" } },
-      { key: "producto_id", label: "Producto", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/productos" } },
+      { key: "bodega_id", label: "Bodega", type: "select", required: true, relation: { endpoint: "/kpi_inventory/bodegas" } },
+      { key: "producto_id", label: "Producto", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
       { key: "stock_actual", label: "Stock actual", type: "number", required: true },
       { key: "stock_min_bodega", label: "Stock mín. bodega", type: "number", required: true },
       { key: "stock_max_bodega", label: "Stock máx. bodega", type: "number", required: true },
@@ -129,7 +129,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "terceros",
     title: "Terceros",
-    endpoint: "/kpi_maintenance/terceros",
+    endpoint: "/kpi_inventory/terceros",
     fields: [
       statusField,
       { key: "tipo", label: "Tipo", type: "text", required: true },
