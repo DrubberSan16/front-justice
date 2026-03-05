@@ -3,6 +3,10 @@
     Módulo no configurado.
   </v-alert>
 
+  <v-alert v-else-if="!canRead" type="warning" variant="tonal">
+    No tienes permisos para consultar este módulo.
+  </v-alert>
+
   <v-card v-else rounded="xl" class="pa-4">
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
       <div>
@@ -116,17 +120,28 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { api } from "@/app/http/api";
 import { getInventoryModule, type MaintenanceField } from "@/app/config/maintenance-modules";
 import { useUiStore } from "@/app/stores/ui.store";
+import { useMenuStore } from "@/app/stores/menu.store";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
+const menu = useMenuStore();
+const route = useRoute();
 
 const moduleConfig = computed(() => getInventoryModule(props.moduleKey));
-const canCreate = computed(() => moduleConfig.value?.allowCreate !== false);
-const canEdit = computed(() => moduleConfig.value?.allowEdit !== false);
-const canDelete = computed(() => moduleConfig.value?.allowDelete !== false);
+const permissionAliases = computed(() => {
+  const singular = props.moduleKey.endsWith("s") ? props.moduleKey.slice(0, -1) : props.moduleKey;
+  return [props.moduleKey, singular, String(route.name ?? "")].filter(Boolean);
+});
+const menuPermissions = computed(() => getPermissionsForAnyComponent(menu.tree, permissionAliases.value));
+const canRead = computed(() => menuPermissions.value.isReaded);
+const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && menuPermissions.value.isCreated);
+const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPermissions.value.isEdited);
+const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
 const records = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -182,6 +197,7 @@ async function loadRelations() {
 
 async function fetchRecords() {
   if (!moduleConfig.value) return;
+  if (!canRead.value) return;
   loading.value = true;
   error.value = null;
   try {
@@ -297,7 +313,16 @@ function openDelete(item: any) {
 
 async function save() {
   if (!moduleConfig.value) return;
+  if (!canRead.value) return;
   if (!validateForm()) return;
+  if (!editingId.value && !canCreate.value) {
+    ui.error("No tienes permisos para crear en este módulo.");
+    return;
+  }
+  if (editingId.value && !canEdit.value) {
+    ui.error("No tienes permisos para editar en este módulo.");
+    return;
+  }
 
   saving.value = true;
   try {
@@ -321,6 +346,10 @@ async function save() {
 
 async function confirmDelete() {
   if (!moduleConfig.value || !deletingId.value) return;
+  if (!canDelete.value) {
+    ui.error("No tienes permisos para eliminar en este módulo.");
+    return;
+  }
   saving.value = true;
   try {
     await api.delete(`${moduleConfig.value.endpoint}/${deletingId.value}`);

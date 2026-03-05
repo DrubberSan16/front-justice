@@ -1,7 +1,7 @@
 <template>
-  <MaintenanceCrudView module-key="productos" />
+  <InventoryCrudView module-key="productos" />
 </template>
 
 <script setup lang="ts">
-import MaintenanceCrudView from "@/views/admin/MaintenanceCrudView.vue";
+import InventoryCrudView from "@/views/admin/InventoryCrudView.vue";
 </script>
