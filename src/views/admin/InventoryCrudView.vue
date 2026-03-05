@@ -126,6 +126,7 @@ import { getInventoryModule, type MaintenanceField } from "@/app/config/maintena
 import { useUiStore } from "@/app/stores/ui.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -245,6 +246,10 @@ const rows = computed(() => {
         if (field.type === "select" && field.relation && r[field.key]) {
           const opt = (relationOptions.value[field.key] ?? []).find((x) => x.value === r[field.key]);
           out[field.key] = opt?.title ?? r[field.key];
+        }
+
+        if (field.type === "number") {
+          out[field.key] = formatNumberForDisplay(r[field.key]);
         }
       }
       out._search = JSON.stringify(r).toLowerCase();

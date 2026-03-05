@@ -130,6 +130,7 @@ import { api } from "@/app/http/api";
 import { bulkUpsertFromRows, fetchProductsWithStock, performManualMovement } from "@/app/services/products-inventory.service";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 type MovementType = "INGRESO" | "SALIDA";
 
@@ -207,6 +208,10 @@ const kardexRows = computed(() => {
     fecha: new Date(r.fecha).toLocaleString(),
     producto: productNameById.get(r.producto_id) ?? r.producto_id,
     bodega: bodegaNameById.get(r.bodega_id) ?? r.bodega_id,
+    entrada_cantidad: formatNumberForDisplay(r.entrada_cantidad),
+    salida_cantidad: formatNumberForDisplay(r.salida_cantidad),
+    saldo_cantidad: formatNumberForDisplay(r.saldo_cantidad),
+    costo_unitario: formatNumberForDisplay(r.costo_unitario),
   }));
 });
 
