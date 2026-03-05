@@ -18,9 +18,21 @@ const defaultPerms: MenuPermissions = {
   reportsPermit: "{}",
 };
 
+function normalize(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/^app\//, "")
+    .replace(/[\s_]+/g, "-");
+}
+
 export function findMenuNodeByComponent(tree: MenuNode[], urlComponent: string): MenuNode | null {
+  const target = normalize(urlComponent);
   for (const node of tree) {
-    if (node.urlComponent === urlComponent) return node;
+    if (normalize(node.urlComponent) === target) return node;
     if (node.children?.length) {
       const found = findMenuNodeByComponent(node.children, urlComponent);
       if (found) return found;
