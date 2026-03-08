@@ -96,6 +96,9 @@ function goToComponent(urlComponent: string) {
     equipos: { name: "equipos" },
     equipo: { name: "equipos" },
 
+    "tipo-equipos": { name: "tipo-equipos" },
+    "tipo-equipo": { name: "tipo-equipos" },
+    
     planes: { name: "planes" },
     plan: { name: "planes" },
 

@@ -159,6 +159,16 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     ],
   },
   {
+    key: "tipo-equipo",
+    title: "Tipos de equipo",
+    endpoint: "/kpi_maintenance/tipo-equipo",
+    fields: [
+      { key: "codigo", label: "Código", type: "text", required: true },
+      { key: "nombre", label: "Nombre", type: "text", required: true },
+      { key: "descripcion", label: "Descripción", type: "text" },
+    ],
+  },
+  {
     key: "planes",
     title: "Planes de mantenimiento",
     endpoint: "/kpi_maintenance/planes",
