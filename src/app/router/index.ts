@@ -119,6 +119,13 @@ export const router = createRouter({
           meta: { title: "Equipos" },
         },
         {
+          path: "tipo-equipo",
+          name: "tipo-equipo",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "tipo-equipo" },
+          meta: { title: "Tipo de equipos" },
+        },
+        {
           path: "planes",
           name: "planes",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),

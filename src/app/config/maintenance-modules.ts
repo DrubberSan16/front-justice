@@ -151,8 +151,8 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     fields: [
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
-      { key: "equipo_tipo_id", label: "Tipo de equipo (ID)", type: "text", required: true },
-      { key: "location_id", label: "Ubicación (ID)", type: "text" },
+      { key: "equipo_tipo_id", label: "Tipo de equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/tipo-equipo" } },
+      { key: "location_id", label: "Ubicación", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/locations" } },
       { key: "criticidad", label: "Criticidad", type: "text" },
       { key: "estado_operativo", label: "Estado operativo", type: "text" },
       { key: "horometro_actual", label: "Horómetro actual", type: "number" },
@@ -184,9 +184,9 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     key: "programaciones",
     title: "Programaciones",
     endpoint: "/kpi_maintenance/programaciones",
-    fields: [
-      { key: "equipo_id", label: "Equipo (ID)", type: "text", required: true },
-      { key: "plan_id", label: "Plan (ID)", type: "text", required: true },
+    fields: [      
+      { key: "equipo_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
+      { key: "plan_id", label: "Plan", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/planes" } },
       { key: "ultima_ejecucion_fecha", label: "Últ. ejecución fecha", type: "text" },
       { key: "ultima_ejecucion_horas", label: "Últ. ejecución horas", type: "number" },
       { key: "proxima_fecha", label: "Próxima fecha", type: "text" },
@@ -215,7 +215,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     allowEdit: false,
     allowDelete: false,
     fields: [
-      { key: "equipo_id", label: "Equipo (ID)", type: "text" },
+      { key: "equipo_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
       { key: "estado", label: "Estado", type: "text" },
       { key: "maintenance_kind", label: "Tipo mantención", type: "text" },
     ],
