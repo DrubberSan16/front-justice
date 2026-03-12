@@ -141,6 +141,39 @@ const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const form = reactive<Record<string, any>>({});
 
+function resolveEndpoint(template: string, id: string) {
+  return template.replace(":id", id);
+}
+
+function getPathId(showError = true) {
+  const cfg = moduleConfig.value;
+  if (!cfg?.pathParam) return null;
+  const val = form[cfg.pathParam.key];
+  if (!val && showError) {
+    ui.error(`Debes seleccionar ${cfg.pathParam.label}.`);
+  }
+  if (!val) {
+    return null;
+  }
+  return String(val);
+}
+
+function getCollectionEndpoint() {
+  const cfg = moduleConfig.value;
+  if (!cfg) return null;
+  if (!cfg.pathParam) return cfg.endpoint;
+  const id = getPathId(false);
+  if (!id) return null;
+  return resolveEndpoint(cfg.endpoint, id);
+}
+
+function getItemEndpoint(recordId: string) {
+  const cfg = moduleConfig.value;
+  if (!cfg) return null;
+  if (cfg.itemEndpoint) return resolveEndpoint(cfg.itemEndpoint, recordId);
+  return `${cfg.endpoint}/${recordId}`;
+}
+
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
@@ -181,11 +214,15 @@ async function loadRelations() {
 }
 
 async function fetchRecords() {
-  if (!moduleConfig.value) return;
+  const endpoint = getCollectionEndpoint();
+  if (!endpoint) {
+    records.value = [];
+    return;
+  }
   loading.value = true;
   error.value = null;
   try {
-    records.value = await listAll(moduleConfig.value.endpoint);
+    records.value = await listAll(endpoint);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -243,6 +280,7 @@ function sanitizePayload() {
   if (!cfg) return payload;
 
   for (const field of cfg.fields) {
+    if (field.sendInPayload === false) continue;
     let val = form[field.key];
     if (field.type === "number") {
       val = val === "" || val === null || val === undefined ? "0" : String(val);
@@ -252,6 +290,14 @@ function sanitizePayload() {
     }
     if (field.type === "select" && val === "") {
       val = null;
+    }
+    if (field.key === "items" && typeof val === "string") {
+      try {
+        val = JSON.parse(val);
+      } catch {
+        ui.error("El campo Items (JSON) debe tener formato JSON válido.");
+        return null;
+      }
     }
     payload[field.key] = val;
   }
@@ -296,17 +342,21 @@ function openDelete(item: any) {
 }
 
 async function save() {
-  if (!moduleConfig.value) return;
+  const collectionEndpoint = getCollectionEndpoint();
+  if (!moduleConfig.value || !collectionEndpoint) return;
   if (!validateForm()) return;
 
   saving.value = true;
   try {
     const payload = sanitizePayload();
+    if (!payload) return;
     if (editingId.value) {
-      await api.patch(`${moduleConfig.value.endpoint}/${editingId.value}`, payload);
+      const itemEndpoint = getItemEndpoint(editingId.value);
+      if (!itemEndpoint) return;
+      await api.patch(itemEndpoint, payload);
       ui.success("Registro actualizado correctamente.");
     } else {
-      await api.post(moduleConfig.value.endpoint, payload);
+      await api.post(collectionEndpoint, payload);
       ui.success("Registro creado correctamente.");
     }
 
@@ -323,7 +373,9 @@ async function confirmDelete() {
   if (!moduleConfig.value || !deletingId.value) return;
   saving.value = true;
   try {
-    await api.delete(`${moduleConfig.value.endpoint}/${deletingId.value}`);
+    const itemEndpoint = getItemEndpoint(deletingId.value);
+    if (!itemEndpoint) return;
+    await api.delete(itemEndpoint);
     ui.success("Registro eliminado correctamente.");
     deleteDialog.value = false;
     await fetchRecords();
@@ -343,6 +395,14 @@ watch(
     await fetchRecords();
   },
   { immediate: true }
+);
+
+watch(
+  () => (moduleConfig.value?.pathParam?.key ? form[moduleConfig.value.pathParam.key] : null),
+  async () => {
+    if (!moduleConfig.value?.pathParam) return;
+    await fetchRecords();
+  }
 );
 
 onMounted(async () => {
