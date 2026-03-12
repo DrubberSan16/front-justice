@@ -39,14 +39,10 @@
         <v-btn icon="mdi-close" @click="dialog = false" />
         <v-toolbar-title>{{ editingId ? `Editar OT ${editingId}` : "Nueva orden de trabajo" }}</v-toolbar-title>
         <v-spacer />
-        <v-btn variant="tonal" :loading="savingHeader" @click="saveHeader">Guardar cabecera</v-btn>
+        <v-btn variant="tonal" :loading="savingHeader" @click="saveAll">Guardar</v-btn>
       </v-toolbar>
 
       <v-card-text class="pt-4">
-        <v-alert type="info" variant="tonal" class="mb-3">
-          Guarda primero la cabecera y luego completa el detalle en las pestañas.
-        </v-alert>
-
         <v-row dense>
           <v-col cols="12" md="4">
             <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" />
@@ -76,7 +72,7 @@
 
         <v-window v-model="tab" class="mt-4">
           <v-window-item value="tareas">
-            <v-row dense>
+            <v-row dense class="pt-2">
               <v-col cols="12" md="4"><v-select v-model="taskForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.tarea_id" label="Tarea ID" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-checkbox v-model="taskForm.valor_boolean" label="Boolean" hide-details /></v-col>
@@ -84,7 +80,7 @@
               <v-col cols="12" md="8"><v-text-field v-model="taskForm.valor_text" label="Valor texto" variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="!editingId" @click="createTask">Agregar tarea</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar tarea</v-btn></div>
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteTask(item._raw ?? item)" />
@@ -93,14 +89,36 @@
           </v-window-item>
 
           <v-window-item value="adjuntos">
-            <v-row dense>
+            <v-row dense class="pt-2">
               <v-col cols="12" md="3"><v-text-field v-model="attachmentForm.tipo" label="Tipo" variant="outlined" /></v-col>
               <v-col cols="12" md="3"><v-text-field v-model="attachmentForm.nombre" label="Nombre" variant="outlined" /></v-col>
               <v-col cols="12" md="3"><v-text-field v-model="attachmentForm.mime_type" label="Mime type" variant="outlined" /></v-col>
-              <v-col cols="12" md="3"><v-textarea v-model="attachmentForm.contenido_base64" label="Contenido base64" rows="2" variant="outlined" /></v-col>
+              <v-col cols="12" md="3">
+                <v-file-input
+                  label="Archivo"
+                  variant="outlined"
+                  prepend-icon="mdi-paperclip"
+                  show-size
+                  @update:model-value="handleAttachmentFileChange"
+                />
+                <div v-if="attachmentForm.nombre" class="text-caption mt-1">
+                  <template v-if="editingId && attachmentPreviewUrl">
+                    <a :href="attachmentPreviewUrl" target="_blank" rel="noopener noreferrer">{{ attachmentForm.nombre }}</a>
+                  </template>
+                  <template v-else>
+                    {{ attachmentForm.nombre }}
+                  </template>
+                </div>
+              </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="!editingId" @click="createAttachment">Agregar adjunto</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createAttachment">Agregar adjunto</v-btn></div>
             <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0">
+              <template #item.nombre="{ item }">
+                <a v-if="buildAttachmentUrl(item._raw ?? item)" :href="buildAttachmentUrl(item._raw ?? item) || undefined" target="_blank" rel="noopener noreferrer">
+                  {{ (item._raw ?? item).nombre }}
+                </a>
+                <span v-else>{{ (item._raw ?? item).nombre }}</span>
+              </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteAttachment(item._raw ?? item)" />
               </template>
@@ -108,25 +126,25 @@
           </v-window-item>
 
           <v-window-item value="consumos">
-            <v-row dense>
+            <v-row dense class="pt-2">
               <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="productOptions" item-title="title" item-value="value" label="Producto" variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="!editingId" @click="createConsumo">Registrar consumo</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
             <v-list density="compact" border rounded>
               <v-list-item v-for="(item, i) in localConsumos" :key="i" :title="`Producto: ${item.producto_id} / Cantidad: ${item.cantidad}`" :subtitle="item.observacion || '-'" />
             </v-list>
           </v-window-item>
 
           <v-window-item value="materiales">
-            <v-row dense>
+            <v-row dense class="pt-2">
               <v-col cols="12"><v-textarea v-model="materialsItemsJson" label="Items (JSON)" rows="4" variant="outlined" /></v-col>
               <v-col cols="12"><v-text-field v-model="materialsForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="!editingId" @click="issueMaterials">Emitir materiales</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Emitir materiales</v-btn></div>
             <v-list density="compact" border rounded>
               <v-list-item v-for="(item, i) in localIssues" :key="i" :title="`Items: ${item.items?.length ?? 0}`" :subtitle="item.observacion || '-'" />
             </v-list>
@@ -202,6 +220,7 @@ const attachmentForm = reactive<any>({
   contenido_base64: "",
   mime_type: "",
 });
+const attachmentPreviewUrl = ref<string | null>(null);
 
 const consumoForm = reactive<any>({
   producto_id: "",
@@ -331,6 +350,7 @@ function resetAllForms() {
   attachmentForm.nombre = "";
   attachmentForm.contenido_base64 = "";
   attachmentForm.mime_type = "";
+  attachmentPreviewUrl.value = null;
 
   consumoForm.producto_id = "";
   consumoForm.bodega_id = "";
@@ -366,6 +386,44 @@ async function openEdit(item: any) {
   await loadDetailData();
 }
 
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      const base64 = result.includes(",") ? (result.split(",")[1] ?? "") : result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function buildAttachmentUrl(item: any) {
+  if (!item?.id || !editingId.value) return null;
+  return `${api.defaults.baseURL}/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`;
+}
+
+async function handleAttachmentFileChange(value: File | File[] | null) {
+  const file = Array.isArray(value) ? value[0] : value;
+  if (!file) {
+    attachmentForm.nombre = "";
+    attachmentForm.mime_type = "";
+    attachmentForm.contenido_base64 = "";
+    attachmentPreviewUrl.value = null;
+    return;
+  }
+
+  attachmentForm.nombre = file.name;
+  attachmentForm.mime_type = file.type || "application/octet-stream";
+  try {
+    attachmentForm.contenido_base64 = await fileToBase64(file);
+    attachmentPreviewUrl.value = URL.createObjectURL(file);
+  } catch (e: any) {
+    ui.error(e?.message || "No se pudo procesar el archivo.");
+  }
+}
+
 function openDelete(item: any) {
   deletingId.value = item.id;
   deleteDialog.value = true;
@@ -374,7 +432,7 @@ function openDelete(item: any) {
 async function saveHeader() {
   if (!headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
-    return;
+    return false;
   }
 
   const payload = {
@@ -397,20 +455,52 @@ async function saveHeader() {
       const { data } = await api.post("/kpi_maintenance/work-orders", payload);
       const createdId = data?.id ?? data?.data?.id;
       if (createdId) editingId.value = createdId;
-      ui.success("Cabecera OT creada. Ahora puedes registrar detalle.");
+      ui.success("Cabecera OT creada.");
     }
 
     await fetchWorkOrders();
     await loadDetailData();
+    return true;
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar la cabecera de OT.");
+    return false;
   } finally {
     savingHeader.value = false;
   }
 }
 
+async function ensureHeaderSaved() {
+  if (editingId.value) return true;
+  return saveHeader();
+}
+
+async function saveAll() {
+  const headerSaved = await saveHeader();
+  if (!headerSaved || !editingId.value) return;
+
+  const actions: Array<() => Promise<void>> = [];
+  if (taskForm.plan_id || taskForm.tarea_id || taskForm.valor_text || taskForm.observacion || taskForm.valor_numeric !== "") {
+    actions.push(createTask);
+  }
+  if (attachmentForm.nombre || attachmentForm.contenido_base64) {
+    actions.push(createAttachment);
+  }
+  if (consumoForm.producto_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion) {
+    actions.push(createConsumo);
+  }
+  if ((materialsItemsJson.value || "[]").trim() !== "[]" || materialsForm.observacion) {
+    actions.push(issueMaterials);
+  }
+
+  if (!actions.length) return;
+  for (const run of actions) {
+    await run();
+  }
+}
+
 async function createTask() {
-  if (!editingId.value) return ui.error("Primero guarda la cabecera.");
+  const headerSaved = await ensureHeaderSaved();
+  if (!headerSaved || !editingId.value) return;
   if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
 
   try {
@@ -441,8 +531,9 @@ async function deleteTask(item: any) {
 }
 
 async function createAttachment() {
-  if (!editingId.value) return ui.error("Primero guarda la cabecera.");
-  if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Nombre y contenido base64 son obligatorios.");
+  const headerSaved = await ensureHeaderSaved();
+  if (!headerSaved || !editingId.value) return;
+  if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
   try {
     await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
@@ -470,7 +561,8 @@ async function deleteAttachment(item: any) {
 }
 
 async function createConsumo() {
-  if (!editingId.value) return ui.error("Primero guarda la cabecera.");
+  const headerSaved = await ensureHeaderSaved();
+  if (!headerSaved || !editingId.value) return;
   if (!consumoForm.producto_id || !consumoForm.cantidad || !consumoForm.costo_unitario) {
     return ui.error("Producto, cantidad y costo unitario son obligatorios.");
   }
@@ -493,7 +585,8 @@ async function createConsumo() {
 }
 
 async function issueMaterials() {
-  if (!editingId.value) return ui.error("Primero guarda la cabecera.");
+  const headerSaved = await ensureHeaderSaved();
+  if (!headerSaved || !editingId.value) return;
 
   let items: any[] = [];
   try {
