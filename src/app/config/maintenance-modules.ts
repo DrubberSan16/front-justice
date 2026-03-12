@@ -5,6 +5,7 @@ export type MaintenanceField = {
   label: string;
   type: FieldType;
   required?: boolean;
+  sendInPayload?: boolean;
   options?: Array<{ value: any; title: string }>;
   relation?: {
     endpoint: string;
@@ -17,6 +18,12 @@ export type MaintenanceModuleConfig = {
   key: string;
   title: string;
   endpoint: string;
+  itemEndpoint?: string;
+  pathParam?: {
+    key: string;
+    label: string;
+    relation: { endpoint: string };
+  };
   fields: MaintenanceField[];
   allowCreate?: boolean;
   allowEdit?: boolean;
@@ -211,13 +218,162 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     key: "work-orders",
     title: "Work Orders",
     endpoint: "/kpi_maintenance/work-orders",
-    allowCreate: false,
+    fields: [
+      { key: "equipment_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
+      { key: "status_workflow", label: "Estado", type: "text" },
+      { key: "maintenance_kind", label: "Tipo mantención", type: "text" },
+      { key: "plan_id", label: "Plan", type: "select", relation: { endpoint: "/kpi_maintenance/planes" } },
+      { key: "alerta_id", label: "Alerta", type: "select", relation: { endpoint: "/kpi_maintenance/alertas" } },
+    ],
+  },
+  {
+    key: "bitacora",
+    title: "Bitácora de equipos",
+    endpoint: "/kpi_maintenance/equipos/:id/bitacora",
+    itemEndpoint: "/kpi_maintenance/bitacora/:id",
+    pathParam: {
+      key: "equipo_id",
+      label: "Equipo",
+      relation: { endpoint: "/kpi_maintenance/equipos" },
+    },
+    fields: [
+      { key: "equipo_id", label: "Equipo", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/equipos" } },
+      { key: "fecha", label: "Fecha (ISO)", type: "text", required: true },
+      { key: "horometro", label: "Horómetro", type: "number", required: true },
+      { key: "estado_id", label: "Estado (ID)", type: "text" },
+      { key: "observaciones", label: "Observaciones", type: "text" },
+      { key: "registrado_por", label: "Registrado por", type: "text" },
+    ],
+  },
+  {
+    key: "estados-equipo",
+    title: "Estados de equipos",
+    endpoint: "/kpi_maintenance/equipos/:id/estado",
     allowEdit: false,
     allowDelete: false,
+    pathParam: {
+      key: "equipo_id",
+      label: "Equipo",
+      relation: { endpoint: "/kpi_maintenance/equipos" },
+    },
     fields: [
-      { key: "equipo_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
-      { key: "estado", label: "Estado", type: "text" },
-      { key: "maintenance_kind", label: "Tipo mantención", type: "text" },
+      { key: "equipo_id", label: "Equipo", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/equipos" } },
+      { key: "estado_id", label: "Estado (ID)", type: "text", required: true },
+      { key: "fecha_inicio", label: "Fecha inicio (ISO)", type: "text", required: true },
+      { key: "motivo", label: "Motivo", type: "text" },
+    ],
+  },
+  {
+    key: "eventos-equipo",
+    title: "Eventos de equipos",
+    endpoint: "/kpi_maintenance/equipos/:id/eventos",
+    allowEdit: false,
+    allowDelete: false,
+    pathParam: {
+      key: "equipo_id",
+      label: "Equipo",
+      relation: { endpoint: "/kpi_maintenance/equipos" },
+    },
+    fields: [
+      { key: "equipo_id", label: "Equipo", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/equipos" } },
+      { key: "tipo_evento", label: "Tipo evento", type: "text", required: true },
+      { key: "work_order_id", label: "Work Order", type: "select", relation: { endpoint: "/kpi_maintenance/work-orders" } },
+      { key: "fecha_inicio", label: "Fecha inicio (ISO)", type: "text" },
+      { key: "fecha_fin", label: "Fecha fin (ISO)", type: "text" },
+      { key: "severidad", label: "Severidad", type: "number" },
+      { key: "descripcion", label: "Descripción", type: "text" },
+    ],
+  },
+  {
+    key: "plan-tareas",
+    title: "Tareas de planes",
+    endpoint: "/kpi_maintenance/planes/:id/tareas",
+    itemEndpoint: "/kpi_maintenance/planes/tareas/:id",
+    pathParam: {
+      key: "plan_id",
+      label: "Plan",
+      relation: { endpoint: "/kpi_maintenance/planes" },
+    },
+    fields: [
+      { key: "plan_id", label: "Plan", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/planes" } },
+      { key: "orden", label: "Orden", type: "number", required: true },
+      { key: "actividad", label: "Actividad", type: "text", required: true },
+      { key: "field_type", label: "Tipo campo", type: "text" },
+    ],
+  },
+  {
+    key: "work-order-tareas",
+    title: "Tareas ejecutadas de OT",
+    endpoint: "/kpi_maintenance/work-orders/:id/tareas",
+    itemEndpoint: "/kpi_maintenance/work-orders/tareas/:id",
+    pathParam: {
+      key: "work_order_id",
+      label: "Work Order",
+      relation: { endpoint: "/kpi_maintenance/work-orders" },
+    },
+    fields: [
+      { key: "work_order_id", label: "Work Order", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/work-orders" } },
+      { key: "plan_id", label: "Plan", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/planes" } },
+      { key: "tarea_id", label: "Tarea de plan", type: "text", required: true },
+      { key: "valor_boolean", label: "Valor boolean", type: "boolean" },
+      { key: "valor_numeric", label: "Valor numérico", type: "number" },
+      { key: "valor_text", label: "Valor texto", type: "text" },
+      { key: "observacion", label: "Observación", type: "text" },
+    ],
+  },
+  {
+    key: "work-order-adjuntos",
+    title: "Adjuntos de OT",
+    endpoint: "/kpi_maintenance/work-orders/:id/adjuntos",
+    pathParam: {
+      key: "work_order_id",
+      label: "Work Order",
+      relation: { endpoint: "/kpi_maintenance/work-orders" },
+    },
+    allowEdit: false,
+    fields: [
+      { key: "work_order_id", label: "Work Order", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/work-orders" } },
+      { key: "tipo", label: "Tipo", type: "text" },
+      { key: "nombre", label: "Nombre", type: "text", required: true },
+      { key: "contenido_base64", label: "Contenido base64", type: "text", required: true },
+      { key: "mime_type", label: "Mime type", type: "text" },
+    ],
+  },
+  {
+    key: "work-order-consumos",
+    title: "Consumos de OT",
+    endpoint: "/kpi_maintenance/work-orders/:id/consumos",
+    allowEdit: false,
+    allowDelete: false,
+    pathParam: {
+      key: "work_order_id",
+      label: "Work Order",
+      relation: { endpoint: "/kpi_maintenance/work-orders" },
+    },
+    fields: [
+      { key: "work_order_id", label: "Work Order", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/work-orders" } },
+      { key: "producto_id", label: "Producto", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
+      { key: "bodega_id", label: "Bodega", type: "select", relation: { endpoint: "/kpi_inventory/bodegas" } },
+      { key: "cantidad", label: "Cantidad", type: "number", required: true },
+      { key: "costo_unitario", label: "Costo unitario", type: "number", required: true },
+      { key: "observacion", label: "Observación", type: "text" },
+    ],
+  },
+  {
+    key: "work-order-issue-materials",
+    title: "Salida de materiales OT",
+    endpoint: "/kpi_maintenance/work-orders/:id/issue-materials",
+    allowEdit: false,
+    allowDelete: false,
+    pathParam: {
+      key: "work_order_id",
+      label: "Work Order",
+      relation: { endpoint: "/kpi_maintenance/work-orders" },
+    },
+    fields: [
+      { key: "work_order_id", label: "Work Order", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/work-orders" } },
+      { key: "items", label: "Items (JSON)", type: "text", required: true },
+      { key: "observacion", label: "Observación", type: "text" },
     ],
   },
 ];

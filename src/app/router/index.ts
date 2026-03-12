@@ -149,11 +149,38 @@ export const router = createRouter({
         {
           path: "work-orders",
           name: "work-orders",
-          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
-          props: { moduleKey: "work-orders" },
+          component: () => import("@/views/admin/WorkOrdersView.vue"),
           meta: { title: "Work Orders" },
         },
-        // Ejemplos (puedes crear estas vistas luego):
+        {
+          path: "bitacora",
+          name: "bitacora",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "bitacora" },
+          meta: { title: "Bitácora" },
+        },
+        {
+          path: "estados-equipo",
+          name: "estados-equipo",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "estados-equipo" },
+          meta: { title: "Estados de equipos" },
+        },
+        {
+          path: "eventos-equipo",
+          name: "eventos-equipo",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "eventos-equipo" },
+          meta: { title: "Eventos de equipos" },
+        },
+        {
+          path: "plan-tareas",
+          name: "plan-tareas",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "plan-tareas" },
+          meta: { title: "Tareas de planes" },
+        },
+                // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
         // { path: "menu", name: "menu", component: () => import("@/views/admin/MenuView.vue") },
         // { path: "rol", name: "rol", component: () => import("@/views/admin/RolView.vue") },
