@@ -39,25 +39,59 @@
         <v-btn icon="mdi-close" @click="dialog = false" />
         <v-toolbar-title>{{ editingId ? `Editar OT ${editingId}` : "Nueva orden de trabajo" }}</v-toolbar-title>
         <v-spacer />
+        <v-chip v-if="editingId" color="white" text-color="primary" class="mr-2" variant="flat">
+          {{ currentWorkflowLabel }}
+        </v-chip>
+        <v-btn
+          v-if="editingId && isCreated"
+          variant="tonal"
+          class="mr-2"
+          prepend-icon="mdi-play-circle-outline"
+          @click="startProcess"
+        >
+          Completar información
+        </v-btn>
+        <v-btn
+          v-if="editingId && isInProcess"
+          variant="tonal"
+          class="mr-2"
+          prepend-icon="mdi-lock-check-outline"
+          @click="prepareClose"
+        >
+          Cerrar OT
+        </v-btn>
         <v-btn variant="tonal" :loading="savingHeader" @click="saveAll">Guardar</v-btn>
       </v-toolbar>
 
       <v-card-text class="pt-4">
+        <v-alert
+          v-if="editingId"
+          type="info"
+          variant="tonal"
+          class="mb-4"
+          :text="workflowHint"
+        />
         <v-row dense>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" />
+            <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field v-model="headerForm.maintenance_kind" label="Tipo mantenimiento" variant="outlined" />
+            <v-text-field v-model="headerForm.maintenance_kind" label="Tipo mantenimiento" variant="outlined" :disabled="isClosed" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field v-model="headerForm.status_workflow" label="Estado workflow" variant="outlined" />
+            <v-select
+              v-model="headerForm.status_workflow"
+              :items="workflowOptions"
+              label="Estado workflow"
+              variant="outlined"
+              :disabled="isClosed"
+            />
           </v-col>
           <v-col cols="12" md="6">
-            <v-select v-model="headerForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" clearable variant="outlined" />
+            <v-select v-model="headerForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" clearable variant="outlined" :disabled="isClosed" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" />
+            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed" />
           </v-col>
         </v-row>
 
@@ -66,8 +100,8 @@
         <v-tabs v-model="tab" color="primary">
           <v-tab value="tareas">Tareas ejecutadas</v-tab>
           <v-tab value="adjuntos">Adjuntos</v-tab>
-          <v-tab value="consumos">Consumos</v-tab>
-          <v-tab value="materiales">Salida de materiales</v-tab>
+          <v-tab v-if="showConsumosTab" value="consumos">Consumos</v-tab>
+          <v-tab v-if="showMaterialsTab" value="materiales">Salida de materiales</v-tab>
         </v-tabs>
 
         <v-window v-model="tab" class="mt-4">
@@ -126,79 +160,95 @@
           </v-window-item>
 
           <v-window-item value="consumos">
-            <v-row dense class="pt-2">
+            <v-row v-if="!isClosed" dense class="pt-2">
               <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="productOptions" item-title="title" item-value="value" label="Producto" variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
+            <div v-if="!isClosed" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
+            <v-alert
+              v-else
+              type="info"
+              variant="tonal"
+              class="mb-3"
+              text="La OT está cerrada. Los consumos se muestran solo para visualización."
+            />
             <v-list density="compact" border rounded>
               <v-list-item v-for="(item, i) in localConsumos" :key="i" :title="`Producto: ${item.producto_id} / Cantidad: ${item.cantidad}`" :subtitle="item.observacion || '-'" />
             </v-list>
           </v-window-item>
 
           <v-window-item value="materiales">
-            <v-row dense class="pt-2">
-              <v-col cols="12">
-                <div class="d-flex align-center justify-space-between mb-2" style="gap:8px; flex-wrap:wrap;">
-                  <div class="text-subtitle-2">Materiales usados</div>
-                  <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addMaterialItem">
-                    Agregar material
-                  </v-btn>
-                </div>
+            <template v-if="!isClosed">
+              <v-row dense class="pt-2">
+                <v-col cols="12">
+                  <div class="d-flex align-center justify-space-between mb-2" style="gap:8px; flex-wrap:wrap;">
+                    <div class="text-subtitle-2">Materiales usados</div>
+                    <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addMaterialItem">
+                      Agregar material
+                    </v-btn>
+                  </div>
 
-                <v-row
-                  v-for="(item, index) in materialItems"
-                  :key="`material-${index}`"
-                  dense
-                  class="mb-1"
-                >
-                  <v-col cols="12" md="5">
-                    <v-select
-                      v-model="item.bodega_id"
-                      :items="warehouseOptions"
-                      item-title="title"
-                      item-value="value"
-                      label="Bodega"
-                      variant="outlined"
-                    />
-                  </v-col>
-                  <v-col cols="12" md="5">
-                    <v-select
-                      v-model="item.producto_id"
-                      :items="productOptions"
-                      item-title="title"
-                      item-value="value"
-                      label="Material"
-                      variant="outlined"
-                    />
-                  </v-col>
-                  <v-col cols="10" md="1">
-                    <v-text-field
-                      v-model="item.cantidad"
-                      label="Cant."
-                      type="number"
-                      min="0"
-                      step="any"
-                      variant="outlined"
-                    />
-                  </v-col>
-                  <v-col cols="2" md="1" class="d-flex align-center justify-end">
-                    <v-btn
-                      icon="mdi-delete"
-                      variant="text"
-                      color="error"
-                      :disabled="materialItems.length === 1"
-                      @click="removeMaterialItem(index)"
-                    />
-                  </v-col>
-                </v-row>
-              </v-col>
-              <v-col cols="12"><v-text-field v-model="materialsForm.observacion" label="Observación" variant="outlined" /></v-col>
-            </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Emitir materiales</v-btn></div>
+                  <v-row
+                    v-for="(item, index) in materialItems"
+                    :key="`material-${index}`"
+                    dense
+                    class="mb-1"
+                  >
+                    <v-col cols="12" md="5">
+                      <v-select
+                        v-model="item.bodega_id"
+                        :items="warehouseOptions"
+                        item-title="title"
+                        item-value="value"
+                        label="Bodega"
+                        variant="outlined"
+                      />
+                    </v-col>
+                    <v-col cols="12" md="5">
+                      <v-select
+                        v-model="item.producto_id"
+                        :items="productOptions"
+                        item-title="title"
+                        item-value="value"
+                        label="Material"
+                        variant="outlined"
+                      />
+                    </v-col>
+                    <v-col cols="10" md="1">
+                      <v-text-field
+                        v-model="item.cantidad"
+                        label="Cant."
+                        type="number"
+                        min="0"
+                        step="any"
+                        variant="outlined"
+                      />
+                    </v-col>
+                    <v-col cols="2" md="1" class="d-flex align-center justify-end">
+                      <v-btn
+                        icon="mdi-delete"
+                        variant="text"
+                        color="error"
+                        :disabled="materialItems.length === 1"
+                        @click="removeMaterialItem(index)"
+                      />
+                    </v-col>
+                  </v-row>
+                </v-col>
+                <v-col cols="12"><v-text-field v-model="materialsForm.observacion" label="Observación" variant="outlined" /></v-col>
+              </v-row>
+              <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Guardar salida de materiales</v-btn></div>
+            </template>
+            <v-alert
+              v-else
+              type="success"
+              variant="tonal"
+              class="mb-3"
+              text="OT cerrada: esta sección está bloqueada y muestra el resultado final de salida de materiales."
+            />
             <v-list density="compact" border rounded>
               <v-list-item
                 v-for="(item, i) in localIssues"
@@ -244,6 +294,7 @@ const deleteDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
+const closingFlow = ref(false);
 
 const equipmentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
@@ -259,7 +310,7 @@ const localIssues = ref<any[]>([]);
 const headerForm = reactive<any>({
   equipment_id: "",
   maintenance_kind: "",
-  status_workflow: "PENDIENTE",
+  status_workflow: "CREADA",
   plan_id: "",
   alerta_id: "",
 });
@@ -306,6 +357,25 @@ function newMaterialItem(): MaterialItemForm {
 }
 
 const materialItems = ref<MaterialItemForm[]>([newMaterialItem()]);
+const workflowOptions = [
+  { title: "CREADA", value: "CREADA" },
+  { title: "EN PROCESO", value: "EN PROCESO" },
+  { title: "CERRADA", value: "CERRADA" },
+];
+
+const normalizedWorkflow = computed(() => (headerForm.status_workflow || "").toUpperCase());
+const isCreated = computed(() => normalizedWorkflow.value === "CREADA");
+const isInProcess = computed(() => normalizedWorkflow.value === "EN PROCESO");
+const isClosed = computed(() => normalizedWorkflow.value === "CERRADA");
+const showConsumosTab = computed(() => !!editingId.value);
+const showMaterialsTab = computed(() => isInProcess.value || isClosed.value);
+const currentWorkflowLabel = computed(() => `Estado: ${headerForm.status_workflow || "Sin definir"}`);
+const workflowHint = computed(() => {
+  if (isCreated.value) return "OT creada. Completa la información en tabs generales y de consumos.";
+  if (isInProcess.value) return "OT en proceso. Ya puedes registrar la salida de materiales para cerrar la orden.";
+  if (isClosed.value) return "OT cerrada. Los campos y tabs de detalle están en modo solo lectura.";
+  return "Selecciona un estado de workflow para continuar el flujo.";
+});
 
 const headers = [
   { title: "ID", key: "id" },
@@ -386,12 +456,16 @@ async function loadDetailData() {
   if (!editingId.value) return;
   loadingDetails.value = true;
   try {
-    const [tasksRes, attachmentsRes] = await Promise.all([
+    const [tasksRes, attachmentsRes, consumosRes, issuesRes] = await Promise.all([
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/tareas`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`),
+      api.get(`/kpi_maintenance/work-orders/${editingId.value}/consumos`),
+      api.get(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`),
     ]);
     taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
+    localConsumos.value = asArray(consumosRes.data);
+    localIssues.value = asArray(issuesRes.data);
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudieron cargar los detalles de la OT.");
   } finally {
@@ -409,7 +483,7 @@ const rows = computed(() => {
 function resetAllForms() {
   headerForm.equipment_id = "";
   headerForm.maintenance_kind = "";
-  headerForm.status_workflow = "PENDIENTE";
+  headerForm.status_workflow = "CREADA";
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
 
@@ -444,20 +518,23 @@ function resetAllForms() {
 
 function openCreate() {
   editingId.value = null;
+  closingFlow.value = false;
   resetAllForms();
   dialog.value = true;
 }
 
 async function openEdit(item: any) {
   editingId.value = item.id;
+  closingFlow.value = false;
   resetAllForms();
   headerForm.equipment_id = item.equipment_id ?? "";
   headerForm.maintenance_kind = item.maintenance_kind ?? "";
-  headerForm.status_workflow = item.status_workflow ?? "";
+  headerForm.status_workflow = item.status_workflow ?? "CREADA";
   headerForm.plan_id = item.plan_id ?? "";
   headerForm.alerta_id = item.alerta_id ?? "";
   dialog.value = true;
   await loadDetailData();
+  ensureTabVisible();
 }
 
 function fileToBase64(file: File) {
@@ -503,6 +580,34 @@ function openDelete(item: any) {
   deleteDialog.value = true;
 }
 
+function ensureTabVisible() {
+  if (tab.value === "materiales" && !showMaterialsTab.value) {
+    tab.value = showConsumosTab.value ? "consumos" : "tareas";
+  }
+  if (tab.value === "consumos" && !showConsumosTab.value) {
+    tab.value = "tareas";
+  }
+}
+
+async function startProcess() {
+  headerForm.status_workflow = "EN PROCESO";
+  await saveHeader();
+  tab.value = "consumos";
+}
+
+async function prepareClose() {
+  closingFlow.value = true;
+  headerForm.status_workflow = "CERRADA";
+  materialItems.value = localConsumos.value.length
+    ? localConsumos.value.map((consumo) => ({
+        producto_id: consumo.producto_id ?? "",
+        bodega_id: consumo.bodega_id ?? "",
+        cantidad: consumo.cantidad != null ? String(consumo.cantidad) : "",
+      }))
+    : [newMaterialItem()];
+  tab.value = "materiales";
+}
+
 async function saveHeader() {
   if (!headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
@@ -523,6 +628,8 @@ async function saveHeader() {
       await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, {
         maintenance_kind: payload.maintenance_kind,
         status_workflow: payload.status_workflow,
+        plan_id: payload.plan_id,
+        alerta_id: payload.alerta_id,
       });
       ui.success("Cabecera OT actualizada.");
     } else {
@@ -566,13 +673,22 @@ async function saveAll() {
     actions.push(issueMaterials);
   }
 
-  if (!actions.length) return;
+  if (!actions.length) {
+    ensureTabVisible();
+    return;
+  }
   for (const run of actions) {
     await run();
   }
+
+  if (normalizedWorkflow.value === "CERRADA") {
+    await saveHeader();
+  }
+  ensureTabVisible();
 }
 
 async function createTask() {
+  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
   if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
@@ -594,6 +710,7 @@ async function createTask() {
 }
 
 async function deleteTask(item: any) {
+  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!item?.id) return;
   try {
     await api.delete(`/kpi_maintenance/work-orders/tareas/${item.id}`);
@@ -605,6 +722,7 @@ async function deleteTask(item: any) {
 }
 
 async function createAttachment() {
+  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
@@ -624,6 +742,7 @@ async function createAttachment() {
 }
 
 async function deleteAttachment(item: any) {
+  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value || !item?.id) return;
   try {
     await api.delete(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`);
@@ -635,6 +754,7 @@ async function deleteAttachment(item: any) {
 }
 
 async function createConsumo() {
+  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
   if (!consumoForm.producto_id || !consumoForm.cantidad || !consumoForm.costo_unitario) {
@@ -659,6 +779,7 @@ async function createConsumo() {
 }
 
 async function issueMaterials() {
+  if (isClosed.value && !closingFlow.value) return ui.error("La OT está cerrada y no permite edición.");
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
 
@@ -690,6 +811,7 @@ async function issueMaterials() {
     localIssues.value.unshift({ ...(data ?? payload), codigo: data?.codigo || issueCode });
     materialItems.value = [newMaterialItem()];
     materialsForm.observacion = "";
+    closingFlow.value = false;
     ui.success("Salida de materiales registrada.");
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo emitir materiales.");
