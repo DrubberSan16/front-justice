@@ -141,12 +141,71 @@
 
           <v-window-item value="materiales">
             <v-row dense class="pt-2">
-              <v-col cols="12"><v-textarea v-model="materialsItemsJson" label="Items (JSON)" rows="4" variant="outlined" /></v-col>
+              <v-col cols="12">
+                <div class="d-flex align-center justify-space-between mb-2" style="gap:8px; flex-wrap:wrap;">
+                  <div class="text-subtitle-2">Materiales usados</div>
+                  <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addMaterialItem">
+                    Agregar material
+                  </v-btn>
+                </div>
+
+                <v-row
+                  v-for="(item, index) in materialItems"
+                  :key="`material-${index}`"
+                  dense
+                  class="mb-1"
+                >
+                  <v-col cols="12" md="5">
+                    <v-select
+                      v-model="item.bodega_id"
+                      :items="warehouseOptions"
+                      item-title="title"
+                      item-value="value"
+                      label="Bodega"
+                      variant="outlined"
+                    />
+                  </v-col>
+                  <v-col cols="12" md="5">
+                    <v-select
+                      v-model="item.producto_id"
+                      :items="productOptions"
+                      item-title="title"
+                      item-value="value"
+                      label="Material"
+                      variant="outlined"
+                    />
+                  </v-col>
+                  <v-col cols="10" md="1">
+                    <v-text-field
+                      v-model="item.cantidad"
+                      label="Cant."
+                      type="number"
+                      min="0"
+                      step="any"
+                      variant="outlined"
+                    />
+                  </v-col>
+                  <v-col cols="2" md="1" class="d-flex align-center justify-end">
+                    <v-btn
+                      icon="mdi-delete"
+                      variant="text"
+                      color="error"
+                      :disabled="materialItems.length === 1"
+                      @click="removeMaterialItem(index)"
+                    />
+                  </v-col>
+                </v-row>
+              </v-col>
               <v-col cols="12"><v-text-field v-model="materialsForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Emitir materiales</v-btn></div>
             <v-list density="compact" border rounded>
-              <v-list-item v-for="(item, i) in localIssues" :key="i" :title="`Items: ${item.items?.length ?? 0}`" :subtitle="item.observacion || '-'" />
+              <v-list-item
+                v-for="(item, i) in localIssues"
+                :key="i"
+                :title="`${item.codigo || 'Sin código'} · Items: ${item.items?.length ?? 0}`"
+                :subtitle="item.observacion || '-'"
+              />
             </v-list>
           </v-window-item>
         </v-window>
@@ -231,7 +290,22 @@ const consumoForm = reactive<any>({
 });
 
 const materialsForm = reactive<any>({ observacion: "" });
-const materialsItemsJson = ref("[]");
+
+type MaterialItemForm = {
+  producto_id: string;
+  bodega_id: string;
+  cantidad: string;
+};
+
+function newMaterialItem(): MaterialItemForm {
+  return {
+    producto_id: "",
+    bodega_id: "",
+    cantidad: "",
+  };
+}
+
+const materialItems = ref<MaterialItemForm[]>([newMaterialItem()]);
 
 const headers = [
   { title: "ID", key: "id" },
@@ -358,7 +432,7 @@ function resetAllForms() {
   consumoForm.costo_unitario = "";
   consumoForm.observacion = "";
 
-  materialsItemsJson.value = "[]";
+  materialItems.value = [newMaterialItem()];
   materialsForm.observacion = "";
 
   taskRows.value = [];
@@ -488,7 +562,7 @@ async function saveAll() {
   if (consumoForm.producto_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion) {
     actions.push(createConsumo);
   }
-  if ((materialsItemsJson.value || "[]").trim() !== "[]" || materialsForm.observacion) {
+  if (hasMaterialDraft()) {
     actions.push(issueMaterials);
   }
 
@@ -588,29 +662,61 @@ async function issueMaterials() {
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
 
-  let items: any[] = [];
-  try {
-    const parsed = JSON.parse(materialsItemsJson.value || "[]");
-    if (!Array.isArray(parsed)) throw new Error();
-    items = parsed;
-  } catch {
-    return ui.error("Items debe ser un JSON válido de tipo arreglo.");
-  }
+  const items = materialItems.value
+    .filter((item) => item.producto_id || item.bodega_id || item.cantidad)
+    .map((item) => ({
+      producto_id: item.producto_id,
+      bodega_id: item.bodega_id,
+      cantidad: Number(item.cantidad),
+    }));
 
   if (!items.length) return ui.error("Debes ingresar al menos un item.");
 
+  const hasInvalidItem = items.some((item) => !item.producto_id || !item.bodega_id || !Number.isFinite(item.cantidad) || item.cantidad <= 0);
+  if (hasInvalidItem) {
+    return ui.error("Cada item debe incluir bodega, material y cantidad mayor a 0.");
+  }
+
+  const issueCode = generateIssueMaterialsCode();
+
   const payload = {
+    codigo: issueCode,
     items,
     observacion: materialsForm.observacion || null,
   };
 
   try {
     const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, payload);
-    localIssues.value.unshift(data ?? payload);
+    localIssues.value.unshift({ ...(data ?? payload), codigo: data?.codigo || issueCode });
+    materialItems.value = [newMaterialItem()];
+    materialsForm.observacion = "";
     ui.success("Salida de materiales registrada.");
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo emitir materiales.");
   }
+}
+
+function addMaterialItem() {
+  materialItems.value.push(newMaterialItem());
+}
+
+function removeMaterialItem(index: number) {
+  if (materialItems.value.length === 1) {
+    materialItems.value[0] = newMaterialItem();
+    return;
+  }
+  materialItems.value.splice(index, 1);
+}
+
+function hasMaterialDraft() {
+  if (materialsForm.observacion) return true;
+  return materialItems.value.some((item) => item.producto_id || item.bodega_id || item.cantidad);
+}
+
+function generateIssueMaterialsCode() {
+  const now = new Date();
+  const compact = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}${String(now.getMilliseconds()).padStart(3, "0")}`;
+  return `EM-${compact}`;
 }
 
 async function confirmDelete() {
