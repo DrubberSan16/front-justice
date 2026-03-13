@@ -66,7 +66,6 @@
         <v-tabs v-model="tab" color="primary">
           <v-tab value="tareas">Tareas ejecutadas</v-tab>
           <v-tab value="adjuntos">Adjuntos</v-tab>
-          <v-tab value="consumos">Consumos</v-tab>
           <v-tab value="materiales">Salida de materiales</v-tab>
         </v-tabs>
 
@@ -123,20 +122,6 @@
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteAttachment(item._raw ?? item)" />
               </template>
             </v-data-table>
-          </v-window-item>
-
-          <v-window-item value="consumos">
-            <v-row dense class="pt-2">
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="productOptions" item-title="title" item-value="value" label="Producto" variant="outlined" /></v-col>
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
-              <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
-              <v-col cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" /></v-col>
-              <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
-            </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
-            <v-list density="compact" border rounded>
-              <v-list-item v-for="(item, i) in localConsumos" :key="i" :title="`Producto: ${item.producto_id} / Cantidad: ${item.cantidad}`" :subtitle="item.observacion || '-'" />
-            </v-list>
           </v-window-item>
 
           <v-window-item value="materiales">
@@ -253,7 +238,6 @@ const warehouseOptions = ref<any[]>([]);
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
-const localConsumos = ref<any[]>([]);
 const localIssues = ref<any[]>([]);
 
 const headerForm = reactive<any>({
@@ -280,14 +264,6 @@ const attachmentForm = reactive<any>({
   mime_type: "",
 });
 const attachmentPreviewUrl = ref<string | null>(null);
-
-const consumoForm = reactive<any>({
-  producto_id: "",
-  bodega_id: "",
-  cantidad: "",
-  costo_unitario: "",
-  observacion: "",
-});
 
 const materialsForm = reactive<any>({ observacion: "" });
 
@@ -426,18 +402,11 @@ function resetAllForms() {
   attachmentForm.mime_type = "";
   attachmentPreviewUrl.value = null;
 
-  consumoForm.producto_id = "";
-  consumoForm.bodega_id = "";
-  consumoForm.cantidad = "";
-  consumoForm.costo_unitario = "";
-  consumoForm.observacion = "";
-
   materialItems.value = [newMaterialItem()];
   materialsForm.observacion = "";
 
   taskRows.value = [];
   attachmentRows.value = [];
-  localConsumos.value = [];
   localIssues.value = [];
   tab.value = "tareas";
 }
@@ -559,9 +528,6 @@ async function saveAll() {
   if (attachmentForm.nombre || attachmentForm.contenido_base64) {
     actions.push(createAttachment);
   }
-  if (consumoForm.producto_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion) {
-    actions.push(createConsumo);
-  }
   if (hasMaterialDraft()) {
     actions.push(issueMaterials);
   }
@@ -631,30 +597,6 @@ async function deleteAttachment(item: any) {
     await loadDetailData();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo eliminar el adjunto.");
-  }
-}
-
-async function createConsumo() {
-  const headerSaved = await ensureHeaderSaved();
-  if (!headerSaved || !editingId.value) return;
-  if (!consumoForm.producto_id || !consumoForm.cantidad || !consumoForm.costo_unitario) {
-    return ui.error("Producto, cantidad y costo unitario son obligatorios.");
-  }
-
-  const payload = {
-    producto_id: consumoForm.producto_id,
-    bodega_id: consumoForm.bodega_id || null,
-    cantidad: Number(consumoForm.cantidad),
-    costo_unitario: Number(consumoForm.costo_unitario),
-    observacion: consumoForm.observacion || null,
-  };
-
-  try {
-    const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, payload);
-    localConsumos.value.unshift(data ?? payload);
-    ui.success("Consumo registrado.");
-  } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo registrar el consumo.");
   }
 }
 
