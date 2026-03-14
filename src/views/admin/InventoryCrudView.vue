@@ -277,6 +277,13 @@ function sanitizePayload() {
     payload[field.key] = val;
   }
 
+  if (cfg.key === "productos") {
+    payload.registro_sanitario = "";
+    payload.por_contenedores = false;
+    payload.requiere_lote = false;
+    payload.requiere_serie = false;
+  }
+
   return payload;
 }
 
