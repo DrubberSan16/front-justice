@@ -154,7 +154,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "equipo_tipo_id", label: "Tipo de equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/tipo-equipo" } },
-      { key: "location_id", label: "Ubicación", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/locations" } },
+      { key: "location_id", label: "Ubicación", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/locaciones" } },
       { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
       { key: "criticidad", label: "Criticidad", type: "text" },
       { key: "estado_operativo", label: "Estado operativo", type: "text" },
