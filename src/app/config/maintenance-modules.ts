@@ -174,7 +174,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   {
     key: "locations",
     title: "Ubicaciones",
-    endpoint: "/kpi_maintenance/locations",
+    endpoint: "/kpi_maintenance/locaciones",
     fields: [
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
