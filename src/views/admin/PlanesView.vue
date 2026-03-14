@@ -5,7 +5,7 @@
         <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
           <div>
             <div class="text-h6 font-weight-bold">Planes de mantenimiento</div>
-            <div class="text-body-2 text-medium-emphasis">Cabecera del plan (primero se guarda el plan).</div>
+            <div class="text-body-2 text-medium-emphasis">Cabecera y detalle del plan con guardado unificado.</div>
           </div>
           <v-btn color="primary" prepend-icon="mdi-plus" @click="openPlanCreate">Nuevo plan</v-btn>
         </div>
@@ -58,15 +58,11 @@
           <div>
             <div class="text-subtitle-1 font-weight-bold">Detalle de tareas del plan</div>
             <div class="text-body-2 text-medium-emphasis">
-              {{ currentPlanId ? `Plan seleccionado: ${selectedPlanLabel}` : "Guarda la cabecera para agregar tareas." }}
+              {{ currentPlanId ? `Plan seleccionado: ${selectedPlanLabel}` : "Completa cabecera y tareas; el guardado se hace en conjunto." }}
             </div>
           </div>
-          <v-btn color="primary" prepend-icon="mdi-plus" :disabled="!currentPlanId" @click="openTaskCreate">Agregar tarea</v-btn>
+          <v-btn color="primary" prepend-icon="mdi-plus" @click="addTaskRow">Agregar tarea</v-btn>
         </div>
-
-        <v-alert v-if="!currentPlanId" type="info" variant="tonal" class="mb-2">
-          Debes guardar la cabecera del plan para empezar con el detalle.
-        </v-alert>
 
         <v-data-table
           :headers="taskHeaders"
@@ -75,10 +71,34 @@
           :items-per-page="5"
           class="elevation-0"
         >
+          <template #item.orden="{ index }">
+            <v-text-field
+              v-model="tasks[index].orden"
+              type="number"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </template>
+          <template #item.actividad="{ index }">
+            <v-text-field
+              v-model="tasks[index].actividad"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </template>
+          <template #item.field_type="{ index }">
+            <v-text-field
+              v-model="tasks[index].field_type"
+              variant="outlined"
+              density="compact"
+              hide-details
+            />
+          </template>
           <template #item.actions="{ item }">
             <div class="d-flex" style="gap: 4px;">
-              <v-btn icon="mdi-pencil" variant="text" :disabled="!currentPlanId" @click="openTaskEdit(item._raw ?? item)" />
-              <v-btn icon="mdi-delete" variant="text" color="error" :disabled="!currentPlanId" @click="openDeleteTask(item._raw ?? item)" />
+              <v-btn icon="mdi-delete" variant="text" color="error" @click="removeTaskRow(item._raw ?? item)" />
             </div>
           </template>
         </v-data-table>
@@ -87,27 +107,7 @@
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="planDialog = false">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="savePlan">Guardar cabecera</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
-
-  <v-dialog v-model="taskDialog" max-width="760">
-    <v-card rounded="xl">
-      <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingTaskId ? "Editar" : "Crear" }} detalle de tarea</v-card-title>
-      <v-divider />
-      <v-card-text class="pt-4">
-        <v-row dense>
-          <v-col cols="12" md="4"><v-text-field v-model="taskForm.orden" type="number" label="Orden" variant="outlined" /></v-col>
-          <v-col cols="12" md="8"><v-text-field v-model="taskForm.actividad" label="Actividad" variant="outlined" /></v-col>
-          <v-col cols="12" md="6"><v-text-field v-model="taskForm.field_type" label="Tipo campo" variant="outlined" /></v-col>
-        </v-row>
-      </v-card-text>
-      <v-divider />
-      <v-card-actions class="pa-4">
-        <v-spacer />
-        <v-btn variant="text" @click="taskDialog = false">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="saveTask">Guardar detalle</v-btn>
+        <v-btn color="primary" :loading="saving" @click="savePlan">Guardar / actualizar todo</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -115,7 +115,7 @@
   <v-dialog v-model="deleteDialog" max-width="500">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
-      <v-card-text>{{ deleteTarget === "plan" ? "¿Eliminar la cabecera y su detalle?" : "¿Eliminar este detalle de tarea?" }}</v-card-text>
+      <v-card-text>¿Eliminar la cabecera y su detalle?</v-card-text>
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="deleteDialog = false">Cancelar</v-btn>
@@ -142,16 +142,13 @@ const planSearch = ref("");
 const selectedPlanId = ref<string | null>(null);
 
 const planDialog = ref(false);
-const taskDialog = ref(false);
 const deleteDialog = ref(false);
-const deleteTarget = ref<"plan" | "task">("plan");
 
 const editingPlanId = ref<string | null>(null);
-const editingTaskId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
+const deletedTaskIds = ref<string[]>([]);
 
 const planForm = reactive({ codigo: "", nombre: "", tipo: "", frecuencia_tipo: "", frecuencia_valor: "0" });
-const taskForm = reactive({ orden: "1", actividad: "", field_type: "" });
 
 const planHeaders = [
   { title: "Código", key: "codigo" },
@@ -239,16 +236,15 @@ function resetPlanForm() {
 }
 
 function resetTaskForm() {
-  taskForm.orden = "1";
-  taskForm.actividad = "";
-  taskForm.field_type = "";
+  tasks.value = [];
+  deletedTaskIds.value = [];
 }
 
 function openPlanCreate() {
   editingPlanId.value = null;
   selectedPlanId.value = null;
   resetPlanForm();
-  tasks.value = [];
+  resetTaskForm();
   planDialog.value = true;
 }
 
@@ -280,17 +276,46 @@ async function savePlan() {
   };
 
   try {
+    let activePlanId = editingPlanId.value;
     if (editingPlanId.value) {
       await api.patch(`/kpi_maintenance/planes/${editingPlanId.value}`, payload);
-      ui.success("Cabecera del plan actualizada.");
       selectedPlanId.value = editingPlanId.value;
     } else {
       const { data } = await api.post("/kpi_maintenance/planes", payload);
-      ui.success("Cabecera del plan creada. Ahora puedes agregar el detalle.");
       const createdId = data?.id ?? null;
       selectedPlanId.value = createdId;
       editingPlanId.value = createdId;
+      activePlanId = createdId;
     }
+
+    if (!activePlanId) {
+      throw new Error("No se pudo determinar el plan a guardar.");
+    }
+
+    for (const taskId of deletedTaskIds.value) {
+      await api.delete(`/kpi_maintenance/planes/tareas/${taskId}`);
+    }
+
+    for (const task of tasks.value) {
+      if (!task.orden || !task.actividad) {
+        ui.error("Todas las tareas deben tener orden y actividad.");
+        return;
+      }
+
+      const taskPayload = {
+        orden: Number(task.orden),
+        actividad: task.actividad,
+        field_type: task.field_type || null,
+      };
+
+      if (task.id) {
+        await api.patch(`/kpi_maintenance/planes/tareas/${task.id}`, taskPayload);
+      } else {
+        await api.post(`/kpi_maintenance/planes/${activePlanId}/tareas`, taskPayload);
+      }
+    }
+
+    ui.success("Plan y detalle guardados correctamente.");
     await fetchPlans();
     if (!selectedPlanId.value) {
       const created = plans.value.find((item) => item.codigo === planForm.codigo && item.nombre === planForm.nombre);
@@ -298,90 +323,40 @@ async function savePlan() {
     }
     await fetchTasks();
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo guardar la cabecera del plan.");
+    ui.error(e?.response?.data?.message || "No se pudo guardar el plan y su detalle.");
   } finally {
     saving.value = false;
   }
 }
 
-function openTaskCreate() {
-  if (!selectedPlanId.value) {
-    ui.error("Debes seleccionar una cabecera de plan.");
-    return;
-  }
-  editingTaskId.value = null;
-  resetTaskForm();
-  taskDialog.value = true;
+function addTaskRow() {
+  tasks.value.push({ orden: String(tasks.value.length + 1), actividad: "", field_type: "", _raw: null });
 }
 
-function openTaskEdit(item: any) {
-  editingTaskId.value = item.id;
-  taskForm.orden = String(item.orden ?? 1);
-  taskForm.actividad = item.actividad ?? "";
-  taskForm.field_type = item.field_type ?? "";
-  taskDialog.value = true;
-}
-
-async function saveTask() {
-  if (!currentPlanId.value) return;
-  if (!taskForm.orden || !taskForm.actividad) {
-    ui.error("Orden y actividad son obligatorios.");
-    return;
+function removeTaskRow(item: any) {
+  if (item?.id) {
+    deletedTaskIds.value.push(item.id);
   }
-
-  saving.value = true;
-  const payload = {
-    orden: Number(taskForm.orden),
-    actividad: taskForm.actividad,
-    field_type: taskForm.field_type || null,
-  };
-
-  try {
-    if (editingTaskId.value) {
-      await api.patch(`/kpi_maintenance/planes/tareas/${editingTaskId.value}`, payload);
-      ui.success("Detalle de tarea actualizado.");
-    } else {
-      await api.post(`/kpi_maintenance/planes/${currentPlanId.value}/tareas`, payload);
-      ui.success("Detalle de tarea creado.");
-    }
-    taskDialog.value = false;
-    await fetchTasks();
-  } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo guardar el detalle de tarea.");
-  } finally {
-    saving.value = false;
-  }
+  tasks.value = tasks.value.filter((task) => task !== item && task.id !== item?.id);
 }
 
 function openDeletePlan(item: any) {
-  deleteTarget.value = "plan";
   deletingId.value = item.id;
   deleteDialog.value = true;
 }
 
-function openDeleteTask(item: any) {
-  deleteTarget.value = "task";
-  deletingId.value = item.id;
-  deleteDialog.value = true;
-}
 
 async function confirmDelete() {
   if (!deletingId.value) return;
   saving.value = true;
   try {
-    if (deleteTarget.value === "plan") {
-      await api.delete(`/kpi_maintenance/planes/${deletingId.value}`);
-      ui.success("Cabecera de plan eliminada.");
-      if (selectedPlanId.value === deletingId.value) {
-        selectedPlanId.value = null;
-        tasks.value = [];
-      }
-      await fetchPlans();
-    } else {
-      await api.delete(`/kpi_maintenance/planes/tareas/${deletingId.value}`);
-      ui.success("Detalle de tarea eliminado.");
-      await fetchTasks();
+    await api.delete(`/kpi_maintenance/planes/${deletingId.value}`);
+    ui.success("Cabecera de plan eliminada.");
+    if (selectedPlanId.value === deletingId.value) {
+      selectedPlanId.value = null;
+      tasks.value = [];
     }
+    await fetchPlans();
     deleteDialog.value = false;
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo eliminar.");
