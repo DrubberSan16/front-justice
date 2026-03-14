@@ -108,12 +108,22 @@ function goToComponent(urlComponent: string) {
     alertas: { name: "alertas" },
     alerta: { name: "alertas" },
 
+    bitacora: { name: "bitacora" },
+    "estados-equipo": { name: "estados-equipo" },
+    "eventos-equipo": { name: "eventos-equipo" },
+    "plan-tareas": { name: "plan-tareas" },
+    "work-order-tareas": { name: "work-order-tareas" },
+    "work-order-adjuntos": { name: "work-order-adjuntos" },
+    "work-order-consumos": { name: "work-order-consumos" },
+    "work-order-issue-materials": { name: "work-order-issue-materials" },
+
     "work-orders": { name: "work-orders" },
     "work-order": { name: "work-orders" },
     ots: { name: "work-orders" },
 
     kardex: { name: "kardex" },
-    locations: { name: "locations" },    
+    locations: { name: "locations" },
+    locaciones: { name: "locations" },
   };
 
   const target = map[key];
