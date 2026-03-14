@@ -135,8 +135,7 @@ export const router = createRouter({
         {
           path: "planes",
           name: "planes",
-          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
-          props: { moduleKey: "planes" },
+          component: () => import("@/views/admin/PlanesView.vue"),
           meta: { title: "Planes" },
         },
         {
@@ -186,6 +185,34 @@ export const router = createRouter({
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),
           props: { moduleKey: "plan-tareas" },
           meta: { title: "Tareas de planes" },
+        },
+        {
+          path: "work-order-tareas",
+          name: "work-order-tareas",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "work-order-tareas" },
+          meta: { title: "Tareas ejecutadas de OT" },
+        },
+        {
+          path: "work-order-adjuntos",
+          name: "work-order-adjuntos",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "work-order-adjuntos" },
+          meta: { title: "Adjuntos de OT" },
+        },
+        {
+          path: "work-order-consumos",
+          name: "work-order-consumos",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "work-order-consumos" },
+          meta: { title: "Consumos de OT" },
+        },
+        {
+          path: "work-order-issue-materials",
+          name: "work-order-issue-materials",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "work-order-issue-materials" },
+          meta: { title: "Salida de materiales OT" },
         },
                 // Ejemplos (puedes crear estas vistas luego):
         // { path: "usuarios", name: "usuarios", component: () => import("@/views/admin/UsuariosView.vue") },
