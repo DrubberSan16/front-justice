@@ -1,6 +1,6 @@
 <template>
   <v-row dense>
-    <v-col cols="12" md="5">
+    <v-col cols="12">
       <v-card rounded="xl" class="pa-4 fill-height">
         <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
           <div>
@@ -27,15 +27,7 @@
           item-value="id"
           :items-per-page="10"
           class="elevation-0"
-          @click:row="(_event: unknown, row: any) => selectPlan(row.item._raw ?? row.item)"
         >
-          <template #item.codigo="{ item }">
-            <div class="d-flex align-center" style="gap: 6px;">
-              <v-icon v-if="selectedPlanId === (item._raw?.id ?? item.id)" size="16" color="primary">mdi-check-circle</v-icon>
-              <span>{{ item.codigo }}</span>
-            </div>
-          </template>
-
           <template #item.actions="{ item }">
             <div class="d-flex" style="gap: 4px;">
               <v-btn icon="mdi-pencil" variant="text" @click.stop="openPlanEdit(item._raw ?? item)" />
@@ -45,42 +37,9 @@
         </v-data-table>
       </v-card>
     </v-col>
-
-    <v-col cols="12" md="7">
-      <v-card rounded="xl" class="pa-4 fill-height">
-        <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
-          <div>
-            <div class="text-h6 font-weight-bold">Detalle de tareas del plan</div>
-            <div class="text-body-2 text-medium-emphasis">
-              {{ selectedPlanId ? `Plan seleccionado: ${selectedPlanLabel}` : "Selecciona o crea una cabecera para gestionar tareas." }}
-            </div>
-          </div>
-          <v-btn color="primary" prepend-icon="mdi-plus" :disabled="!selectedPlanId" @click="openTaskCreate">Agregar tarea</v-btn>
-        </div>
-
-        <v-alert v-if="!selectedPlanId" type="info" variant="tonal" class="mb-2">
-          Debes guardar y seleccionar una cabecera del plan para empezar con el detalle.
-        </v-alert>
-
-        <v-data-table
-          :headers="taskHeaders"
-          :items="tasks"
-          :loading="loadingTasks"
-          :items-per-page="10"
-          class="elevation-0"
-        >
-          <template #item.actions="{ item }">
-            <div class="d-flex" style="gap: 4px;">
-              <v-btn icon="mdi-pencil" variant="text" :disabled="!selectedPlanId" @click="openTaskEdit(item._raw ?? item)" />
-              <v-btn icon="mdi-delete" variant="text" color="error" :disabled="!selectedPlanId" @click="openDeleteTask(item._raw ?? item)" />
-            </div>
-          </template>
-        </v-data-table>
-      </v-card>
-    </v-col>
   </v-row>
 
-  <v-dialog v-model="planDialog" max-width="760">
+  <v-dialog v-model="planDialog" max-width="980">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingPlanId ? "Editar" : "Crear" }} cabecera del plan</v-card-title>
       <v-divider />
@@ -92,6 +51,37 @@
           <v-col cols="12" md="6"><v-text-field v-model="planForm.frecuencia_tipo" label="Frecuencia tipo" variant="outlined" /></v-col>
           <v-col cols="12" md="6"><v-text-field v-model="planForm.frecuencia_valor" type="number" label="Frecuencia valor" variant="outlined" /></v-col>
         </v-row>
+
+        <v-divider class="my-4" />
+
+        <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">Detalle de tareas del plan</div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ currentPlanId ? `Plan seleccionado: ${selectedPlanLabel}` : "Guarda la cabecera para agregar tareas." }}
+            </div>
+          </div>
+          <v-btn color="primary" prepend-icon="mdi-plus" :disabled="!currentPlanId" @click="openTaskCreate">Agregar tarea</v-btn>
+        </div>
+
+        <v-alert v-if="!currentPlanId" type="info" variant="tonal" class="mb-2">
+          Debes guardar la cabecera del plan para empezar con el detalle.
+        </v-alert>
+
+        <v-data-table
+          :headers="taskHeaders"
+          :items="tasks"
+          :loading="loadingTasks"
+          :items-per-page="5"
+          class="elevation-0"
+        >
+          <template #item.actions="{ item }">
+            <div class="d-flex" style="gap: 4px;">
+              <v-btn icon="mdi-pencil" variant="text" :disabled="!currentPlanId" @click="openTaskEdit(item._raw ?? item)" />
+              <v-btn icon="mdi-delete" variant="text" color="error" :disabled="!currentPlanId" @click="openDeleteTask(item._raw ?? item)" />
+            </div>
+          </template>
+        </v-data-table>
       </v-card-text>
       <v-divider />
       <v-card-actions class="pa-4">
@@ -205,6 +195,8 @@ const filteredPlans = computed(() => {
     .filter((plan) => !q || plan._search.includes(q));
 });
 
+const currentPlanId = computed(() => editingPlanId.value ?? selectedPlanId.value);
+
 const selectedPlanLabel = computed(() => {
   const plan = plans.value.find((item) => item.id === selectedPlanId.value);
   if (!plan) return "";
@@ -223,24 +215,19 @@ async function fetchPlans() {
 }
 
 async function fetchTasks() {
-  if (!selectedPlanId.value) {
+  if (!currentPlanId.value) {
     tasks.value = [];
     return;
   }
   loadingTasks.value = true;
   try {
-    const { data } = await api.get(`/kpi_maintenance/planes/${selectedPlanId.value}/tareas`);
+    const { data } = await api.get(`/kpi_maintenance/planes/${currentPlanId.value}/tareas`);
     tasks.value = asArray(data).map((item) => ({ ...item, _raw: item }));
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudieron cargar las tareas.");
   } finally {
     loadingTasks.value = false;
   }
-}
-
-function selectPlan(item: any) {
-  selectedPlanId.value = item.id;
-  fetchTasks();
 }
 
 function resetPlanForm() {
@@ -259,18 +246,22 @@ function resetTaskForm() {
 
 function openPlanCreate() {
   editingPlanId.value = null;
+  selectedPlanId.value = null;
   resetPlanForm();
+  tasks.value = [];
   planDialog.value = true;
 }
 
-function openPlanEdit(item: any) {
+async function openPlanEdit(item: any) {
   editingPlanId.value = item.id;
+  selectedPlanId.value = item.id;
   planForm.codigo = item.codigo ?? "";
   planForm.nombre = item.nombre ?? "";
   planForm.tipo = item.tipo ?? "";
   planForm.frecuencia_tipo = item.frecuencia_tipo ?? "";
   planForm.frecuencia_valor = String(item.frecuencia_valor ?? "0");
   planDialog.value = true;
+  await fetchTasks();
 }
 
 async function savePlan() {
@@ -296,9 +287,10 @@ async function savePlan() {
     } else {
       const { data } = await api.post("/kpi_maintenance/planes", payload);
       ui.success("Cabecera del plan creada. Ahora puedes agregar el detalle.");
-      selectedPlanId.value = data?.id ?? null;
+      const createdId = data?.id ?? null;
+      selectedPlanId.value = createdId;
+      editingPlanId.value = createdId;
     }
-    planDialog.value = false;
     await fetchPlans();
     if (!selectedPlanId.value) {
       const created = plans.value.find((item) => item.codigo === planForm.codigo && item.nombre === planForm.nombre);
@@ -331,7 +323,7 @@ function openTaskEdit(item: any) {
 }
 
 async function saveTask() {
-  if (!selectedPlanId.value) return;
+  if (!currentPlanId.value) return;
   if (!taskForm.orden || !taskForm.actividad) {
     ui.error("Orden y actividad son obligatorios.");
     return;
@@ -349,7 +341,7 @@ async function saveTask() {
       await api.patch(`/kpi_maintenance/planes/tareas/${editingTaskId.value}`, payload);
       ui.success("Detalle de tarea actualizado.");
     } else {
-      await api.post(`/kpi_maintenance/planes/${selectedPlanId.value}/tareas`, payload);
+      await api.post(`/kpi_maintenance/planes/${currentPlanId.value}/tareas`, payload);
       ui.success("Detalle de tarea creado.");
     }
     taskDialog.value = false;
