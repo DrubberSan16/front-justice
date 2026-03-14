@@ -113,6 +113,7 @@ function goToComponent(urlComponent: string) {
     ots: { name: "work-orders" },
 
     kardex: { name: "kardex" },
+    locations: { name: "locations" },    
   };
 
   const target = map[key];
