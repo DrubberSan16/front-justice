@@ -303,7 +303,8 @@ async function savePlan() {
     for (const taskId of deletedTaskIds.value) {
       await api.delete(`/kpi_maintenance/planes/tareas/${taskId}`);
     }
-
+    console.log("Tareas eliminadas:", deletedTaskIds.value);
+    console.log("Tareas a guardar:", tasks.value);
     for (const task of tasks.value) {
       if (!task.orden || !task.actividad) {
         ui.error("Todas las tareas deben tener orden y actividad.");
