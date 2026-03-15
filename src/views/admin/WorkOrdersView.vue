@@ -108,7 +108,19 @@
           <v-window-item value="tareas">
             <v-row dense class="pt-2">
               <v-col cols="12" md="4"><v-select v-model="taskForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" variant="outlined" /></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="taskForm.tarea_id" label="Tarea ID" variant="outlined" /></v-col>
+              <v-col cols="12" md="4">
+                <v-select
+                  v-model="taskForm.tarea_id"
+                  :items="taskOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Tarea ID"
+                  variant="outlined"
+                  :disabled="!taskForm.plan_id"
+                  :loading="loadingTaskOptions"
+                  no-data-text="Selecciona un plan para cargar tareas"
+                />
+              </v-col>
               <v-col cols="12" md="2"><v-checkbox v-model="taskForm.valor_boolean" label="Boolean" hide-details /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="taskForm.valor_numeric" label="Valor numérico" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="8"><v-text-field v-model="taskForm.valor_text" label="Valor texto" variant="outlined" /></v-col>
@@ -277,7 +289,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 
@@ -301,6 +313,8 @@ const planOptions = ref<any[]>([]);
 const alertOptions = ref<any[]>([]);
 const productOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
+const taskOptions = ref<any[]>([]);
+const loadingTaskOptions = ref(false);
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -440,6 +454,30 @@ async function loadCatalogs() {
   warehouseOptions.value = bodegas.map(normalize);
 }
 
+function normalizeTask(item: any) {
+  const actividad = item?.actividad ?? item?.nombre ?? item?.id;
+  const orden = item?.orden != null ? `${item.orden} - ` : "";
+  return { value: item.id, title: `${orden}${actividad}` };
+}
+
+async function loadTaskOptionsByPlan(planId: string) {
+  if (!planId) {
+    taskOptions.value = [];
+    return;
+  }
+
+  loadingTaskOptions.value = true;
+  try {
+    const { data } = await api.get(`/kpi_maintenance/planes/${planId}/tareas`);
+    taskOptions.value = asArray(data).map(normalizeTask);
+  } catch (e: any) {
+    taskOptions.value = [];
+    ui.error(e?.response?.data?.message || "No se pudieron cargar las tareas del plan.");
+  } finally {
+    loadingTaskOptions.value = false;
+  }
+}
+
 async function fetchWorkOrders() {
   loading.value = true;
   error.value = null;
@@ -513,6 +551,7 @@ function resetAllForms() {
   attachmentRows.value = [];
   localConsumos.value = [];
   localIssues.value = [];
+  taskOptions.value = [];
   tab.value = "tareas";
 }
 
@@ -863,4 +902,14 @@ onMounted(async () => {
     // errores específicos ya manejados en cada método
   }
 });
+
+watch(
+  () => taskForm.plan_id,
+  async (planId, previousPlanId) => {
+    if (planId !== previousPlanId) {
+      taskForm.tarea_id = "";
+    }
+    await loadTaskOptionsByPlan(planId);
+  },
+);
 </script>
