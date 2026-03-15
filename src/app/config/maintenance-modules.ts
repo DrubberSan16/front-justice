@@ -211,13 +211,13 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     key: "alertas",
     title: "Alertas",
     endpoint: "/kpi_maintenance/alertas",
-    allowCreate: false,
-    allowEdit: false,
-    allowDelete: false,
+    allowCreate: true,
+    allowEdit: true,
+    allowDelete: true,
     fields: [
       { key: "estado", label: "Estado", type: "text" },
       { key: "tipo_alerta", label: "Tipo alerta", type: "text" },
-      { key: "equipo_id", label: "Equipo (ID)", type: "text" },
+      { key: "equipo_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
     ],
   },
   {
