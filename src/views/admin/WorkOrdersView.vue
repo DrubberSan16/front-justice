@@ -121,9 +121,9 @@
                   no-data-text="Selecciona un plan para cargar tareas"
                 />
               </v-col>
-              <v-col cols="12" md="2"><v-checkbox v-model="taskForm.valor_boolean" label="Boolean" hide-details /></v-col>
-              <v-col cols="12" md="2"><v-text-field v-model="taskForm.valor_numeric" label="Valor numérico" type="number" variant="outlined" /></v-col>
-              <v-col cols="12" md="8"><v-text-field v-model="taskForm.valor_text" label="Valor texto" variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="taskForm.causa" label="Causa" variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="taskForm.accion" label="Acción" variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-text-field v-model="taskForm.prevencion" label="Prevención" variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar tarea</v-btn></div>
@@ -332,9 +332,9 @@ const headerForm = reactive<any>({
 const taskForm = reactive<any>({
   plan_id: "",
   tarea_id: "",
-  valor_boolean: false,
-  valor_numeric: "",
-  valor_text: "",
+  causa: "",
+  accion: "",
+  prevencion: "",
   observacion: "",
 });
 
@@ -402,9 +402,26 @@ const headers = [
 const taskHeaders = [
   { title: "Plan", key: "plan_id" },
   { title: "Tarea", key: "tarea_id" },
+  { title: "Causa", key: "causa" },
+  { title: "Acción", key: "accion" },
+  { title: "Prevención", key: "prevencion" },
   { title: "Obs.", key: "observacion" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
+
+function parseValorJson(valorJson: unknown) {
+  if (!valorJson) return {};
+  if (typeof valorJson === "object") return valorJson as Record<string, any>;
+  if (typeof valorJson === "string") {
+    try {
+      const parsed = JSON.parse(valorJson);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
 
 const attachmentHeaders = [
   { title: "ID", key: "id" },
@@ -500,7 +517,16 @@ async function loadDetailData() {
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/consumos`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`),
     ]);
-    taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
+    taskRows.value = asArray(tasksRes.data).map((x) => {
+      const valorJson = parseValorJson(x?.valor_json);
+      return {
+        ...x,
+        causa: valorJson?.causa ?? "",
+        accion: valorJson?.accion ?? "",
+        prevencion: valorJson?.prevencion ?? "",
+        _raw: x,
+      };
+    });
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
     localConsumos.value = asArray(consumosRes.data);
     localIssues.value = asArray(issuesRes.data);
@@ -527,9 +553,9 @@ function resetAllForms() {
 
   taskForm.plan_id = "";
   taskForm.tarea_id = "";
-  taskForm.valor_boolean = false;
-  taskForm.valor_numeric = "";
-  taskForm.valor_text = "";
+  taskForm.causa = "";
+  taskForm.accion = "";
+  taskForm.prevencion = "";
   taskForm.observacion = "";
 
   attachmentForm.tipo = "EVIDENCIA";
@@ -699,7 +725,7 @@ async function saveAll() {
   if (!headerSaved || !editingId.value) return;
 
   const actions: Array<() => Promise<void>> = [];
-  if (taskForm.plan_id || taskForm.tarea_id || taskForm.valor_text || taskForm.observacion || taskForm.valor_numeric !== "") {
+  if (taskForm.plan_id || taskForm.tarea_id || taskForm.causa || taskForm.accion || taskForm.prevencion || taskForm.observacion) {
     actions.push(createTask);
   }
   if (attachmentForm.nombre || attachmentForm.contenido_base64) {
@@ -736,9 +762,14 @@ async function createTask() {
     await api.post(`/kpi_maintenance/work-orders/${editingId.value}/tareas`, {
       plan_id: taskForm.plan_id,
       tarea_id: taskForm.tarea_id,
-      valor_boolean: taskForm.valor_boolean,
-      valor_numeric: taskForm.valor_numeric === "" ? null : Number(taskForm.valor_numeric),
-      valor_text: taskForm.valor_text || null,
+      valor_boolean: true,
+      valor_numeric: 0,
+      valor_text: "",
+      valor_json: {
+        causa: taskForm.causa || "",
+        accion: taskForm.accion || "",
+        prevencion: taskForm.prevencion || "",
+      },
       observacion: taskForm.observacion || null,
     });
     ui.success("Tarea agregada.");
