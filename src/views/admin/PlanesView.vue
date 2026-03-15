@@ -67,30 +67,23 @@
         <v-data-table
           :headers="taskHeaders"
           :items="tasks"
+          item-value="_rowKey"
           :loading="loadingTasks"
           :items-per-page="5"
           class="elevation-0"
         >
-          <template #item.orden="{ index }">
+          <template #item.orden="{ item }">
             <v-text-field
-              v-model="tasks[index].orden"
+              v-model="resolveTask(item).orden"
               type="number"
               variant="outlined"
               density="compact"
               hide-details
             />
           </template>
-          <template #item.actividad="{ index }">
+          <template #item.actividad="{ item }">
             <v-text-field
-              v-model="tasks[index].actividad"
-              variant="outlined"
-              density="compact"
-              hide-details
-            />
-          </template>
-          <template #item.field_type="{ index }">
-            <v-text-field
-              v-model="tasks[index].field_type"
+              v-model="resolveTask(item).actividad"
               variant="outlined"
               density="compact"
               hide-details
@@ -98,7 +91,7 @@
           </template>
           <template #item.actions="{ item }">
             <div class="d-flex" style="gap: 4px;">
-              <v-btn icon="mdi-delete" variant="text" color="error" @click="removeTaskRow(item._raw ?? item)" />
+              <v-btn icon="mdi-delete" variant="text" color="error" @click="removeTaskRow(resolveTask(item))" />
             </div>
           </template>
         </v-data-table>
@@ -107,7 +100,7 @@
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="planDialog = false">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="savePlan">Guardar / actualizar todo</v-btn>
+        <v-btn color="primary" :loading="saving" @click="savePlan">Guardar</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -147,6 +140,7 @@ const deleteDialog = ref(false);
 const editingPlanId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const deletedTaskIds = ref<string[]>([]);
+const taskRowKey = ref(0);
 
 const planForm = reactive({ codigo: "", nombre: "", tipo: "", frecuencia_tipo: "", frecuencia_valor: "0" });
 
@@ -160,9 +154,22 @@ const planHeaders = [
 const taskHeaders = [
   { title: "Orden", key: "orden" },
   { title: "Actividad", key: "actividad" },
-  { title: "Tipo campo", key: "field_type" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
+
+function makeTaskRow(item: any = {}) {
+  taskRowKey.value += 1;
+  return {
+    ...item,
+    field_type: item.field_type || "TEXTO",
+    _rowKey: item.id ?? `tmp-${taskRowKey.value}`,
+    _raw: item,
+  };
+}
+
+function resolveTask(item: any) {
+  return item?._raw ?? item?.raw ?? item;
+}
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -219,7 +226,7 @@ async function fetchTasks() {
   loadingTasks.value = true;
   try {
     const { data } = await api.get(`/kpi_maintenance/planes/${currentPlanId.value}/tareas`);
-    tasks.value = asArray(data).map((item) => ({ ...item, _raw: item }));
+    tasks.value = asArray(data).map((item) => makeTaskRow(item));
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudieron cargar las tareas.");
   } finally {
@@ -238,6 +245,7 @@ function resetPlanForm() {
 function resetTaskForm() {
   tasks.value = [];
   deletedTaskIds.value = [];
+  taskRowKey.value = 0;
 }
 
 function openPlanCreate() {
@@ -282,7 +290,7 @@ async function savePlan() {
       selectedPlanId.value = editingPlanId.value;
     } else {
       const { data } = await api.post("/kpi_maintenance/planes", payload);
-      const createdId = data?.id ?? null;
+      const createdId = data?.id ?? data?.data?.id ?? data?.item?.id ?? null;
       selectedPlanId.value = createdId;
       editingPlanId.value = createdId;
       activePlanId = createdId;
@@ -305,7 +313,7 @@ async function savePlan() {
       const taskPayload = {
         orden: Number(task.orden),
         actividad: task.actividad,
-        field_type: task.field_type || null,
+        field_type: "TEXTO",
       };
 
       if (task.id) {
@@ -323,6 +331,7 @@ async function savePlan() {
     }
     await fetchTasks();
   } catch (e: any) {
+    console.error(e);
     ui.error(e?.response?.data?.message || "No se pudo guardar el plan y su detalle.");
   } finally {
     saving.value = false;
@@ -330,7 +339,7 @@ async function savePlan() {
 }
 
 function addTaskRow() {
-  tasks.value.push({ orden: String(tasks.value.length + 1), actividad: "", field_type: "", _raw: null });
+  tasks.value.push(makeTaskRow({ orden: String(tasks.value.length + 1), actividad: "" }));
 }
 
 function removeTaskRow(item: any) {
