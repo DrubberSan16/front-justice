@@ -121,13 +121,22 @@
                   no-data-text="Selecciona un plan para cargar tareas"
                 />
               </v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="taskForm.causa" label="Causa" variant="outlined" /></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="taskForm.accion" label="Acción" variant="outlined" /></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="taskForm.prevencion" label="Prevención" variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-textarea v-model="taskForm.causa" label="Causa" variant="outlined" rows="3" auto-grow /></v-col>
+              <v-col cols="12" md="4"><v-textarea v-model="taskForm.accion" label="Acción" variant="outlined" rows="3" auto-grow /></v-col>
+              <v-col cols="12" md="4"><v-textarea v-model="taskForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow /></v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar tarea</v-btn></div>
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
+              <template #item.causa="{ item }">
+                <div class="multiline-cell">{{ (item._raw ?? item).causa }}</div>
+              </template>
+              <template #item.accion="{ item }">
+                <div class="multiline-cell">{{ (item._raw ?? item).accion }}</div>
+              </template>
+              <template #item.prevencion="{ item }">
+                <div class="multiline-cell">{{ (item._raw ?? item).prevencion }}</div>
+              </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteTask(item._raw ?? item)" />
               </template>
@@ -944,3 +953,9 @@ watch(
   },
 );
 </script>
+
+<style scoped>
+.multiline-cell {
+  white-space: pre-line;
+}
+</style>
