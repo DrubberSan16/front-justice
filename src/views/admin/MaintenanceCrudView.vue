@@ -222,6 +222,9 @@ async function fetchRecords() {
   loading.value = true;
   error.value = null;
   try {
+    if (moduleConfig.value?.key === "alertas") {
+      await api.post("/kpi_maintenance/alertas/recalcular");
+    }
     records.value = await listAll(endpoint);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
