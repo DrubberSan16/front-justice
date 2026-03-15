@@ -421,7 +421,7 @@ async function listAll(endpoint: string) {
 }
 
 function normalize(item: any) {
-  const label = item?.nombre ?? item?.codigo ?? item?.id;
+  const label = item?.nombre ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
 }
 
