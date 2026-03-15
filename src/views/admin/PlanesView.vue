@@ -48,7 +48,14 @@
           <v-col cols="12" md="6"><v-text-field v-model="planForm.codigo" label="Código" variant="outlined" /></v-col>
           <v-col cols="12" md="6"><v-text-field v-model="planForm.nombre" label="Nombre" variant="outlined" /></v-col>
           <v-col cols="12" md="6"><v-text-field v-model="planForm.tipo" label="Tipo" variant="outlined" /></v-col>
-          <v-col cols="12" md="6"><v-text-field v-model="planForm.frecuencia_tipo" label="Frecuencia tipo" variant="outlined" /></v-col>
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="planForm.frecuencia_tipo"
+              label="Frecuencia tipo"
+              variant="outlined"
+              readonly
+            />
+          </v-col>
           <v-col cols="12" md="6"><v-text-field v-model="planForm.frecuencia_valor" type="number" label="Frecuencia valor" variant="outlined" /></v-col>
         </v-row>
 
@@ -75,10 +82,11 @@
           <template #item.orden="{ item }">
             <v-text-field
               v-model="resolveTask(item).orden"
-              type="number"
               variant="outlined"
               density="compact"
               hide-details
+              readonly
+              class="order-field"
             />
           </template>
           <template #item.actividad="{ item }">
@@ -142,7 +150,7 @@ const deletingId = ref<string | null>(null);
 const deletedTaskIds = ref<string[]>([]);
 const taskRowKey = ref(0);
 
-const planForm = reactive({ codigo: "", nombre: "", tipo: "", frecuencia_tipo: "", frecuencia_valor: "0" });
+const planForm = reactive({ codigo: "", nombre: "", tipo: "", frecuencia_tipo: "HORAS", frecuencia_valor: "0" });
 
 const planHeaders = [
   { title: "Código", key: "codigo" },
@@ -161,14 +169,22 @@ function makeTaskRow(item: any = {}) {
   taskRowKey.value += 1;
   return {
     ...item,
+    orden: String(item.orden ?? ""),
+    actividad: item.actividad ?? "",
     field_type: item.field_type || "TEXTO",
     _rowKey: item.id ?? `tmp-${taskRowKey.value}`,
-    _raw: item,
   };
 }
 
 function resolveTask(item: any) {
-  return item?._raw ?? item?.raw ?? item;
+  return item?.raw ?? item?._raw ?? item;
+}
+
+function syncTaskOrder() {
+  tasks.value = tasks.value.map((task, index) => ({
+    ...task,
+    orden: String(index + 1),
+  }));
 }
 
 function asArray(data: any): any[] {
@@ -238,7 +254,7 @@ function resetPlanForm() {
   planForm.codigo = "";
   planForm.nombre = "";
   planForm.tipo = "";
-  planForm.frecuencia_tipo = "";
+  planForm.frecuencia_tipo = "HORAS";
   planForm.frecuencia_valor = "0";
 }
 
@@ -262,7 +278,7 @@ async function openPlanEdit(item: any) {
   planForm.codigo = item.codigo ?? "";
   planForm.nombre = item.nombre ?? "";
   planForm.tipo = item.tipo ?? "";
-  planForm.frecuencia_tipo = item.frecuencia_tipo ?? "";
+  planForm.frecuencia_tipo = "HORAS";
   planForm.frecuencia_valor = String(item.frecuencia_valor ?? "0");
   planDialog.value = true;
   await fetchTasks();
@@ -279,7 +295,7 @@ async function savePlan() {
     codigo: planForm.codigo,
     nombre: planForm.nombre,
     tipo: planForm.tipo || null,
-    frecuencia_tipo: planForm.frecuencia_tipo || null,
+    frecuencia_tipo: "HORAS",
     frecuencia_valor: Number(planForm.frecuencia_valor || 0),
   };
 
@@ -305,15 +321,15 @@ async function savePlan() {
     }
     console.log("Tareas eliminadas:", deletedTaskIds.value);
     console.log("Tareas a guardar:", tasks.value);
-    for (const task of tasks.value) {
-      if (!task.orden || !task.actividad) {
+    for (const [index, task] of tasks.value.entries()) {
+      if (!task.actividad?.trim()) {
         ui.error("Todas las tareas deben tener orden y actividad.");
         return;
       }
 
       const taskPayload = {
-        orden: Number(task.orden),
-        actividad: task.actividad,
+        orden: index + 1,
+        actividad: task.actividad.trim(),
         field_type: "TEXTO",
       };
 
@@ -340,7 +356,8 @@ async function savePlan() {
 }
 
 function addTaskRow() {
-  tasks.value.push(makeTaskRow({ orden: String(tasks.value.length + 1), actividad: "" }));
+  tasks.value.push(makeTaskRow({ actividad: "" }));
+  syncTaskOrder();
 }
 
 function removeTaskRow(item: any) {
@@ -348,6 +365,7 @@ function removeTaskRow(item: any) {
     deletedTaskIds.value.push(item.id);
   }
   tasks.value = tasks.value.filter((task) => task !== item && task.id !== item?.id);
+  syncTaskOrder();
 }
 
 function openDeletePlan(item: any) {
@@ -379,3 +397,9 @@ onMounted(async () => {
   await fetchPlans();
 });
 </script>
+
+<style scoped>
+.order-field {
+  max-width: 92px;
+}
+</style>
