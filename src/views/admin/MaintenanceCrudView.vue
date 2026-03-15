@@ -83,7 +83,7 @@
             <v-text-field
               v-else
               v-model="form[field.key]"
-              :type="field.type === 'number' ? 'number' : 'text'"
+              :type="field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'"
               :label="field.label"
               :hint="field.required ? 'Obligatorio' : ''"
               persistent-hint

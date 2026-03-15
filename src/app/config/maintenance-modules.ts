@@ -1,4 +1,4 @@
-export type FieldType = "text" | "number" | "boolean" | "select";
+export type FieldType = "text" | "number" | "boolean" | "select" | "date";
 
 export type MaintenanceField = {
   key: string;
@@ -200,9 +200,9 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     fields: [      
       { key: "equipo_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
       { key: "plan_id", label: "Plan", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/planes" } },
-      { key: "ultima_ejecucion_fecha", label: "Últ. ejecución fecha", type: "text" },
+      { key: "ultima_ejecucion_fecha", label: "Últ. ejecución fecha", type: "date" },
       { key: "ultima_ejecucion_horas", label: "Últ. ejecución horas", type: "number" },
-      { key: "proxima_fecha", label: "Próxima fecha", type: "text" },
+      { key: "proxima_fecha", label: "Próxima fecha", type: "date" },
       { key: "proxima_horas", label: "Próximas horas", type: "number" },
       { key: "activo", label: "Activo", type: "boolean" },
     ],
