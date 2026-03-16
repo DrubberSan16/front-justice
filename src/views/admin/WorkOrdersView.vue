@@ -37,7 +37,7 @@
     <v-card>
       <v-toolbar color="primary" dark>
         <v-btn icon="mdi-close" @click="dialog = false" />
-        <v-toolbar-title>{{ editingId ? `Editar OT ${editingId}` : "Nueva orden de trabajo" }}</v-toolbar-title>
+        <v-toolbar-title>{{ editingId ? `Editar OT ${headerForm.code || editingId}` : "Nueva orden de trabajo" }}</v-toolbar-title>
         <v-spacer />
         <v-chip v-if="editingId" color="white" text-color="primary" class="mr-2" variant="flat">
           {{ currentWorkflowLabel }}
@@ -60,7 +60,7 @@
         >
           Cerrar OT
         </v-btn>
-        <v-btn variant="tonal" :loading="savingHeader" @click="saveAll">Guardar</v-btn>
+        <v-btn variant="tonal" :loading="savingHeader" :disabled="savingHeader" @click="saveAll">Guardar</v-btn>
       </v-toolbar>
 
       <v-card-text class="pt-4 ot-dialog-content">
@@ -76,6 +76,15 @@
 
           <div class="text-subtitle-2 font-weight-bold mb-3">Cabecera de orden de trabajo</div>
           <v-row dense>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="headerForm.code" label="Code" variant="outlined" readonly />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="headerForm.type" label="Type" variant="outlined" :disabled="isClosed" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="headerForm.title" label="Title" variant="outlined" :disabled="isClosed" />
+          </v-col>
           <v-col cols="12" md="4">
             <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed" />
           </v-col>
@@ -327,6 +336,9 @@ const localConsumos = ref<any[]>([]);
 const localIssues = ref<any[]>([]);
 
 const headerForm = reactive<any>({
+  code: "",
+  type: "",
+  title: "",
   equipment_id: "",
   maintenance_kind: "",
   status_workflow: "CREADA",
@@ -397,6 +409,9 @@ const workflowHint = computed(() => {
 });
 
 const headers = [
+  { title: "Code", key: "code" },
+  { title: "Type", key: "type" },
+  { title: "Title", key: "title" },
   { title: "ID", key: "id" },
   { title: "Equipo", key: "equipment_id" },
   { title: "Estado", key: "status_workflow" },
@@ -538,6 +553,9 @@ const rows = computed(() => {
 });
 
 function resetAllForms() {
+  headerForm.code = "";
+  headerForm.type = "";
+  headerForm.title = "";
   headerForm.equipment_id = "";
   headerForm.maintenance_kind = "";
   headerForm.status_workflow = "CREADA";
@@ -574,10 +592,11 @@ function resetAllForms() {
   tab.value = "tareas";
 }
 
-function openCreate() {
+async function openCreate() {
   editingId.value = null;
   closingFlow.value = false;
   resetAllForms();
+  await assignNextWorkOrderCode();
   dialog.value = true;
 }
 
@@ -585,6 +604,9 @@ async function openEdit(item: any) {
   editingId.value = item.id;
   closingFlow.value = false;
   resetAllForms();
+  headerForm.code = item.code ?? item.codigo ?? "";
+  headerForm.type = item.type ?? item.tipo ?? "";
+  headerForm.title = item.title ?? item.titulo ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
   headerForm.maintenance_kind = item.maintenance_kind ?? "";
   headerForm.status_workflow = item.status_workflow ?? "CREADA";
@@ -670,13 +692,28 @@ async function prepareClose() {
   tab.value = "materiales";
 }
 
-async function saveHeader() {
+async function saveHeader(manageLoading = true) {
   if (!headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
     return false;
   }
+  if (!headerForm.type) {
+    ui.error("Type es obligatorio.");
+    return false;
+  }
+  if (!headerForm.title) {
+    ui.error("Title es obligatorio.");
+    return false;
+  }
+
+  if (!editingId.value && !headerForm.code) {
+    await assignNextWorkOrderCode();
+  }
 
   const payload = {
+    code: headerForm.code || null,
+    type: headerForm.type || null,
+    title: headerForm.title || null,
     equipment_id: headerForm.equipment_id,
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: headerForm.status_workflow || null,
@@ -689,10 +726,13 @@ async function saveHeader() {
     },
   };
 
-  savingHeader.value = true;
+  if (manageLoading) savingHeader.value = true;
   try {
     if (editingId.value) {
       await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, {
+        code: payload.code,
+        type: payload.type,
+        title: payload.title,
         maintenance_kind: payload.maintenance_kind,
         status_workflow: payload.status_workflow,
         plan_id: payload.plan_id,
@@ -714,7 +754,7 @@ async function saveHeader() {
     ui.error(e?.response?.data?.message || "No se pudo guardar la cabecera de OT.");
     return false;
   } finally {
-    savingHeader.value = false;
+    if (manageLoading) savingHeader.value = false;
   }
 }
 
@@ -724,42 +764,85 @@ async function ensureHeaderSaved() {
 }
 
 async function saveAll() {
-  const headerSaved = await saveHeader();
-  if (!headerSaved || !editingId.value) return;
+  if (savingHeader.value) return;
+  savingHeader.value = true;
+  try {
+    const headerSaved = await saveHeader(false);
+    if (!headerSaved || !editingId.value) return;
 
-  const actions: Array<() => Promise<void>> = [];
-  if (taskForm.plan_id || taskForm.tarea_id || taskForm.observacion) {
-    actions.push(createTask);
-  }
-  if (attachmentForm.nombre || attachmentForm.contenido_base64) {
-    actions.push(createAttachment);
-  }
-  if (consumoForm.producto_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion) {
-    actions.push(createConsumo);
-  }
-  if (hasMaterialDraft()) {
-    actions.push(issueMaterials);
-  }
+    const actions: Array<() => Promise<void>> = [];
+    if (taskForm.plan_id || taskForm.tarea_id || taskForm.observacion) {
+      actions.push(createTask);
+    }
+    if (attachmentForm.nombre || attachmentForm.contenido_base64) {
+      actions.push(createAttachment);
+    }
+    if (consumoForm.producto_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion) {
+      actions.push(createConsumo);
+    }
+    if (hasMaterialDraft()) {
+      actions.push(issueMaterials);
+    }
 
-  if (!actions.length) {
+    for (const run of actions) {
+      await run();
+    }
+
+    await persistDraftTasks();
+
+    if (normalizedWorkflow.value === "CERRADA") {
+      await saveHeader(false);
+    }
     ensureTabVisible();
-    return;
+  } finally {
+    savingHeader.value = false;
   }
-  for (const run of actions) {
-    await run();
-  }
+}
 
-  if (normalizedWorkflow.value === "CERRADA") {
-    await saveHeader();
+async function persistDraftTasks() {
+  if (!editingId.value) return;
+  const drafts = taskRows.value.filter((row) => row?._isDraft);
+  for (const draft of drafts) {
+    try {
+      await api.post(`/kpi_maintenance/work-orders/${editingId.value}/tareas`, {
+        plan_id: draft.plan_id,
+        tarea_id: draft.tarea_id,
+        valor_boolean: true,
+        valor_numeric: 0,
+        valor_text: "",
+        valor_json: {},
+        observacion: draft.observacion || null,
+      });
+    } catch (e: any) {
+      ui.error(e?.response?.data?.message || `No se pudo guardar la tarea ${draft.tarea_id}.`);
+    }
   }
-  ensureTabVisible();
+  if (drafts.length) {
+    await loadDetailData();
+  }
 }
 
 async function createTask() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
+
+  if (!editingId.value) {
+    taskRows.value.unshift({
+      id: `draft-${Date.now()}`,
+      plan_id: taskForm.plan_id,
+      tarea_id: taskForm.tarea_id,
+      observacion: taskForm.observacion || null,
+      _isDraft: true,
+    });
+    taskForm.plan_id = "";
+    taskForm.tarea_id = "";
+    taskForm.observacion = "";
+    ui.success("Tarea lista para guardar.");
+    return;
+  }
+
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
-  if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
 
   try {
     await api.post(`/kpi_maintenance/work-orders/${editingId.value}/tareas`, {
@@ -780,6 +863,10 @@ async function createTask() {
 
 async function deleteTask(item: any) {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (item?._isDraft) {
+    taskRows.value = taskRows.value.filter((row) => row.id !== item.id);
+    return;
+  }
   if (!item?.id) return;
   try {
     await api.delete(`/kpi_maintenance/work-orders/tareas/${item.id}`);
@@ -932,6 +1019,70 @@ onMounted(async () => {
     // errores específicos ya manejados en cada método
   }
 });
+
+function extractPaginationMeta(data: any) {
+  const total = Number(data?.total ?? data?.count ?? data?.meta?.total ?? 0);
+  const pageSize = Number(data?.limit ?? data?.per_page ?? data?.meta?.per_page ?? 20);
+  const pages = Number(data?.pages ?? data?.last_page ?? data?.meta?.last_page ?? 0);
+  const computedPages = total > 0 ? Math.ceil(total / Math.max(pageSize, 1)) : 0;
+  return {
+    total,
+    pageSize,
+    pages: pages > 0 ? pages : computedPages,
+  };
+}
+
+function incrementAlphaPrefix(letter: string) {
+  const nextCharCode = letter.toUpperCase().charCodeAt(0) + 1;
+  if (nextCharCode > 90) return "A";
+  return String.fromCharCode(nextCharCode);
+}
+
+function nextWorkOrderCode(lastCode: string | null) {
+  if (!lastCode) return "OT-A00001";
+  const match = /^OT-([A-Z])(\d{5})$/i.exec(lastCode.trim());
+  if (!match) return "OT-A00001";
+  const currentLetter = (match[1] ?? "A").toUpperCase();
+  const currentNumber = Number(match[2] ?? "0");
+  if (currentNumber >= 99999) {
+    return `OT-${incrementAlphaPrefix(currentLetter)}00001`;
+  }
+  return `OT-${currentLetter}${String(currentNumber + 1).padStart(5, "0")}`;
+}
+
+async function getLastWorkOrderCode() {
+  const limit = 20;
+  const firstRes = await api.get("/kpi_maintenance/work-orders", { params: { page: 1, limit } });
+  const firstRows = asArray(firstRes.data);
+  if (!firstRows.length) return null;
+
+  const meta = extractPaginationMeta(firstRes.data);
+  const lastPage = meta.pages > 0 ? meta.pages : 1;
+  const lastRes = lastPage === 1
+    ? firstRes
+    : await api.get("/kpi_maintenance/work-orders", { params: { page: lastPage, limit } });
+  const lastRows = asArray(lastRes.data);
+  const lastItem = lastRows[lastRows.length - 1];
+  return lastItem?.code ?? lastItem?.codigo ?? null;
+}
+
+async function assignNextWorkOrderCode() {
+  try {
+    const lastCode = await getLastWorkOrderCode();
+    headerForm.code = nextWorkOrderCode(lastCode);
+  } catch {
+    headerForm.code = "OT-A00001";
+  }
+}
+
+watch(
+  () => editingId.value,
+  async (id) => {
+    if (!id && dialog.value && !headerForm.code) {
+      await assignNextWorkOrderCode();
+    }
+  },
+);
 
 watch(
   () => taskForm.plan_id,
