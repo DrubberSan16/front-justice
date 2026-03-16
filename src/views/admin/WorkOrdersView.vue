@@ -118,7 +118,20 @@
         <v-window v-model="tab" class="mt-4">
           <v-window-item value="tareas">
             <v-row dense class="pt-2">
-              <v-col cols="12" md="4"><v-select v-model="taskForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" variant="outlined" /></v-col>
+              <v-col cols="12" md="4">
+                <v-select
+                  v-model="taskForm.plan_id"
+                  :items="planOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Plan"
+                  variant="outlined"
+                  :disabled="isClosed"
+                  readonly
+                  hint="Se usa el mismo plan seleccionado en cabecera"
+                  persistent-hint
+                />
+              </v-col>
               <v-col cols="12" md="4">
                 <v-select
                   v-model="taskForm.tarea_id"
@@ -127,7 +140,7 @@
                   item-value="value"
                   label="Tarea ID"
                   variant="outlined"
-                  :disabled="!taskForm.plan_id"
+                  :disabled="!taskForm.plan_id || isClosed"
                   :loading="loadingTaskOptions"
                   no-data-text="Selecciona un plan para cargar tareas"
                 />
@@ -171,7 +184,7 @@
                 </div>
               </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createAttachment">Agregar adjunto</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar adjunto</v-btn></div>
             <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0">
               <template #item.nombre="{ item }">
                 <a v-if="buildAttachmentUrl(item._raw ?? item)" :href="buildAttachmentUrl(item._raw ?? item) || undefined" target="_blank" rel="noopener noreferrer">
@@ -659,6 +672,7 @@ async function openEdit(item: any) {
   headerForm.maintenance_kind = item.maintenance_kind ?? "";
   headerForm.status_workflow = item.status_workflow ?? "CREADA";
   headerForm.plan_id = item.plan_id ?? "";
+  taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
   const headerValorJson = parseValorJson(item?.valor_json);
   headerForm.causa = headerValorJson?.causa ?? "";
@@ -683,7 +697,7 @@ function fileToBase64(file: File) {
 }
 
 function buildAttachmentUrl(item: any) {
-  if (!item?.id || !editingId.value) return null;
+  if (!item?.id || !editingId.value || item?._isDraft) return null;
   return `${api.defaults.baseURL}/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`;
 }
 
@@ -835,6 +849,7 @@ async function saveAll() {
     }
 
     await persistDraftTasks();
+    await persistDraftAttachments();
 
     if (normalizedWorkflow.value === "CERRADA") {
       await saveHeader(false);
@@ -868,6 +883,26 @@ async function persistDraftTasks() {
   }
 }
 
+async function persistDraftAttachments() {
+  if (!editingId.value) return;
+  const drafts = attachmentRows.value.filter((row) => row?._isDraft);
+  for (const draft of drafts) {
+    try {
+      await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
+        tipo: draft.tipo || "EVIDENCIA",
+        nombre: draft.nombre,
+        contenido_base64: draft.contenido_base64,
+        mime_type: draft.mime_type || null,
+      });
+    } catch (e: any) {
+      ui.error(e?.response?.data?.message || `No se pudo guardar el adjunto ${draft.nombre}.`);
+    }
+  }
+  if (drafts.length) {
+    await loadDetailData();
+  }
+}
+
 async function createTask() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
@@ -882,7 +917,6 @@ async function createTask() {
       observacion: taskForm.observacion || null,
       _isDraft: true,
     });
-    taskForm.plan_id = "";
     taskForm.tarea_id = "";
     taskForm.observacion = "";
     ui.success("Tarea lista para guardar.");
@@ -927,26 +961,30 @@ async function deleteTask(item: any) {
 
 async function createAttachment() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
-  const headerSaved = await ensureHeaderSaved();
-  if (!headerSaved || !editingId.value) return;
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
-  try {
-    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
-      tipo: attachmentForm.tipo || "EVIDENCIA",
-      nombre: attachmentForm.nombre,
-      contenido_base64: attachmentForm.contenido_base64,
-      mime_type: attachmentForm.mime_type || null,
-    });
-    ui.success("Adjunto agregado.");
-    await loadDetailData();
-  } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo agregar el adjunto.");
-  }
+  attachmentRows.value.unshift({
+    id: `draft-adj-${Date.now()}`,
+    tipo: attachmentForm.tipo || "EVIDENCIA",
+    nombre: attachmentForm.nombre,
+    contenido_base64: attachmentForm.contenido_base64,
+    mime_type: attachmentForm.mime_type || null,
+    _isDraft: true,
+  });
+  attachmentForm.tipo = "EVIDENCIA";
+  attachmentForm.nombre = "";
+  attachmentForm.contenido_base64 = "";
+  attachmentForm.mime_type = "";
+  attachmentPreviewUrl.value = null;
+  ui.success("Adjunto listo para guardar.");
 }
 
 async function deleteAttachment(item: any) {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (item?._isDraft) {
+    attachmentRows.value = attachmentRows.value.filter((row) => row.id !== item.id);
+    return;
+  }
   if (!editingId.value || !item?.id) return;
   try {
     await api.delete(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`);
@@ -1132,13 +1170,17 @@ watch(
   },
 );
 
+
 watch(
-  () => taskForm.plan_id,
+  () => headerForm.plan_id,
   async (planId, previousPlanId) => {
-    if (planId !== previousPlanId) {
+    const nextPlan = String(planId || "");
+    const prevPlan = String(previousPlanId || "");
+    taskForm.plan_id = nextPlan;
+    if (nextPlan !== prevPlan) {
       taskForm.tarea_id = "";
     }
-    await loadTaskOptionsByPlan(planId);
+    await loadTaskOptionsByPlan(nextPlan);
   },
 );
 </script>
