@@ -80,12 +80,6 @@
             <v-text-field v-model="headerForm.code" label="Code" variant="outlined" readonly />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field v-model="headerForm.type" label="Type" variant="outlined" :disabled="isClosed" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-text-field v-model="headerForm.title" label="Title" variant="outlined" :disabled="isClosed" />
-          </v-col>
-          <v-col cols="12" md="4">
             <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed" />
           </v-col>
           <v-col cols="12" md="4">
@@ -488,6 +482,19 @@ async function loadCatalogs() {
   warehouseOptions.value = bodegas.map(normalize);
 }
 
+function getSelectedPlanLabel(planId: string) {
+  if (!planId) return "Sin plan";
+  const selectedPlan = planOptions.value.find((plan) => String(plan.value) === String(planId));
+  return selectedPlan?.title || planId;
+}
+
+function buildAutoHeaderValues() {
+  const planLabel = getSelectedPlanLabel(headerForm.plan_id);
+  const generatedTitle = `Orden (${planLabel})`;
+  const generatedType = headerForm.maintenance_kind || null;
+  return { generatedTitle, generatedType };
+}
+
 function normalizeTask(item: any) {
   const actividad = item?.actividad ?? item?.nombre ?? item?.id;
   const orden = item?.orden != null ? `${item.orden} - ` : "";
@@ -697,12 +704,8 @@ async function saveHeader(manageLoading = true) {
     ui.error("Equipo es obligatorio.");
     return false;
   }
-  if (!headerForm.type) {
-    ui.error("Type es obligatorio.");
-    return false;
-  }
-  if (!headerForm.title) {
-    ui.error("Title es obligatorio.");
+  if (!headerForm.maintenance_kind) {
+    ui.error("Tipo mantenimiento es obligatorio.");
     return false;
   }
 
@@ -710,10 +713,12 @@ async function saveHeader(manageLoading = true) {
     await assignNextWorkOrderCode();
   }
 
+  const { generatedTitle, generatedType } = buildAutoHeaderValues();
+
   const payload = {
     code: headerForm.code || null,
-    type: headerForm.type || null,
-    title: headerForm.title || null,
+    type: generatedType,
+    title: generatedTitle,
     equipment_id: headerForm.equipment_id,
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: headerForm.status_workflow || null,
