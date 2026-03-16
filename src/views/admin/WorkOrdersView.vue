@@ -1,5 +1,5 @@
 <template>
-  <v-card rounded="xl" class="pa-4">
+  <v-card rounded="xl" class="pa-4 work-orders-shell">
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
       <div>
         <div class="text-h6 font-weight-bold">Órdenes de trabajo</div>
@@ -23,7 +23,7 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0">
+    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 table-enterprise">
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
@@ -63,7 +63,7 @@
         <v-btn variant="tonal" :loading="savingHeader" @click="saveAll">Guardar</v-btn>
       </v-toolbar>
 
-      <v-card-text class="pt-4">
+      <v-card-text class="pt-4 ot-dialog-content">
         <v-alert
           v-if="editingId"
           type="info"
@@ -71,7 +71,9 @@
           class="mb-4"
           :text="workflowHint"
         />
-        <v-row dense>
+        <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
+          <div class="text-subtitle-2 font-weight-bold mb-3">Cabecera de orden de trabajo</div>
+          <v-row dense>
           <v-col cols="12" md="4">
             <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed" />
           </v-col>
@@ -93,7 +95,11 @@
           <v-col cols="12" md="6">
             <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed" />
           </v-col>
-        </v-row>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
+          </v-row>
+        </v-card>
 
         <v-divider class="my-4" />
 
@@ -121,22 +127,10 @@
                   no-data-text="Selecciona un plan para cargar tareas"
                 />
               </v-col>
-              <v-col cols="12" md="4"><v-textarea v-model="taskForm.causa" label="Causa" variant="outlined" rows="3" auto-grow /></v-col>
-              <v-col cols="12" md="4"><v-textarea v-model="taskForm.accion" label="Acción" variant="outlined" rows="3" auto-grow /></v-col>
-              <v-col cols="12" md="4"><v-textarea v-model="taskForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow /></v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar tarea</v-btn></div>
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
-              <template #item.causa="{ item }">
-                <div class="multiline-cell">{{ (item._raw ?? item).causa }}</div>
-              </template>
-              <template #item.accion="{ item }">
-                <div class="multiline-cell">{{ (item._raw ?? item).accion }}</div>
-              </template>
-              <template #item.prevencion="{ item }">
-                <div class="multiline-cell">{{ (item._raw ?? item).prevencion }}</div>
-              </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteTask(item._raw ?? item)" />
               </template>
@@ -336,14 +330,14 @@ const headerForm = reactive<any>({
   status_workflow: "CREADA",
   plan_id: "",
   alerta_id: "",
+  causa: "",
+  accion: "",
+  prevencion: "",
 });
 
 const taskForm = reactive<any>({
   plan_id: "",
   tarea_id: "",
-  causa: "",
-  accion: "",
-  prevencion: "",
   observacion: "",
 });
 
@@ -411,9 +405,6 @@ const headers = [
 const taskHeaders = [
   { title: "Plan", key: "plan_id" },
   { title: "Tarea", key: "tarea_id" },
-  { title: "Causa", key: "causa" },
-  { title: "Acción", key: "accion" },
-  { title: "Prevención", key: "prevencion" },
   { title: "Obs.", key: "observacion" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -526,16 +517,7 @@ async function loadDetailData() {
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/consumos`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`),
     ]);
-    taskRows.value = asArray(tasksRes.data).map((x) => {
-      const valorJson = parseValorJson(x?.valor_json);
-      return {
-        ...x,
-        causa: valorJson?.causa ?? "",
-        accion: valorJson?.accion ?? "",
-        prevencion: valorJson?.prevencion ?? "",
-        _raw: x,
-      };
-    });
+    taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
     localConsumos.value = asArray(consumosRes.data);
     localIssues.value = asArray(issuesRes.data);
@@ -559,12 +541,12 @@ function resetAllForms() {
   headerForm.status_workflow = "CREADA";
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
+  headerForm.causa = "";
+  headerForm.accion = "";
+  headerForm.prevencion = "";
 
   taskForm.plan_id = "";
   taskForm.tarea_id = "";
-  taskForm.causa = "";
-  taskForm.accion = "";
-  taskForm.prevencion = "";
   taskForm.observacion = "";
 
   attachmentForm.tipo = "EVIDENCIA";
@@ -606,6 +588,10 @@ async function openEdit(item: any) {
   headerForm.status_workflow = item.status_workflow ?? "CREADA";
   headerForm.plan_id = item.plan_id ?? "";
   headerForm.alerta_id = item.alerta_id ?? "";
+  const headerValorJson = parseValorJson(item?.valor_json);
+  headerForm.causa = headerValorJson?.causa ?? "";
+  headerForm.accion = headerValorJson?.accion ?? "";
+  headerForm.prevencion = headerValorJson?.prevencion ?? "";
   dialog.value = true;
   await loadDetailData();
   ensureTabVisible();
@@ -694,6 +680,11 @@ async function saveHeader() {
     status_workflow: headerForm.status_workflow || null,
     plan_id: headerForm.plan_id || null,
     alerta_id: headerForm.alerta_id || null,
+    valor_json: {
+      causa: headerForm.causa || "",
+      accion: headerForm.accion || "",
+      prevencion: headerForm.prevencion || "",
+    },
   };
 
   savingHeader.value = true;
@@ -704,6 +695,7 @@ async function saveHeader() {
         status_workflow: payload.status_workflow,
         plan_id: payload.plan_id,
         alerta_id: payload.alerta_id,
+        valor_json: payload.valor_json,
       });
       ui.success("Cabecera OT actualizada.");
     } else {
@@ -734,7 +726,7 @@ async function saveAll() {
   if (!headerSaved || !editingId.value) return;
 
   const actions: Array<() => Promise<void>> = [];
-  if (taskForm.plan_id || taskForm.tarea_id || taskForm.causa || taskForm.accion || taskForm.prevencion || taskForm.observacion) {
+  if (taskForm.plan_id || taskForm.tarea_id || taskForm.observacion) {
     actions.push(createTask);
   }
   if (attachmentForm.nombre || attachmentForm.contenido_base64) {
@@ -774,11 +766,7 @@ async function createTask() {
       valor_boolean: true,
       valor_numeric: 0,
       valor_text: "",
-      valor_json: {
-        causa: taskForm.causa || "",
-        accion: taskForm.accion || "",
-        prevencion: taskForm.prevencion || "",
-      },
+      valor_json: {},
       observacion: taskForm.observacion || null,
     });
     ui.success("Tarea agregada.");
@@ -955,7 +943,33 @@ watch(
 </script>
 
 <style scoped>
-.multiline-cell {
-  white-space: pre-line;
+.work-orders-shell {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
+
+.table-enterprise {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.ot-dialog-content {
+  background-color: #f8fafc;
+}
+
+.section-card {
+  background-color: #ffffff;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.section-card :deep(.v-label),
+.section-card :deep(.v-field__input),
+.section-card :deep(input),
+.section-card :deep(textarea),
+.section-card :deep(.v-select__selection-text) {
+  color: #0f172a !important;
+}
+
 </style>
