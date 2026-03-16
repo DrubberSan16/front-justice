@@ -94,10 +94,10 @@
               :disabled="isClosed"
             />
           </v-col>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
             <v-select v-model="headerForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" clearable variant="outlined" :disabled="isClosed" />
           </v-col>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
             <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed" />
           </v-col>
           <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
@@ -136,6 +136,12 @@
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar tarea</v-btn></div>
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
+              <template #item.plan_id="{ item }">
+                {{ getPlanLabelForTask(item._raw ?? item) }}
+              </template>
+              <template #item.tarea_id="{ item }">
+                {{ getTaskLabelForTask(item._raw ?? item) }}
+              </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteTask(item._raw ?? item)" />
               </template>
@@ -324,6 +330,8 @@ const warehouseOptions = ref<any[]>([]);
 const taskOptions = ref<any[]>([]);
 const loadingTaskOptions = ref(false);
 
+const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
+
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
 const localConsumos = ref<any[]>([]);
@@ -488,6 +496,28 @@ function getSelectedPlanLabel(planId: string) {
   return selectedPlan?.title || planId;
 }
 
+function getSelectedTaskLabel(planId: string, taskId: string) {
+  if (!taskId) return "Sin tarea";
+  const planKey = String(planId || "");
+  const taskKey = String(taskId);
+  const planCache = taskLabelCacheByPlan.value[planKey] || {};
+  return planCache[taskKey] || taskId;
+}
+
+function getPlanLabelForTask(task: any) {
+  return task?.plan_label || task?.plan_nombre || getSelectedPlanLabel(task?.plan_id);
+}
+
+function getTaskLabelForTask(task: any) {
+  return (
+    task?.tarea_label
+    || task?.tarea_nombre
+    || task?.tarea?.nombre
+    || task?.task_name
+    || getSelectedTaskLabel(task?.plan_id, task?.tarea_id)
+  );
+}
+
 function buildAutoHeaderValues() {
   const planLabel = getSelectedPlanLabel(headerForm.plan_id);
   const generatedTitle = `Orden (${planLabel})`;
@@ -511,12 +541,22 @@ async function loadTaskOptionsByPlan(planId: string) {
   try {
     const { data } = await api.get(`/kpi_maintenance/planes/${planId}/tareas`);
     taskOptions.value = asArray(data).map(normalizeTask);
+    taskLabelCacheByPlan.value[String(planId)] = taskOptions.value.reduce((acc: Record<string, string>, task: any) => {
+      acc[String(task.value)] = task.title;
+      return acc;
+    }, {});
   } catch (e: any) {
     taskOptions.value = [];
     ui.error(e?.response?.data?.message || "No se pudieron cargar las tareas del plan.");
   } finally {
     loadingTaskOptions.value = false;
   }
+}
+
+async function ensureTaskLabelCacheForRows(rows: any[]) {
+  const planIds = [...new Set(rows.map((row) => String(row?.plan_id || "")).filter(Boolean))];
+  const pendingPlanIds = planIds.filter((planId) => !taskLabelCacheByPlan.value[planId]);
+  await Promise.all(pendingPlanIds.map((planId) => loadTaskOptionsByPlan(planId)));
 }
 
 async function fetchWorkOrders() {
@@ -542,6 +582,7 @@ async function loadDetailData() {
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`),
     ]);
     taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
+    await ensureTaskLabelCacheForRows(taskRows.value);
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
     localConsumos.value = asArray(consumosRes.data);
     localIssues.value = asArray(issuesRes.data);
@@ -835,7 +876,9 @@ async function createTask() {
     taskRows.value.unshift({
       id: `draft-${Date.now()}`,
       plan_id: taskForm.plan_id,
+      plan_label: getSelectedPlanLabel(taskForm.plan_id),
       tarea_id: taskForm.tarea_id,
+      tarea_label: getSelectedTaskLabel(taskForm.plan_id, taskForm.tarea_id),
       observacion: taskForm.observacion || null,
       _isDraft: true,
     });
