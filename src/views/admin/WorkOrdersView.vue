@@ -71,7 +71,9 @@
           class="mb-4"
           :text="workflowHint"
         />
+
         <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
+
           <div class="text-subtitle-2 font-weight-bold mb-3">Cabecera de orden de trabajo</div>
           <v-row dense>
           <v-col cols="12" md="4">
