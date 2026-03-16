@@ -71,7 +71,9 @@
           class="mb-4"
           :text="workflowHint"
         />
-        <v-card variant="tonal" color="grey-lighten-4" rounded="lg" class="pa-4 mb-4 section-card">
+
+        <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
+
           <div class="text-subtitle-2 font-weight-bold mb-3">Cabecera de orden de trabajo</div>
           <v-row dense>
           <v-col cols="12" md="4">
@@ -959,7 +961,17 @@ watch(
 }
 
 .section-card {
+  background-color: #ffffff;
+  color: #0f172a;
   border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.section-card :deep(.v-label),
+.section-card :deep(.v-field__input),
+.section-card :deep(input),
+.section-card :deep(textarea),
+.section-card :deep(.v-select__selection-text) {
+  color: #0f172a !important;
 }
 
 </style>
