@@ -213,6 +213,51 @@ async function loadRelations() {
   }
 }
 
+function normalizeWorkOrderTitle(item: any) {
+  return item?.titulo ?? item?.title ?? item?.nombre ?? item?.codigo ?? item?.id ?? "Sin orden";
+}
+
+function normalizeTeamName(item: any) {
+  return item?.nombre ?? item?.name ?? item?.codigo ?? item?.id ?? "Sin equipo";
+}
+
+async function enrichAlertsWithRelations(alertRows: any[]) {
+  const equipoIds = Array.from(new Set(alertRows.map((row) => row?.equipo_id).filter(Boolean)));
+  const workOrderIds = Array.from(new Set(alertRows.map((row) => row?.work_order_id).filter(Boolean)));
+
+  const equipoMap = new Map<string, string>();
+  await Promise.all(
+    equipoIds.map(async (equipoId) => {
+      try {
+        const { data } = await api.get(`/kpi_maintenance/equipos/${equipoId}`);
+        const item = data?.data ?? data;
+        equipoMap.set(String(equipoId), normalizeTeamName(item));
+      } catch {
+        equipoMap.set(String(equipoId), String(equipoId));
+      }
+    })
+  );
+
+  const workOrderMap = new Map<string, string>();
+  await Promise.all(
+    workOrderIds.map(async (workOrderId) => {
+      try {
+        const { data } = await api.get(`/kpi_maintenance/work-orders/${workOrderId}`);
+        const item = data?.data ?? data;
+        workOrderMap.set(String(workOrderId), normalizeWorkOrderTitle(item));
+      } catch {
+        workOrderMap.set(String(workOrderId), String(workOrderId));
+      }
+    })
+  );
+
+  return alertRows.map((row) => ({
+    ...row,
+    equipo_nombre: row?.equipo_id ? equipoMap.get(String(row.equipo_id)) ?? String(row.equipo_id) : "",
+    work_order_title: row?.work_order_id ? workOrderMap.get(String(row.work_order_id)) ?? String(row.work_order_id) : "Sin orden",
+  }));
+}
+
 async function fetchRecords() {
   const endpoint = getCollectionEndpoint();
   if (!endpoint) {
@@ -225,7 +270,8 @@ async function fetchRecords() {
     if (moduleConfig.value?.key === "alertas") {
       await api.post("/kpi_maintenance/alertas/recalcular");
     }
-    records.value = await listAll(endpoint);
+    const rows = await listAll(endpoint);
+    records.value = moduleConfig.value?.key === "alertas" ? await enrichAlertsWithRelations(rows) : rows;
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -271,7 +317,7 @@ const rows = computed(() => {
           out[field.key] = opt?.title ?? r[field.key];
         }
       }
-      out._search = JSON.stringify(r).toLowerCase();
+      out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
     })
     .filter((r) => !q || r._search.includes(q));
