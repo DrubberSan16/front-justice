@@ -42,6 +42,21 @@
       :item-props="getRowProps"
       class="elevation-0 enterprise-table"
     >
+      <template #item.estado="{ item }">
+        <template v-if="moduleConfig?.key === 'alertas'">
+          <div class="alert-tree-cell">
+            <div v-if="resolveTableItem(item)._alertGroupStart" class="alert-tree-root">
+              {{ resolveTableItem(item).equipo_nombre || "Sin equipo" }} · {{ resolveTableItem(item).tipo_alerta || "Sin tipo" }}
+            </div>
+            <div class="alert-tree-node">
+              <span class="alert-tree-branch">{{ resolveTableItem(item)._alertGroupEnd ? "└─" : "├─" }}</span>
+              <span>{{ resolveTableItem(item).estado }}</span>
+            </div>
+          </div>
+        </template>
+        <span v-else>{{ resolveTableItem(item).estado }}</span>
+      </template>
+
       <template #item.tipo_alerta="{ item }">
         <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).tipo_alerta }}</span>
       </template>
@@ -365,7 +380,7 @@ const rows = computed(() => {
   let previousGroup = "";
   let groupIndex = 0;
 
-  return sortedRows.map((row) => {
+  return sortedRows.map((row, index) => {
     const groupKey = getAlertGroupKey(row);
     const isGroupStart = groupKey !== previousGroup;
 
@@ -378,6 +393,7 @@ const rows = computed(() => {
       ...row,
       _alertGroupKey: groupKey,
       _alertGroupStart: isGroupStart,
+      _alertGroupEnd: sortedRows[index + 1] ? getAlertGroupKey(sortedRows[index + 1]) !== groupKey : true,
       _alertGroupIndex: groupIndex,
     };
   });
@@ -535,6 +551,29 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+
+:deep(.alert-tree-cell) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:deep(.alert-tree-root) {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+:deep(.alert-tree-node) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:deep(.alert-tree-branch) {
+  font-family: monospace;
+  color: rgba(0, 0, 0, 0.6);
+}
+
 :deep(.alert-group-row-odd td) {
   background-color: rgba(25, 118, 210, 0.04);
 }
