@@ -3,7 +3,7 @@
     No tienes permisos para visualizar el módulo de Roles.
   </v-alert>
 
-  <v-card v-else rounded="xl" class="pa-4">
+  <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3">
       <div>
         <div class="text-h6 font-weight-bold">Roles</div>
@@ -62,7 +62,7 @@
       :items="roles.filtered"
       :loading="roles.loading"
       :items-per-page="itemsPerPage"
-      class="elevation-0"
+      class="elevation-0 enterprise-table"
     >
       <template #item.status="{ item }">
         <v-chip size="small" :color="item.status === 'ACTIVE' ? 'green' : 'grey'" variant="tonal">

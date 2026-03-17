@@ -1,5 +1,5 @@
 <template>
-  <v-card class="pa-8" rounded="xl" elevation="10">
+  <v-card class="pa-8 enterprise-surface" rounded="xl" elevation="10">
     <div class="text-h6 font-weight-bold mb-1">Iniciar sesión</div>
     <div class="text-body-2 text-medium-emphasis mb-6">
       Accede para ver tu dashboard y tus módulos.

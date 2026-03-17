@@ -1,7 +1,7 @@
 <template>
   <v-row dense>
     <v-col cols="12" lg="4">
-      <v-card rounded="xl" class="pa-4 h-100">
+      <v-card rounded="xl" class="pa-4 h-100 enterprise-surface">
         <div class="text-h6 font-weight-bold mb-2">Movimiento manual</div>
         <div class="text-body-2 text-medium-emphasis mb-4">
           Registra entradas y salidas (compra / venta) y genera Kardex automáticamente.
@@ -71,7 +71,7 @@
     </v-col>
 
     <v-col cols="12" lg="8">
-      <v-card rounded="xl" class="pa-4 mb-4">
+      <v-card rounded="xl" class="pa-4 mb-4 enterprise-surface">
         <div class="text-h6 font-weight-bold mb-2">Carga masiva XLSX</div>
         <div class="text-body-2 text-medium-emphasis mb-3">
           Formato esperado: Cod. Sucursal, Sucursal, Cod. Bodega, Bodega, Línea, Categoría,
@@ -100,7 +100,7 @@
         </div>
       </v-card>
 
-      <v-card rounded="xl" class="pa-4">
+      <v-card rounded="xl" class="pa-4 enterprise-surface">
         <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
           <div>
             <div class="text-h6 font-weight-bold">Kardex</div>
@@ -116,7 +116,7 @@
           :items="kardexRows"
           :loading="loadingKardex"
           :items-per-page="20"
-          class="elevation-0"
+          class="elevation-0 enterprise-table"
         />
       </v-card>
     </v-col>
