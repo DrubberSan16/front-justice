@@ -3,7 +3,7 @@
     No tienes permisos para visualizar el módulo de Menú.
   </v-alert>
 
-  <v-card v-else rounded="xl" class="pa-4">
+  <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3">
       <div>
         <div class="text-h6 font-weight-bold">Menú</div>
@@ -52,7 +52,7 @@
       :items="rows"
       :loading="menus.loading"
       :items-per-page="20"
-      class="elevation-0"
+      class="elevation-0 enterprise-table"
     >
       <template #item.icon="{ item }">
         <v-icon :icon="resolveIcon(item.icon ?? undefined)" />

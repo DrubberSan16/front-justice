@@ -1,7 +1,7 @@
 <template>
   <v-row dense>
     <v-col cols="12">
-      <v-card rounded="xl" class="pa-4 fill-height">
+      <v-card rounded="xl" class="pa-4 fill-height enterprise-surface">
         <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
           <div>
             <div class="text-h6 font-weight-bold">Planes de mantenimiento</div>
@@ -26,7 +26,7 @@
           :loading="loadingPlans"
           item-value="id"
           :items-per-page="10"
-          class="elevation-0"
+          class="elevation-0 enterprise-table"
         >
           <template #item.actions="{ item }">
             <div class="d-flex" style="gap: 4px;">

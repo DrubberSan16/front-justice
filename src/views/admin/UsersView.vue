@@ -3,7 +3,7 @@
     No tienes permisos para visualizar el módulo de Usuarios.
   </v-alert>
 
-  <v-card v-else rounded="xl" class="pa-4">
+  <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3">
       <div>
         <div class="text-h6 font-weight-bold">Usuarios</div>
@@ -79,7 +79,7 @@
       :items="users.filtered"
       :loading="users.loading"
       :items-per-page="itemsPerPage"
-      class="elevation-0"
+      class="elevation-0 enterprise-table"
     >
       <template #item.status="{ item }">
         <v-chip

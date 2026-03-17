@@ -1,5 +1,5 @@
 <template>
-  <v-card rounded="xl" class="pa-4 work-orders-shell">
+  <v-card rounded="xl" class="pa-4 work-orders-shell enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
       <div>
         <div class="text-h6 font-weight-bold">Órdenes de trabajo</div>
@@ -23,7 +23,7 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 table-enterprise">
+    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 table-enterprise enterprise-table">
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />

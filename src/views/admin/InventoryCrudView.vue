@@ -7,7 +7,7 @@
     No tienes permisos para consultar este módulo.
   </v-alert>
 
-  <v-card v-else rounded="xl" class="pa-4">
+  <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
       <div>
         <div class="text-h6 font-weight-bold">{{ moduleConfig.title }}</div>
@@ -38,7 +38,7 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0">
+    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 enterprise-table">
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn
@@ -60,10 +60,10 @@
   </v-card>
 
   <v-dialog v-model="dialog" max-width="900">
-    <v-card rounded="xl">
+    <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ moduleConfig?.title }}</v-card-title>
       <v-divider />
-      <v-card-text class="pt-4">
+      <v-card-text class="pt-4 section-surface">
         <v-row dense>
           <v-col v-for="field in moduleConfig?.fields ?? []" :key="field.key" cols="12" md="6">
             <v-select
@@ -106,7 +106,7 @@
   </v-dialog>
 
   <v-dialog v-model="deleteDialog" max-width="500">
-    <v-card rounded="xl">
+    <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
       <v-card-text>¿Deseas eliminar este registro?</v-card-text>
       <v-card-actions>
