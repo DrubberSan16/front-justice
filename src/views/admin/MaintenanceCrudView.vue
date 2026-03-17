@@ -34,7 +34,26 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 enterprise-table">
+    <v-data-table
+      :headers="headers"
+      :items="rows"
+      :loading="loading"
+      :items-per-page="20"
+      :item-props="getRowProps"
+      class="elevation-0 enterprise-table"
+    >
+      <template #item.tipo_alerta="{ item }">
+        <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).tipo_alerta }}</span>
+      </template>
+
+      <template #item.equipo_id="{ item }">
+        <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).equipo_id }}</span>
+      </template>
+
+      <template #item.equipo_nombre="{ item }">
+        <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).equipo_nombre }}</span>
+      </template>
+
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn
@@ -221,6 +240,17 @@ function normalizeTeamName(item: any) {
   return item?.nombre ?? item?.name ?? item?.codigo ?? item?.id ?? "Sin equipo";
 }
 
+function getAlertGroupKey(row: any) {
+  const equipoId = row?.equipo_id ?? "";
+  const tipoAlerta = row?.tipo_alerta ?? "";
+  const referencia = row?.referencia ?? row?.reference ?? "";
+  return `${equipoId}::${tipoAlerta}::${referencia}`;
+}
+
+function resolveTableItem(item: any) {
+  return item?.raw ?? item?._raw ?? item;
+}
+
 async function enrichAlertsWithRelations(alertRows: any[]) {
   const equipoIds = Array.from(new Set(alertRows.map((row) => row?.equipo_id).filter(Boolean)));
   const workOrderIds = Array.from(new Set(alertRows.map((row) => row?.work_order_id).filter(Boolean)));
@@ -307,7 +337,7 @@ const rows = computed(() => {
   if (!cfg) return [];
   const q = search.value.trim().toLowerCase();
 
-  return records.value
+  const normalizedRows = records.value
     .map((r) => {
       const out: any = { ...r };
       out._raw = r;
@@ -321,7 +351,51 @@ const rows = computed(() => {
       return out;
     })
     .filter((r) => !q || r._search.includes(q));
+
+  if (cfg.key !== "alertas") {
+    return normalizedRows;
+  }
+
+  const sortedRows = [...normalizedRows].sort((a, b) => {
+    const keyA = getAlertGroupKey(a);
+    const keyB = getAlertGroupKey(b);
+    return keyA.localeCompare(keyB);
+  });
+
+  let previousGroup = "";
+  let groupIndex = 0;
+
+  return sortedRows.map((row) => {
+    const groupKey = getAlertGroupKey(row);
+    const isGroupStart = groupKey !== previousGroup;
+
+    if (isGroupStart) {
+      groupIndex += 1;
+      previousGroup = groupKey;
+    }
+
+    return {
+      ...row,
+      _alertGroupKey: groupKey,
+      _alertGroupStart: isGroupStart,
+      _alertGroupIndex: groupIndex,
+    };
+  });
 });
+
+function showAlertGroupValue(item: any) {
+  if (moduleConfig.value?.key !== "alertas") return true;
+  return Boolean(item?._alertGroupStart);
+}
+
+function getRowProps({ item }: { item: any }) {
+  if (moduleConfig.value?.key !== "alertas") return {};
+  const row = resolveTableItem(item);
+  const index = row?._alertGroupIndex ?? 0;
+  return {
+    class: index % 2 === 0 ? "alert-group-row-even" : "alert-group-row-odd",
+  };
+}
 
 function sanitizePayload() {
   const cfg = moduleConfig.value;
@@ -459,3 +533,13 @@ onMounted(async () => {
   await loadRelations();
 });
 </script>
+
+<style scoped>
+:deep(.alert-group-row-odd td) {
+  background-color: rgba(25, 118, 210, 0.04);
+}
+
+:deep(.alert-group-row-even td) {
+  background-color: transparent;
+}
+</style>
