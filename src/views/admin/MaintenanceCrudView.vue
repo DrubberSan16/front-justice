@@ -261,6 +261,7 @@ function getAlertGroupKey(row: any) {
   const referencia = row?.referencia ?? row?.reference ?? "";
   if (referencia) return `referencia::${referencia}`;
   return `row::${row?.id ?? row?.alerta_id ?? row?.work_order_id ?? "sin-id"}`;
+
 }
 
 function resolveTableItem(item: any) {
