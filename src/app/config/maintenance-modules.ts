@@ -217,7 +217,6 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     fields: [
       { key: "estado", label: "Estado", type: "text" },
       { key: "tipo_alerta", label: "Tipo alerta", type: "text" },
-      { key: "equipo_id", label: "Equipo ID", type: "text" },
       { key: "equipo_nombre", label: "Equipo", type: "text" },
       { key: "work_order_title", label: "Orden asignada", type: "text" },
     ],

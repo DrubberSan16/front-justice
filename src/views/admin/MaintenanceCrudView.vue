@@ -51,7 +51,7 @@
               @click.stop="toggleAlertGroup(resolveTableItem(item))"
             >
               <span class="alert-tree-toggle">{{ resolveTableItem(item)._alertGroupExpanded ? "▼" : "▶" }}</span>
-              {{ resolveTableItem(item).referencia || resolveTableItem(item).reference || "Sin referencia" }}
+              {{ resolveAlertReference(resolveTableItem(item)) }}
             </div>
             <div class="alert-tree-node">
               <span class="alert-tree-branch">{{ resolveTableItem(item)._alertChild ? "└─" : (resolveTableItem(item)._alertGroupExpanded ? "├─" : "└─") }}</span>
@@ -64,10 +64,6 @@
 
       <template #item.tipo_alerta="{ item }">
         <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).tipo_alerta }}</span>
-      </template>
-
-      <template #item.equipo_id="{ item }">
-        <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).equipo_id }}</span>
       </template>
 
       <template #item.equipo_nombre="{ item }">
@@ -272,6 +268,18 @@ function getAlertGroupKey(row: any) {
   return `row::${row?.id ?? row?.alerta_id ?? row?.work_order_id ?? "sin-id"}`;
 }
 
+function extractPlanIdFromReference(reference: any) {
+  const value = String(reference ?? "").trim();
+  const match = value.match(/^PLAN:\s*(.+)$/i);
+  if (!match?.[1]) return null;
+  const planId = match[1].trim();
+  return planId || null;
+}
+
+function resolveAlertReference(row: any) {
+  return row?.referencia_resuelta ?? row?.referencia ?? row?.reference ?? "Sin referencia";
+}
+
 function resolveTableItem(item: any) {
   if (item?.raw) {
     return { ...item.raw, ...item };
@@ -285,6 +293,13 @@ function resolveTableItem(item: any) {
 async function enrichAlertsWithRelations(alertRows: any[]) {
   const equipoIds = Array.from(new Set(alertRows.map((row) => row?.equipo_id).filter(Boolean)));
   const workOrderIds = Array.from(new Set(alertRows.map((row) => row?.work_order_id).filter(Boolean)));
+  const planIds = Array.from(
+    new Set(
+      alertRows
+        .map((row) => extractPlanIdFromReference(row?.referencia ?? row?.reference))
+        .filter(Boolean)
+    )
+  );
 
   const equipoMap = new Map<string, string>();
   await Promise.all(
@@ -312,8 +327,29 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
     })
   );
 
+  const planMap = new Map<string, string>();
+  await Promise.all(
+    planIds.map(async (planId) => {
+      try {
+        const { data } = await api.get(`/kpi_maintenance/planes/${planId}`);
+        const item = data?.data ?? data;
+        const name = item?.nombre ?? item?.name ?? item?.codigo ?? String(planId);
+        planMap.set(String(planId), String(name));
+      } catch {
+        planMap.set(String(planId), String(planId));
+      }
+    })
+  );
+
   const enrichedRows = alertRows.map((row) => ({
     ...row,
+    referencia_resuelta: (() => {
+      const rawReference = row?.referencia ?? row?.reference ?? "";
+      const planId = extractPlanIdFromReference(rawReference);
+      if (!planId) return rawReference;
+      const planName = planMap.get(String(planId)) ?? String(planId);
+      return `PLAN: ${planName}`;
+    })(),
     equipo_nombre: row?.equipo_id ? equipoMap.get(String(row.equipo_id)) ?? String(row.equipo_id) : "",
     work_order_title: row?.work_order_id ? workOrderMap.get(String(row.work_order_id)) ?? String(row.work_order_id) : "Sin orden",
   }));
