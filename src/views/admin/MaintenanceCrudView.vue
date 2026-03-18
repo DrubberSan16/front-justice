@@ -257,11 +257,15 @@ function normalizeTeamName(item: any) {
   return item?.nombre ?? item?.name ?? item?.codigo ?? item?.id ?? "Sin equipo";
 }
 
+function isMeaningfulOrderTitle(value: any) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return Boolean(normalized) && normalized !== "sin orden";
+}
+
 function getAlertGroupKey(row: any) {
   const referencia = row?.referencia ?? row?.reference ?? "";
   if (referencia) return `referencia::${referencia}`;
   return `row::${row?.id ?? row?.alerta_id ?? row?.work_order_id ?? "sin-id"}`;
-
 }
 
 function resolveTableItem(item: any) {
@@ -314,24 +318,37 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
   for (const row of enrichedRows) {
     const key = getAlertGroupKey(row);
     const existing = groupFallbacks.get(key) ?? { tipo_alerta: "", equipo_id: "", equipo_nombre: "", work_order_title: "" };
+
+    const isEnProceso = String(row?.estado ?? "").toUpperCase() === "EN_PROCESO";
+    const preferredOrder = isEnProceso && isMeaningfulOrderTitle(row?.work_order_title);
+    const keepExistingOrder = isMeaningfulOrderTitle(existing.work_order_title);
+
     groupFallbacks.set(key, {
       tipo_alerta: existing.tipo_alerta || row?.tipo_alerta || "",
       equipo_id: existing.equipo_id || row?.equipo_id || "",
       equipo_nombre: existing.equipo_nombre || row?.equipo_nombre || "",
-      work_order_title: existing.work_order_title || row?.work_order_title || "",
+      work_order_title: preferredOrder
+        ? row?.work_order_title
+        : keepExistingOrder
+          ? existing.work_order_title
+          : row?.work_order_title || "",
+
     });
   }
 
   return enrichedRows.map((row) => {
-    const isAbierta = String(row?.estado ?? "").toUpperCase() === "ABIERTA";
-    if (!isAbierta) return row;
+
     const fallback = groupFallbacks.get(getAlertGroupKey(row));
     return {
       ...row,
       tipo_alerta: row?.tipo_alerta || fallback?.tipo_alerta || "",
       equipo_id: row?.equipo_id || fallback?.equipo_id || "",
       equipo_nombre: row?.equipo_nombre || fallback?.equipo_nombre || "",
-      work_order_title: row?.work_order_title || fallback?.work_order_title || "Sin orden",
+      work_order_title: isMeaningfulOrderTitle(row?.work_order_title)
+        ? row?.work_order_title
+        : fallback?.work_order_title || "Sin orden",
+
+          
     };
   });
 }
@@ -438,7 +455,8 @@ const rows = computed(() => {
 
   return groups.flatMap(({ groupKey, rows: groupRows }, index) => {
     const [header, ...children] = groupRows;
-    const expanded = Boolean(expandedAlertGroups.value[groupKey]);
+    const expanded = expandedAlertGroups.value[groupKey] ?? true;
+
     const baseRow = {
       ...header,
       _alertGroupKey: groupKey,
@@ -469,7 +487,7 @@ const rows = computed(() => {
 
 function showAlertGroupValue(item: any) {
   if (moduleConfig.value?.key !== "alertas") return true;
-  return Boolean(item?._alertGroupHeader);
+  return Boolean(item?._alertGroupHeader || item?._alertChild);
 }
 
 function toggleAlertGroup(item: any) {
