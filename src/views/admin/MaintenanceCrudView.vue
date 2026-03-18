@@ -318,9 +318,11 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
   for (const row of enrichedRows) {
     const key = getAlertGroupKey(row);
     const existing = groupFallbacks.get(key) ?? { tipo_alerta: "", equipo_id: "", equipo_nombre: "", work_order_title: "" };
+
     const isEnProceso = String(row?.estado ?? "").toUpperCase() === "EN_PROCESO";
     const preferredOrder = isEnProceso && isMeaningfulOrderTitle(row?.work_order_title);
     const keepExistingOrder = isMeaningfulOrderTitle(existing.work_order_title);
+
     groupFallbacks.set(key, {
       tipo_alerta: existing.tipo_alerta || row?.tipo_alerta || "",
       equipo_id: existing.equipo_id || row?.equipo_id || "",
@@ -330,10 +332,12 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
         : keepExistingOrder
           ? existing.work_order_title
           : row?.work_order_title || "",
+
     });
   }
 
   return enrichedRows.map((row) => {
+
     const fallback = groupFallbacks.get(getAlertGroupKey(row));
     return {
       ...row,
@@ -343,6 +347,8 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
       work_order_title: isMeaningfulOrderTitle(row?.work_order_title)
         ? row?.work_order_title
         : fallback?.work_order_title || "Sin orden",
+
+          
     };
   });
 }
@@ -450,6 +456,7 @@ const rows = computed(() => {
   return groups.flatMap(({ groupKey, rows: groupRows }, index) => {
     const [header, ...children] = groupRows;
     const expanded = expandedAlertGroups.value[groupKey] ?? true;
+
     const baseRow = {
       ...header,
       _alertGroupKey: groupKey,
