@@ -45,7 +45,11 @@
       <template #item.estado="{ item }">
         <template v-if="moduleConfig?.key === 'alertas'">
           <div class="alert-tree-cell">
-            <div v-if="resolveTableItem(item)._alertGroupHeader" class="alert-tree-root">
+            <div
+              v-if="resolveTableItem(item)._alertGroupHeader"
+              class="alert-tree-root"
+              @click.stop="toggleAlertGroup(resolveTableItem(item))"
+            >
               <span class="alert-tree-toggle">{{ resolveTableItem(item)._alertGroupExpanded ? "▼" : "▶" }}</span>
               {{ resolveTableItem(item).referencia || resolveTableItem(item).reference || "Sin referencia" }}
             </div>
@@ -658,6 +662,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 4px;
+  cursor: pointer;
 }
 
 :deep(.alert-tree-toggle) {
