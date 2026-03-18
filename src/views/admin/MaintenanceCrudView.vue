@@ -256,14 +256,19 @@ function normalizeTeamName(item: any) {
 }
 
 function getAlertGroupKey(row: any) {
-  const equipoId = row?.equipo_id ?? "";
-  const tipoAlerta = row?.tipo_alerta ?? "";
   const referencia = row?.referencia ?? row?.reference ?? "";
-  return `${equipoId}::${tipoAlerta}::${referencia}`;
+  if (referencia) return `referencia::${referencia}`;
+  return `row::${row?.id ?? Math.random()}`;
 }
 
 function resolveTableItem(item: any) {
-  return item?.raw ?? item?._raw ?? item;
+  if (item?.raw) {
+    return { ...item.raw, ...item };
+  }
+  if (item?._raw) {
+    return { ...item._raw, ...item };
+  }
+  return item;
 }
 
 async function enrichAlertsWithRelations(alertRows: any[]) {
