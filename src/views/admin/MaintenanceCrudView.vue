@@ -45,11 +45,12 @@
       <template #item.estado="{ item }">
         <template v-if="moduleConfig?.key === 'alertas'">
           <div class="alert-tree-cell">
-            <div v-if="resolveTableItem(item)._alertGroupStart" class="alert-tree-root">
-              {{ resolveTableItem(item).equipo_nombre || "Sin equipo" }} · {{ resolveTableItem(item).tipo_alerta || "Sin tipo" }}
+            <div v-if="resolveTableItem(item)._alertGroupHeader" class="alert-tree-root">
+              <span class="alert-tree-toggle">{{ resolveTableItem(item)._alertGroupExpanded ? "▼" : "▶" }}</span>
+              {{ resolveTableItem(item).referencia || resolveTableItem(item).reference || "Sin referencia" }}
             </div>
             <div class="alert-tree-node">
-              <span class="alert-tree-branch">{{ resolveTableItem(item)._alertGroupEnd ? "└─" : "├─" }}</span>
+              <span class="alert-tree-branch">{{ resolveTableItem(item)._alertChild ? "└─" : (resolveTableItem(item)._alertGroupExpanded ? "├─" : "└─") }}</span>
               <span>{{ resolveTableItem(item).estado }}</span>
             </div>
           </div>
@@ -166,6 +167,7 @@ const loading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
+const expandedAlertGroups = ref<Record<string, boolean>>({});
 
 const relationOptions = ref<Record<string, Array<{ value: any; title: string }>>>({});
 
@@ -255,15 +257,25 @@ function normalizeTeamName(item: any) {
   return item?.nombre ?? item?.name ?? item?.codigo ?? item?.id ?? "Sin equipo";
 }
 
+function isMeaningfulOrderTitle(value: any) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return Boolean(normalized) && normalized !== "sin orden";
+}
+
 function getAlertGroupKey(row: any) {
-  const equipoId = row?.equipo_id ?? "";
-  const tipoAlerta = row?.tipo_alerta ?? "";
   const referencia = row?.referencia ?? row?.reference ?? "";
-  return `${equipoId}::${tipoAlerta}::${referencia}`;
+  if (referencia) return `referencia::${referencia}`;
+  return `row::${row?.id ?? row?.alerta_id ?? row?.work_order_id ?? "sin-id"}`;
 }
 
 function resolveTableItem(item: any) {
-  return item?.raw ?? item?._raw ?? item;
+  if (item?.raw) {
+    return { ...item.raw, ...item };
+  }
+  if (item?._raw) {
+    return { ...item._raw, ...item };
+  }
+  return item;
 }
 
 async function enrichAlertsWithRelations(alertRows: any[]) {
@@ -296,17 +308,50 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
     })
   );
 
-  return alertRows.map((row) => ({
+  const enrichedRows = alertRows.map((row) => ({
     ...row,
     equipo_nombre: row?.equipo_id ? equipoMap.get(String(row.equipo_id)) ?? String(row.equipo_id) : "",
     work_order_title: row?.work_order_id ? workOrderMap.get(String(row.work_order_id)) ?? String(row.work_order_id) : "Sin orden",
   }));
+
+  const groupFallbacks = new Map<string, { tipo_alerta: string; equipo_id: string; equipo_nombre: string; work_order_title: string }>();
+  for (const row of enrichedRows) {
+    const key = getAlertGroupKey(row);
+    const existing = groupFallbacks.get(key) ?? { tipo_alerta: "", equipo_id: "", equipo_nombre: "", work_order_title: "" };
+    const isEnProceso = String(row?.estado ?? "").toUpperCase() === "EN_PROCESO";
+    const preferredOrder = isEnProceso && isMeaningfulOrderTitle(row?.work_order_title);
+    const keepExistingOrder = isMeaningfulOrderTitle(existing.work_order_title);
+    groupFallbacks.set(key, {
+      tipo_alerta: existing.tipo_alerta || row?.tipo_alerta || "",
+      equipo_id: existing.equipo_id || row?.equipo_id || "",
+      equipo_nombre: existing.equipo_nombre || row?.equipo_nombre || "",
+      work_order_title: preferredOrder
+        ? row?.work_order_title
+        : keepExistingOrder
+          ? existing.work_order_title
+          : row?.work_order_title || "",
+    });
+  }
+
+  return enrichedRows.map((row) => {
+    const fallback = groupFallbacks.get(getAlertGroupKey(row));
+    return {
+      ...row,
+      tipo_alerta: row?.tipo_alerta || fallback?.tipo_alerta || "",
+      equipo_id: row?.equipo_id || fallback?.equipo_id || "",
+      equipo_nombre: row?.equipo_nombre || fallback?.equipo_nombre || "",
+      work_order_title: isMeaningfulOrderTitle(row?.work_order_title)
+        ? row?.work_order_title
+        : fallback?.work_order_title || "Sin orden",
+    };
+  });
 }
 
 async function fetchRecords() {
   const endpoint = getCollectionEndpoint();
   if (!endpoint) {
     records.value = [];
+    expandedAlertGroups.value = {};
     return;
   }
   loading.value = true;
@@ -317,6 +362,9 @@ async function fetchRecords() {
     }
     const rows = await listAll(endpoint);
     records.value = moduleConfig.value?.key === "alertas" ? await enrichAlertsWithRelations(rows) : rows;
+    if (moduleConfig.value?.key === "alertas") {
+      expandedAlertGroups.value = {};
+    }
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -372,36 +420,73 @@ const rows = computed(() => {
   }
 
   const sortedRows = [...normalizedRows].sort((a, b) => {
+    const dateA = new Date(a?.fecha_generada ?? 0).getTime();
+    const dateB = new Date(b?.fecha_generada ?? 0).getTime();
+    if (dateA !== dateB) return dateB - dateA;
     const keyA = getAlertGroupKey(a);
     const keyB = getAlertGroupKey(b);
     return keyA.localeCompare(keyB);
   });
 
-  let previousGroup = "";
-  let groupIndex = 0;
+  const groupedRows = new Map<string, any[]>();
+  for (const row of sortedRows) {
+    const key = getAlertGroupKey(row);
+    const group = groupedRows.get(key) ?? [];
+    group.push(row);
+    groupedRows.set(key, group);
+  }
 
-  return sortedRows.map((row, index) => {
-    const groupKey = getAlertGroupKey(row);
-    const isGroupStart = groupKey !== previousGroup;
+  const groups = Array.from(groupedRows.entries())
+    .map(([groupKey, groupRows]) => {
+      const groupSorted = [...groupRows].sort((a, b) => new Date(b?.fecha_generada ?? 0).getTime() - new Date(a?.fecha_generada ?? 0).getTime());
+      return { groupKey, rows: groupSorted };
+    })
+    .sort((a, b) => {
+      const dateA = new Date(a.rows[0]?.fecha_generada ?? 0).getTime();
+      const dateB = new Date(b.rows[0]?.fecha_generada ?? 0).getTime();
+      return dateB - dateA;
+    });
 
-    if (isGroupStart) {
-      groupIndex += 1;
-      previousGroup = groupKey;
-    }
+  return groups.flatMap(({ groupKey, rows: groupRows }, index) => {
+    const [header, ...children] = groupRows;
+    const expanded = expandedAlertGroups.value[groupKey] ?? true;
+    const baseRow = {
+      ...header,
+      _alertGroupKey: groupKey,
+      _alertGroupHeader: true,
+      _alertGroupStart: true,
+      _alertGroupEnd: !expanded,
+      _alertGroupExpanded: expanded,
+      _alertGroupIndex: index + 1,
+      _alertChild: false,
+    };
 
-    return {
+    if (!expanded) return [baseRow];
+
+    const childRows = children.map((row, childIndex) => ({
       ...row,
       _alertGroupKey: groupKey,
-      _alertGroupStart: isGroupStart,
-      _alertGroupEnd: sortedRows[index + 1] ? getAlertGroupKey(sortedRows[index + 1]) !== groupKey : true,
-      _alertGroupIndex: groupIndex,
-    };
+      _alertGroupHeader: false,
+      _alertGroupStart: false,
+      _alertGroupEnd: childIndex === children.length - 1,
+      _alertGroupExpanded: expanded,
+      _alertGroupIndex: index + 1,
+      _alertChild: true,
+    }));
+
+    return [baseRow, ...childRows];
   });
 });
 
 function showAlertGroupValue(item: any) {
   if (moduleConfig.value?.key !== "alertas") return true;
-  return Boolean(item?._alertGroupStart);
+  return Boolean(item?._alertGroupHeader || item?._alertChild);
+}
+
+function toggleAlertGroup(item: any) {
+  if (moduleConfig.value?.key !== "alertas") return;
+  if (!item?._alertGroupHeader || !item?._alertGroupKey) return;
+  expandedAlertGroups.value[item._alertGroupKey] = !expandedAlertGroups.value[item._alertGroupKey];
 }
 
 function getRowProps({ item }: { item: any }) {
@@ -410,6 +495,8 @@ function getRowProps({ item }: { item: any }) {
   const index = row?._alertGroupIndex ?? 0;
   return {
     class: index % 2 === 0 ? "alert-group-row-even" : "alert-group-row-odd",
+    onClick: () => toggleAlertGroup(row),
+    style: row?._alertGroupHeader ? "cursor:pointer;" : "",
   };
 }
 
@@ -561,6 +648,14 @@ onMounted(async () => {
 :deep(.alert-tree-root) {
   font-size: 12px;
   color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+:deep(.alert-tree-toggle) {
+  font-family: monospace;
+  font-size: 12px;
 }
 
 :deep(.alert-tree-node) {
