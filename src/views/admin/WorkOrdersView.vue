@@ -129,6 +129,7 @@
           <v-tab value="adjuntos">Adjuntos</v-tab>
           <v-tab v-if="showConsumosTab" value="consumos">Consumos</v-tab>
           <v-tab v-if="showMaterialsTab" value="materiales">Salida de materiales</v-tab>
+          <v-tab v-if="editingId" value="history">Histórico</v-tab>
         </v-tabs>
 
         <v-window v-model="tab" class="mt-4">
@@ -329,6 +330,18 @@
               <v-list-item v-if="!localIssues.length" title="Sin salidas de materiales" subtitle="No hay emisiones disponibles para esta orden de trabajo." />
             </v-list>
           </v-window-item>
+
+          <v-window-item value="history">
+            <v-list density="compact" border rounded>
+              <v-list-item
+                v-for="(item, i) in localHistory"
+                :key="i"
+                :title="`${workflowLabel(item.to_status)}${item.from_status ? ` · desde ${workflowLabel(item.from_status)}` : ''}`"
+                :subtitle="`${item.note || 'Sin detalle'}${item.changed_at ? ` · ${new Date(item.changed_at).toLocaleString()}` : ''}`"
+              />
+              <v-list-item v-if="!localHistory.length" title="Sin historial" subtitle="No hay movimientos registrados para esta orden." />
+            </v-list>
+          </v-window-item>
         </v-window>
       </v-card-text>
     </v-card>
@@ -382,6 +395,7 @@ const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
 const localConsumos = ref<any[]>([]);
 const localIssues = ref<any[]>([]);
+const localHistory = ref<any[]>([]);
 
 const headerForm = reactive<any>({
   code: "",
@@ -483,7 +497,7 @@ const headers = [
   { title: "Type", key: "type" },
   { title: "Title", key: "title" },
   { title: "ID", key: "id" },
-  { title: "Equipo", key: "equipment_id" },
+  { title: "Equipo", key: "equipment_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Tipo", key: "maintenance_kind" },
   { title: "Acciones", key: "actions", sortable: false },
@@ -542,6 +556,17 @@ function normalize(item: any) {
   const label = item?.nombre ?? item?.title ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
 }
+function getEquipmentLabel(item: any) {
+  if (!item) return "";
+  return (
+    item?.equipment_nombre
+    || item?.equipo_nombre
+    || equipmentOptions.value.find((option) => String(option.value) === String(item.equipment_id))?.title
+    || item?.equipment_id
+    || ""
+  );
+}
+
 
 async function loadCatalogs() {
   const [equipos, planes, alertas, productos, bodegas] = await Promise.all([
@@ -671,17 +696,19 @@ async function loadDetailData() {
   loadingDetails.value = true;
   unsupportedDetailMessages.value = [];
   try {
-    const [tasksRes, attachmentsRes, consumosRows, issuesRows] = await Promise.all([
+    const [tasksRes, attachmentsRes, consumosRows, issuesRows, historyRes] = await Promise.all([
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/tareas`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, "El backend actual no expone un listado de consumos por OT; los consumos nuevos sí se registran correctamente, pero al reabrir la OT no podrán consultarse desde esta pantalla."),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, "El backend actual no expone un listado de salidas de materiales por OT; las emisiones nuevas dependen de la reserva de stock del backend."),
+      safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/history`, "No se pudo cargar el historial de la orden de trabajo."),
     ]);
     taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
     await ensureTaskLabelCacheForRows(taskRows.value);
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
     localConsumos.value = consumosRows.map((x) => ({ ...x, _raw: x }));
-    localIssues.value = issuesRows.map((x) => ({ ...x, _raw: x }));
+    localIssues.value = issuesRows.map((x) => ({ ...x, total: x.total ?? x.items?.reduce?.((acc: number, it: any) => acc + Number(it.costo_unitario || 0) * Number(it.cantidad || 0), 0) ?? null, _raw: x }));
+    localHistory.value = historyRes.map((x) => ({ ...x, _raw: x }));
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudieron cargar los detalles principales de la OT.");
   } finally {
@@ -692,7 +719,7 @@ async function loadDetailData() {
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase();
   return records.value
-    .map((r) => ({ ...r, _raw: r, _search: JSON.stringify(r).toLowerCase() }))
+    .map((r) => ({ ...r, equipment_label: getEquipmentLabel(r), _raw: r, _search: JSON.stringify({ ...r, equipment_label: getEquipmentLabel(r) }).toLowerCase() }))
     .filter((r) => !q || r._search.includes(q));
 });
 
@@ -732,6 +759,7 @@ function resetAllForms() {
   attachmentRows.value = [];
   localConsumos.value = [];
   localIssues.value = [];
+  localHistory.value = [];
   taskOptions.value = [];
   unsupportedDetailMessages.value = [];
   tab.value = "tareas";
@@ -783,9 +811,14 @@ function fileToBase64(file: File) {
 async function openAttachment(item: any) {
   if (!editingId.value || !item?.id || item?._isDraft) return;
   try {
+    const directUrl = item?.view_url;
+    if (directUrl) {
+      window.open(directUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
     const { data } = await api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`);
     const resolved = unwrapData(data);
-    const target = resolved?.data_url;
+    const target = resolved?.view_url || resolved?.data_url;
     if (!target) {
       ui.error("No fue posible generar la vista del adjunto.");
       return;

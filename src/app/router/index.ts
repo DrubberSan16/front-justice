@@ -141,8 +141,7 @@ export const router = createRouter({
         {
           path: "programaciones",
           name: "programaciones",
-          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
-          props: { moduleKey: "programaciones" },
+          component: () => import("@/views/admin/ProgramacionesCalendarView.vue"),
           meta: { title: "Programaciones" },
         },
         {

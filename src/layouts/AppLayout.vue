@@ -31,6 +31,7 @@
       <v-app-bar-nav-icon @click="drawer = !drawer" />
       <v-app-bar-title>Dashboard</v-app-bar-title>
       <v-spacer />
+      <NotificationBell />
       <div class="text-caption text-medium-emphasis pr-4">
         {{ auth.user?.email }}
       </div>
@@ -46,17 +47,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import logo from "@/assets/logo-justice.png";
 import SidebarMenu from "@/components/menu/SidebarMenu.vue";
+import NotificationBell from "@/components/ui/NotificationBell.vue";
+import { useNotificationsStore } from "@/app/stores/notifications.store";
 
 const router = useRouter();
 const auth = useAuthStore();
 const menu = useMenuStore();
+const notifications = useNotificationsStore();
 
 const { mdAndDown } = useDisplay();
 const isMobile = computed(() => mdAndDown.value);
@@ -64,7 +68,24 @@ const isMobile = computed(() => mdAndDown.value);
 // en desktop abierto por defecto; en mobile cerrado por defecto
 const drawer = ref(!isMobile.value);
 
+watch(
+  () => auth.userId,
+  (userId) => {
+    if (userId) {
+      void notifications.start(userId);
+    } else {
+      notifications.stop();
+    }
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  notifications.stop();
+});
+
 function onLogout() {
+  notifications.stop();
   auth.logout();
   menu.clear();
   router.push({ name: "login" });
