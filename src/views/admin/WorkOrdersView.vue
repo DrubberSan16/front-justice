@@ -1048,6 +1048,9 @@ async function saveHeader(manageLoading = true) {
       const { data } = await api.post("/kpi_maintenance/work-orders", createPayload);
       const created = unwrapData(data);
       const createdId = created?.id ?? data?.id ?? data?.data?.id;
+      if (created?.code) {
+        headerForm.code = created.code;
+      }
       if (createdId) editingId.value = createdId;
       ui.success("Cabecera OT creada.");
     }
@@ -1180,22 +1183,6 @@ async function createTask() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
 
-  if (!editingId.value) {
-    taskRows.value.unshift({
-      id: `draft-${Date.now()}`,
-      plan_id: taskForm.plan_id,
-      plan_label: getSelectedPlanLabel(taskForm.plan_id),
-      tarea_id: taskForm.tarea_id,
-      tarea_label: getSelectedTaskLabel(taskForm.plan_id, taskForm.tarea_id),
-      observacion: taskForm.observacion || null,
-      _isDraft: true,
-    });
-    taskForm.tarea_id = "";
-    taskForm.observacion = "";
-    ui.success("Tarea lista para guardar.");
-    return;
-  }
-
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
 
@@ -1209,6 +1196,8 @@ async function createTask() {
       valor_json: {},
       observacion: taskForm.observacion || null,
     });
+    taskForm.tarea_id = "";
+    taskForm.observacion = "";
     ui.success("Tarea agregada.");
     await loadDetailData();
   } catch (e: any) {
@@ -1236,20 +1225,26 @@ async function createAttachment() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
-  attachmentRows.value.unshift({
-    id: `draft-adj-${Date.now()}`,
-    tipo: attachmentForm.tipo || "EVIDENCIA",
-    nombre: attachmentForm.nombre,
-    contenido_base64: attachmentForm.contenido_base64,
-    mime_type: attachmentForm.mime_type || null,
-    _isDraft: true,
-  });
-  attachmentForm.tipo = "EVIDENCIA";
-  attachmentForm.nombre = "";
-  attachmentForm.contenido_base64 = "";
-  attachmentForm.mime_type = "";
-  attachmentPreviewUrl.value = null;
-  ui.success("Adjunto listo para guardar.");
+  const headerSaved = await ensureHeaderSaved();
+  if (!headerSaved || !editingId.value) return;
+
+  try {
+    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
+      tipo: attachmentForm.tipo || "EVIDENCIA",
+      nombre: attachmentForm.nombre,
+      contenido_base64: attachmentForm.contenido_base64,
+      mime_type: attachmentForm.mime_type || null,
+    });
+    attachmentForm.tipo = "EVIDENCIA";
+    attachmentForm.nombre = "";
+    attachmentForm.contenido_base64 = "";
+    attachmentForm.mime_type = "";
+    attachmentPreviewUrl.value = null;
+    ui.success("Adjunto agregado.");
+    await loadDetailData();
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo agregar el adjunto.");
+  }
 }
 
 async function deleteAttachment(item: any) {
@@ -1376,18 +1371,6 @@ onMounted(async () => {
   }
 });
 
-function extractPaginationMeta(data: any) {
-  const total = Number(data?.total ?? data?.count ?? data?.meta?.total ?? 0);
-  const pageSize = Number(data?.limit ?? data?.per_page ?? data?.meta?.per_page ?? 20);
-  const pages = Number(data?.pages ?? data?.last_page ?? data?.meta?.last_page ?? 0);
-  const computedPages = total > 0 ? Math.ceil(total / Math.max(pageSize, 1)) : 0;
-  return {
-    total,
-    pageSize,
-    pages: pages > 0 ? pages : computedPages,
-  };
-}
-
 function incrementAlphaPrefix(letter: string) {
   const nextCharCode = letter.toUpperCase().charCodeAt(0) + 1;
   if (nextCharCode > 90) return "A";
@@ -1406,25 +1389,38 @@ function nextWorkOrderCode(lastCode: string | null) {
   return `OT-${currentLetter}${String(currentNumber + 1).padStart(5, "0")}`;
 }
 
-async function getLastWorkOrderCode() {
-  const limit = 20;
-  const firstRes = await api.get("/kpi_maintenance/work-orders", { params: { page: 1, limit } });
-  const firstRows = asArray(firstRes.data);
-  if (!firstRows.length) return null;
+function getWorkOrderCodeRank(code: string) {
+  const match = /^OT-([A-Z])(\d{5})$/i.exec(String(code || "").trim());
+  if (!match) return -1;
+  const letter = (match[1] ?? "A").toUpperCase();
+  const number = Number(match[2] ?? "0");
+  return (letter.charCodeAt(0) - 64) * 100000 + number;
+}
 
-  const meta = extractPaginationMeta(firstRes.data);
-  const lastPage = meta.pages > 0 ? meta.pages : 1;
-  const lastRes = lastPage === 1
-    ? firstRes
-    : await api.get("/kpi_maintenance/work-orders", { params: { page: lastPage, limit } });
-  const lastRows = asArray(lastRes.data);
-  const lastItem = lastRows[lastRows.length - 1];
-  return lastItem?.code ?? lastItem?.codigo ?? null;
+function getHighestWorkOrderCode(codes: string[]) {
+  const normalized = codes
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => getWorkOrderCodeRank(b) - getWorkOrderCodeRank(a));
+  return normalized[0] ?? null;
 }
 
 async function assignNextWorkOrderCode() {
   try {
-    const lastCode = await getLastWorkOrderCode();
+    const { data } = await api.get("/kpi_maintenance/work-orders/next-code");
+    const resolved = unwrapData(data);
+    const nextCode = resolved?.code ?? data?.code ?? data?.data?.code;
+    if (nextCode) {
+      headerForm.code = String(nextCode);
+      return;
+    }
+  } catch {
+    // fallback local
+  }
+
+  try {
+    const rows = records.value.length ? records.value : await listAll("/kpi_maintenance/work-orders");
+    const lastCode = getHighestWorkOrderCode(rows.map((row: any) => row?.code ?? row?.codigo ?? ""));
     headerForm.code = nextWorkOrderCode(lastCode);
   } catch {
     headerForm.code = "OT-A00001";
