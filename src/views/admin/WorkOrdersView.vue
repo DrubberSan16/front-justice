@@ -150,7 +150,7 @@
               </v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar al borrador</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar</v-btn></div>
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
               <template #item.plan_id="{ item }">
                 {{ getPlanLabelForTask(item._raw ?? item) }}
@@ -187,7 +187,7 @@
                 </div>
               </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar al borrador</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar</v-btn></div>
             <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0">
               <template #item.nombre="{ item }">
                 <a
@@ -1055,14 +1055,21 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
       await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, updatePayload);
       ui.success("Cabecera OT actualizada.");
     } else {
+      const requestedCode = String(headerForm.code || "").trim();
       const { data } = await api.post("/kpi_maintenance/work-orders", createPayload);
       const created = unwrapData(data);
       const createdId = created?.id ?? data?.id ?? data?.data?.id;
-      if (created?.code) {
-        headerForm.code = created.code;
+      const assignedCode = String(created?.code ?? data?.code ?? data?.data?.code ?? requestedCode || "").trim();
+      const codeWasReassigned = Boolean(created?.code_was_reassigned) || (!!assignedCode && !!requestedCode && assignedCode !== requestedCode);
+      if (assignedCode) {
+        headerForm.code = assignedCode;
       }
       if (createdId) editingId.value = createdId;
-      ui.success("Cabecera OT creada.");
+      if (codeWasReassigned && assignedCode) {
+        ui.open(`Su número de orden fue actualizado a ${assignedCode}.`, "warning", 5500);
+      } else {
+        ui.success("Cabecera OT creada.");
+      }
     }
 
     if (refreshAfterSave) {
@@ -1194,6 +1201,7 @@ async function createTask(showToast = true) {
   if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
 
   const draftId = `draft-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Borrador local: el detalle solo se persiste cuando el usuario guarda la OT completa.
   taskRows.value.unshift({
     id: draftId,
     plan_id: taskForm.plan_id,
@@ -1206,7 +1214,7 @@ async function createTask(showToast = true) {
   });
   taskForm.tarea_id = "";
   taskForm.observacion = "";
-  if (showToast) ui.success("Tarea agregada al borrador.");
+  if (showToast) ui.success("Tarea agregada.");
 }
 
 async function deleteTask(item: any) {
@@ -1230,6 +1238,7 @@ async function createAttachment(showToast = true) {
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
   const draftId = `draft-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Borrador local: el detalle solo se persiste cuando el usuario guarda la OT completa.
   attachmentRows.value.unshift({
     id: draftId,
     tipo: attachmentForm.tipo || "EVIDENCIA",
@@ -1245,7 +1254,7 @@ async function createAttachment(showToast = true) {
   attachmentForm.contenido_base64 = "";
   attachmentForm.mime_type = "";
   attachmentPreviewUrl.value = null;
-  if (showToast) ui.success("Adjunto agregado al borrador.");
+  if (showToast) ui.success("Adjunto agregado.");
 }
 
 async function deleteAttachment(item: any) {
