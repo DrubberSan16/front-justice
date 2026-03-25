@@ -30,7 +30,7 @@
         <div class="d-flex align-center justify-space-between mb-1">
           <span class="text-caption font-weight-bold">{{ cell.day }}</span>
           <v-chip v-if="eventsByDate[cell.date]?.length" size="x-small" color="primary" variant="tonal">
-            {{ eventsByDate[cell.date].length }}
+            {{ eventsByDate[cell.date]?.length ?? 0 }}
           </v-chip>
         </div>
         <div class="calendar-events">
@@ -44,7 +44,7 @@
             {{ event.equipo_nombre }} · {{ event.plan_nombre }}
           </button>
           <div v-if="(eventsByDate[cell.date] || []).length > 3" class="text-caption text-medium-emphasis mt-1">
-            +{{ eventsByDate[cell.date].length - 3 }} más
+            +{{ (eventsByDate[cell.date]?.length ?? 0) - 3 }} más
           </div>
         </div>
       </div>
