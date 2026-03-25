@@ -1059,7 +1059,7 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
       const { data } = await api.post("/kpi_maintenance/work-orders", createPayload);
       const created = unwrapData(data);
       const createdId = created?.id ?? data?.id ?? data?.data?.id;
-      const assignedCode = String(created?.code ?? data?.code ?? data?.data?.code ?? requestedCode || "").trim();
+      const assignedCode = String((created?.code ?? data?.code ?? data?.data?.code ?? requestedCode) || "").trim();
       const codeWasReassigned = Boolean(created?.code_was_reassigned) || (!!assignedCode && !!requestedCode && assignedCode !== requestedCode);
       if (assignedCode) {
         headerForm.code = assignedCode;
