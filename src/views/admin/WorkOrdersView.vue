@@ -65,13 +65,6 @@
 
       <v-card-text class="pt-4 ot-dialog-content">
         <v-alert
-          v-if="editingId"
-          type="info"
-          variant="tonal"
-          class="mb-4"
-          :text="workflowHint"
-        />
-        <v-alert
           v-if="detailNoticeText"
           type="warning"
           variant="tonal"
@@ -157,7 +150,7 @@
               </v-col>
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar tarea</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar al borrador</v-btn></div>
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
               <template #item.plan_id="{ item }">
                 {{ getPlanLabelForTask(item._raw ?? item) }}
@@ -194,7 +187,7 @@
                 </div>
               </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar adjunto</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar al borrador</v-btn></div>
             <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0">
               <template #item.nombre="{ item }">
                 <a
@@ -215,7 +208,7 @@
               <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="getWarehouseProductOptions(consumoForm.bodega_id)" item-title="title" item-value="value" label="Producto" :disabled="!consumoForm.bodega_id" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
-              <v-col cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" /></v-col>
+              <v-col v-if="canViewCosts" cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" readonly /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div v-if="!isClosed" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
@@ -368,8 +361,10 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
+import { useAuthStore } from "@/app/stores/auth.store";
 
 const ui = useUiStore();
+const auth = useAuthStore();
 const loading = ref(false);
 const loadingDetails = ref(false);
 const savingHeader = ref(false);
@@ -388,7 +383,6 @@ const unsupportedDetailMessages = ref<string[]>([]);
 const equipmentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const alertOptions = ref<any[]>([]);
-const productOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
 const stockByWarehouseRows = ref<any[]>([]);
 const productCatalogRows = ref<any[]>([]);
@@ -487,17 +481,13 @@ const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.sta
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
-const showConsumosTab = computed(() => !!editingId.value);
-const showMaterialsTab = computed(() => isInProcess.value || isClosed.value);
+const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
+const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value) && consumoRows.value.length > 0);
 const isEditingLockedFields = computed(() => !!editingId.value);
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
-const workflowHint = computed(() => {
-  if (isCreated.value) return "OT planificada. Completa la información general y registra consumos antes de avanzar.";
-  if (isInProcess.value) return "OT en proceso. Puedes registrar consumos y, si existe reserva de stock en backend, emitir materiales.";
-  if (isClosed.value) return "OT cerrada. Los campos y tabs de detalle quedan en modo solo lectura.";
-  return "Selecciona un estado de workflow válido para continuar el flujo.";
-});
+const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
+const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
 
 const headers = [
   { title: "Code", key: "code" },
@@ -538,25 +528,39 @@ const attachmentHeaders = [
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
-const consumoHeaders = [
-  { title: "Bodega", key: "bodega_label" },
-  { title: "Producto", key: "producto_label" },
-  { title: "Cantidad", key: "cantidad" },
-  { title: "Costo unitario", key: "costo_unitario" },
-  { title: "Subtotal", key: "subtotal" },
-  { title: "Observación", key: "observacion" },
-];
+const consumoHeaders = computed(() => {
+  const base = [
+    { title: "Bodega", key: "bodega_label" },
+    { title: "Producto", key: "producto_label" },
+    { title: "Cantidad", key: "cantidad" },
+  ];
+  if (canViewCosts.value) {
+    base.push(
+      { title: "Costo unitario", key: "costo_unitario" } as any,
+      { title: "Subtotal", key: "subtotal" } as any,
+    );
+  }
+  base.push({ title: "Observación", key: "observacion" } as any);
+  return base;
+});
 
-const issueHeaders = [
-  { title: "Salida", key: "entrega_code" },
-  { title: "Fecha", key: "fecha_label" },
-  { title: "Bodega", key: "bodega_label" },
-  { title: "Producto", key: "producto_label" },
-  { title: "Cantidad", key: "cantidad" },
-  { title: "Costo unitario", key: "costo_unitario" },
-  { title: "Subtotal", key: "subtotal" },
-  { title: "Observación", key: "observacion" },
-];
+const issueHeaders = computed(() => {
+  const base = [
+    { title: "Salida", key: "entrega_code" },
+    { title: "Fecha", key: "fecha_label" },
+    { title: "Bodega", key: "bodega_label" },
+    { title: "Producto", key: "producto_label" },
+    { title: "Cantidad", key: "cantidad" },
+  ];
+  if (canViewCosts.value) {
+    base.push(
+      { title: "Costo unitario", key: "costo_unitario" } as any,
+      { title: "Subtotal", key: "subtotal" } as any,
+    );
+  }
+  base.push({ title: "Observación", key: "observacion" } as any);
+  return base;
+});
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -702,7 +706,6 @@ async function loadCatalogs() {
   productCatalogRows.value = productos;
   warehouseCatalogRows.value = bodegas;
   stockByWarehouseRows.value = stockRows;
-  productOptions.value = productos.map(normalize);
   warehouseOptions.value = bodegas.map(normalize);
 }
 
@@ -905,7 +908,8 @@ async function openEdit(item: any) {
   headerForm.title = item.title ?? item.titulo ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
   headerForm.maintenance_kind = item.maintenance_kind ?? "CORRECTIVO";
-  headerForm.status_workflow = normalizeWorkflowStatus(item.status_workflow);
+  const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
+  headerForm.status_workflow = initialWorkflow === "CLOSED" ? "CLOSED" : "IN_PROGRESS";
   headerForm.plan_id = item.plan_id ?? "";
   taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
@@ -932,7 +936,14 @@ function fileToBase64(file: File) {
 }
 
 async function openAttachment(item: any) {
-  if (!editingId.value || !item?.id || item?._isDraft) return;
+  if (item?._isDraft) {
+    const draftUrl = item?.preview_url;
+    if (draftUrl) {
+      window.open(draftUrl, "_blank", "noopener,noreferrer");
+    }
+    return;
+  }
+  if (!editingId.value || !item?.id) return;
   try {
     const directUrl = item?.view_url;
     if (directUrl) {
@@ -988,7 +999,6 @@ function ensureTabVisible() {
 
 async function startProcess() {
   headerForm.status_workflow = "IN_PROGRESS";
-  await saveHeader();
   tab.value = "consumos";
 }
 
@@ -1001,7 +1011,7 @@ async function prepareClose() {
   tab.value = showMaterialsTab.value ? "materiales" : "consumos";
 }
 
-async function saveHeader(manageLoading = true) {
+async function saveHeader(manageLoading = true, refreshAfterSave = true) {
   if (!headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
     return false;
@@ -1055,8 +1065,10 @@ async function saveHeader(manageLoading = true) {
       ui.success("Cabecera OT creada.");
     }
 
-    await fetchWorkOrders();
-    await loadDetailData();
+    if (refreshAfterSave) {
+      await fetchWorkOrders();
+      await loadDetailData();
+    }
     return true;
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar la cabecera de OT.");
@@ -1066,16 +1078,12 @@ async function saveHeader(manageLoading = true) {
   }
 }
 
-async function ensureHeaderSaved() {
-  if (editingId.value) return true;
-  return saveHeader();
-}
 
 async function saveAll() {
   if (savingHeader.value) return;
   savingHeader.value = true;
   try {
-    const headerSaved = await saveHeader(false);
+    const headerSaved = await saveHeader(false, false);
     if (!headerSaved || !editingId.value) return;
 
     const actions: Array<() => Promise<void>> = [];
@@ -1086,7 +1094,7 @@ async function saveAll() {
       return;
     }
     if (hasCompleteTask) {
-      actions.push(createTask);
+      await createTask(false);
     }
 
     const hasCompleteAttachment = !!(attachmentForm.nombre && attachmentForm.contenido_base64);
@@ -1096,13 +1104,13 @@ async function saveAll() {
       return;
     }
     if (hasCompleteAttachment) {
-      actions.push(createAttachment);
+      await createAttachment(false);
     }
 
-    const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad && consumoForm.costo_unitario);
+    const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad);
     const hasConsumoDraft = !!(consumoForm.producto_id || consumoForm.bodega_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion);
     if (hasConsumoDraft && !hasCompleteConsumo) {
-      ui.error("Para registrar un consumo debes completar bodega, producto, cantidad y costo unitario.");
+      ui.error("Para registrar un consumo debes completar bodega, producto y cantidad.");
       return;
     }
     if (hasCompleteConsumo) {
@@ -1128,8 +1136,10 @@ async function saveAll() {
     await persistDraftAttachments();
 
     if (normalizedWorkflow.value === "CLOSED") {
-      await saveHeader(false);
+      await saveHeader(false, false);
     }
+    await fetchWorkOrders();
+    await loadDetailData();
     ensureTabVisible();
   } finally {
     savingHeader.value = false;
@@ -1179,30 +1189,24 @@ async function persistDraftAttachments() {
   }
 }
 
-async function createTask() {
+async function createTask(showToast = true) {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
 
-  const headerSaved = await ensureHeaderSaved();
-  if (!headerSaved || !editingId.value) return;
-
-  try {
-    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/tareas`, {
-      plan_id: taskForm.plan_id,
-      tarea_id: taskForm.tarea_id,
-      valor_boolean: true,
-      valor_numeric: 0,
-      valor_text: "",
-      valor_json: {},
-      observacion: taskForm.observacion || null,
-    });
-    taskForm.tarea_id = "";
-    taskForm.observacion = "";
-    ui.success("Tarea agregada.");
-    await loadDetailData();
-  } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo agregar la tarea.");
-  }
+  const draftId = `draft-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  taskRows.value.unshift({
+    id: draftId,
+    plan_id: taskForm.plan_id,
+    tarea_id: taskForm.tarea_id,
+    observacion: taskForm.observacion || null,
+    plan_label: getSelectedPlanLabel(taskForm.plan_id),
+    tarea_label: getSelectedTaskLabel(taskForm.plan_id, taskForm.tarea_id),
+    _isDraft: true,
+    _raw: null,
+  });
+  taskForm.tarea_id = "";
+  taskForm.observacion = "";
+  if (showToast) ui.success("Tarea agregada al borrador.");
 }
 
 async function deleteTask(item: any) {
@@ -1221,30 +1225,27 @@ async function deleteTask(item: any) {
   }
 }
 
-async function createAttachment() {
+async function createAttachment(showToast = true) {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
-  const headerSaved = await ensureHeaderSaved();
-  if (!headerSaved || !editingId.value) return;
-
-  try {
-    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
-      tipo: attachmentForm.tipo || "EVIDENCIA",
-      nombre: attachmentForm.nombre,
-      contenido_base64: attachmentForm.contenido_base64,
-      mime_type: attachmentForm.mime_type || null,
-    });
-    attachmentForm.tipo = "EVIDENCIA";
-    attachmentForm.nombre = "";
-    attachmentForm.contenido_base64 = "";
-    attachmentForm.mime_type = "";
-    attachmentPreviewUrl.value = null;
-    ui.success("Adjunto agregado.");
-    await loadDetailData();
-  } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo agregar el adjunto.");
-  }
+  const draftId = `draft-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  attachmentRows.value.unshift({
+    id: draftId,
+    tipo: attachmentForm.tipo || "EVIDENCIA",
+    nombre: attachmentForm.nombre,
+    contenido_base64: attachmentForm.contenido_base64,
+    mime_type: attachmentForm.mime_type || null,
+    preview_url: attachmentPreviewUrl.value,
+    _isDraft: true,
+    _raw: null,
+  });
+  attachmentForm.tipo = "EVIDENCIA";
+  attachmentForm.nombre = "";
+  attachmentForm.contenido_base64 = "";
+  attachmentForm.mime_type = "";
+  attachmentPreviewUrl.value = null;
+  if (showToast) ui.success("Adjunto agregado al borrador.");
 }
 
 async function deleteAttachment(item: any) {
@@ -1265,17 +1266,16 @@ async function deleteAttachment(item: any) {
 
 async function createConsumo() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
-  const headerSaved = await ensureHeaderSaved();
-  if (!headerSaved || !editingId.value) return;
-  if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad || !consumoForm.costo_unitario) {
-    return ui.error("Bodega, producto, cantidad y costo unitario son obligatorios.");
+  if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
+  if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad) {
+    return ui.error("Bodega, producto y cantidad son obligatorios.");
   }
 
   const payload = {
     producto_id: consumoForm.producto_id,
     bodega_id: consumoForm.bodega_id,
     cantidad: Number(consumoForm.cantidad),
-    costo_unitario: Number(consumoForm.costo_unitario),
+    ...(consumoForm.costo_unitario ? { costo_unitario: Number(consumoForm.costo_unitario) } : {}),
     observacion: consumoForm.observacion || null,
   };
 
@@ -1295,8 +1295,7 @@ async function createConsumo() {
 
 async function issueMaterials() {
   if (isClosed.value && !closingFlow.value) return ui.error("La OT está cerrada y no permite edición.");
-  const headerSaved = await ensureHeaderSaved();
-  if (!headerSaved || !editingId.value) return;
+  if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
 
   const items = materialItems.value
     .filter((item) => item.producto_id || item.bodega_id || item.cantidad)
@@ -1452,15 +1451,16 @@ watch(
 
 watch(
   () => consumoForm.bodega_id,
-  () => {
+  async () => {
     resetConsumoProductIfInvalid();
+    await syncConsumoUnitCost();
   },
 );
 
 watch(
   () => consumoForm.producto_id,
-  () => {
-    syncConsumoUnitCost();
+  async () => {
+    await syncConsumoUnitCost();
   },
 );
 
