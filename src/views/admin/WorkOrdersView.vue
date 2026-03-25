@@ -71,7 +71,13 @@
           class="mb-4"
           :text="workflowHint"
         />
-        
+        <v-alert
+          v-if="editingId"
+          type="warning"
+          variant="tonal"
+          class="mb-4"
+          text="El backend actual solo permite actualizar estado, tipo de mantenimiento y valor_json de la cabecera. Equipo, plan y alerta quedan en solo lectura al editar."
+        />
         <v-alert
           v-if="detailNoticeText"
           type="warning"
@@ -213,8 +219,8 @@
 
           <v-window-item value="consumos">
             <v-row v-if="!isClosed" dense class="pt-2">
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="productOptions" item-title="title" item-value="value" label="Producto" variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="getWarehouseProductOptions(consumoForm.bodega_id)" item-title="title" item-value="value" label="Producto" :disabled="!consumoForm.bodega_id" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
@@ -227,15 +233,20 @@
               class="mb-3"
               text="La OT está cerrada. Los consumos se muestran solo para visualización."
             />
-            <v-list density="compact" border rounded>
-              <v-list-item
-                v-for="(item, i) in localConsumos"
-                :key="i"
-                :title="`Producto: ${item.producto_id} / Cantidad: ${item.cantidad}`"
-                :subtitle="item.observacion || '-'"
-              />
-              <v-list-item v-if="!localConsumos.length" title="Sin consumos registrados" subtitle="No hay consumos disponibles para esta orden de trabajo." />
-            </v-list>
+            <v-data-table
+              :headers="consumoHeaders"
+              :items="consumoRows"
+              density="comfortable"
+              class="table-enterprise"
+              :items-per-page="5"
+            >
+              <template #bottom />
+              <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
+              <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #no-data>
+                <div class="pa-4 text-medium-emphasis">No hay consumos disponibles para esta orden de trabajo.</div>
+              </template>
+            </v-data-table>
           </v-window-item>
 
           <v-window-item value="materiales">
@@ -268,10 +279,11 @@
                     <v-col cols="12" md="5">
                       <v-select
                         v-model="item.producto_id"
-                        :items="productOptions"
+                        :items="getWarehouseProductOptions(item.bodega_id)"
                         item-title="title"
                         item-value="value"
                         label="Material"
+                        :disabled="!item.bodega_id"
                         variant="outlined"
                       />
                     </v-col>
@@ -314,15 +326,20 @@
               class="mb-3"
               text="La emisión de materiales solo funciona si el backend ya creó reservas de stock. Si no existe esa reserva, la OT puede cerrarse sin emitir materiales desde esta pantalla."
             />
-            <v-list density="compact" border rounded>
-              <v-list-item
-                v-for="(item, i) in localIssues"
-                :key="i"
-                :title="`${item.code || item.codigo || 'Sin código'} · Total: ${item.total ?? '-'} `"
-                :subtitle="item.observacion || 'Sin observación'"
-              />
-              <v-list-item v-if="!localIssues.length" title="Sin salidas de materiales" subtitle="No hay emisiones disponibles para esta orden de trabajo." />
-            </v-list>
+            <v-data-table
+              :headers="issueHeaders"
+              :items="issueRows"
+              density="comfortable"
+              class="table-enterprise"
+              :items-per-page="5"
+            >
+              <template #bottom />
+              <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
+              <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #no-data>
+                <div class="pa-4 text-medium-emphasis">No hay emisiones disponibles para esta orden de trabajo.</div>
+              </template>
+            </v-data-table>
           </v-window-item>
 
           <v-window-item value="history">
@@ -380,6 +397,9 @@ const planOptions = ref<any[]>([]);
 const alertOptions = ref<any[]>([]);
 const productOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
+const stockByWarehouseRows = ref<any[]>([]);
+const productCatalogRows = ref<any[]>([]);
+const warehouseCatalogRows = ref<any[]>([]);
 const taskOptions = ref<any[]>([]);
 const loadingTaskOptions = ref(false);
 
@@ -525,6 +545,26 @@ const attachmentHeaders = [
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
+const consumoHeaders = [
+  { title: "Bodega", key: "bodega_label" },
+  { title: "Producto", key: "producto_label" },
+  { title: "Cantidad", key: "cantidad" },
+  { title: "Costo unitario", key: "costo_unitario" },
+  { title: "Subtotal", key: "subtotal" },
+  { title: "Observación", key: "observacion" },
+];
+
+const issueHeaders = [
+  { title: "Salida", key: "entrega_code" },
+  { title: "Fecha", key: "fecha_label" },
+  { title: "Bodega", key: "bodega_label" },
+  { title: "Producto", key: "producto_label" },
+  { title: "Cantidad", key: "cantidad" },
+  { title: "Costo unitario", key: "costo_unitario" },
+  { title: "Subtotal", key: "subtotal" },
+  { title: "Observación", key: "observacion" },
+];
+
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
@@ -550,6 +590,98 @@ function normalize(item: any) {
   const label = item?.nombre ?? item?.title ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
 }
+
+const productNameMap = computed(() => productCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
+  const key = String(item?.id || "");
+  if (!key) return acc;
+  acc[key] = normalize(item).title;
+  return acc;
+}, {}));
+
+const warehouseNameMap = computed(() => warehouseCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
+  const key = String(item?.id || "");
+  if (!key) return acc;
+  acc[key] = normalize(item).title;
+  return acc;
+}, {}));
+
+function toPositiveNumber(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getWarehouseProductOptions(warehouseId: string) {
+  const warehouseKey = String(warehouseId || "");
+  if (!warehouseKey) return [] as any[];
+  const seen = new Set<string>();
+  return stockByWarehouseRows.value
+    .filter((row: any) => String(row?.bodega_id || "") === warehouseKey)
+    .filter((row: any) => {
+      const productKey = String(row?.producto_id || "");
+      if (!productKey || seen.has(productKey)) return false;
+      seen.add(productKey);
+      return true;
+    })
+    .map((row: any) => ({
+      value: row.producto_id,
+      title: `${productNameMap.value[String(row.producto_id)] || row.producto_id} · Stock: ${toPositiveNumber(row?.stock_actual)}`,
+    }))
+    .sort((a: any, b: any) => String(a.title).localeCompare(String(b.title)));
+}
+
+const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
+  ...item,
+  producto_label: item?.producto_label || item?.producto_nombre || productNameMap.value[String(item?.producto_id || "")] || item?.producto_id || "-",
+  bodega_label: item?.bodega_label || item?.bodega_nombre || warehouseNameMap.value[String(item?.bodega_id || "")] || item?.bodega_id || "-",
+  cantidad: toPositiveNumber(item?.cantidad),
+  costo_unitario: toPositiveNumber(item?.costo_unitario),
+  subtotal: toPositiveNumber(item?.subtotal ?? (toPositiveNumber(item?.cantidad) * toPositiveNumber(item?.costo_unitario))),
+  observacion: item?.observacion || "-",
+})));
+
+const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
+  const rawItems = Array.isArray(issue?.items) ? issue.items : [];
+  return rawItems.map((detail: any, index: number) => ({
+    id: `${issue?.id || issue?.entrega_id || 'issue'}-${detail?.id || index}`,
+    entrega_code: issue?.code || issue?.codigo || "Sin código",
+    fecha_label: issue?.fecha ? new Date(issue.fecha).toLocaleString() : "-",
+    producto_label: detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
+    bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
+    cantidad: toPositiveNumber(detail?.cantidad),
+    costo_unitario: toPositiveNumber(detail?.costo_unitario),
+    subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
+    observacion: issue?.observacion || "-",
+  }));
+}));
+
+function resetConsumoProductIfInvalid() {
+  if (!consumoForm.bodega_id) {
+    consumoForm.producto_id = "";
+    return;
+  }
+  const exists = getWarehouseProductOptions(String(consumoForm.bodega_id)).some((option: any) => String(option.value) === String(consumoForm.producto_id || ""));
+  if (!exists) consumoForm.producto_id = "";
+}
+
+function resetMaterialProductIfInvalid(index: number) {
+  const current = materialItems.value[index];
+  if (!current) return;
+  if (!current.bodega_id) {
+    current.producto_id = "";
+    return;
+  }
+  const exists = getWarehouseProductOptions(String(current.bodega_id)).some((option: any) => String(option.value) === String(current.producto_id || ""));
+  if (!exists) current.producto_id = "";
+}
+
+function syncConsumoUnitCost() {
+  const selectedProduct = productCatalogRows.value.find((item: any) => String(item?.id || "") === String(consumoForm.producto_id || ""));
+  if (!selectedProduct) return;
+  const nextCost = Number(selectedProduct?.ultimo_costo ?? 0);
+  if (!consumoForm.costo_unitario || Number(consumoForm.costo_unitario) <= 0) {
+    consumoForm.costo_unitario = String(nextCost || "");
+  }
+}
 function getEquipmentLabel(item: any) {
   if (!item) return "";
   return (
@@ -563,16 +695,20 @@ function getEquipmentLabel(item: any) {
 
 
 async function loadCatalogs() {
-  const [equipos, planes, alertas, productos, bodegas] = await Promise.all([
+  const [equipos, planes, alertas, productos, bodegas, stockRows] = await Promise.all([
     listAll("/kpi_maintenance/equipos"),
     listAll("/kpi_maintenance/planes"),
     listAll("/kpi_maintenance/alertas"),
     listAll("/kpi_inventory/productos"),
     listAll("/kpi_inventory/bodegas"),
+    listAll("/kpi_inventory/stock-bodega"),
   ]);
   equipmentOptions.value = equipos.map(normalize);
   planOptions.value = planes.map(normalize);
   alertOptions.value = alertas.map(normalize);
+  productCatalogRows.value = productos;
+  warehouseCatalogRows.value = bodegas;
+  stockByWarehouseRows.value = stockRows;
   productOptions.value = productos.map(normalize);
   warehouseOptions.value = bodegas.map(normalize);
 }
@@ -967,10 +1103,10 @@ async function saveAll() {
       actions.push(createAttachment);
     }
 
-    const hasCompleteConsumo = !!(consumoForm.producto_id && consumoForm.cantidad && consumoForm.costo_unitario);
+    const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad && consumoForm.costo_unitario);
     const hasConsumoDraft = !!(consumoForm.producto_id || consumoForm.bodega_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion);
     if (hasConsumoDraft && !hasCompleteConsumo) {
-      ui.error("Para registrar un consumo debes completar producto, cantidad y costo unitario.");
+      ui.error("Para registrar un consumo debes completar bodega, producto, cantidad y costo unitario.");
       return;
     }
     if (hasCompleteConsumo) {
@@ -1143,22 +1279,26 @@ async function createConsumo() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   const headerSaved = await ensureHeaderSaved();
   if (!headerSaved || !editingId.value) return;
-  if (!consumoForm.producto_id || !consumoForm.cantidad || !consumoForm.costo_unitario) {
-    return ui.error("Producto, cantidad y costo unitario son obligatorios.");
+  if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad || !consumoForm.costo_unitario) {
+    return ui.error("Bodega, producto, cantidad y costo unitario son obligatorios.");
   }
 
   const payload = {
     producto_id: consumoForm.producto_id,
-    bodega_id: consumoForm.bodega_id || null,
+    bodega_id: consumoForm.bodega_id,
     cantidad: Number(consumoForm.cantidad),
     costo_unitario: Number(consumoForm.costo_unitario),
     observacion: consumoForm.observacion || null,
   };
 
   try {
-    const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, payload);
-    const created = unwrapData(data) || payload;
-    localConsumos.value.unshift({ ...created, _raw: created });
+    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, payload);
+    consumoForm.producto_id = "";
+    consumoForm.bodega_id = "";
+    consumoForm.cantidad = "";
+    consumoForm.costo_unitario = "";
+    consumoForm.observacion = "";
+    await loadDetailData();
     ui.success("Consumo registrado.");
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo registrar el consumo.");
@@ -1191,12 +1331,11 @@ async function issueMaterials() {
   };
 
   try {
-    const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, payload);
-    const created = unwrapData(data) || {};
-    localIssues.value.unshift({ ...created, observacion: payload.observacion, _raw: created });
+    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, payload);
     materialItems.value = [newMaterialItem()];
     materialsForm.observacion = "";
     closingFlow.value = false;
+    await loadDetailData();
     ui.success("Salida de materiales registrada.");
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo emitir materiales.");
@@ -1319,6 +1458,27 @@ watch(
       taskForm.tarea_id = "";
     }
     await loadTaskOptionsByPlan(nextPlan);
+  },
+);
+
+watch(
+  () => consumoForm.bodega_id,
+  () => {
+    resetConsumoProductIfInvalid();
+  },
+);
+
+watch(
+  () => consumoForm.producto_id,
+  () => {
+    syncConsumoUnitCost();
+  },
+);
+
+watch(
+  () => materialItems.value.map((item) => `${item.bodega_id}|${item.producto_id}`).join(';'),
+  () => {
+    materialItems.value.forEach((_, index) => resetMaterialProductIfInvalid(index));
   },
 );
 </script>
