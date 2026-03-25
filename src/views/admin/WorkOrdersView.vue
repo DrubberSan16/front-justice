@@ -71,6 +71,20 @@
           class="mb-4"
           :text="workflowHint"
         />
+        <v-alert
+          v-if="editingId"
+          type="warning"
+          variant="tonal"
+          class="mb-4"
+          text="El backend actual solo permite actualizar estado, tipo de mantenimiento y valor_json de la cabecera. Equipo, plan y alerta quedan en solo lectura al editar."
+        />
+        <v-alert
+          v-if="detailNoticeText"
+          type="warning"
+          variant="tonal"
+          class="mb-4"
+          :text="detailNoticeText"
+        />
 
         <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
 
@@ -80,25 +94,27 @@
             <v-text-field v-model="headerForm.code" label="Code" variant="outlined" readonly />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed" />
+            <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed || isEditingLockedFields" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field v-model="headerForm.maintenance_kind" label="Tipo mantenimiento" variant="outlined" :disabled="isClosed" />
+            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptions" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isClosed" />
           </v-col>
           <v-col cols="12" md="4">
             <v-select
               v-model="headerForm.status_workflow"
               :items="workflowOptions"
+              item-title="title"
+              item-value="value"
               label="Estado workflow"
               variant="outlined"
               :disabled="isClosed"
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" clearable variant="outlined" :disabled="isClosed" />
+            <v-select v-model="headerForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" clearable variant="outlined" :disabled="isClosed || isEditingLockedFields" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed" />
+            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed || isEditingLockedFields" />
           </v-col>
           <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
           <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
@@ -187,10 +203,12 @@
             <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar adjunto</v-btn></div>
             <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0">
               <template #item.nombre="{ item }">
-                <a v-if="buildAttachmentUrl(item._raw ?? item)" :href="buildAttachmentUrl(item._raw ?? item) || undefined" target="_blank" rel="noopener noreferrer">
+                <a
+                  href="#"
+                  @click.prevent="openAttachment(item._raw ?? item)"
+                >
                   {{ (item._raw ?? item).nombre }}
                 </a>
-                <span v-else>{{ (item._raw ?? item).nombre }}</span>
               </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteAttachment(item._raw ?? item)" />
@@ -215,7 +233,13 @@
               text="La OT está cerrada. Los consumos se muestran solo para visualización."
             />
             <v-list density="compact" border rounded>
-              <v-list-item v-for="(item, i) in localConsumos" :key="i" :title="`Producto: ${item.producto_id} / Cantidad: ${item.cantidad}`" :subtitle="item.observacion || '-'" />
+              <v-list-item
+                v-for="(item, i) in localConsumos"
+                :key="i"
+                :title="`Producto: ${item.producto_id} / Cantidad: ${item.cantidad}`"
+                :subtitle="item.observacion || '-'"
+              />
+              <v-list-item v-if="!localConsumos.length" title="Sin consumos registrados" subtitle="No hay consumos disponibles para esta orden de trabajo." />
             </v-list>
           </v-window-item>
 
@@ -282,19 +306,27 @@
               <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Guardar salida de materiales</v-btn></div>
             </template>
             <v-alert
-              v-else
+              v-if="isClosed"
               type="success"
               variant="tonal"
               class="mb-3"
               text="OT cerrada: esta sección está bloqueada y muestra el resultado final de salida de materiales."
             />
+            <v-alert
+              v-else
+              type="info"
+              variant="tonal"
+              class="mb-3"
+              text="La emisión de materiales solo funciona si el backend ya creó reservas de stock. Si no existe esa reserva, la OT puede cerrarse sin emitir materiales desde esta pantalla."
+            />
             <v-list density="compact" border rounded>
               <v-list-item
                 v-for="(item, i) in localIssues"
                 :key="i"
-                :title="`${item.codigo || 'Sin código'} · Items: ${item.items?.length ?? 0}`"
-                :subtitle="item.observacion || '-'"
+                :title="`${item.code || item.codigo || 'Sin código'} · Total: ${item.total ?? '-'} `"
+                :subtitle="item.observacion || 'Sin observación'"
               />
+              <v-list-item v-if="!localIssues.length" title="Sin salidas de materiales" subtitle="No hay emisiones disponibles para esta orden de trabajo." />
             </v-list>
           </v-window-item>
         </v-window>
@@ -334,6 +366,7 @@ const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
 const closingFlow = ref(false);
+const unsupportedDetailMessages = ref<string[]>([]);
 
 const equipmentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
@@ -352,11 +385,11 @@ const localIssues = ref<any[]>([]);
 
 const headerForm = reactive<any>({
   code: "",
-  type: "",
+  type: "MANTENIMIENTO",
   title: "",
   equipment_id: "",
-  maintenance_kind: "",
-  status_workflow: "CREADA",
+  maintenance_kind: "CORRECTIVO",
+  status_workflow: "PLANNED",
   plan_id: "",
   alerta_id: "",
   causa: "",
@@ -404,23 +437,45 @@ function newMaterialItem(): MaterialItemForm {
 
 const materialItems = ref<MaterialItemForm[]>([newMaterialItem()]);
 const workflowOptions = [
-  { title: "CREADA", value: "CREADA" },
-  { title: "EN PROCESO", value: "EN PROCESO" },
-  { title: "CERRADA", value: "CERRADA" },
+  { title: "Planificada", value: "PLANNED" },
+  { title: "En proceso", value: "IN_PROGRESS" },
+  { title: "Cerrada", value: "CLOSED" },
 ];
 
-const normalizedWorkflow = computed(() => (headerForm.status_workflow || "").toUpperCase());
-const isCreated = computed(() => normalizedWorkflow.value === "CREADA");
-const isInProcess = computed(() => normalizedWorkflow.value === "EN PROCESO");
-const isClosed = computed(() => normalizedWorkflow.value === "CERRADA");
+const maintenanceKindOptions = [
+  { title: "Correctivo", value: "CORRECTIVO" },
+  { title: "Preventivo", value: "PREVENTIVO" },
+  { title: "Predictivo", value: "PREDICTIVO" },
+  { title: "Inspección", value: "INSPECCION" },
+];
+
+function normalizeWorkflowStatus(value: unknown) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (["PLANNED", "PLANIFICADA", "PLANIFICADO", "CREADA", "CREADO"].includes(raw)) return "PLANNED";
+  if (["IN_PROGRESS", "IN PROGRESS", "EN PROCESO", "EN_PROCESO", "PROCESSING"].includes(raw)) return "IN_PROGRESS";
+  if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
+  return raw || "PLANNED";
+}
+
+function workflowLabel(value: unknown) {
+  const normalized = normalizeWorkflowStatus(value);
+  return workflowOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
+}
+
+const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
+const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
+const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
+const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
 const showConsumosTab = computed(() => !!editingId.value);
 const showMaterialsTab = computed(() => isInProcess.value || isClosed.value);
-const currentWorkflowLabel = computed(() => `Estado: ${headerForm.status_workflow || "Sin definir"}`);
+const isEditingLockedFields = computed(() => !!editingId.value);
+const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
+const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
 const workflowHint = computed(() => {
-  if (isCreated.value) return "OT creada. Completa la información en tabs generales y de consumos.";
-  if (isInProcess.value) return "OT en proceso. Ya puedes registrar la salida de materiales para cerrar la orden.";
-  if (isClosed.value) return "OT cerrada. Los campos y tabs de detalle están en modo solo lectura.";
-  return "Selecciona un estado de workflow para continuar el flujo.";
+  if (isCreated.value) return "OT planificada. Completa la información general y registra consumos antes de avanzar.";
+  if (isInProcess.value) return "OT en proceso. Puedes registrar consumos y, si existe reserva de stock en backend, emitir materiales.";
+  if (isClosed.value) return "OT cerrada. Los campos y tabs de detalle quedan en modo solo lectura.";
+  return "Selecciona un estado de workflow válido para continuar el flujo.";
 });
 
 const headers = [
@@ -484,7 +539,7 @@ async function listAll(endpoint: string) {
 }
 
 function normalize(item: any) {
-  const label = item?.nombre ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
+  const label = item?.nombre ?? item?.title ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
 }
 
@@ -534,8 +589,35 @@ function getTaskLabelForTask(task: any) {
 function buildAutoHeaderValues() {
   const planLabel = getSelectedPlanLabel(headerForm.plan_id);
   const generatedTitle = `Orden (${planLabel})`;
-  const generatedType = headerForm.maintenance_kind || null;
+  const generatedType = headerForm.type || "MANTENIMIENTO";
   return { generatedTitle, generatedType };
+}
+
+function unwrapData<T = any>(payload: T): any {
+  if (payload && typeof payload === "object" && "data" in (payload as any)) {
+    return (payload as any).data;
+  }
+  return payload;
+}
+
+function hasApiNotImplemented(error: any) {
+  const status = Number(error?.response?.status || 0);
+  return status === 404 || status === 405 || status === 501;
+}
+
+async function safeGetList(url: string, fallbackMessage: string) {
+  try {
+    const { data } = await api.get(url);
+    return asArray(data);
+  } catch (e: any) {
+    if (hasApiNotImplemented(e)) {
+      if (!unsupportedDetailMessages.value.includes(fallbackMessage)) {
+        unsupportedDetailMessages.value.push(fallbackMessage);
+      }
+      return [];
+    }
+    throw e;
+  }
 }
 
 function normalizeTask(item: any) {
@@ -587,20 +669,21 @@ async function fetchWorkOrders() {
 async function loadDetailData() {
   if (!editingId.value) return;
   loadingDetails.value = true;
+  unsupportedDetailMessages.value = [];
   try {
-    const [tasksRes, attachmentsRes, consumosRes, issuesRes] = await Promise.all([
+    const [tasksRes, attachmentsRes, consumosRows, issuesRows] = await Promise.all([
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/tareas`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`),
-      api.get(`/kpi_maintenance/work-orders/${editingId.value}/consumos`),
-      api.get(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`),
+      safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, "El backend actual no expone un listado de consumos por OT; los consumos nuevos sí se registran correctamente, pero al reabrir la OT no podrán consultarse desde esta pantalla."),
+      safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, "El backend actual no expone un listado de salidas de materiales por OT; las emisiones nuevas dependen de la reserva de stock del backend."),
     ]);
     taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
     await ensureTaskLabelCacheForRows(taskRows.value);
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
-    localConsumos.value = asArray(consumosRes.data);
-    localIssues.value = asArray(issuesRes.data);
+    localConsumos.value = consumosRows.map((x) => ({ ...x, _raw: x }));
+    localIssues.value = issuesRows.map((x) => ({ ...x, _raw: x }));
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudieron cargar los detalles de la OT.");
+    ui.error(e?.response?.data?.message || "No se pudieron cargar los detalles principales de la OT.");
   } finally {
     loadingDetails.value = false;
   }
@@ -615,11 +698,11 @@ const rows = computed(() => {
 
 function resetAllForms() {
   headerForm.code = "";
-  headerForm.type = "";
+  headerForm.type = "MANTENIMIENTO";
   headerForm.title = "";
   headerForm.equipment_id = "";
-  headerForm.maintenance_kind = "";
-  headerForm.status_workflow = "CREADA";
+  headerForm.maintenance_kind = "CORRECTIVO";
+  headerForm.status_workflow = "PLANNED";
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
   headerForm.causa = "";
@@ -650,6 +733,7 @@ function resetAllForms() {
   localConsumos.value = [];
   localIssues.value = [];
   taskOptions.value = [];
+  unsupportedDetailMessages.value = [];
   tab.value = "tareas";
 }
 
@@ -669,8 +753,8 @@ async function openEdit(item: any) {
   headerForm.type = item.type ?? item.tipo ?? "";
   headerForm.title = item.title ?? item.titulo ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
-  headerForm.maintenance_kind = item.maintenance_kind ?? "";
-  headerForm.status_workflow = item.status_workflow ?? "CREADA";
+  headerForm.maintenance_kind = item.maintenance_kind ?? "CORRECTIVO";
+  headerForm.status_workflow = normalizeWorkflowStatus(item.status_workflow);
   headerForm.plan_id = item.plan_id ?? "";
   taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
@@ -696,9 +780,20 @@ function fileToBase64(file: File) {
   });
 }
 
-function buildAttachmentUrl(item: any) {
-  if (!item?.id || !editingId.value || item?._isDraft) return null;
-  return `${api.defaults.baseURL}/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`;
+async function openAttachment(item: any) {
+  if (!editingId.value || !item?.id || item?._isDraft) return;
+  try {
+    const { data } = await api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`);
+    const resolved = unwrapData(data);
+    const target = resolved?.data_url;
+    if (!target) {
+      ui.error("No fue posible generar la vista del adjunto.");
+      return;
+    }
+    window.open(target, "_blank", "noopener,noreferrer");
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo abrir el adjunto.");
+  }
 }
 
 async function handleAttachmentFileChange(value: File | File[] | null) {
@@ -736,22 +831,18 @@ function ensureTabVisible() {
 }
 
 async function startProcess() {
-  headerForm.status_workflow = "EN PROCESO";
+  headerForm.status_workflow = "IN_PROGRESS";
   await saveHeader();
   tab.value = "consumos";
 }
 
 async function prepareClose() {
   closingFlow.value = true;
-  headerForm.status_workflow = "CERRADA";
-  materialItems.value = localConsumos.value.length
-    ? localConsumos.value.map((consumo) => ({
-        producto_id: consumo.producto_id ?? "",
-        bodega_id: consumo.bodega_id ?? "",
-        cantidad: consumo.cantidad != null ? String(consumo.cantidad) : "",
-      }))
-    : [newMaterialItem()];
-  tab.value = "materiales";
+  headerForm.status_workflow = "CLOSED";
+  if (!materialItems.value.length) {
+    materialItems.value = [newMaterialItem()];
+  }
+  tab.value = showMaterialsTab.value ? "materiales" : "consumos";
 }
 
 async function saveHeader(manageLoading = true) {
@@ -770,13 +861,13 @@ async function saveHeader(manageLoading = true) {
 
   const { generatedTitle, generatedType } = buildAutoHeaderValues();
 
-  const payload = {
+  const createPayload = {
     code: headerForm.code || null,
     type: generatedType,
     title: generatedTitle,
     equipment_id: headerForm.equipment_id,
     maintenance_kind: headerForm.maintenance_kind || null,
-    status_workflow: headerForm.status_workflow || null,
+    status_workflow: normalizedWorkflow.value,
     plan_id: headerForm.plan_id || null,
     alerta_id: headerForm.alerta_id || null,
     valor_json: {
@@ -786,23 +877,21 @@ async function saveHeader(manageLoading = true) {
     },
   };
 
+  const updatePayload = {
+    maintenance_kind: headerForm.maintenance_kind || null,
+    status_workflow: normalizedWorkflow.value,
+    valor_json: createPayload.valor_json,
+  };
+
   if (manageLoading) savingHeader.value = true;
   try {
     if (editingId.value) {
-      await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, {
-        code: payload.code,
-        type: payload.type,
-        title: payload.title,
-        maintenance_kind: payload.maintenance_kind,
-        status_workflow: payload.status_workflow,
-        plan_id: payload.plan_id,
-        alerta_id: payload.alerta_id,
-        valor_json: payload.valor_json,
-      });
+      await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, updatePayload);
       ui.success("Cabecera OT actualizada.");
     } else {
-      const { data } = await api.post("/kpi_maintenance/work-orders", payload);
-      const createdId = data?.id ?? data?.data?.id;
+      const { data } = await api.post("/kpi_maintenance/work-orders", createPayload);
+      const created = unwrapData(data);
+      const createdId = created?.id ?? data?.id ?? data?.data?.id;
       if (createdId) editingId.value = createdId;
       ui.success("Cabecera OT creada.");
     }
@@ -831,16 +920,44 @@ async function saveAll() {
     if (!headerSaved || !editingId.value) return;
 
     const actions: Array<() => Promise<void>> = [];
-    if (taskForm.plan_id || taskForm.tarea_id || taskForm.observacion) {
+    const hasCompleteTask = !!(taskForm.plan_id && taskForm.tarea_id);
+    const hasTaskDraft = !!(taskForm.plan_id || taskForm.tarea_id || taskForm.observacion);
+    if (hasTaskDraft && !hasCompleteTask) {
+      ui.error("Para guardar una tarea debes seleccionar plan y tarea.");
+      return;
+    }
+    if (hasCompleteTask) {
       actions.push(createTask);
     }
-    if (attachmentForm.nombre || attachmentForm.contenido_base64) {
+
+    const hasCompleteAttachment = !!(attachmentForm.nombre && attachmentForm.contenido_base64);
+    const hasAttachmentDraft = !!(attachmentForm.nombre || attachmentForm.contenido_base64 || attachmentForm.mime_type);
+    if (hasAttachmentDraft && !hasCompleteAttachment) {
+      ui.error("Para guardar un adjunto debes seleccionar un archivo válido.");
+      return;
+    }
+    if (hasCompleteAttachment) {
       actions.push(createAttachment);
     }
-    if (consumoForm.producto_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion) {
+
+    const hasCompleteConsumo = !!(consumoForm.producto_id && consumoForm.cantidad && consumoForm.costo_unitario);
+    const hasConsumoDraft = !!(consumoForm.producto_id || consumoForm.bodega_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion);
+    if (hasConsumoDraft && !hasCompleteConsumo) {
+      ui.error("Para registrar un consumo debes completar producto, cantidad y costo unitario.");
+      return;
+    }
+    if (hasCompleteConsumo) {
       actions.push(createConsumo);
     }
-    if (hasMaterialDraft()) {
+
+    const validMaterialItems = materialItems.value
+      .filter((item) => item.producto_id && item.bodega_id && item.cantidad && Number(item.cantidad) > 0);
+    const hasMaterialFields = hasMaterialDraft();
+    if (hasMaterialFields && !validMaterialItems.length && !materialsForm.observacion) {
+      ui.error("La salida de materiales requiere al menos un item completo con bodega, material y cantidad.");
+      return;
+    }
+    if (validMaterialItems.length) {
       actions.push(issueMaterials);
     }
 
@@ -851,7 +968,7 @@ async function saveAll() {
     await persistDraftTasks();
     await persistDraftAttachments();
 
-    if (normalizedWorkflow.value === "CERRADA") {
+    if (normalizedWorkflow.value === "CLOSED") {
       await saveHeader(false);
     }
     ensureTabVisible();
@@ -1013,7 +1130,8 @@ async function createConsumo() {
 
   try {
     const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, payload);
-    localConsumos.value.unshift(data ?? payload);
+    const created = unwrapData(data) || payload;
+    localConsumos.value.unshift({ ...created, _raw: created });
     ui.success("Consumo registrado.");
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo registrar el consumo.");
@@ -1040,17 +1158,15 @@ async function issueMaterials() {
     return ui.error("Cada item debe incluir bodega, material y cantidad mayor a 0.");
   }
 
-  const issueCode = generateIssueMaterialsCode();
-
   const payload = {
-    codigo: issueCode,
     items,
     observacion: materialsForm.observacion || null,
   };
 
   try {
     const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, payload);
-    localIssues.value.unshift({ ...(data ?? payload), codigo: data?.codigo || issueCode });
+    const created = unwrapData(data) || {};
+    localIssues.value.unshift({ ...created, observacion: payload.observacion, _raw: created });
     materialItems.value = [newMaterialItem()];
     materialsForm.observacion = "";
     closingFlow.value = false;
@@ -1077,11 +1193,6 @@ function hasMaterialDraft() {
   return materialItems.value.some((item) => item.producto_id || item.bodega_id || item.cantidad);
 }
 
-function generateIssueMaterialsCode() {
-  const now = new Date();
-  const compact = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}${String(now.getMilliseconds()).padStart(3, "0")}`;
-  return `EM-${compact}`;
-}
 
 async function confirmDelete() {
   if (!deletingId.value) return;
