@@ -72,13 +72,6 @@
           :text="workflowHint"
         />
         <v-alert
-          v-if="editingId"
-          type="warning"
-          variant="tonal"
-          class="mb-4"
-          text="El backend actual solo permite actualizar estado, tipo de mantenimiento y valor_json de la cabecera. Equipo, plan y alerta quedan en solo lectura al editar."
-        />
-        <v-alert
           v-if="detailNoticeText"
           type="warning"
           variant="tonal"
