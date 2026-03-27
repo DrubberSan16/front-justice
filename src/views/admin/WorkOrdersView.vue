@@ -34,12 +34,12 @@
   </v-card>
 
   <v-dialog v-model="dialog" fullscreen>
-    <v-card>
-      <v-toolbar color="primary" dark>
+    <v-card class="work-order-dialog-card">
+      <v-toolbar color="primary" class="work-orders-toolbar">
         <v-btn icon="mdi-close" @click="dialog = false" />
         <v-toolbar-title>{{ editingId ? `Editar OT ${headerForm.code || editingId}` : "Nueva orden de trabajo" }}</v-toolbar-title>
         <v-spacer />
-        <v-chip v-if="editingId" color="white" text-color="primary" class="mr-2" variant="flat">
+        <v-chip v-if="editingId" color="accent" class="mr-2 workflow-chip" variant="flat">
           {{ currentWorkflowLabel }}
         </v-chip>
         <v-btn
@@ -151,7 +151,7 @@
               <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar</v-btn></div>
-            <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0">
+            <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0 enterprise-table">
               <template #item.plan_id="{ item }">
                 {{ getPlanLabelForTask(item._raw ?? item) }}
               </template>
@@ -188,7 +188,7 @@
               </v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar</v-btn></div>
-            <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0">
+            <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0 enterprise-table">
               <template #item.nombre="{ item }">
                 <a
                   href="#"
@@ -223,7 +223,7 @@
               :headers="consumoHeaders"
               :items="consumoRows"
               density="comfortable"
-              class="table-enterprise"
+              class="table-enterprise enterprise-table"
               :items-per-page="5"
             >
               <template #bottom />
@@ -316,7 +316,7 @@
               :headers="issueHeaders"
               :items="issueRows"
               density="comfortable"
-              class="table-enterprise"
+              class="table-enterprise enterprise-table"
               :items-per-page="5"
             >
               <template #bottom />
@@ -1483,32 +1483,46 @@ watch(
 
 <style scoped>
 .work-orders-shell {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  overflow: hidden;
 }
 
 .table-enterprise {
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid var(--surface-border);
   overflow: hidden;
+  background: var(--surface-base);
 }
 
+.work-order-dialog-card,
 .ot-dialog-content {
-  background-color: #f8fafc;
+  background: var(--app-main-background);
+  color: var(--app-text);
+}
+
+.work-orders-toolbar {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.workflow-chip {
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .section-card {
-  background-color: #ffffff;
-  color: #0f172a;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: var(--surface-base);
+  color: var(--app-text);
+  border: 1px solid var(--surface-border);
 }
 
 .section-card :deep(.v-label),
+.section-card :deep(.v-field),
 .section-card :deep(.v-field__input),
 .section-card :deep(input),
 .section-card :deep(textarea),
 .section-card :deep(.v-select__selection-text) {
-  color: #0f172a !important;
+  color: var(--app-text) !important;
 }
 
+.section-card :deep(.v-field) {
+  background: var(--field-background);
+}
 </style>
