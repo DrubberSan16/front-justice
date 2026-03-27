@@ -1,4 +1,4 @@
-export type FieldType = "text" | "number" | "boolean" | "select" | "date";
+export type FieldType = "text" | "number" | "boolean" | "select" | "date" | "json";
 
 export type MaintenanceField = {
   key: string;
@@ -6,6 +6,7 @@ export type MaintenanceField = {
   type: FieldType;
   required?: boolean;
   sendInPayload?: boolean;
+  jsonMode?: "array" | "object";
   options?: Array<{ value: any; title: string }>;
   relation?: {
     endpoint: string;
@@ -231,6 +232,63 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "maintenance_kind", label: "Tipo mantención", type: "text" },
       { key: "plan_id", label: "Plan", type: "select", relation: { endpoint: "/kpi_maintenance/planes" } },
       { key: "alerta_id", label: "Alerta", type: "select", relation: { endpoint: "/kpi_maintenance/alertas" } },
+    ],
+  },
+  {
+    key: "inteligencia-procedimientos",
+    title: "Plantillas MPG y checklist operativo",
+    endpoint: "/kpi_maintenance/inteligencia/procedimientos",
+    fields: [
+      { key: "codigo", label: "CÃ³digo", type: "text", required: true },
+      { key: "nombre", label: "Plantilla", type: "text", required: true },
+      { key: "tipo_proceso", label: "Tipo de proceso", type: "text", required: true },
+      { key: "clase_mantenimiento", label: "Clase de mantenimiento", type: "text" },
+      { key: "frecuencia_horas", label: "Frecuencia horas", type: "number" },
+      { key: "documento_referencia", label: "Documento referencia", type: "text" },
+      { key: "version", label: "VersiÃ³n", type: "text" },
+      { key: "objetivo", label: "Objetivo", type: "text" },
+      { key: "precauciones", label: "Precauciones (JSON)", type: "json", jsonMode: "array" },
+      { key: "herramientas", label: "Herramientas (JSON)", type: "json", jsonMode: "array" },
+      { key: "materiales", label: "Materiales (JSON)", type: "json", jsonMode: "array" },
+      { key: "responsabilidades", label: "Responsabilidades (JSON)", type: "json", jsonMode: "array" },
+      { key: "actividades", label: "Checklist operativo (JSON)", type: "json", jsonMode: "array" },
+    ],
+  },
+  {
+    key: "inteligencia-analisis-lubricante",
+    title: "AnÃ¡lisis de lubricante",
+    endpoint: "/kpi_maintenance/inteligencia/analisis-lubricante",
+    fields: [
+      { key: "codigo", label: "CÃ³digo", type: "text", required: true },
+      { key: "equipo_id", label: "Equipo", type: "select", relation: { endpoint: "/kpi_maintenance/equipos" } },
+      { key: "equipo_codigo", label: "CÃ³digo equipo", type: "text" },
+      { key: "equipo_nombre", label: "Nombre equipo", type: "text" },
+      { key: "compartimento_principal", label: "Compartimento principal", type: "text" },
+      { key: "estado_diagnostico", label: "Estado diagnÃ³stico", type: "text" },
+      { key: "fecha_muestra", label: "Fecha muestra", type: "date" },
+      { key: "fecha_reporte", label: "Fecha reporte", type: "date" },
+      { key: "cliente", label: "Cliente", type: "text" },
+      { key: "diagnostico", label: "DiagnÃ³stico", type: "text" },
+      { key: "documento_origen", label: "Documento origen", type: "text" },
+      { key: "payload_json", label: "Payload auxiliar (JSON)", type: "json", jsonMode: "object" },
+      { key: "detalles", label: "Detalle del anÃ¡lisis (JSON)", type: "json", jsonMode: "array" },
+    ],
+  },
+  {
+    key: "inteligencia-control-componentes",
+    title: "Control de componentes crÃ­ticos",
+    endpoint: "/kpi_maintenance/inteligencia/control-componentes",
+    allowCreate: false,
+    allowEdit: false,
+    allowDelete: false,
+    fields: [
+      { key: "equipo_codigo", label: "Equipo", type: "text" },
+      { key: "tipo_componente", label: "Componente", type: "text" },
+      { key: "posicion", label: "PosiciÃ³n", type: "text" },
+      { key: "estado", label: "Estado", type: "text" },
+      { key: "horas_uso", label: "Horas de uso", type: "number" },
+      { key: "reporte_codigo", label: "Reporte", type: "text" },
+      { key: "fecha_reporte", label: "Fecha reporte", type: "date" },
     ],
   },
   {

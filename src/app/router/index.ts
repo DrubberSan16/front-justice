@@ -150,6 +150,27 @@ export const router = createRouter({
           meta: { title: "Inteligencia Operativa", viewFile: "views/admin/MaintenanceIntelligenceView.vue" },
         },
         {
+          path: "inteligencia/procedimientos",
+          name: "inteligencia-procedimientos",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "inteligencia-procedimientos" },
+          meta: { title: "Plantillas MPG", viewFile: "views/admin/MaintenanceCrudView.vue" },
+        },
+        {
+          path: "inteligencia/analisis-lubricante",
+          name: "inteligencia-analisis-lubricante",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "inteligencia-analisis-lubricante" },
+          meta: { title: "Analisis de lubricante", viewFile: "views/admin/MaintenanceCrudView.vue" },
+        },
+        {
+          path: "inteligencia/control-componentes",
+          name: "inteligencia-control-componentes",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "inteligencia-control-componentes" },
+          meta: { title: "Componentes criticos", viewFile: "views/admin/MaintenanceCrudView.vue" },
+        },
+        {
           path: "alertas",
           name: "alertas",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),

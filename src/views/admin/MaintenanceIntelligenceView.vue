@@ -28,13 +28,23 @@
 
       <v-row dense class="mt-3">
         <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="2">
-          <v-card rounded="lg" variant="outlined" class="pa-4 intelligence-kpi h-100">
+          <v-card
+            rounded="lg"
+            variant="outlined"
+            :class="['pa-4', 'intelligence-kpi', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName) }]"
+            :role="card.routeName ? 'button' : undefined"
+            :tabindex="card.routeName ? 0 : undefined"
+            @click="openCard(card)"
+            @keydown.enter="openCard(card)"
+            @keydown.space.prevent="openCard(card)"
+          >
             <div class="d-flex align-center justify-space-between mb-2">
               <div class="text-subtitle-2 text-medium-emphasis">{{ card.label }}</div>
               <v-icon :icon="card.icon" size="20" />
             </div>
             <div class="text-h4 font-weight-bold">{{ card.value }}</div>
             <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
+            <div v-if="card.routeName" class="text-caption text-primary mt-3">Abrir mantenimiento</div>
           </v-card>
         </v-col>
       </v-row>
@@ -413,6 +423,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import {
   buildComponentsReport,
@@ -426,6 +437,14 @@ import {
 } from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
+type IntelligenceCard = {
+  key: string;
+  label: string;
+  value: number;
+  helper: string;
+  icon: string;
+  routeName?: string;
+};
 
 type SummaryState = {
   generated_at?: string;
@@ -443,6 +462,7 @@ const schedules = ref<AnyRow[]>([]);
 const dailyReports = ref<AnyRow[]>([]);
 const components = ref<AnyRow[]>([]);
 const exportState = reactive<Record<string, boolean>>({});
+const router = useRouter();
 
 function unwrap<T = any>(payload: any, fallback: T): T {
   return (payload?.data ?? payload ?? fallback) as T;
@@ -550,6 +570,11 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
   }
 }
 
+function openCard(card: IntelligenceCard) {
+  if (!card.routeName) return;
+  router.push({ name: card.routeName });
+}
+
 const generatedAtLabel = computed(() => {
   if (!summary.generated_at) return "Sin sincronizar";
   return new Date(summary.generated_at).toLocaleString();
@@ -569,13 +594,14 @@ const componentEquipmentCount = computed(
   () => new Set(components.value.map((item) => item.equipo_codigo).filter(Boolean)).size,
 );
 
-const kpiCards = computed(() => [
+const kpiCards = computed<IntelligenceCard[]>(() => [
   {
     key: "procedimientos",
     label: "Plantillas MPG",
     value: procedures.value.length,
     helper: "Procedimientos y checklist operativos",
     icon: "mdi-file-document-multiple-outline",
+    routeName: "inteligencia-procedimientos",
   },
   {
     key: "analisis",
@@ -583,6 +609,7 @@ const kpiCards = computed(() => [
     value: analyses.value.length,
     helper: `${analysesInAlert.value} en alerta`,
     icon: "mdi-flask-outline",
+    routeName: "inteligencia-analisis-lubricante",
   },
   {
     key: "componentes",
@@ -590,6 +617,7 @@ const kpiCards = computed(() => [
     value: components.value.length,
     helper: `${componentAlertCount.value} con seguimiento prioritario`,
     icon: "mdi-engine-outline",
+    routeName: "inteligencia-control-componentes",
   },
   {
     key: "reportes",
@@ -721,6 +749,19 @@ onMounted(() => {
 .intelligence-kpi {
   border-color: var(--surface-border);
   background: var(--surface-soft);
+}
+
+.intelligence-kpi--clickable {
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.intelligence-kpi--clickable:hover,
+.intelligence-kpi--clickable:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(31, 75, 122, 0.35);
+  box-shadow: 0 14px 28px rgba(31, 75, 122, 0.12);
+  outline: none;
 }
 
 .intelligence-wrap {

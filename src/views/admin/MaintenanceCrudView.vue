@@ -6,8 +6,8 @@
   <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
       <div>
-        <div class="text-h6 font-weight-bold">{{ moduleConfig.title }}</div>
-        <div class="text-body-2 text-medium-emphasis">Mantenimiento de {{ moduleConfig.title.toLowerCase() }}.</div>
+        <div class="text-h6 font-weight-bold">{{ displayModuleTitle }}</div>
+        <div class="text-body-2 text-medium-emphasis">Mantenimiento de {{ displayModuleTitle.toLowerCase() }}.</div>
       </div>
       <v-btn
         v-if="canCreate"
@@ -92,7 +92,7 @@
 
   <v-dialog v-model="dialog" max-width="900">
     <v-card rounded="xl" class="enterprise-dialog">
-      <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ moduleConfig?.title }}</v-card-title>
+      <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ displayModuleTitle }}</v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
@@ -103,7 +103,7 @@
               :items="getSelectOptions(field)"
               item-title="title"
               item-value="value"
-              :label="field.label"
+              :label="repairText(field.label)"
               :hint="field.required ? 'Obligatorio' : ''"
               persistent-hint
               clearable
@@ -112,14 +112,24 @@
             <v-checkbox
               v-else-if="field.type === 'boolean'"
               v-model="form[field.key]"
-              :label="field.label"
+              :label="repairText(field.label)"
               hide-details
+            />
+            <v-textarea
+              v-else-if="field.type === 'json'"
+              v-model="form[field.key]"
+              :label="repairText(field.label)"
+              :hint="field.required ? 'Obligatorio. Ingresa un JSON valido.' : 'Ingresa un JSON valido.'"
+              persistent-hint
+              auto-grow
+              rows="4"
+              variant="outlined"
             />
             <v-text-field
               v-else
               v-model="form[field.key]"
               :type="field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'"
-              :label="field.label"
+              :label="repairText(field.label)"
               :hint="field.required ? 'Obligatorio' : ''"
               persistent-hint
               variant="outlined"
@@ -177,6 +187,62 @@ const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const form = reactive<Record<string, any>>({});
 
+function repairText(value: unknown) {
+  const text = String(value ?? "");
+  try {
+    return decodeURIComponent(escape(text));
+  } catch {
+    return text;
+  }
+}
+
+const displayModuleTitle = computed(() => repairText(moduleConfig.value?.title ?? ""));
+
+function defaultJsonValue(field: MaintenanceField) {
+  return field.jsonMode === "array" ? "[]" : "{}";
+}
+
+function serializeJsonValue(value: unknown, field: MaintenanceField) {
+  if (value === null || value === undefined || value === "") {
+    return defaultJsonValue(field);
+  }
+
+  if (typeof value === "string") {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return defaultJsonValue(field);
+  }
+}
+
+function parseJsonField(value: unknown, field: MaintenanceField) {
+  const raw = String(value ?? "").trim();
+  if (!raw) {
+    return field.jsonMode === "array" ? [] : {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (field.jsonMode === "array" && !Array.isArray(parsed)) {
+      throw new Error(`El campo ${repairText(field.label)} debe ser un arreglo JSON.`);
+    }
+    if (field.jsonMode === "object" && (!parsed || Array.isArray(parsed) || typeof parsed !== "object")) {
+      throw new Error(`El campo ${repairText(field.label)} debe ser un objeto JSON.`);
+    }
+    return parsed;
+  } catch (error: any) {
+    ui.error(error?.message || `El campo ${repairText(field.label)} debe tener formato JSON valido.`);
+    return null;
+  }
+}
+
 function resolveEndpoint(template: string, id: string) {
   return template.replace(":id", id);
 }
@@ -186,7 +252,7 @@ function getPathId(showError = true) {
   if (!cfg?.pathParam) return null;
   const val = form[cfg.pathParam.key];
   if (!val && showError) {
-    ui.error(`Debes seleccionar ${cfg.pathParam.label}.`);
+    ui.error(`Debes seleccionar ${repairText(cfg.pathParam.label)}.`);
   }
   if (!val) {
     return null;
@@ -244,7 +310,7 @@ async function loadRelations() {
     const rows = await listAll(field.relation.endpoint);
     relationOptions.value[field.key] = rows.map((r: any) => ({
       value: r.id,
-      title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
     }));
   }
 }
@@ -423,6 +489,7 @@ function resetForm() {
   for (const field of moduleConfig.value?.fields ?? []) {
     if (field.key === "status") form[field.key] = "ACTIVE";
     else if (field.type === "boolean") form[field.key] = false;
+    else if (field.type === "json") form[field.key] = defaultJsonValue(field);
     else if (field.type === "number") form[field.key] = "0";
     else form[field.key] = "";
   }
@@ -436,7 +503,7 @@ function getSelectOptions(field: MaintenanceField) {
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const base = cfg.fields.slice(0, 6).map((f) => ({ title: f.label, key: f.key }));
+  const base = cfg.fields.slice(0, 6).map((f) => ({ title: repairText(f.label), key: f.key }));
   if (!canEdit.value && !canDelete.value) return base;
   return [...base, { title: "Acciones", key: "actions", sortable: false }];
 });
@@ -564,6 +631,10 @@ function sanitizePayload() {
     if (field.type === "select" && val === "") {
       val = null;
     }
+    if (field.type === "json") {
+      val = parseJsonField(val, field);
+      if (val === null) return null;
+    }
     if (field.key === "items" && typeof val === "string") {
       try {
         val = JSON.parse(val);
@@ -587,7 +658,7 @@ function validateForm() {
     const val = form[field.key];
     if (field.type === "boolean") continue;
     if (val === "" || val === null || val === undefined) {
-      ui.error(`El campo ${field.label} es obligatorio.`);
+      ui.error(`El campo ${repairText(field.label)} es obligatorio.`);
       return false;
     }
   }
@@ -604,7 +675,9 @@ function openEdit(item: any) {
   editingId.value = item.id;
   resetForm();
   for (const field of moduleConfig.value?.fields ?? []) {
-    form[field.key] = item[field.key] ?? form[field.key];
+    form[field.key] = field.type === "json"
+      ? serializeJsonValue(item[field.key], field)
+      : item[field.key] ?? form[field.key];
   }
   dialog.value = true;
 }
