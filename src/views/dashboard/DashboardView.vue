@@ -155,6 +155,100 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <v-row>
+      <v-col cols="12" md="6" xl="4">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Indicadores de proceso</div>
+              <div class="text-body-2 text-medium-emphasis">Seguimiento documental y operativo.</div>
+            </div>
+            <v-chip label color="secondary" variant="tonal">{{ processIndicatorCards.length }} KPI</v-chip>
+          </div>
+
+          <div class="process-indicator-grid">
+            <div v-for="item in processIndicatorCards" :key="item.key" class="process-indicator-item">
+              <div class="text-caption text-medium-emphasis">{{ item.label }}</div>
+              <div class="text-h6 font-weight-bold">{{ item.value }}</div>
+              <div class="text-caption text-medium-emphasis">{{ item.helper }}</div>
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" md="6" xl="4">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="text-subtitle-1 font-weight-bold">Reporte diario de operacion</div>
+            <v-chip label color="success" variant="tonal">{{ latestDailyReport?.codigo || "Sin reporte" }}</v-chip>
+          </div>
+
+          <div v-if="latestDailyReport" class="dashboard-stack">
+            <div class="text-body-2 text-medium-emphasis">
+              {{ latestDailyReport.fecha_reporte || "Sin fecha" }}<span v-if="latestDailyReport.turno"> · {{ latestDailyReport.turno }}</span><span v-if="latestDailyReport.locacion"> · {{ latestDailyReport.locacion }}</span>
+            </div>
+
+            <div class="summary-strip">
+              <v-chip size="small" label color="primary" variant="tonal">Unidades: {{ latestDailyUnits.length }}</v-chip>
+              <v-chip size="small" label color="warning" variant="tonal">Combustible: {{ latestDailyFuel.length }}</v-chip>
+              <v-chip size="small" label color="error" variant="tonal">Componentes: {{ latestDailyComponents.length }}</v-chip>
+            </div>
+
+            <v-list density="compact" class="bg-transparent pa-0">
+              <v-list-item
+                v-for="unit in latestDailyUnits"
+                :key="unit.id"
+                :title="unit.equipo_codigo || 'Sin equipo'"
+                :subtitle="`Horometro ${unit.horometro_actual ?? 'N/A'} · MPG ${unit.mpg_actual ?? 'N/A'}`"
+                class="px-0"
+              />
+              <v-list-item
+                v-if="!latestDailyUnits.length"
+                title="Sin unidades registradas"
+                subtitle="El reporte diario aun no tiene unidades asociadas."
+                class="px-0"
+              />
+            </v-list>
+          </div>
+
+          <div v-else class="text-body-2 text-medium-emphasis">Aun no existen reportes diarios cargados.</div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" xl="4">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-3">
+            <div class="text-subtitle-1 font-weight-bold">Cronograma semanal</div>
+            <v-chip label color="info" variant="tonal">{{ latestWeeklySchedule?.codigo || "Sin cronograma" }}</v-chip>
+          </div>
+
+          <div v-if="latestWeeklySchedule" class="dashboard-stack">
+            <div class="text-body-2 text-medium-emphasis">
+              {{ latestWeeklySchedule.fecha_inicio || "Sin fecha" }} / {{ latestWeeklySchedule.fecha_fin || "Sin fecha" }}<span v-if="latestWeeklySchedule.locacion"> · {{ latestWeeklySchedule.locacion }}</span>
+            </div>
+
+            <v-list density="compact" class="bg-transparent pa-0">
+              <v-list-item
+                v-for="activity in latestWeeklyActivities"
+                :key="activity.id"
+                :title="activity.actividad || 'Actividad sin nombre'"
+                :subtitle="`${normalizeDayLabel(activity.dia_semana)}${activity.hora_inicio ? ` · ${activity.hora_inicio}` : ''}${activity.equipo_codigo ? ` · ${activity.equipo_codigo}` : ''}`"
+                class="px-0"
+              />
+              <v-list-item
+                v-if="!latestWeeklyActivities.length"
+                title="Sin actividades programadas"
+                subtitle="El cronograma aun no tiene actividades registradas."
+                class="px-0"
+              />
+            </v-list>
+          </div>
+
+          <div v-else class="text-body-2 text-medium-emphasis">Aun no existen cronogramas semanales cargados.</div>
+        </v-card>
+      </v-col>
+    </v-row>
   </v-container>
 </template>
 
@@ -183,6 +277,9 @@ const alertas = ref<AnyRow[]>([]);
 const workOrders = ref<AnyRow[]>([]);
 const productos = ref<AnyRow[]>([]);
 const stockRows = ref<AnyRow[]>([]);
+const intelligenceSummary = ref<AnyRow>({});
+const weeklySchedules = ref<AnyRow[]>([]);
+const dailyReports = ref<AnyRow[]>([]);
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -191,6 +288,10 @@ function asArray(data: any): any[] {
   if (Array.isArray(data?.results)) return data.results;
   if (Array.isArray(data?.records)) return data.records;
   return [];
+}
+
+function unwrap<T = any>(payload: any, fallback: T): T {
+  return (payload?.data ?? payload ?? fallback) as T;
 }
 
 function normalizeWorkflowStatus(value: unknown) {
@@ -207,6 +308,13 @@ function workflowLabel(value: unknown) {
   if (normalized === "IN_PROGRESS") return "En proceso";
   if (normalized === "CLOSED") return "Cerrada";
   return normalized;
+}
+
+function normalizeDayLabel(value: unknown) {
+  return String(value || "Sin dia")
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 async function listAll(endpoint: string, params: Record<string, any> = {}) {
@@ -241,6 +349,9 @@ async function loadDashboard() {
       workOrdersRows,
       productosRows,
       stockRowsResult,
+      intelligenceSummaryRes,
+      weeklySchedulesRes,
+      dailyReportsRes,
     ] = await Promise.all([
       listAll("/kpi_security/users", { includeDeleted: false }),
       listAll("/kpi_security/roles", { includeDeleted: false }),
@@ -250,6 +361,9 @@ async function loadDashboard() {
       listAll("/kpi_maintenance/work-orders"),
       listAll("/kpi_inventory/productos"),
       listAll("/kpi_inventory/stock-bodega"),
+      api.get("/kpi_maintenance/inteligencia/summary"),
+      api.get("/kpi_maintenance/inteligencia/cronogramas-semanales"),
+      api.get("/kpi_maintenance/inteligencia/reportes-diarios"),
     ]);
 
     users.value = usersRows;
@@ -260,6 +374,9 @@ async function loadDashboard() {
     workOrders.value = workOrdersRows;
     productos.value = productosRows;
     stockRows.value = stockRowsResult;
+    intelligenceSummary.value = unwrap(intelligenceSummaryRes.data, {});
+    weeklySchedules.value = unwrap(weeklySchedulesRes.data, []);
+    dailyReports.value = unwrap(dailyReportsRes.data, []);
     lastUpdatedAt.value = new Date();
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudo cargar el dashboard con las APIs disponibles.";
@@ -374,6 +491,49 @@ const lowStockPreview = computed(() =>
   })),
 );
 
+const processIndicatorCards = computed(() => [
+  {
+    key: "programaciones_vencidas",
+    label: "Programaciones vencidas",
+    value: intelligenceSummary.value?.kpis?.programaciones_vencidas ?? 0,
+    helper: "Control preventivo fuera de ventana",
+  },
+  {
+    key: "work_orders_pendientes",
+    label: "OT pendientes",
+    value: intelligenceSummary.value?.kpis?.work_orders_pendientes ?? 0,
+    helper: "Ordenes pendientes o en proceso",
+  },
+  {
+    key: "eventos_proceso",
+    label: "Eventos KPI",
+    value: intelligenceSummary.value?.kpis?.eventos_proceso ?? 0,
+    helper: "Notificaciones por proceso principal",
+  },
+  {
+    key: "componentes_monitoreados",
+    label: "Componentes monitoreados",
+    value: intelligenceSummary.value?.kpis?.componentes_monitoreados ?? 0,
+    helper: "Control de componentes criticos",
+  },
+]);
+
+const latestDailyReport = computed(() => dailyReports.value[0] ?? null);
+const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 4));
+const latestDailyFuel = computed(() => (latestDailyReport.value?.combustibles ?? []).slice(0, 3));
+const latestDailyComponents = computed(() => (latestDailyReport.value?.componentes ?? []).slice(0, 3));
+
+const latestWeeklySchedule = computed(() => weeklySchedules.value[0] ?? null);
+const latestWeeklyActivities = computed(() =>
+  [...(latestWeeklySchedule.value?.detalles ?? [])]
+    .sort(
+      (a, b) =>
+        String(a?.dia_semana || "").localeCompare(String(b?.dia_semana || "")) ||
+        String(a?.hora_inicio || "").localeCompare(String(b?.hora_inicio || "")),
+    )
+    .slice(0, 6),
+);
+
 const lastUpdatedLabel = computed(() => {
   if (!lastUpdatedAt.value) return "Sin datos";
   return lastUpdatedAt.value.toLocaleString();
@@ -399,6 +559,30 @@ onMounted(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
+}
+
+.process-indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.process-indicator-item {
+  padding: 14px;
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
+.dashboard-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .h-100 {
