@@ -97,7 +97,26 @@
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.plan_id" :items="planOptions" item-title="title" item-value="value" label="Plan" clearable variant="outlined" :disabled="isClosed || isEditingLockedFields" />
+            <v-select
+              v-model="headerForm.procedimiento_id"
+              :items="procedureOptions"
+              item-title="title"
+              item-value="value"
+              label="Plantilla MPG"
+              clearable
+              variant="outlined"
+              :disabled="isClosed || isEditingLockedFields"
+              hint="La plantilla define el checklist y requisitos de la OT."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
+              :model-value="resolvedOperationalPlanLabel"
+              label="Plan operativo"
+              variant="outlined"
+              readonly
+            />
           </v-col>
           <v-col cols="12" md="4">
             <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed || isEditingLockedFields" />
@@ -122,41 +141,60 @@
           <v-window-item value="tareas">
             <v-row dense class="pt-2">
               <v-col cols="12" md="4">
-                <v-select
-                  v-model="taskForm.plan_id"
-                  :items="planOptions"
-                  item-title="title"
-                  item-value="value"
-                  label="Plan"
+                <v-text-field
+                  :model-value="selectedProcedureLabel"
+                  label="Plantilla MPG"
                   variant="outlined"
-                  :disabled="isClosed"
                   readonly
-                  hint="Se usa el mismo plan seleccionado en cabecera"
-                  persistent-hint
                 />
               </v-col>
               <v-col cols="12" md="4">
-                <v-select
-                  v-model="taskForm.tarea_id"
-                  :items="taskOptions"
-                  item-title="title"
-                  item-value="value"
-                  label="Tarea ID"
+                <v-text-field
+                  :model-value="resolvedOperationalPlanLabel"
+                  label="Plan operativo"
                   variant="outlined"
-                  :disabled="!taskForm.plan_id || isClosed"
-                  :loading="loadingTaskOptions"
-                  no-data-text="Selecciona un plan para cargar tareas"
+                  readonly
                 />
               </v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="taskForm.observacion" label="Observación" variant="outlined" /></v-col>
+              <v-col cols="12" md="4" class="d-flex align-center justify-end">
+                <v-btn
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="mdi-sync"
+                  :disabled="!headerForm.plan_id || isClosed"
+                  :loading="loadingTaskOptions"
+                  @click="syncChecklistFromTemplate"
+                >
+                  Sincronizar checklist
+                </v-btn>
+              </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="createTask">Agregar</v-btn></div>
+            <v-alert
+              type="info"
+              variant="tonal"
+              class="mb-3"
+              text="Las tareas se cargan automaticamente desde la plantilla MPG seleccionada y muestran sus requisitos operativos."
+            />
             <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0 enterprise-table">
               <template #item.plan_id="{ item }">
                 {{ getPlanLabelForTask(item._raw ?? item) }}
               </template>
               <template #item.tarea_id="{ item }">
-                {{ getTaskLabelForTask(item._raw ?? item) }}
+                <div class="font-weight-medium">{{ getTaskLabelForTask(item._raw ?? item) }}</div>
+                <div v-if="getTaskRequirementChips(item._raw ?? item).length" class="d-flex flex-wrap mt-1" style="gap: 4px;">
+                  <v-chip
+                    v-for="chip in getTaskRequirementChips(item._raw ?? item)"
+                    :key="`${(item._raw ?? item).id}-${chip}`"
+                    size="x-small"
+                    variant="tonal"
+                    color="secondary"
+                  >
+                    {{ chip }}
+                  </v-chip>
+                </div>
+                <div v-if="getTaskDetailText(item._raw ?? item)" class="text-caption text-medium-emphasis mt-1">
+                  {{ getTaskDetailText(item._raw ?? item) }}
+                </div>
               </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteTask(item._raw ?? item)" />
@@ -382,6 +420,7 @@ const unsupportedDetailMessages = ref<string[]>([]);
 
 const equipmentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
+const procedureOptions = ref<any[]>([]);
 const alertOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
 const stockByWarehouseRows = ref<any[]>([]);
@@ -391,6 +430,8 @@ const taskOptions = ref<any[]>([]);
 const loadingTaskOptions = ref(false);
 
 const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
+const planTaskCatalogByPlan = ref<Record<string, any[]>>({});
+const procedureCatalog = ref<any[]>([]);
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -405,6 +446,7 @@ const headerForm = reactive<any>({
   equipment_id: "",
   maintenance_kind: "CORRECTIVO",
   status_workflow: "PLANNED",
+  procedimiento_id: "",
   plan_id: "",
   alerta_id: "",
   causa: "",
@@ -692,9 +734,10 @@ function getEquipmentLabel(item: any) {
 
 
 async function loadCatalogs() {
-  const [equipos, planes, alertas, productos, bodegas, stockRows] = await Promise.all([
+  const [equipos, planes, procedimientos, alertas, productos, bodegas, stockRows] = await Promise.all([
     listAll("/kpi_maintenance/equipos"),
     listAll("/kpi_maintenance/planes"),
+    listAll("/kpi_maintenance/inteligencia/procedimientos"),
     listAll("/kpi_maintenance/alertas"),
     listAll("/kpi_inventory/productos"),
     listAll("/kpi_inventory/bodegas"),
@@ -702,6 +745,8 @@ async function loadCatalogs() {
   ]);
   equipmentOptions.value = equipos.map(normalize);
   planOptions.value = planes.map(normalize);
+  procedureCatalog.value = procedimientos;
+  procedureOptions.value = procedimientos.map(normalize);
   alertOptions.value = alertas.map(normalize);
   productCatalogRows.value = productos;
   warehouseCatalogRows.value = bodegas;
@@ -737,9 +782,100 @@ function getTaskLabelForTask(task: any) {
   );
 }
 
+function getTaskDefinition(planId: string, taskId: string) {
+  const planKey = String(planId || "");
+  const taskKey = String(taskId || "");
+  return (planTaskCatalogByPlan.value[planKey] ?? []).find(
+    (item: any) => String(item?.id || "") === taskKey,
+  );
+}
+
+function getTaskDetailText(task: any) {
+  const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
+  const meta = definition?.meta ?? task?.task_meta ?? {};
+  const detail = String(meta?.detalle || "").trim();
+  const fase = String(meta?.fase || "").trim();
+  return [fase, detail].filter(Boolean).join(" - ");
+}
+
+function getTaskRequirementChips(task: any) {
+  const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
+  const meta = definition?.meta ?? task?.task_meta ?? {};
+  const chips: string[] = [];
+  if (meta?.requiere_permiso) chips.push("Permiso");
+  if (meta?.requiere_epp) chips.push("EPP");
+  if (meta?.requiere_bloqueo) chips.push("Bloqueo");
+  if (meta?.requiere_evidencia) chips.push("Evidencia");
+  const evidencias = Array.isArray(meta?.evidencias_requeridas)
+    ? meta.evidencias_requeridas
+    : [];
+  for (const evidencia of evidencias) {
+    const label = String(evidencia || "").trim();
+    if (label) chips.push(label);
+  }
+  return chips;
+}
+
+async function syncChecklistFromTemplate(showToast = true) {
+  const planId = String(headerForm.plan_id || taskForm.plan_id || "");
+  if (!planId) return;
+
+  await loadTaskOptionsByPlan(planId);
+  const definitions = planTaskCatalogByPlan.value[planId] ?? [];
+  if (!definitions.length) return;
+
+  const existingTaskIds = new Set(
+    taskRows.value.map((row: any) => String(row?.tarea_id || "")).filter(Boolean),
+  );
+
+  const drafts = definitions
+    .filter((definition: any) => !existingTaskIds.has(String(definition?.id || "")))
+    .map((definition: any) => ({
+      id: `draft-task-${Date.now()}-${String(definition?.id || "").slice(0, 8)}`,
+      plan_id: planId,
+      tarea_id: definition.id,
+      observacion: taskForm.observacion || null,
+      plan_label: getSelectedPlanLabel(planId),
+      tarea_label: normalizeTask(definition).title,
+      task_meta: definition.meta ?? {},
+      _isDraft: true,
+      _raw: null,
+    }));
+
+  if (drafts.length) {
+    taskRows.value = [...drafts, ...taskRows.value];
+    taskForm.observacion = "";
+    if (showToast) ui.success("Checklist sincronizado desde la plantilla MPG.");
+  } else if (showToast) {
+    ui.open("El checklist de la plantilla ya estaba cargado.", "info", 3500);
+  }
+}
+
+const selectedProcedure = computed(
+  () =>
+    procedureCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(headerForm.procedimiento_id || ""),
+    ) ?? null,
+);
+
+const selectedProcedureLabel = computed(
+  () =>
+    selectedProcedure.value?.codigo
+      ? `${selectedProcedure.value.codigo} - ${selectedProcedure.value.nombre || selectedProcedure.value.codigo}`
+      : selectedProcedure.value?.nombre || "Sin plantilla MPG",
+);
+
+const resolvedOperationalPlanLabel = computed(() => {
+  if (headerForm.plan_id) return getSelectedPlanLabel(headerForm.plan_id);
+  if (!headerForm.procedimiento_id) return "Se generara al guardar";
+  return `Se sincroniza desde ${selectedProcedureLabel.value}`;
+});
+
 function buildAutoHeaderValues() {
-  const planLabel = getSelectedPlanLabel(headerForm.plan_id);
-  const generatedTitle = `Orden (${planLabel})`;
+  const referenceLabel = headerForm.procedimiento_id
+    ? selectedProcedureLabel.value
+    : getSelectedPlanLabel(headerForm.plan_id);
+  const generatedTitle = `Orden (${referenceLabel})`;
   const generatedType = headerForm.type || "MANTENIMIENTO";
   return { generatedTitle, generatedType };
 }
@@ -786,7 +922,9 @@ async function loadTaskOptionsByPlan(planId: string) {
   loadingTaskOptions.value = true;
   try {
     const { data } = await api.get(`/kpi_maintenance/planes/${planId}/tareas`);
-    taskOptions.value = asArray(data).map(normalizeTask);
+    const rows = asArray(data);
+    planTaskCatalogByPlan.value[String(planId)] = rows;
+    taskOptions.value = rows.map(normalizeTask);
     taskLabelCacheByPlan.value[String(planId)] = taskOptions.value.reduce((acc: Record<string, string>, task: any) => {
       acc[String(task.value)] = task.title;
       return acc;
@@ -856,6 +994,7 @@ function resetAllForms() {
   headerForm.equipment_id = "";
   headerForm.maintenance_kind = "CORRECTIVO";
   headerForm.status_workflow = "PLANNED";
+  headerForm.procedimiento_id = "";
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
   headerForm.causa = "";
@@ -910,6 +1049,7 @@ async function openEdit(item: any) {
   headerForm.maintenance_kind = item.maintenance_kind ?? "CORRECTIVO";
   const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
   headerForm.status_workflow = initialWorkflow === "CLOSED" ? "CLOSED" : "IN_PROGRESS";
+  headerForm.procedimiento_id = item.procedimiento_id ?? "";
   headerForm.plan_id = item.plan_id ?? "";
   taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
@@ -919,6 +1059,9 @@ async function openEdit(item: any) {
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
   dialog.value = true;
   await loadDetailData();
+  if (!isClosed.value) {
+    await syncChecklistFromTemplate(false);
+  }
   ensureTabVisible();
 }
 
@@ -1016,6 +1159,10 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     ui.error("Equipo es obligatorio.");
     return false;
   }
+  if (!headerForm.procedimiento_id && !headerForm.plan_id) {
+    ui.error("Debes seleccionar una plantilla MPG para la OT.");
+    return false;
+  }
   if (!headerForm.maintenance_kind) {
     ui.error("Tipo mantenimiento es obligatorio.");
     return false;
@@ -1035,6 +1182,7 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     plan_id: headerForm.plan_id || null,
+    procedimiento_id: headerForm.procedimiento_id || null,
     alerta_id: headerForm.alerta_id || null,
     valor_json: {
       causa: headerForm.causa || "",
@@ -1046,18 +1194,22 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
   const updatePayload = {
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
+    procedimiento_id: headerForm.procedimiento_id || null,
     valor_json: createPayload.valor_json,
   };
 
   if (manageLoading) savingHeader.value = true;
   try {
+    let savedHeader: any = null;
     if (editingId.value) {
-      await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, updatePayload);
+      const { data } = await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, updatePayload);
+      savedHeader = unwrapData(data);
       ui.success("Cabecera OT actualizada.");
     } else {
       const requestedCode = String(headerForm.code || "").trim();
       const { data } = await api.post("/kpi_maintenance/work-orders", createPayload);
       const created = unwrapData(data);
+      savedHeader = created;
       const createdId = created?.id ?? data?.id ?? data?.data?.id;
       const assignedCode = String((created?.code ?? data?.code ?? data?.data?.code ?? requestedCode) || "").trim();
       const codeWasReassigned = Boolean(created?.code_was_reassigned) || (!!assignedCode && !!requestedCode && assignedCode !== requestedCode);
@@ -1069,6 +1221,15 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
         ui.open(`Su número de orden fue actualizado a ${assignedCode}.`, "warning", 5500);
       } else {
         ui.success("Cabecera OT creada.");
+      }
+    }
+
+    if (savedHeader) {
+      headerForm.plan_id = savedHeader.plan_id ?? headerForm.plan_id;
+      headerForm.procedimiento_id = savedHeader.procedimiento_id ?? headerForm.procedimiento_id;
+      taskForm.plan_id = headerForm.plan_id || "";
+      if (headerForm.plan_id) {
+        await loadTaskOptionsByPlan(String(headerForm.plan_id));
       }
     }
 
@@ -1094,15 +1255,7 @@ async function saveAll() {
     if (!headerSaved || !editingId.value) return;
 
     const actions: Array<() => Promise<void>> = [];
-    const hasCompleteTask = !!(taskForm.plan_id && taskForm.tarea_id);
-    const hasTaskDraft = !!(taskForm.plan_id || taskForm.tarea_id || taskForm.observacion);
-    if (hasTaskDraft && !hasCompleteTask) {
-      ui.error("Para guardar una tarea debes seleccionar plan y tarea.");
-      return;
-    }
-    if (hasCompleteTask) {
-      await createTask(false);
-    }
+    await syncChecklistFromTemplate(false);
 
     const hasCompleteAttachment = !!(attachmentForm.nombre && attachmentForm.contenido_base64);
     const hasAttachmentDraft = !!(attachmentForm.nombre || attachmentForm.contenido_base64 || attachmentForm.mime_type);
@@ -1164,7 +1317,7 @@ async function persistDraftTasks() {
         valor_boolean: true,
         valor_numeric: 0,
         valor_text: "",
-        valor_json: {},
+        valor_json: draft.task_meta ?? {},
         observacion: draft.observacion || null,
       });
     } catch (e: any) {
@@ -1194,27 +1347,6 @@ async function persistDraftAttachments() {
   if (drafts.length) {
     await loadDetailData();
   }
-}
-
-async function createTask(showToast = true) {
-  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
-  if (!taskForm.plan_id || !taskForm.tarea_id) return ui.error("Plan y Tarea ID son obligatorios.");
-
-  const draftId = `draft-task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  // Borrador local: el detalle solo se persiste cuando el usuario guarda la OT completa.
-  taskRows.value.unshift({
-    id: draftId,
-    plan_id: taskForm.plan_id,
-    tarea_id: taskForm.tarea_id,
-    observacion: taskForm.observacion || null,
-    plan_label: getSelectedPlanLabel(taskForm.plan_id),
-    tarea_label: getSelectedTaskLabel(taskForm.plan_id, taskForm.tarea_id),
-    _isDraft: true,
-    _raw: null,
-  });
-  taskForm.tarea_id = "";
-  taskForm.observacion = "";
-  if (showToast) ui.success("Tarea agregada.");
 }
 
 async function deleteTask(item: any) {
@@ -1444,6 +1576,18 @@ watch(
   },
 );
 
+
+watch(
+  () => headerForm.procedimiento_id,
+  (procedimientoId, previousProcedimientoId) => {
+    if (editingId.value) return;
+    if (String(procedimientoId || "") === String(previousProcedimientoId || "")) return;
+    headerForm.plan_id = "";
+    taskForm.plan_id = "";
+    taskForm.tarea_id = "";
+    taskRows.value = [];
+  },
+);
 
 watch(
   () => headerForm.plan_id,

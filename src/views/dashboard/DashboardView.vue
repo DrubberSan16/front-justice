@@ -514,7 +514,7 @@ const processIndicatorCards = computed(() => [
     key: "componentes_monitoreados",
     label: "Componentes monitoreados",
     value: intelligenceSummary.value?.kpis?.componentes_monitoreados ?? 0,
-    helper: "Control de componentes criticos",
+    helper: "Indicador dinamico desde reporte diario",
   },
 ]);
 

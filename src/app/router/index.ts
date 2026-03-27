@@ -164,13 +164,6 @@ export const router = createRouter({
           meta: { title: "Analisis de lubricante", viewFile: "views/admin/MaintenanceCrudView.vue" },
         },
         {
-          path: "inteligencia/control-componentes",
-          name: "inteligencia-control-componentes",
-          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
-          props: { moduleKey: "inteligencia-control-componentes" },
-          meta: { title: "Componentes criticos", viewFile: "views/admin/MaintenanceCrudView.vue" },
-        },
-        {
           path: "alertas",
           name: "alertas",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),

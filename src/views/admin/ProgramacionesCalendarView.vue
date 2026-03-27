@@ -4,7 +4,7 @@
       <div>
         <div class="text-h6 font-weight-bold">Programaciones</div>
         <div class="text-body-2 text-medium-emphasis">
-          Selecciona una fecha para programar mantenimientos y controlar vencimientos por fecha u horas.
+          Selecciona una fecha y una plantilla MPG para programar mantenimientos y controlar vencimientos por fecha u horas.
         </div>
       </div>
       <div class="d-flex align-center" style="gap: 8px;">
@@ -41,10 +41,10 @@
             :class="eventClass(event.estado_programacion)"
             @click.stop="openEdit(event)"
           >
-            {{ event.equipo_nombre }} · {{ event.plan_nombre }}
+            {{ event.equipo_nombre }} - {{ displayProgramacionName(event) }}
           </button>
           <div v-if="(eventsByDate[cell.date] || []).length > 3" class="text-caption text-medium-emphasis mt-1">
-            +{{ (eventsByDate[cell.date]?.length ?? 0) - 3 }} más
+            +{{ (eventsByDate[cell.date]?.length ?? 0) - 3 }} mas
           </div>
         </div>
       </div>
@@ -59,11 +59,17 @@
       :items-per-page="10"
       class="elevation-0 enterprise-table"
     >
+      <template #item.procedimiento_nombre="{ item }">
+        <div class="font-weight-medium">{{ displayProgramacionName(item as any) }}</div>
+        <div class="text-caption text-medium-emphasis">{{ (item as any).plan_codigo || (item as any).plan_nombre || "Plan interno" }}</div>
+      </template>
+
       <template #item.estado_programacion="{ item }">
         <v-chip size="small" :color="chipColor((item as any).estado_programacion)" variant="tonal">
           {{ (item as any).estado_programacion }}
         </v-chip>
       </template>
+
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap: 4px;">
           <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item as any)" />
@@ -73,10 +79,10 @@
     </v-data-table>
   </v-card>
 
-  <v-dialog v-model="dialog" max-width="720">
+  <v-dialog v-model="dialog" max-width="760">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">
-        {{ editingId ? 'Editar programación' : 'Nueva programación' }}
+        {{ editingId ? "Editar programacion" : "Nueva programacion" }}
       </v-card-title>
       <v-divider />
       <v-card-text class="pt-4">
@@ -99,22 +105,37 @@
           </v-col>
           <v-col cols="12" md="6">
             <v-select
-              v-model="form.plan_id"
-              :items="planOptions"
+              v-model="form.procedimiento_id"
+              :items="procedureOptions"
               item-title="title"
               item-value="value"
-              label="Plan"
+              label="Plantilla MPG"
               variant="outlined"
+              hint="La plantilla define la frecuencia, el checklist y el plan operativo interno."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12">
+            <v-alert
+              type="info"
+              variant="tonal"
+              text="El sistema sincroniza automaticamente un plan interno desde la plantilla MPG seleccionada."
             />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Última ejecución fecha" variant="outlined" />
+            <v-text-field :model-value="resolvedPlanLabel" label="Plan operativo generado" variant="outlined" readonly />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="Última ejecución horas" variant="outlined" />
+            <v-text-field :model-value="selectedProcedureFrequency" label="Frecuencia de plantilla" variant="outlined" readonly />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="form.proxima_horas" type="number" step="0.01" label="Próxima ejecución horas" variant="outlined" />
+            <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Ultima ejecucion fecha" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="Ultima ejecucion horas" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="form.proxima_horas" type="number" step="0.01" label="Proxima ejecucion horas" variant="outlined" />
           </v-col>
         </v-row>
       </v-card-text>
@@ -141,11 +162,13 @@ const rows = ref<any[]>([]);
 const dialog = ref(false);
 const editingId = ref<string | null>(null);
 const equipmentOptions = ref<any[]>([]);
-const planOptions = ref<any[]>([]);
+const procedureOptions = ref<any[]>([]);
+const procedureCatalog = ref<any[]>([]);
 const currentMonth = ref(new Date());
 
 const form = reactive<any>({
   equipo_id: "",
+  procedimiento_id: "",
   plan_id: "",
   ultima_ejecucion_fecha: "",
   ultima_ejecucion_horas: "",
@@ -154,12 +177,12 @@ const form = reactive<any>({
   activo: true,
 });
 
-const weekDays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const weekDays = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 const headers = [
   { title: "Equipo", key: "equipo_nombre" },
-  { title: "Plan", key: "plan_nombre" },
+  { title: "Plantilla MPG", key: "procedimiento_nombre" },
   { title: "Fecha", key: "proxima_fecha" },
-  { title: "Próx. horas", key: "proxima_horas" },
+  { title: "Prox. horas", key: "proxima_horas" },
   { title: "Horas restantes", key: "horas_restantes" },
   { title: "Estado", key: "estado_programacion" },
   { title: "Acciones", key: "actions", sortable: false },
@@ -241,12 +264,13 @@ function normalize(item: any) {
 }
 
 async function loadCatalogs() {
-  const [equipos, planes] = await Promise.all([
+  const [equipos, procedimientos] = await Promise.all([
     listAll("/kpi_maintenance/equipos"),
-    listAll("/kpi_maintenance/planes"),
+    listAll("/kpi_maintenance/inteligencia/procedimientos"),
   ]);
   equipmentOptions.value = equipos.map(normalize);
-  planOptions.value = planes.map(normalize);
+  procedureCatalog.value = procedimientos;
+  procedureOptions.value = procedimientos.map(normalize);
 }
 
 async function loadRows() {
@@ -262,9 +286,29 @@ async function loadRows() {
   }
 }
 
+function displayProgramacionName(item: any) {
+  return item?.procedimiento_nombre || item?.plan_nombre || "Sin plantilla";
+}
+
+const selectedProcedure = computed(() =>
+  procedureCatalog.value.find((item) => String(item.id) === String(form.procedimiento_id || "")) ?? null,
+);
+
+const resolvedPlanLabel = computed(() => {
+  if (form.plan_id) return form.plan_id;
+  if (!selectedProcedure.value) return "Se generara al guardar";
+  return `Sincronizado desde ${selectedProcedure.value.codigo || selectedProcedure.value.nombre || "plantilla MPG"}`;
+});
+
+const selectedProcedureFrequency = computed(() => {
+  const frequency = Number(selectedProcedure.value?.frecuencia_horas || 0);
+  return frequency > 0 ? `${frequency} horas` : "Segun configuracion de plantilla";
+});
+
 function resetForm() {
   editingId.value = null;
   form.equipo_id = "";
+  form.procedimiento_id = "";
   form.plan_id = "";
   form.ultima_ejecucion_fecha = "";
   form.ultima_ejecucion_horas = "";
@@ -282,6 +326,7 @@ function openCreateForDate(date: string) {
 function openEdit(item: any) {
   editingId.value = item.id;
   form.equipo_id = item.equipo_id || "";
+  form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
   form.ultima_ejecucion_fecha = item.ultima_ejecucion_fecha || "";
   form.ultima_ejecucion_horas = item.ultima_ejecucion_horas ?? "";
@@ -294,7 +339,7 @@ function openEdit(item: any) {
 function buildPayload() {
   return {
     equipo_id: form.equipo_id,
-    plan_id: form.plan_id,
+    procedimiento_id: form.procedimiento_id || undefined,
     ultima_ejecucion_fecha: form.ultima_ejecucion_fecha || undefined,
     ultima_ejecucion_horas: form.ultima_ejecucion_horas !== "" ? Number(form.ultima_ejecucion_horas) : undefined,
     proxima_fecha: form.proxima_fecha || undefined,
@@ -304,23 +349,28 @@ function buildPayload() {
 }
 
 async function save() {
-  if (!form.equipo_id || !form.plan_id) {
-    ui.error("Debes seleccionar equipo y plan.");
+  if (!form.equipo_id || !form.procedimiento_id) {
+    ui.error("Debes seleccionar equipo y plantilla MPG.");
     return;
   }
   saving.value = true;
   try {
+    let saved: any = null;
     if (editingId.value) {
-      await api.patch(`/kpi_maintenance/programaciones/${editingId.value}`, buildPayload());
-      ui.success("Programación actualizada.");
+      const { data } = await api.patch(`/kpi_maintenance/programaciones/${editingId.value}`, buildPayload());
+      saved = data?.data ?? data;
+      ui.success("Programacion actualizada.");
     } else {
-      await api.post("/kpi_maintenance/programaciones", buildPayload());
-      ui.success("Programación creada.");
+      const { data } = await api.post("/kpi_maintenance/programaciones", buildPayload());
+      saved = data?.data ?? data;
+      ui.success("Programacion creada.");
     }
+
+    form.plan_id = saved?.plan_id || form.plan_id;
     dialog.value = false;
     await loadRows();
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo guardar la programación.");
+    ui.error(e?.response?.data?.message || "No se pudo guardar la programacion.");
   } finally {
     saving.value = false;
   }
@@ -329,10 +379,10 @@ async function save() {
 async function remove(item: any) {
   try {
     await api.delete(`/kpi_maintenance/programaciones/${item.id}`);
-    ui.success("Programación eliminada.");
+    ui.success("Programacion eliminada.");
     await loadRows();
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo eliminar la programación.");
+    ui.error(e?.response?.data?.message || "No se pudo eliminar la programacion.");
   }
 }
 
@@ -353,12 +403,14 @@ onMounted(async () => {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
+
 .calendar-weekday {
   font-size: 0.8rem;
   font-weight: 700;
   color: rgba(0, 0, 0, 0.65);
   text-align: center;
 }
+
 .calendar-cell {
   min-height: 150px;
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -367,18 +419,22 @@ onMounted(async () => {
   background: white;
   cursor: pointer;
 }
+
 .calendar-cell--muted {
   opacity: 0.55;
 }
+
 .calendar-cell--today {
   border-color: rgba(25, 118, 210, 0.45);
   box-shadow: inset 0 0 0 1px rgba(25, 118, 210, 0.15);
 }
+
 .calendar-events {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
+
 .calendar-event {
   width: 100%;
   text-align: left;
@@ -388,19 +444,24 @@ onMounted(async () => {
   font-size: 0.75rem;
   cursor: pointer;
 }
+
 .calendar-event--normal {
   background: rgba(25, 118, 210, 0.08);
 }
+
 .calendar-event--warning {
   background: rgba(251, 140, 0, 0.12);
 }
+
 .calendar-event--danger {
   background: rgba(211, 47, 47, 0.12);
 }
+
 @media (max-width: 960px) {
   .calendar-grid {
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
+
   .calendar-weekday {
     display: none;
   }

@@ -5,7 +5,7 @@
         <div>
           <div class="text-h6 font-weight-bold">Inteligencia operativa de mantenimiento</div>
           <div class="text-body-2 text-medium-emphasis">
-            Consolida procedimientos MPG, analisis de lubricante, cronogramas, reportes diarios, componentes criticos y eventos KPI.
+            Consolida procedimientos MPG, analisis de lubricante, cronogramas, reportes diarios y eventos KPI con indicadores dinamicos por componente.
           </div>
         </div>
         <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
@@ -221,60 +221,7 @@
     </v-row>
 
     <v-row>
-      <v-col cols="12" xl="5">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">Control de componentes criticos</div>
-              <div class="text-body-2 text-medium-emphasis">Seguimiento de cambios mayores, horas de uso y causas de retiro.</div>
-            </div>
-            <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-              <v-chip label color="error" variant="tonal">{{ components.length }} registros</v-chip>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('componentes', 'excel')" @click="exportModule('componentes', 'excel')">Excel</v-btn>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('componentes', 'pdf')" @click="exportModule('componentes', 'pdf')">PDF</v-btn>
-            </div>
-          </div>
-
-          <div class="summary-strip mb-4">
-            <v-chip label color="warning" variant="tonal">En alerta: {{ componentAlertCount }}</v-chip>
-            <v-chip label color="secondary" variant="tonal">Tipos: {{ componentTypeCount }}</v-chip>
-            <v-chip label color="info" variant="tonal">Equipos: {{ componentEquipmentCount }}</v-chip>
-          </div>
-
-          <v-table density="compact" class="report-table">
-            <thead>
-              <tr>
-                <th>Equipo</th>
-                <th>Componente</th>
-                <th>Estado</th>
-                <th>Horas uso</th>
-                <th>Reporte</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in componentPreview" :key="item.id">
-                <td>{{ item.equipo_codigo || "Sin equipo" }}</td>
-                <td>
-                  <div class="font-weight-medium">{{ item.tipo_componente || "Sin componente" }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ item.posicion || item.serie || "Sin posicion" }}</div>
-                </td>
-                <td>
-                  <v-chip size="small" :color="chipColorForStatus(item.estado)" variant="tonal">
-                    {{ item.estado || "Sin estado" }}
-                  </v-chip>
-                </td>
-                <td>{{ item.horas_uso ?? "N/A" }}</td>
-                <td>{{ item.reporte_codigo || item.fecha_reporte || "Sin reporte" }}</td>
-              </tr>
-              <tr v-if="!componentPreview.length">
-                <td colspan="5" class="text-center text-medium-emphasis py-4">No hay componentes registrados.</td>
-              </tr>
-            </tbody>
-          </v-table>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" xl="7">
+      <v-col cols="12">
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
             <div>
@@ -295,6 +242,7 @@
               <v-chip label color="secondary" variant="tonal">{{ latestDailyReport.turno || "Sin turno" }}</v-chip>
               <v-chip label color="success" variant="tonal">Unidades: {{ latestDailyReport.unidades?.length ?? 0 }}</v-chip>
               <v-chip label color="warning" variant="tonal">Combustible: {{ latestDailyReport.combustibles?.length ?? 0 }}</v-chip>
+              <v-chip label color="error" variant="tonal">Componentes: {{ latestDailyReport.componentes?.length ?? 0 }}</v-chip>
             </div>
 
             <v-row dense>
@@ -426,7 +374,6 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import {
-  buildComponentsReport,
   buildDailyReportsReport,
   buildIndicatorsReport,
   buildLubricantReport,
@@ -451,6 +398,7 @@ type SummaryState = {
   kpis?: Record<string, number>;
   process_breakdown?: Array<{ tipo_proceso: string; total: number }>;
   recent_events?: AnyRow[];
+  component_highlights?: AnyRow[];
 };
 
 const loading = ref(false);
@@ -460,7 +408,6 @@ const procedures = ref<AnyRow[]>([]);
 const analyses = ref<AnyRow[]>([]);
 const schedules = ref<AnyRow[]>([]);
 const dailyReports = ref<AnyRow[]>([]);
-const components = ref<AnyRow[]>([]);
 const exportState = reactive<Record<string, boolean>>({});
 const router = useRouter();
 
@@ -473,11 +420,11 @@ function resetState() {
   summary.kpis = {};
   summary.process_breakdown = [];
   summary.recent_events = [];
+  summary.component_highlights = [];
   procedures.value = [];
   analyses.value = [];
   schedules.value = [];
   dailyReports.value = [];
-  components.value = [];
 }
 
 async function loadIntelligence() {
@@ -485,13 +432,12 @@ async function loadIntelligence() {
   error.value = null;
 
   try {
-    const [summaryRes, proceduresRes, analysesRes, schedulesRes, reportsRes, componentsRes] = await Promise.all([
+    const [summaryRes, proceduresRes, analysesRes, schedulesRes, reportsRes] = await Promise.all([
       api.get("/kpi_maintenance/inteligencia/summary"),
       api.get("/kpi_maintenance/inteligencia/procedimientos"),
       api.get("/kpi_maintenance/inteligencia/analisis-lubricante"),
       api.get("/kpi_maintenance/inteligencia/cronogramas-semanales"),
       api.get("/kpi_maintenance/inteligencia/reportes-diarios"),
-      api.get("/kpi_maintenance/inteligencia/control-componentes"),
     ]);
 
     resetState();
@@ -500,7 +446,6 @@ async function loadIntelligence() {
     analyses.value = unwrap(analysesRes.data, []);
     schedules.value = unwrap(schedulesRes.data, []);
     dailyReports.value = unwrap(reportsRes.data, []);
-    components.value = unwrap(componentsRes.data, []);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudo cargar la inteligencia operativa.";
   } finally {
@@ -530,15 +475,10 @@ function dayOrder(value: unknown) {
   return index >= 0 ? index : order.length + 1;
 }
 
-function isComponentInAlert(item: AnyRow) {
-  return ["ALERTA", "CRITICO", "CRITICA", "POR CAMBIO"].includes(String(item.estado || "").toUpperCase());
-}
-
 function moduleReport(moduleKey: string) {
   if (moduleKey === "indicadores") return buildIndicatorsReport(summary);
   if (moduleKey === "procedimientos") return buildProceduresReport(procedures.value);
   if (moduleKey === "analisis") return buildLubricantReport(analyses.value);
-  if (moduleKey === "componentes") return buildComponentsReport(components.value);
   if (moduleKey === "reportes") return buildDailyReportsReport(dailyReports.value);
   return buildWeeklyScheduleReport(schedules.value);
 }
@@ -586,14 +526,6 @@ const analysesInAlert = computed(
   () => analyses.value.filter((item) => String(item.estado_diagnostico || "").toUpperCase() === "ALERTA").length,
 );
 
-const componentAlertCount = computed(() => components.value.filter((item) => isComponentInAlert(item)).length);
-const componentTypeCount = computed(
-  () => new Set(components.value.map((item) => item.tipo_componente).filter(Boolean)).size,
-);
-const componentEquipmentCount = computed(
-  () => new Set(components.value.map((item) => item.equipo_codigo).filter(Boolean)).size,
-);
-
 const kpiCards = computed<IntelligenceCard[]>(() => [
   {
     key: "procedimientos",
@@ -614,10 +546,9 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
   {
     key: "componentes",
     label: "Componentes criticos",
-    value: components.value.length,
-    helper: `${componentAlertCount.value} con seguimiento prioritario`,
+    value: summary.kpis?.componentes_monitoreados ?? 0,
+    helper: "Indicador dinamico desde reporte diario y KPI",
     icon: "mdi-engine-outline",
-    routeName: "inteligencia-control-componentes",
   },
   {
     key: "reportes",
@@ -695,8 +626,6 @@ const analysisDetailCount = computed(() =>
 const analysisEquipmentCount = computed(
   () => new Set(analyses.value.map((item) => item.equipo_codigo || item.equipo_nombre).filter(Boolean)).size,
 );
-
-const componentPreview = computed(() => components.value.slice(0, 7));
 
 const latestDailyReport = computed(() => dailyReports.value[0] ?? null);
 const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 6));
