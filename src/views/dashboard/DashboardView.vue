@@ -13,6 +13,14 @@
             <div class="d-flex align-center" style="gap: 8px; flex-wrap: wrap;">
               <v-chip label prepend-icon="mdi-account-circle-outline">{{ auth.user?.nameUser || "Usuario" }}</v-chip>
               <v-chip label prepend-icon="mdi-shield-account-outline">{{ auth.user?.role?.nombre || "Sin rol" }}</v-chip>
+              <v-btn
+                color="secondary"
+                variant="tonal"
+                prepend-icon="mdi-chart-timeline-variant"
+                @click="router.push({ name: 'inteligencia-mantenimiento' })"
+              >
+                Inteligencia
+              </v-btn>
               <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading" @click="loadDashboard">
                 Actualizar
               </v-btn>
@@ -152,6 +160,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -160,6 +169,7 @@ type AnyRow = Record<string, any>;
 
 const auth = useAuthStore();
 const menu = useMenuStore();
+const router = useRouter();
 
 const loading = ref(false);
 const error = ref<string | null>(null);
