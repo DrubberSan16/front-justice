@@ -7,6 +7,9 @@ export type MaintenanceField = {
   required?: boolean;
   sendInPayload?: boolean;
   jsonMode?: "array" | "object";
+  editor?: "string-list" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
+  hidden?: boolean;
+  fullWidth?: boolean;
   options?: Array<{ value: any; title: string }>;
   relation?: {
     endpoint: string;

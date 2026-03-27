@@ -96,9 +96,21 @@
       <v-divider />
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
-          <v-col v-for="field in moduleConfig?.fields ?? []" :key="field.key" cols="12" md="6">
+          <v-col
+            v-for="field in visibleFields"
+            :key="field.key"
+            cols="12"
+            :md="field.fullWidth ? 12 : 6"
+          >
+            <MaintenanceStructuredField
+              v-if="field.editor"
+              v-model="form[field.key]"
+              :field="field"
+              :relation-options="relationOptions"
+              @patch-form="applyFormPatch"
+            />
             <v-select
-              v-if="field.type === 'select'"
+              v-else-if="field.type === 'select'"
               v-model="form[field.key]"
               :items="getSelectOptions(field)"
               item-title="title"
@@ -117,7 +129,7 @@
             />
             <v-textarea
               v-else-if="field.type === 'json'"
-              v-model="form[field.key]"
+              v-model="jsonTextFields[field.key]"
               :label="repairText(field.label)"
               :hint="field.required ? 'Obligatorio. Ingresa un JSON valido.' : 'Ingresa un JSON valido.'"
               persistent-hint
@@ -162,13 +174,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
-import { getMaintenanceModule, type MaintenanceField } from "@/app/config/maintenance-modules";
+import MaintenanceStructuredField from "@/components/maintenance/MaintenanceStructuredField.vue";
+import { getEnhancedMaintenanceModule, type EnhancedMaintenanceField } from "@/app/config/maintenance-module-overrides";
 import { useUiStore } from "@/app/stores/ui.store";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
 
-const moduleConfig = computed(() => getMaintenanceModule(props.moduleKey));
+const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
 const canCreate = computed(() => moduleConfig.value?.allowCreate !== false);
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false);
@@ -186,6 +199,7 @@ const deleteDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const form = reactive<Record<string, any>>({});
+const jsonTextFields = reactive<Record<string, string>>({});
 
 function repairText(value: unknown) {
   const text = String(value ?? "");
@@ -198,13 +212,22 @@ function repairText(value: unknown) {
 
 const displayModuleTitle = computed(() => repairText(moduleConfig.value?.title ?? ""));
 
-function defaultJsonValue(field: MaintenanceField) {
-  return field.jsonMode === "array" ? "[]" : "{}";
+function defaultJsonValue(field: EnhancedMaintenanceField) {
+  return field.jsonMode === "array" ? [] : {};
 }
 
-function serializeJsonValue(value: unknown, field: MaintenanceField) {
+function cloneValue<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function serializeJsonValue(value: unknown, field: EnhancedMaintenanceField) {
   if (value === null || value === undefined || value === "") {
-    return defaultJsonValue(field);
+    return field.editor ? defaultJsonValue(field) : JSON.stringify(defaultJsonValue(field), null, 2);
+  }
+
+  if (field.editor) {
+    return cloneValue(value);
   }
 
   if (typeof value === "string") {
@@ -218,11 +241,18 @@ function serializeJsonValue(value: unknown, field: MaintenanceField) {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
-    return defaultJsonValue(field);
+    return JSON.stringify(defaultJsonValue(field), null, 2);
   }
 }
 
-function parseJsonField(value: unknown, field: MaintenanceField) {
+function parseJsonField(value: unknown, field: EnhancedMaintenanceField) {
+  if (field.editor) {
+    if (value === null || value === undefined || value === "") {
+      return defaultJsonValue(field);
+    }
+    return cloneValue(value);
+  }
+
   const raw = String(value ?? "").trim();
   if (!raw) {
     return field.jsonMode === "array" ? [] : {};
@@ -309,6 +339,23 @@ async function loadRelations() {
     if (!field.relation) continue;
     const rows = await listAll(field.relation.endpoint);
     relationOptions.value[field.key] = rows.map((r: any) => ({
+      value: r.id,
+      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+    }));
+  }
+
+  if (moduleConfig.value.key === "work-order-issue-materials") {
+    const [productos, bodegas] = await Promise.all([
+      listAll("/kpi_inventory/productos"),
+      listAll("/kpi_inventory/bodegas"),
+    ]);
+
+    relationOptions.value.producto_id = productos.map((r: any) => ({
+      value: r.id,
+      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+    }));
+
+    relationOptions.value.bodega_id = bodegas.map((r: any) => ({
       value: r.id,
       title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
     }));
@@ -486,24 +533,36 @@ async function fetchRecords() {
 
 function resetForm() {
   Object.keys(form).forEach((k) => delete form[k]);
+  Object.keys(jsonTextFields).forEach((k) => delete jsonTextFields[k]);
   for (const field of moduleConfig.value?.fields ?? []) {
     if (field.key === "status") form[field.key] = "ACTIVE";
     else if (field.type === "boolean") form[field.key] = false;
-    else if (field.type === "json") form[field.key] = defaultJsonValue(field);
+    else if (field.type === "json") {
+      form[field.key] = defaultJsonValue(field);
+      if (!field.editor) {
+        jsonTextFields[field.key] = JSON.stringify(defaultJsonValue(field), null, 2);
+      }
+    }
     else if (field.type === "number") form[field.key] = "0";
     else form[field.key] = "";
   }
 }
 
-function getSelectOptions(field: MaintenanceField) {
+function getSelectOptions(field: EnhancedMaintenanceField) {
   if (field.options) return field.options;
   return relationOptions.value[field.key] ?? [];
 }
 
+function applyFormPatch(patch: Record<string, any>) {
+  Object.assign(form, patch);
+}
+
+const visibleFields = computed(() => (moduleConfig.value?.fields ?? []).filter((field) => !field.hidden));
+
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const base = cfg.fields.slice(0, 6).map((f) => ({ title: repairText(f.label), key: f.key }));
+  const base = visibleFields.value.slice(0, 6).map((f) => ({ title: repairText(f.label), key: f.key }));
   if (!canEdit.value && !canDelete.value) return base;
   return [...base, { title: "Acciones", key: "actions", sortable: false }];
 });
@@ -621,7 +680,7 @@ function sanitizePayload() {
 
   for (const field of cfg.fields) {
     if (field.sendInPayload === false) continue;
-    let val = form[field.key];
+    let val = field.type === "json" && !field.editor && !field.hidden ? jsonTextFields[field.key] : form[field.key];
     if (field.type === "number") {
       val = val === "" || val === null || val === undefined ? "0" : String(val);
     }
@@ -655,8 +714,22 @@ function validateForm() {
 
   for (const field of cfg.fields) {
     if (!field.required) continue;
-    const val = form[field.key];
+    const val = field.type === "json" && !field.editor && !field.hidden ? jsonTextFields[field.key] : form[field.key];
     if (field.type === "boolean") continue;
+
+    if (field.editor === "file-upload") {
+      if (!form.contenido_base64) {
+        ui.error(`Debes seleccionar un archivo en ${repairText(field.label)}.`);
+        return false;
+      }
+      continue;
+    }
+
+    if (field.type === "json" && field.jsonMode === "array" && Array.isArray(val) && !val.length) {
+      ui.error(`Debes agregar al menos un item en ${repairText(field.label)}.`);
+      return false;
+    }
+
     if (val === "" || val === null || val === undefined) {
       ui.error(`El campo ${repairText(field.label)} es obligatorio.`);
       return false;
@@ -675,6 +748,21 @@ function openEdit(item: any) {
   editingId.value = item.id;
   resetForm();
   for (const field of moduleConfig.value?.fields ?? []) {
+    if (field.editor === "file-upload") {
+      form[field.key] = {
+        nombre: item.nombre ?? "",
+        mime_type: item.mime_type ?? "",
+      };
+      continue;
+    }
+
+    if (field.type === "json" && !field.editor) {
+      const serialized = String(serializeJsonValue(item[field.key], field));
+      jsonTextFields[field.key] = serialized;
+      form[field.key] = parseJsonField(serialized, field);
+      continue;
+    }
+
     form[field.key] = field.type === "json"
       ? serializeJsonValue(item[field.key], field)
       : item[field.key] ?? form[field.key];
