@@ -1,5 +1,12 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import {
+  applyThemeDataset,
+  isDarkTheme,
+  persistTheme,
+  resolveInitialTheme,
+  type ThemeMode,
+} from "@/app/config/theme";
 
 type SnackbarVariant = "success" | "error" | "info" | "warning";
 
@@ -8,6 +15,8 @@ export const useUiStore = defineStore("ui", () => {
   const text = ref("");
   const variant = ref<SnackbarVariant>("info");
   const timeout = ref(3500);
+  const currentTheme = ref<ThemeMode>(resolveInitialTheme());
+  const darkMode = computed(() => isDarkTheme(currentTheme.value));
 
   function open(message: string, v: SnackbarVariant = "info", t = 3500) {
     text.value = message;
@@ -28,5 +37,33 @@ export const useUiStore = defineStore("ui", () => {
     show.value = false;
   }
 
-  return { show, text, variant, timeout, open, success, error, close };
+  function syncThemeWithDocument() {
+    applyThemeDataset(currentTheme.value);
+  }
+
+  function setTheme(theme: ThemeMode) {
+    currentTheme.value = theme;
+    persistTheme(theme);
+    syncThemeWithDocument();
+  }
+
+  function toggleTheme() {
+    setTheme(darkMode.value ? "corporateLight" : "corporateDark");
+  }
+
+  return {
+    show,
+    text,
+    variant,
+    timeout,
+    currentTheme,
+    darkMode,
+    open,
+    success,
+    error,
+    close,
+    setTheme,
+    toggleTheme,
+    syncThemeWithDocument,
+  };
 });

@@ -1,29 +1,45 @@
 <template>
-  <v-card class="pa-8 enterprise-surface" rounded="xl" elevation="10">
-    <div class="text-h6 font-weight-bold mb-1">Iniciar sesión</div>
-    <div class="text-body-2 text-medium-emphasis mb-6">
-      Accede para ver tu dashboard y tus módulos.
+  <v-card class="login-card enterprise-surface" rounded="xl" elevation="0">
+    <div class="login-card__eyebrow">
+      <v-chip size="small" color="primary" variant="tonal">Acceso seguro</v-chip>
+      <span class="login-card__status">Tema adaptable y navegacion optimizada</span>
     </div>
 
-    <v-form @submit.prevent="onSubmit">
+    <div class="login-card__header">
+      <div class="text-h4 font-weight-bold mb-2">Bienvenido de nuevo</div>
+      <p class="login-card__copy">
+        Inicia sesion para revisar tu dashboard, administrar permisos y continuar tu
+        operacion sin interrupciones.
+      </p>
+    </div>
+
+    <v-form class="login-form" @submit.prevent="onSubmit">
       <v-text-field
         v-model="nameUser"
+        class="login-field"
         label="Usuario"
+        prepend-inner-icon="mdi-account-circle-outline"
         variant="outlined"
         density="comfortable"
         autocomplete="username"
         :disabled="loading"
+        autofocus
+        clearable
         required
       />
 
       <v-text-field
         v-model="passUser"
-        label="Contraseña"
-        type="password"
+        class="login-field"
+        label="Contrasena"
+        :type="showPassword ? 'text' : 'password'"
+        prepend-inner-icon="mdi-lock-outline"
+        :append-inner-icon="showPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
         variant="outlined"
         density="comfortable"
         autocomplete="current-password"
         :disabled="loading"
+        @click:append-inner="showPassword = !showPassword"
         required
       />
 
@@ -31,10 +47,34 @@
         {{ error }}
       </v-alert>
 
-      <v-btn :loading="loading" type="submit" block size="large" class="mt-2">
-        Entrar
+      <div class="login-form__helper">
+        <v-icon icon="mdi-shield-check-outline" size="18" />
+        <span>Tus credenciales se validan contra el servicio central de seguridad.</span>
+      </div>
+
+      <v-btn
+        :loading="loading"
+        type="submit"
+        block
+        size="large"
+        class="login-submit"
+        color="primary"
+        prepend-icon="mdi-login"
+      >
+        Entrar al sistema
       </v-btn>
     </v-form>
+
+    <div class="login-card__footer">
+      <div class="login-highlight">
+        <strong>Mas claridad</strong>
+        <span>Jerarquia visual limpia para tareas frecuentes.</span>
+      </div>
+      <div class="login-highlight">
+        <strong>Mas velocidad</strong>
+        <span>Accesos rapidos desde movil, tablet o escritorio.</span>
+      </div>
+    </div>
   </v-card>
 </template>
 
@@ -53,6 +93,7 @@ const menu = useMenuStore();
 
 const nameUser = ref("");
 const passUser = ref("");
+const showPassword = ref(false);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
@@ -75,9 +116,101 @@ async function onSubmit() {
     const redirect = (route.query.redirect as string) || "/app/dashboard";
     router.replace(redirect);
   } catch (e: any) {
-    error.value = e?.response?.data?.message || "Credenciales inválidas o error de conexión.";
+    error.value = e?.response?.data?.message || "Credenciales invalidas o error de conexion.";
   } finally {
     loading.value = false;
   }
 }
 </script>
+
+<style scoped>
+.login-card {
+  display: grid;
+  gap: 24px;
+  padding: 28px;
+}
+
+.login-card__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.login-card__status {
+  color: var(--app-muted-text);
+  font-size: 0.95rem;
+}
+
+.login-card__header {
+  display: grid;
+  gap: 10px;
+}
+
+.login-card__copy {
+  margin: 0;
+  color: var(--app-muted-text);
+  line-height: 1.7;
+}
+
+.login-form {
+  display: grid;
+  gap: 16px;
+}
+
+.login-field :deep(.v-field) {
+  border-radius: 18px;
+  background: var(--field-background);
+}
+
+.login-form__helper {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  color: var(--app-muted-text);
+  background: var(--surface-soft);
+}
+
+.login-submit {
+  min-height: 54px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.login-card__footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.login-highlight {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-soft);
+}
+
+.login-highlight strong {
+  font-size: 0.95rem;
+}
+
+.login-highlight span {
+  color: var(--app-muted-text);
+  line-height: 1.55;
+}
+
+@media (max-width: 600px) {
+  .login-card {
+    padding: 22px;
+  }
+
+  .login-card__footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>
