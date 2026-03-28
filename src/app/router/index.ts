@@ -46,7 +46,7 @@ export const router = createRouter({
           path: "productos",
           name: "productos",
           component: () => import("@/views/admin/ProductsView.vue"),
-          meta: { title: "Productos", viewFile: "views/admin/ProductsView.vue" },
+          meta: { title: "Materiales", viewFile: "views/admin/ProductsView.vue" },
         },
         {
           path: "kardex",
@@ -135,7 +135,7 @@ export const router = createRouter({
           path: "planes",
           name: "planes",
           component: () => import("@/views/admin/PlanesView.vue"),
-          meta: { title: "Planes", viewFile: "views/admin/PlanesView.vue" },
+          meta: { title: "Planes internos", viewFile: "views/admin/PlanesView.vue" },
         },
         {
           path: "programaciones",

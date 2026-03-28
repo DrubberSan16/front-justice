@@ -7,7 +7,7 @@ export type MaintenanceField = {
   required?: boolean;
   sendInPayload?: boolean;
   jsonMode?: "array" | "object";
-  editor?: "string-list" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
+  editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
   hidden?: boolean;
   fullWidth?: boolean;
   options?: Array<{ value: any; title: string }>;
@@ -97,7 +97,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
   },
   {
     key: "productos",
-    title: "Productos",
+    title: "Materiales",
     endpoint: "/kpi_inventory/productos",
     fields: [
       statusField,
@@ -123,7 +123,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
     fields: [
       statusField,
       { key: "bodega_id", label: "Bodega", type: "select", required: true, relation: { endpoint: "/kpi_inventory/bodegas" } },
-      { key: "producto_id", label: "Producto", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
+      { key: "producto_id", label: "Material", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
       { key: "stock_actual", label: "Stock actual", type: "number", required: true },
       { key: "stock_min_bodega", label: "Stock mín. bodega", type: "number", required: true },
       { key: "stock_max_bodega", label: "Stock máx. bodega", type: "number", required: true },
@@ -187,7 +187,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   },
   {
     key: "planes",
-    title: "Planes de mantenimiento",
+    title: "Planes internos",
     endpoint: "/kpi_maintenance/planes",
     fields: [
       { key: "codigo", label: "Código", type: "text", required: true },
@@ -242,7 +242,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     title: "Plantillas MPG y checklist operativo",
     endpoint: "/kpi_maintenance/inteligencia/procedimientos",
     fields: [
-      { key: "codigo", label: "CÃ³digo", type: "text", required: true },
+      { key: "codigo", label: "Codigo", type: "text", required: true },
       { key: "nombre", label: "Plantilla", type: "text", required: true },
       { key: "tipo_proceso", label: "Tipo de proceso", type: "text", required: true },
       { key: "clase_mantenimiento", label: "Clase de mantenimiento", type: "text" },
@@ -354,7 +354,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   },
   {
     key: "plan-tareas",
-    title: "Tareas de planes",
+    title: "Tareas internas de plan",
     endpoint: "/kpi_maintenance/planes/:id/tareas",
     itemEndpoint: "/kpi_maintenance/planes/tareas/:id",
     pathParam: {
@@ -420,7 +420,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     },
     fields: [
       { key: "work_order_id", label: "Work Order", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/work-orders" } },
-      { key: "producto_id", label: "Producto", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
+      { key: "producto_id", label: "Material", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
       { key: "bodega_id", label: "Bodega", type: "select", relation: { endpoint: "/kpi_inventory/bodegas" } },
       { key: "cantidad", label: "Cantidad", type: "number", required: true },
       { key: "costo_unitario", label: "Costo unitario", type: "number", required: true },

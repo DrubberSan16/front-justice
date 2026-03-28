@@ -157,7 +157,19 @@
           </template>
 
           <template #item.work_order_title="{ item }">
-            <div v-if="resolveRow(item).work_order_title">
+            <div v-if="resolveRow(item).work_order_count > 1">
+              <div
+                v-for="workOrder in resolveRow(item).work_orders"
+                :key="workOrder.id"
+                class="mb-2"
+              >
+                <div class="font-weight-medium">{{ workOrder.label }}</div>
+                <div class="text-caption text-medium-emphasis">
+                  {{ workOrder.status_workflow || "Sin estado" }}
+                </div>
+              </div>
+            </div>
+            <div v-else-if="resolveRow(item).work_order_title">
               <div class="font-weight-medium">{{ resolveRow(item).work_order_title }}</div>
               <div class="text-caption text-medium-emphasis">
                 {{ resolveRow(item).work_order_status || "Sin estado" }}

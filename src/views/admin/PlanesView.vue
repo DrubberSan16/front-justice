@@ -4,11 +4,18 @@
       <v-card rounded="xl" class="pa-4 fill-height enterprise-surface">
         <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
           <div>
-            <div class="text-h6 font-weight-bold">Planes de mantenimiento</div>
-            <div class="text-body-2 text-medium-emphasis">Cabecera y detalle del plan con guardado unificado.</div>
+            <div class="text-h6 font-weight-bold">Planes internos</div>
+            <div class="text-body-2 text-medium-emphasis">Vista de soporte generada automaticamente desde Plantillas MPG.</div>
           </div>
-          <v-btn color="primary" prepend-icon="mdi-plus" @click="openPlanCreate">Nuevo plan</v-btn>
+          <v-chip color="warning" variant="tonal">Gestionado desde Plantillas MPG</v-chip>
         </div>
+
+        <v-alert
+          type="warning"
+          variant="tonal"
+          class="mb-3"
+          text="Este modulo ya no es la fuente de verdad operativa. Configura y actualiza tareas, materiales y checklist desde Plantillas MPG."
+        />
 
         <v-text-field
           v-model="planSearch"
@@ -156,7 +163,6 @@ const planHeaders = [
   { title: "Código", key: "codigo" },
   { title: "Nombre", key: "nombre" },
   { title: "Tipo", key: "tipo" },
-  { title: "Acciones", key: "actions", sortable: false },
 ];
 
 const taskHeaders = [
@@ -248,28 +254,6 @@ async function fetchTasks() {
   } finally {
     loadingTasks.value = false;
   }
-}
-
-function resetPlanForm() {
-  planForm.codigo = "";
-  planForm.nombre = "";
-  planForm.tipo = "";
-  planForm.frecuencia_tipo = "HORAS";
-  planForm.frecuencia_valor = "0";
-}
-
-function resetTaskForm() {
-  tasks.value = [];
-  deletedTaskIds.value = [];
-  taskRowKey.value = 0;
-}
-
-function openPlanCreate() {
-  editingPlanId.value = null;
-  selectedPlanId.value = null;
-  resetPlanForm();
-  resetTaskForm();
-  planDialog.value = true;
 }
 
 async function openPlanEdit(item: any) {

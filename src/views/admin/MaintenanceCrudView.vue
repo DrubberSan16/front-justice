@@ -70,6 +70,27 @@
         <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).equipo_nombre }}</span>
       </template>
 
+      <template #item.materiales="{ item }">
+        <div
+          v-if="Array.isArray(resolveTableItem(item).materiales_detalle) && resolveTableItem(item).materiales_detalle.length"
+          class="d-flex flex-wrap"
+          style="gap: 4px;"
+        >
+          <v-chip
+            v-for="material in resolveTableItem(item).materiales_detalle"
+            :key="material.id || material.codigo || material.nombre"
+            size="x-small"
+            variant="tonal"
+            color="primary"
+          >
+            {{ repairText(material.label || material.nombre || material.codigo || material.id) }}
+          </v-chip>
+        </div>
+        <span v-else>
+          {{ Array.isArray(resolveTableItem(item).materiales) ? resolveTableItem(item).materiales.join(", ") : "" }}
+        </span>
+      </template>
+
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn

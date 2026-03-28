@@ -58,6 +58,26 @@
         <v-col cols="12">
           <v-textarea :model-value="item.detalle ?? ''" label="Detalle operativo" variant="outlined" rows="2" auto-grow density="compact" @update:model-value="updateProcedureActivity(index, 'detalle', $event)" />
         </v-col>
+        <v-col cols="12" md="4">
+          <v-select
+            :model-value="procedureFieldType(item)"
+            :items="procedureFieldTypeOptions"
+            item-title="title"
+            item-value="value"
+            label="Tipo de captura"
+            variant="outlined"
+            density="compact"
+            @update:model-value="updateProcedureActivityConfig(index, 'field_type', $event)"
+          />
+        </v-col>
+        <v-col cols="12" md="4">
+          <v-checkbox
+            :model-value="procedureRequired(item)"
+            label="Registro obligatorio"
+            hide-details
+            @update:model-value="updateProcedureActivityConfig(index, 'required', $event)"
+          />
+        </v-col>
         <v-col cols="12" md="3">
           <v-checkbox :model-value="Boolean(item.requiere_permiso)" label="Requiere permiso" hide-details @update:model-value="updateProcedureActivity(index, 'requiere_permiso', $event)" />
         </v-col>
@@ -89,6 +109,34 @@
     </v-card>
 
     <div v-if="!procedureActivities.length" class="text-body-2 text-medium-emphasis">Aun no hay actividades configuradas.</div>
+  </div>
+
+  <div v-else-if="field.editor === 'relation-multi-select'" class="structured-field">
+    <div class="text-subtitle-2 font-weight-medium mb-2">{{ repairText(field.label) }}</div>
+    <v-select
+      :model-value="relationMultiSelectValue"
+      :items="relationOptions[field.key] ?? []"
+      item-title="title"
+      item-value="value"
+      :label="repairText(field.label)"
+      variant="outlined"
+      density="comfortable"
+      multiple
+      chips
+      closable-chips
+      @update:model-value="updateRelationMultiSelect"
+    />
+    <div v-if="relationMultiSelectValue.length" class="chip-list">
+      <v-chip
+        v-for="item in relationMultiSelectValue"
+        :key="`${field.key}-${item}`"
+        size="small"
+        closable
+        @click:close="removeRelationMultiSelectItem(item)"
+      >
+        {{ resolveRelationMultiSelectLabel(item) }}
+      </v-chip>
+    </div>
   </div>
 
   <div v-else-if="field.editor === 'analysis-details'" class="structured-field">
@@ -224,7 +272,7 @@
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
       <div>
         <div class="text-subtitle-2 font-weight-medium">{{ repairText(field.label) }}</div>
-        <div class="text-body-2 text-medium-emphasis">Selecciona producto, bodega y cantidad por cada material.</div>
+        <div class="text-body-2 text-medium-emphasis">Selecciona material, bodega y cantidad por cada registro.</div>
       </div>
       <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addIssueItem">
         Agregar item
@@ -233,7 +281,7 @@
 
     <v-row v-for="(item, index) in issueItems" :key="`issue-${index}`" dense class="mb-1">
       <v-col cols="12" md="5">
-        <v-select :model-value="item.producto_id ?? null" :items="relationOptions.producto_id ?? []" item-title="title" item-value="value" label="Producto" variant="outlined" density="compact" @update:model-value="updateIssueItem(index, 'producto_id', $event)" />
+        <v-select :model-value="item.producto_id ?? null" :items="relationOptions.producto_id ?? []" item-title="title" item-value="value" label="Material" variant="outlined" density="compact" @update:model-value="updateIssueItem(index, 'producto_id', $event)" />
       </v-col>
       <v-col cols="12" md="4">
         <v-select :model-value="item.bodega_id ?? null" :items="relationOptions.bodega_id ?? []" item-title="title" item-value="value" label="Bodega" variant="outlined" density="compact" @update:model-value="updateIssueItem(index, 'bodega_id', $event)" />
@@ -303,6 +351,13 @@ const priorityOptions = [
   { value: "ALTA", title: "Alta" },
 ];
 
+const procedureFieldTypeOptions = [
+  { value: "BOOLEAN", title: "Check / Cumple" },
+  { value: "TEXT", title: "Texto" },
+  { value: "NUMBER", title: "Numero" },
+  { value: "JSON", title: "JSON / Evidencia" },
+];
+
 function repairText(value: unknown) {
   const text = String(value ?? "");
   try {
@@ -337,6 +392,12 @@ const stringListValue = computed<string[]>(() =>
   Array.isArray(props.modelValue) ? props.modelValue.map((item) => String(item)).filter(Boolean) : [],
 );
 
+const relationMultiSelectValue = computed<string[]>(() =>
+  Array.isArray(props.modelValue)
+    ? props.modelValue.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [],
+);
+
 function addStringListItem() {
   const draft = String(drafts[props.field.key] ?? "").trim();
   if (!draft) return;
@@ -346,6 +407,10 @@ function addStringListItem() {
 
 function removeStringListItem(index: number) {
   emitValue(stringListValue.value.filter((_, currentIndex) => currentIndex !== index));
+}
+
+function updateRelationMultiSelect(value: any) {
+  emitValue(Array.isArray(value) ? value.map((item) => String(item ?? "").trim()).filter(Boolean) : []);
 }
 
 const procedureActivities = computed<AnyRow[]>(() => (Array.isArray(props.modelValue) ? props.modelValue : []));
@@ -362,7 +427,7 @@ function addProcedureActivity() {
       requiere_epp: false,
       requiere_bloqueo: false,
       requiere_evidencia: false,
-      meta: { evidencias_requeridas: [] },
+      meta: { evidencias_requeridas: [], field_type: "BOOLEAN", required: true },
     },
   ]);
 }
@@ -377,6 +442,14 @@ function procedureEvidenceTypes(item: AnyRow) {
   return Array.isArray(item?.meta?.evidencias_requeridas) ? item.meta.evidencias_requeridas : [];
 }
 
+function procedureFieldType(item: AnyRow) {
+  return String(item?.meta?.field_type || (item?.requiere_evidencia ? "JSON" : "BOOLEAN"));
+}
+
+function procedureRequired(item: AnyRow) {
+  return typeof item?.meta?.required === "boolean" ? item.meta.required : true;
+}
+
 function updateProcedureEvidence(index: number, value: any) {
   const next = cloneValue(procedureActivities.value);
   const current = next[index] ?? {};
@@ -384,6 +457,20 @@ function updateProcedureEvidence(index: number, value: any) {
     ...(current.meta ?? {}),
     evidencias_requeridas: Array.isArray(value) ? value : [],
   };
+  next[index] = current;
+  emitValue(next);
+}
+
+function updateProcedureActivityConfig(index: number, key: string, value: any) {
+  const next = cloneValue(procedureActivities.value);
+  const current = next[index] ?? {};
+  current.meta = {
+    ...(current.meta ?? {}),
+    [key]: key === "required" ? Boolean(value) : value,
+  };
+  if (key === "field_type" && String(value || "").toUpperCase() === "JSON") {
+    current.requiere_evidencia = true;
+  }
   next[index] = current;
   emitValue(next);
 }
@@ -482,6 +569,16 @@ function handleAnalysisAttachments(value: File[] | File | null) {
 
 const issueItems = computed<AnyRow[]>(() => (Array.isArray(props.modelValue) ? props.modelValue : []));
 const relationOptions = computed(() => props.relationOptions ?? {});
+
+function resolveRelationMultiSelectLabel(value: unknown) {
+  const key = String(value ?? "").trim();
+  return relationOptions.value[props.field.key]?.find((item) => String(item.value) === key)?.title || key;
+}
+
+function removeRelationMultiSelectItem(value: unknown) {
+  const key = String(value ?? "").trim();
+  emitValue(relationMultiSelectValue.value.filter((item) => item !== key));
+}
 
 function addIssueItem() {
   emitValue([...issueItems.value, { producto_id: null, bodega_id: null, cantidad: 1 }]);

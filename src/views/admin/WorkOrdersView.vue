@@ -196,6 +196,69 @@
                   {{ getTaskDetailText(item._raw ?? item) }}
                 </div>
               </template>
+              <template #item.captura="{ item }">
+                <div class="capture-cell">
+                  <v-switch
+                    v-if="getTaskFieldType(item._raw ?? item) === 'BOOLEAN'"
+                    :model-value="Boolean((item._raw ?? item).valor_boolean)"
+                    color="primary"
+                    hide-details
+                    inset
+                    :disabled="isClosed"
+                    @update:model-value="setTaskBooleanValue(item._raw ?? item, $event)"
+                  />
+                  <v-text-field
+                    v-else-if="getTaskFieldType(item._raw ?? item) === 'NUMBER'"
+                    :model-value="(item._raw ?? item).valor_numeric ?? ''"
+                    label="Valor"
+                    type="number"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    :disabled="isClosed"
+                    @update:model-value="setTaskNumericValue(item._raw ?? item, $event)"
+                  />
+                  <v-text-field
+                    v-else-if="getTaskFieldType(item._raw ?? item) === 'TEXT'"
+                    :model-value="(item._raw ?? item).valor_text ?? ''"
+                    label="Valor"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    :disabled="isClosed"
+                    @update:model-value="setTaskTextValue(item._raw ?? item, $event)"
+                  />
+                  <v-textarea
+                    v-else
+                    :model-value="getTaskJsonText(item._raw ?? item)"
+                    label="JSON / evidencia"
+                    rows="2"
+                    auto-grow
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    :disabled="isClosed"
+                    @update:model-value="setTaskJsonValue(item._raw ?? item, $event)"
+                  />
+                  <div
+                    v-if="isTaskRequired(item._raw ?? item)"
+                    class="text-caption text-medium-emphasis mt-1"
+                  >
+                    Campo obligatorio
+                  </div>
+                </div>
+              </template>
+              <template #item.observacion="{ item }">
+                <v-text-field
+                  :model-value="(item._raw ?? item).observacion ?? ''"
+                  label="Observacion"
+                  density="compact"
+                  variant="outlined"
+                  hide-details
+                  :disabled="isClosed"
+                  @update:model-value="setTaskObservation(item._raw ?? item, $event)"
+                />
+              </template>
               <template #item.actions="{ item }">
                 <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteTask(item._raw ?? item)" />
               </template>
@@ -244,7 +307,7 @@
           <v-window-item value="consumos">
             <v-row v-if="!isClosed" dense class="pt-2">
               <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="getWarehouseProductOptions(consumoForm.bodega_id)" item-title="title" item-value="value" label="Producto" :disabled="!consumoForm.bodega_id" variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="getWarehouseProductOptions(consumoForm.bodega_id)" item-title="title" item-value="value" label="Material" :disabled="!consumoForm.bodega_id" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col v-if="canViewCosts" cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" readonly /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
@@ -545,6 +608,7 @@ const headers = [
 const taskHeaders = [
   { title: "Plan", key: "plan_id" },
   { title: "Tarea", key: "tarea_id" },
+  { title: "Captura", key: "captura", sortable: false },
   { title: "Obs.", key: "observacion" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -573,7 +637,7 @@ const attachmentHeaders = [
 const consumoHeaders = computed(() => {
   const base = [
     { title: "Bodega", key: "bodega_label" },
-    { title: "Producto", key: "producto_label" },
+    { title: "Material", key: "producto_label" },
     { title: "Cantidad", key: "cantidad" },
   ];
   if (canViewCosts.value) {
@@ -591,7 +655,7 @@ const issueHeaders = computed(() => {
     { title: "Salida", key: "entrega_code" },
     { title: "Fecha", key: "fecha_label" },
     { title: "Bodega", key: "bodega_label" },
-    { title: "Producto", key: "producto_label" },
+    { title: "Material", key: "producto_label" },
     { title: "Cantidad", key: "cantidad" },
   ];
   if (canViewCosts.value) {
@@ -747,7 +811,18 @@ async function loadCatalogs() {
   planOptions.value = planes.map(normalize);
   procedureCatalog.value = procedimientos;
   procedureOptions.value = procedimientos.map(normalize);
-  alertOptions.value = alertas.map(normalize);
+  alertOptions.value = alertas.map((item: any) => ({
+    value: item.id,
+    title: [
+      item?.title || item?.tipo_alerta || item?.nombre || item?.codigo || item?.id,
+      item?.equipo_label || item?.equipo_nombre || null,
+      Number(item?.work_order_count || 0) > 0
+        ? `${item.work_order_count} OT${Number(item?.work_order_count || 0) === 1 ? "" : "s"}`
+        : "Sin OT",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  }));
   productCatalogRows.value = productos;
   warehouseCatalogRows.value = bodegas;
   stockByWarehouseRows.value = stockRows;
@@ -757,7 +832,12 @@ async function loadCatalogs() {
 function getSelectedPlanLabel(planId: string) {
   if (!planId) return "Sin plan";
   const selectedPlan = planOptions.value.find((plan) => String(plan.value) === String(planId));
-  return selectedPlan?.title || planId;
+  if (selectedPlan?.title) return selectedPlan.title;
+  const fromProcedure = procedureCatalog.value.find((item: any) => String(item?.plan_id || "") === String(planId));
+  if (fromProcedure?.plan_codigo || fromProcedure?.plan_nombre) {
+    return [fromProcedure.plan_codigo, fromProcedure.plan_nombre].filter(Boolean).join(" - ");
+  }
+  return planId;
 }
 
 function getSelectedTaskLabel(planId: string, taskId: string) {
@@ -802,6 +882,7 @@ function getTaskRequirementChips(task: any) {
   const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
   const meta = definition?.meta ?? task?.task_meta ?? {};
   const chips: string[] = [];
+  if (definition?.required || meta?.required) chips.push("Obligatoria");
   if (meta?.requiere_permiso) chips.push("Permiso");
   if (meta?.requiere_epp) chips.push("EPP");
   if (meta?.requiere_bloqueo) chips.push("Bloqueo");
@@ -816,10 +897,150 @@ function getTaskRequirementChips(task: any) {
   return chips;
 }
 
+function normalizeTaskFieldType(value: unknown) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (["BOOLEAN", "BOOL", "CHECKBOX"].includes(raw)) return "BOOLEAN";
+  if (["NUMBER", "NUMERIC", "DECIMAL", "INTEGER"].includes(raw)) return "NUMBER";
+  if (["JSON", "OBJECT", "OBJETO", "EVIDENCIA"].includes(raw)) return "JSON";
+  if (["TEXT", "TEXTO", "STRING"].includes(raw)) return "TEXT";
+  return "BOOLEAN";
+}
+
+function getTaskFieldType(task: any) {
+  const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
+  return normalizeTaskFieldType(
+    definition?.field_type ?? definition?.meta?.field_type ?? task?.field_type ?? task?.task_meta?.field_type,
+  );
+}
+
+function isTaskRequired(task: any) {
+  const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
+  if (typeof definition?.required === "boolean") return definition.required;
+  if (typeof definition?.meta?.required === "boolean") return definition.meta.required;
+  if (typeof task?.task_meta?.required === "boolean") return task.task_meta.required;
+  return false;
+}
+
+function markTaskDirty(task: any) {
+  task._dirty = true;
+}
+
+function getTaskJsonText(task: any) {
+  if (typeof task?._json_text === "string") return task._json_text;
+  if (task?.valor_json && typeof task.valor_json === "object") {
+    return JSON.stringify(task.valor_json, null, 2);
+  }
+  return "";
+}
+
+function setTaskBooleanValue(task: any, value: unknown) {
+  task.valor_boolean = Boolean(value);
+  markTaskDirty(task);
+}
+
+function setTaskNumericValue(task: any, value: unknown) {
+  const raw = String(value ?? "").trim();
+  task.valor_numeric = raw === "" ? null : Number(raw);
+  markTaskDirty(task);
+}
+
+function setTaskTextValue(task: any, value: unknown) {
+  task.valor_text = String(value ?? "");
+  markTaskDirty(task);
+}
+
+function setTaskObservation(task: any, value: unknown) {
+  task.observacion = String(value ?? "");
+  markTaskDirty(task);
+}
+
+function setTaskJsonValue(task: any, value: unknown) {
+  task._json_text = String(value ?? "");
+  markTaskDirty(task);
+}
+
+function validateTaskValue(task: any) {
+  const fieldType = getTaskFieldType(task);
+  if (fieldType === "NUMBER") {
+    return task.valor_numeric !== null && task.valor_numeric !== undefined && Number.isFinite(Number(task.valor_numeric));
+  }
+  if (fieldType === "TEXT") {
+    return String(task.valor_text ?? "").trim().length > 0;
+  }
+  if (fieldType === "JSON") {
+    const raw = String(getTaskJsonText(task) ?? "").trim();
+    if (!raw) return false;
+    try {
+      JSON.parse(raw);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildTaskPersistencePayload(task: any) {
+  const fieldType = getTaskFieldType(task);
+  let valor_boolean: boolean | null = null;
+  let valor_numeric: number | null = null;
+  let valor_text: string | null = null;
+  let valor_json: Record<string, unknown> | null = null;
+
+  if (fieldType === "BOOLEAN") {
+    valor_boolean = Boolean(task.valor_boolean);
+  } else if (fieldType === "NUMBER") {
+    valor_numeric =
+      task.valor_numeric === null || task.valor_numeric === undefined || task.valor_numeric === ""
+        ? null
+        : Number(task.valor_numeric);
+  } else if (fieldType === "TEXT") {
+    valor_text = String(task.valor_text ?? "").trim() || null;
+  } else {
+    const raw = String(getTaskJsonText(task) ?? "").trim();
+    if (raw) {
+      try {
+        valor_json = JSON.parse(raw);
+      } catch {
+        throw new Error(`La tarea ${getTaskLabelForTask(task)} requiere un JSON válido.`);
+      }
+    }
+  }
+
+  if (isTaskRequired(task) && !validateTaskValue(task)) {
+    throw new Error(`Completa la captura obligatoria de la tarea ${getTaskLabelForTask(task)}.`);
+  }
+
+  return {
+    plan_id: task.plan_id,
+    tarea_id: task.tarea_id,
+    valor_boolean,
+    valor_numeric,
+    valor_text,
+    valor_json,
+    observacion: String(task.observacion ?? "").trim() || null,
+  };
+}
+
+function validateTaskRowsForSave() {
+  for (const row of taskRows.value) {
+    try {
+      buildTaskPersistencePayload(row);
+    } catch (error: any) {
+      ui.error(error?.message || "Revisa la captura de tareas antes de guardar.");
+      return false;
+    }
+  }
+  return true;
+}
+
 async function syncChecklistFromTemplate(showToast = true) {
-  const planId = String(headerForm.plan_id || taskForm.plan_id || "");
+  const selectedProcedurePlanId = String(selectedProcedure.value?.plan_id || "");
+  const planId = String(headerForm.plan_id || taskForm.plan_id || selectedProcedurePlanId || "");
   if (!planId) return;
 
+  headerForm.plan_id = planId;
+  taskForm.plan_id = planId;
   await loadTaskOptionsByPlan(planId);
   const definitions = planTaskCatalogByPlan.value[planId] ?? [];
   if (!definitions.length) return;
@@ -834,10 +1055,29 @@ async function syncChecklistFromTemplate(showToast = true) {
       id: `draft-task-${Date.now()}-${String(definition?.id || "").slice(0, 8)}`,
       plan_id: planId,
       tarea_id: definition.id,
+      field_type: definition.field_type,
+      required: definition.required,
       observacion: taskForm.observacion || null,
       plan_label: getSelectedPlanLabel(planId),
       tarea_label: normalizeTask(definition).title,
       task_meta: definition.meta ?? {},
+      valor_boolean: normalizeTaskFieldType(definition.field_type) === "BOOLEAN" ? false : null,
+      valor_numeric: null,
+      valor_text: "",
+      valor_json: null,
+      _json_text:
+        normalizeTaskFieldType(definition.field_type) === "JSON"
+          ? JSON.stringify(
+              {
+                evidencia: "",
+                evidencias_requeridas: Array.isArray(definition?.meta?.evidencias_requeridas)
+                  ? definition.meta.evidencias_requeridas
+                  : [],
+              },
+              null,
+              2,
+            )
+          : "",
       _isDraft: true,
       _raw: null,
     }));
@@ -868,6 +1108,9 @@ const selectedProcedureLabel = computed(
 const resolvedOperationalPlanLabel = computed(() => {
   if (headerForm.plan_id) return getSelectedPlanLabel(headerForm.plan_id);
   if (!headerForm.procedimiento_id) return "Se generara al guardar";
+  if (selectedProcedure.value?.plan_id) {
+    return getSelectedPlanLabel(String(selectedProcedure.value.plan_id));
+  }
   return `Se sincroniza desde ${selectedProcedureLabel.value}`;
 });
 
@@ -967,7 +1210,15 @@ async function loadDetailData() {
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, "El backend actual no expone un listado de salidas de materiales por OT; las emisiones nuevas dependen de la reserva de stock del backend."),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/history`, "No se pudo cargar el historial de la orden de trabajo."),
     ]);
-    taskRows.value = asArray(tasksRes.data).map((x) => ({ ...x, _raw: x }));
+    taskRows.value = asArray(tasksRes.data).map((x) => ({
+      ...x,
+      _json_text:
+        x?.valor_json && typeof x.valor_json === "object"
+          ? JSON.stringify(x.valor_json, null, 2)
+          : "",
+      _dirty: false,
+      _raw: null,
+    }));
     await ensureTaskLabelCacheForRows(taskRows.value);
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
     localConsumos.value = consumosRows.map((x) => ({ ...x, _raw: x }));
@@ -1256,6 +1507,9 @@ async function saveAll() {
 
     const actions: Array<() => Promise<void>> = [];
     await syncChecklistFromTemplate(false);
+    if (!validateTaskRowsForSave()) {
+      return;
+    }
 
     const hasCompleteAttachment = !!(attachmentForm.nombre && attachmentForm.contenido_base64);
     const hasAttachmentDraft = !!(attachmentForm.nombre || attachmentForm.contenido_base64 || attachmentForm.mime_type);
@@ -1270,7 +1524,7 @@ async function saveAll() {
     const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad);
     const hasConsumoDraft = !!(consumoForm.producto_id || consumoForm.bodega_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion);
     if (hasConsumoDraft && !hasCompleteConsumo) {
-      ui.error("Para registrar un consumo debes completar bodega, producto y cantidad.");
+      ui.error("Para registrar un consumo debes completar bodega, material y cantidad.");
       return;
     }
     if (hasCompleteConsumo) {
@@ -1292,6 +1546,7 @@ async function saveAll() {
       await run();
     }
 
+    await persistEditedTasks();
     await persistDraftTasks();
     await persistDraftAttachments();
 
@@ -1311,20 +1566,41 @@ async function persistDraftTasks() {
   const drafts = taskRows.value.filter((row) => row?._isDraft);
   for (const draft of drafts) {
     try {
-      await api.post(`/kpi_maintenance/work-orders/${editingId.value}/tareas`, {
-        plan_id: draft.plan_id,
-        tarea_id: draft.tarea_id,
-        valor_boolean: true,
-        valor_numeric: 0,
-        valor_text: "",
-        valor_json: draft.task_meta ?? {},
-        observacion: draft.observacion || null,
-      });
+      await api.post(
+        `/kpi_maintenance/work-orders/${editingId.value}/tareas`,
+        buildTaskPersistencePayload(draft),
+      );
     } catch (e: any) {
-      ui.error(e?.response?.data?.message || `No se pudo guardar la tarea ${draft.tarea_id}.`);
+      const errorMessage =
+        e instanceof Error
+          ? e.message
+          : e?.response?.data?.message || `No se pudo guardar la tarea ${draft.tarea_id}.`;
+      ui.error(errorMessage);
     }
   }
   if (drafts.length) {
+    await loadDetailData();
+  }
+}
+
+async function persistEditedTasks() {
+  const editedRows = taskRows.value.filter((row) => !row?._isDraft && row?._dirty);
+  for (const row of editedRows) {
+    try {
+      await api.patch(
+        `/kpi_maintenance/work-orders/tareas/${row.id}`,
+        buildTaskPersistencePayload(row),
+      );
+      row._dirty = false;
+    } catch (e: any) {
+      const errorMessage =
+        e instanceof Error
+          ? e.message
+          : e?.response?.data?.message || `No se pudo actualizar la tarea ${row.id}.`;
+      ui.error(errorMessage);
+    }
+  }
+  if (editedRows.length) {
     await loadDetailData();
   }
 }
@@ -1409,7 +1685,7 @@ async function createConsumo() {
   if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
   if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad) {
-    return ui.error("Bodega, producto y cantidad son obligatorios.");
+    return ui.error("Bodega, material y cantidad son obligatorios.");
   }
 
   const payload = {
@@ -1579,13 +1855,20 @@ watch(
 
 watch(
   () => headerForm.procedimiento_id,
-  (procedimientoId, previousProcedimientoId) => {
+  async (procedimientoId, previousProcedimientoId) => {
     if (editingId.value) return;
     if (String(procedimientoId || "") === String(previousProcedimientoId || "")) return;
-    headerForm.plan_id = "";
-    taskForm.plan_id = "";
+    const selected = procedureCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(procedimientoId || ""),
+    );
+    headerForm.plan_id = selected?.plan_id ? String(selected.plan_id) : "";
+    taskForm.plan_id = headerForm.plan_id || "";
     taskForm.tarea_id = "";
     taskRows.value = [];
+    if (headerForm.plan_id) {
+      await loadTaskOptionsByPlan(headerForm.plan_id);
+      await syncChecklistFromTemplate(false);
+    }
   },
 );
 
@@ -1668,5 +1951,9 @@ watch(
 
 .section-card :deep(.v-field) {
   background: var(--field-background);
+}
+
+.capture-cell {
+  min-width: 220px;
 }
 </style>

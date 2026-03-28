@@ -1,7 +1,7 @@
 import { getMaintenanceModule, type MaintenanceModuleConfig, type MaintenanceField } from "@/app/config/maintenance-modules";
 
 export type EnhancedMaintenanceField = MaintenanceField & {
-  editor?: "string-list" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
+  editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
   hidden?: boolean;
   fullWidth?: boolean;
 };
@@ -27,6 +27,28 @@ function replaceFields(
 export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceModuleConfig | null {
   const config = getMaintenanceModule(key);
   if (!config) return null;
+
+  if (key === "productos") {
+    return replaceFields(config, [
+      { key: "status", label: "Estado", type: "select", required: true, options: [
+        { value: "ACTIVE", title: "ACTIVE" },
+        { value: "INACTIVE", title: "INACTIVE" },
+      ] },
+      { key: "codigo", label: "Codigo material", type: "text", required: true },
+      { key: "nombre", label: "Nombre del material", type: "text", required: true },
+      { key: "descripcion", label: "Descripcion del material", type: "text" },
+      { key: "linea_id", label: "Linea", type: "select", relation: { endpoint: "/kpi_inventory/lineas" } },
+      { key: "categoria_id", label: "Categoria", type: "select", relation: { endpoint: "/kpi_inventory/categorias" } },
+      { key: "unidad_medida_id", label: "Unidad de medida", type: "select", relation: { endpoint: "/kpi_inventory/unidades-medida" } },
+      { key: "sku", label: "SKU", type: "text" },
+      { key: "codigo_barras", label: "Codigo barras", type: "text" },
+      { key: "es_servicio", label: "Es servicio", type: "boolean", required: true },
+      { key: "ultimo_costo", label: "Ultimo costo", type: "number", required: true },
+      { key: "costo_promedio", label: "Costo promedio", type: "number", required: true },
+      { key: "precio_venta", label: "Precio venta", type: "number", required: true },
+      { key: "porcentaje_utilidad", label: "% utilidad", type: "number", required: true },
+    ]);
+  }
 
   if (key === "inteligencia-procedimientos") {
     return replaceFields(config, [
@@ -80,7 +102,8 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         label: "Materiales",
         type: "json",
         jsonMode: "array",
-        editor: "string-list",
+        editor: "relation-multi-select",
+        relation: { endpoint: "/kpi_inventory/productos" },
         fullWidth: true,
       },
       {
@@ -104,7 +127,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
 
   if (key === "inteligencia-analisis-lubricante") {
     return replaceFields(config, [
-      { key: "codigo", label: "Codigo", type: "text", required: true },
+      { key: "codigo", label: "Codigo", type: "text" },
       { key: "equipo_id", label: "Equipo", type: "select", relation: { endpoint: "/kpi_maintenance/equipos" } },
       { key: "equipo_codigo", label: "Codigo equipo", type: "text" },
       { key: "equipo_nombre", label: "Nombre equipo", type: "text" },
