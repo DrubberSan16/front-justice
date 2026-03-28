@@ -102,6 +102,75 @@
           </v-chip>
         </v-col>
       </v-row>
+
+      <v-card v-if="importJob" class="mt-4" rounded="lg" variant="tonal">
+        <v-card-text>
+          <div class="d-flex align-center justify-space-between page-wrap mb-2">
+            <div>
+              <div class="text-subtitle-2 font-weight-bold">Carga en servidor</div>
+              <div class="text-caption text-medium-emphasis">
+                {{ importJob.source_file_name || importJob.stored_file_name || "Archivo Excel" }}
+              </div>
+            </div>
+            <v-chip :color="importStatusColor(importJob.status)" variant="tonal" label>
+              {{ importJob.status || "QUEUED" }}
+            </v-chip>
+          </div>
+
+          <v-progress-linear
+            :model-value="importProgress"
+            :color="importStatusColor(importJob.status)"
+            height="12"
+            rounded
+          />
+
+          <div class="d-flex align-center justify-space-between page-wrap mt-2">
+            <div class="text-body-2">
+              {{ importJob.current_step || "En espera" }}
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ importProgress }}%
+            </div>
+          </div>
+
+          <div class="text-caption text-medium-emphasis mt-2">
+            {{ importJob.current_index || 0 }} / {{ importJob.total_steps || 0 }} muestras procesadas
+          </div>
+
+          <v-alert
+            v-if="importJob.error_message"
+            class="mt-3"
+            type="error"
+            variant="tonal"
+            :text="importJob.error_message"
+          />
+
+          <div v-if="Array.isArray(importJob.errors) && importJob.errors.length" class="mt-3">
+            <div class="text-caption font-weight-bold mb-1">Errores detectados</div>
+            <div class="import-log">
+              <div
+                v-for="(item, index) in importJob.errors"
+                :key="`error-${index}`"
+                class="import-log__line"
+              >
+                <span class="font-weight-medium">Fila {{ Number(item.index ?? 0) + 1 }}</span>
+                <span>{{ item.message }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="importLogs.length" class="mt-3">
+            <div class="text-caption font-weight-bold mb-1">Log transaccional</div>
+            <div class="import-log">
+              <div v-for="(log, index) in importLogs" :key="`${log.at}-${index}`" class="import-log__line">
+                <span class="font-weight-medium">{{ log.level }}</span>
+                <span>{{ log.at }}</span>
+                <span>{{ log.message }}</span>
+              </div>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
     </v-card>
 
     <v-card rounded="xl" class="pa-4 enterprise-surface">
@@ -382,8 +451,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
+import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
@@ -394,11 +464,11 @@ import {
   getLubricantParameterTemplate,
   mergeLubricantDetails,
 } from "@/app/config/lubricant-analysis";
-import { parseLubricantWorkbook } from "@/app/utils/lubricant-analysis-import";
 
 type AnyRow = Record<string, any>;
 
 const ui = useUiStore();
+const auth = useAuthStore();
 
 const loading = ref(false);
 const saving = ref(false);
@@ -421,6 +491,8 @@ const lubricantSelection = ref<any>(null);
 const dashboardSelection = ref<any>(null);
 const importFile = ref<File | null>(null);
 const lastImportSummary = ref<AnyRow | null>(null);
+const importJob = ref<AnyRow | null>(null);
+const importPollHandle = ref<number | null>(null);
 const tableSearch = ref("");
 const statusFilter = ref<string | null>(null);
 const dashboardPeriod = ref("MENSUAL");
@@ -540,6 +612,8 @@ const alertCount = computed(
 );
 
 const groupedFormDetails = computed(() => groupLubricantDetails(form.detalles));
+const importProgress = computed(() => Number(importJob.value?.progress ?? 0));
+const importLogs = computed(() => (Array.isArray(importJob.value?.logs) ? importJob.value.logs : []));
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -620,21 +694,72 @@ async function loadAll() {
   }
 }
 
+function currentUserName() {
+  return auth.user?.nameUser || "admin";
+}
+
+function getSelectedImportFile() {
+  if (Array.isArray(importFile.value)) {
+    return (importFile.value[0] as File) || null;
+  }
+  return importFile.value;
+}
+
+function stopImportPolling() {
+  if (importPollHandle.value != null) {
+    window.clearInterval(importPollHandle.value);
+    importPollHandle.value = null;
+  }
+}
+
+function importStatusColor(status: unknown) {
+  const raw = String(status ?? "").toUpperCase();
+  if (raw === "FAILED") return "error";
+  if (raw === "COMPLETED") return "success";
+  if (raw === "PROCESSING" || raw === "PARSING") return "warning";
+  return "secondary";
+}
+
+async function fetchImportJobStatus(jobId: string, options?: { silent?: boolean }) {
+  const { data } = await api.get(`/kpi_maintenance/inteligencia/analisis-lubricante/import/${jobId}`);
+  importJob.value = unwrap<AnyRow | null>(data, null);
+
+  const status = String(importJob.value?.status ?? "").toUpperCase();
+  if (status === "COMPLETED" || status === "FAILED") {
+    stopImportPolling();
+    lastImportSummary.value = importJob.value?.summary ?? null;
+    await loadAll();
+    if (!options?.silent) {
+      if (status === "COMPLETED") {
+        const errors = Number(importJob.value?.errors?.length ?? 0);
+        if (errors > 0) {
+          ui.open(`Importacion finalizada con ${errors} error(es). Revisa el log transaccional.`, "warning");
+        } else {
+          ui.success("Excel de lubricante importado correctamente.");
+        }
+      } else {
+        ui.error(importJob.value?.error_message || "La importacion del Excel fallo.");
+      }
+    }
+  }
+}
+
 async function processWorkbookImport() {
-  if (!importFile.value) {
+  const file = getSelectedImportFile();
+  if (!file) {
     ui.error("Debes seleccionar un archivo Excel para importar.");
     return;
   }
 
   importing.value = true;
   try {
-    const buffer = await importFile.value.arrayBuffer();
-    const parsed = parseLubricantWorkbook(buffer, importFile.value.name, {
-      equipments: equipments.value,
-      brands: brands.value,
-    });
+    stopImportPolling();
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upsert_existing", "true");
+    formData.append("requested_by", currentUserName());
 
-    if (parsed.warnings.length) {
+    /*
       ui.open(parsed.warnings[0] || "El archivo contiene advertencias de importacion.", "warning");
     }
 
@@ -642,16 +767,22 @@ async function processWorkbookImport() {
       ui.error("El archivo no contiene muestras válidas para importar.");
       return;
     }
+    */
+    const { data } = await api.post(
+      "/kpi_maintenance/inteligencia/analisis-lubricante/import/upload",
+      formData,
+    );
 
-    const { data } = await api.post("/kpi_maintenance/inteligencia/analisis-lubricante/import", {
-      source_file_name: importFile.value.name,
-      upsert_existing: true,
-      analyses: parsed.analyses,
-    });
+    importJob.value = unwrap<AnyRow | null>(data, null);
+    lastImportSummary.value = null;
+    ui.success("Archivo subido. La importacion se esta ejecutando en segundo plano.");
 
-    lastImportSummary.value = unwrap(data, {});
-    ui.success("Excel de lubricante importado correctamente.");
-    await loadAll();
+    if (importJob.value?.id) {
+      importPollHandle.value = window.setInterval(() => {
+        void fetchImportJobStatus(String(importJob.value?.id), { silent: true });
+      }, 2000);
+      await fetchImportJobStatus(String(importJob.value.id), { silent: true });
+    }
   } catch (e: any) {
     ui.error(e?.response?.data?.message || e?.message || "No se pudo importar el Excel de lubricante.");
   } finally {
@@ -918,6 +1049,10 @@ watch(
 onMounted(async () => {
   await loadAll();
 });
+
+onUnmounted(() => {
+  stopImportPolling();
+});
 </script>
 
 <style scoped>
@@ -935,6 +1070,22 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.import-log {
+  display: grid;
+  gap: 6px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(17, 24, 39, 0.04);
+}
+
+.import-log__line {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
 }
 
 .detail-grid {
