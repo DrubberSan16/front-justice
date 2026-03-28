@@ -12,6 +12,15 @@
           <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">
             Nuevo analisis
           </v-btn>
+          <v-btn
+            color="secondary"
+            variant="tonal"
+            prepend-icon="mdi-file-excel"
+            :loading="importing"
+            @click="processWorkbookImport"
+          >
+            Cargar Excel
+          </v-btn>
           <v-btn variant="tonal" prepend-icon="mdi-refresh" :loading="loading" @click="loadAll">
             Actualizar
           </v-btn>
@@ -73,6 +82,26 @@
           {{ alertCount }} anormales
         </v-chip>
       </div>
+
+      <v-row dense class="mt-3">
+        <v-col cols="12" md="8">
+          <v-file-input
+            v-model="importFile"
+            accept=".xlsx,.xls"
+            prepend-icon="mdi-file-excel"
+            label="Selecciona el archivo Excel de lubricante"
+            variant="outlined"
+            density="compact"
+            show-size
+            hide-details="auto"
+          />
+        </v-col>
+        <v-col cols="12" md="4" class="d-flex align-center">
+          <v-chip v-if="lastImportSummary" color="success" variant="tonal" label>
+            Creados: {{ lastImportSummary.created }} · Actualizados: {{ lastImportSummary.updated }} · Errores: {{ lastImportSummary.errors.length }}
+          </v-chip>
+        </v-col>
+      </v-row>
     </v-card>
 
     <v-card rounded="xl" class="pa-4 enterprise-surface">
@@ -365,6 +394,7 @@ import {
   getLubricantParameterTemplate,
   mergeLubricantDetails,
 } from "@/app/config/lubricant-analysis";
+import { parseLubricantWorkbook } from "@/app/utils/lubricant-analysis-import";
 
 type AnyRow = Record<string, any>;
 
@@ -374,6 +404,7 @@ const loading = ref(false);
 const saving = ref(false);
 const codeLoading = ref(false);
 const dashboardLoading = ref(false);
+const importing = ref(false);
 const dialog = ref(false);
 const deleteDialog = ref(false);
 const editingId = ref<string | null>(null);
@@ -388,6 +419,8 @@ const catalog = ref<AnyRow[]>([]);
 const lubricantSearch = ref("");
 const lubricantSelection = ref<any>(null);
 const dashboardSelection = ref<any>(null);
+const importFile = ref<File | null>(null);
+const lastImportSummary = ref<AnyRow | null>(null);
 const tableSearch = ref("");
 const statusFilter = ref<string | null>(null);
 const dashboardPeriod = ref("MENSUAL");
@@ -584,6 +617,45 @@ async function loadAll() {
     error.value = e?.response?.data?.message || "No se pudo cargar el modulo de lubricantes.";
   } finally {
     loading.value = false;
+  }
+}
+
+async function processWorkbookImport() {
+  if (!importFile.value) {
+    ui.error("Debes seleccionar un archivo Excel para importar.");
+    return;
+  }
+
+  importing.value = true;
+  try {
+    const buffer = await importFile.value.arrayBuffer();
+    const parsed = parseLubricantWorkbook(buffer, importFile.value.name, {
+      equipments: equipments.value,
+      brands: brands.value,
+    });
+
+    if (parsed.warnings.length) {
+      ui.open(parsed.warnings[0] || "El archivo contiene advertencias de importacion.", "warning");
+    }
+
+    if (!parsed.analyses.length) {
+      ui.error("El archivo no contiene muestras válidas para importar.");
+      return;
+    }
+
+    const { data } = await api.post("/kpi_maintenance/inteligencia/analisis-lubricante/import", {
+      source_file_name: importFile.value.name,
+      upsert_existing: true,
+      analyses: parsed.analyses,
+    });
+
+    lastImportSummary.value = unwrap(data, {});
+    ui.success("Excel de lubricante importado correctamente.");
+    await loadAll();
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo importar el Excel de lubricante.");
+  } finally {
+    importing.value = false;
   }
 }
 
