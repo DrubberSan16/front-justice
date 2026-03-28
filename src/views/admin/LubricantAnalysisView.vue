@@ -566,7 +566,6 @@
                 <td>{{ item.sample_info?.horas_lubricante ?? "N/A" }}</td>
                 <td>
                   <div class="d-flex justify-end flex-wrap" style="gap: 4px;">
-                    <v-btn icon="mdi-chart-line" variant="text" @click="viewDashboard(item)" />
                     <v-btn icon="mdi-pencil" variant="text" @click="openEditFromGroup(item)" />
                     <v-btn icon="mdi-delete" variant="text" color="error" @click="openDeleteFromGroup(item)" />
                   </div>
@@ -658,6 +657,8 @@ type LubricantGroupRow = {
   latest_item: AnyRow | null;
 };
 
+const ACTIVE_IMPORT_STORAGE_KEY = "kpi-justice:lubricant-import:active-job";
+
 const ui = useUiStore();
 const auth = useAuthStore();
 
@@ -688,6 +689,7 @@ const importFile = ref<File | null>(null);
 const lastImportSummary = ref<AnyRow | null>(null);
 const importJob = ref<AnyRow | null>(null);
 const importPollHandle = ref<number | null>(null);
+const importDismissHandle = ref<number | null>(null);
 const purgeConfirmation = ref("");
 const tableSearch = ref("");
 const statusFilter = ref<string | null>(null);
@@ -1023,11 +1025,112 @@ function getSelectedImportFile() {
   return importFile.value;
 }
 
+function isTerminalImportStatus(status: unknown) {
+  const raw = String(status ?? "").toUpperCase();
+  return raw === "COMPLETED" || raw === "FAILED";
+}
+
+function persistActiveImportJob(job: AnyRow | null | undefined) {
+  if (typeof window === "undefined") return;
+  const jobId = String(job?.id ?? "").trim();
+  const status = String(job?.status ?? "").toUpperCase();
+  if (!jobId || isTerminalImportStatus(status)) {
+    window.localStorage.removeItem(ACTIVE_IMPORT_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(
+    ACTIVE_IMPORT_STORAGE_KEY,
+    JSON.stringify({
+      id: jobId,
+      status,
+      source_file_name: job?.source_file_name || job?.stored_file_name || null,
+    }),
+  );
+}
+
+function getPersistedImportJobId() {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(ACTIVE_IMPORT_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { id?: string | null };
+    return String(parsed?.id ?? "").trim() || null;
+  } catch {
+    window.localStorage.removeItem(ACTIVE_IMPORT_STORAGE_KEY);
+    return null;
+  }
+}
+
+function clearImportDismissTimer() {
+  if (importDismissHandle.value != null) {
+    window.clearTimeout(importDismissHandle.value);
+    importDismissHandle.value = null;
+  }
+}
+
+function dismissImportCardNow() {
+  clearImportDismissTimer();
+  importJob.value = null;
+}
+
+function scheduleImportCardDismiss(delayMs = 1800) {
+  clearImportDismissTimer();
+  importDismissHandle.value = window.setTimeout(() => {
+    importJob.value = null;
+    importDismissHandle.value = null;
+  }, delayMs);
+}
+
+async function requestBrowserNotificationPermission() {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (window.Notification.permission === "default") {
+    try {
+      await window.Notification.requestPermission();
+    } catch {
+      // ignore permission errors
+    }
+  }
+}
+
+function emitBrowserNotification(title: string, body: string, tag: string) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (window.Notification.permission !== "granted") return;
+  try {
+    new window.Notification(title, {
+      body,
+      tag,
+    });
+  } catch {
+    // ignore browser notification errors
+  }
+}
+
+async function notifyImportLifecycle(options: {
+  title: string;
+  message: string;
+  variant?: "success" | "error" | "info" | "warning";
+  requestPermission?: boolean;
+  tag: string;
+}) {
+  if (options.requestPermission) {
+    await requestBrowserNotificationPermission();
+  }
+  ui.open(options.message, options.variant ?? "info", 5000);
+  emitBrowserNotification(options.title, options.message, options.tag);
+}
+
 function stopImportPolling() {
   if (importPollHandle.value != null) {
     window.clearInterval(importPollHandle.value);
     importPollHandle.value = null;
   }
+}
+
+function startImportPolling(jobId: string) {
+  stopImportPolling();
+  importPollHandle.value = window.setInterval(() => {
+    void fetchImportJobStatus(jobId);
+  }, 2000);
 }
 
 function importStatusColor(status: unknown) {
@@ -1038,28 +1141,57 @@ function importStatusColor(status: unknown) {
   return "secondary";
 }
 
-async function fetchImportJobStatus(jobId: string, options?: { silent?: boolean }) {
+async function fetchImportJobStatus(jobId: string) {
   const { data } = await api.get(`/kpi_maintenance/inteligencia/analisis-lubricante/import/${jobId}`);
   importJob.value = unwrap<AnyRow | null>(data, null);
 
-  const status = String(importJob.value?.status ?? "").toUpperCase();
-  if (status === "COMPLETED" || status === "FAILED") {
+  if (!importJob.value) {
     stopImportPolling();
-    lastImportSummary.value = importJob.value?.summary ?? null;
-    await loadAll();
-    if (!options?.silent) {
-      if (status === "COMPLETED") {
-        const errors = Number(importJob.value?.errors?.length ?? 0);
-        if (errors > 0) {
-          ui.open(`Importacion finalizada con ${errors} error(es). Revisa el log transaccional.`, "warning");
-        } else {
-          ui.success("Excel de lubricante importado correctamente.");
-        }
-      } else {
-        ui.error(importJob.value?.error_message || "La importacion del Excel fallo.");
-      }
-    }
+    persistActiveImportJob(null);
+    dismissImportCardNow();
+    return;
   }
+
+  clearImportDismissTimer();
+  persistActiveImportJob(importJob.value);
+
+  const status = String(importJob.value?.status ?? "").toUpperCase();
+  if (!isTerminalImportStatus(status)) {
+    return;
+  }
+
+  stopImportPolling();
+  persistActiveImportJob(null);
+  lastImportSummary.value = importJob.value?.summary ?? null;
+  await loadAll();
+
+  if (status === "COMPLETED") {
+    const errors = Number(importJob.value?.errors?.length ?? 0);
+    if (errors > 0) {
+      await notifyImportLifecycle({
+        title: "Carga de analisis de lubricante finalizada",
+        message: `Importacion finalizada con ${errors} error(es). Revisa el log transaccional.`,
+        variant: "warning",
+        tag: "lubricant-import-completed",
+      });
+    } else {
+      await notifyImportLifecycle({
+        title: "Carga de analisis de lubricante finalizada",
+        message: "Excel de lubricante importado correctamente.",
+        variant: "success",
+        tag: "lubricant-import-completed",
+      });
+    }
+  } else {
+    await notifyImportLifecycle({
+      title: "Carga de analisis de lubricante fallida",
+      message: importJob.value?.error_message || "La importacion del Excel fallo.",
+      variant: "error",
+      tag: "lubricant-import-failed",
+    });
+  }
+
+  scheduleImportCardDismiss();
 }
 
 async function processWorkbookImport() {
@@ -1072,6 +1204,7 @@ async function processWorkbookImport() {
   importing.value = true;
   try {
     stopImportPolling();
+    clearImportDismissTimer();
     const formData = new FormData();
     formData.append("file", file);
     formData.append("upsert_existing", "true");
@@ -1093,18 +1226,37 @@ async function processWorkbookImport() {
 
     importJob.value = unwrap<AnyRow | null>(data, null);
     lastImportSummary.value = null;
-    ui.success("Archivo subido. La importacion se esta ejecutando en segundo plano.");
+    persistActiveImportJob(importJob.value);
+    await notifyImportLifecycle({
+      title: "Carga de analisis de lubricante iniciada",
+      message: "Archivo subido. La importacion se esta ejecutando en segundo plano.",
+      variant: "info",
+      requestPermission: true,
+      tag: "lubricant-import-started",
+    });
 
     if (importJob.value?.id) {
-      importPollHandle.value = window.setInterval(() => {
-        void fetchImportJobStatus(String(importJob.value?.id), { silent: true });
-      }, 2000);
-      await fetchImportJobStatus(String(importJob.value.id), { silent: true });
+      startImportPolling(String(importJob.value.id));
+      await fetchImportJobStatus(String(importJob.value.id));
     }
   } catch (e: any) {
     ui.error(e?.response?.data?.message || e?.message || "No se pudo importar el Excel de lubricante.");
   } finally {
     importing.value = false;
+  }
+}
+
+async function restoreActiveImportJob() {
+  const jobId = getPersistedImportJobId();
+  if (!jobId) return;
+  try {
+    await fetchImportJobStatus(jobId);
+    if (importJob.value && !isTerminalImportStatus(importJob.value.status)) {
+      startImportPolling(jobId);
+    }
+  } catch {
+    persistActiveImportJob(null);
+    dismissImportCardNow();
   }
 }
 
@@ -1329,6 +1481,8 @@ async function confirmPurge() {
     dashboard.value = null;
     selectedGroupKey.value = null;
     groupDetailDialog.value = false;
+    persistActiveImportJob(null);
+    dismissImportCardNow();
     importJob.value = null;
     lastImportSummary.value = null;
     importFile.value = null;
@@ -1395,6 +1549,8 @@ async function viewDashboard(item: AnyRow) {
   await loadDashboard({ codigo: item.codigo });
 }
 
+void viewDashboard;
+
 async function viewDashboardGroup(group: AnyRow) {
   groupDetailDialog.value = false;
   dashboardSelection.value = {
@@ -1448,10 +1604,12 @@ watch(
 
 onMounted(async () => {
   await loadAll();
+  await restoreActiveImportJob();
 });
 
 onUnmounted(() => {
   stopImportPolling();
+  clearImportDismissTimer();
 });
 </script>
 
