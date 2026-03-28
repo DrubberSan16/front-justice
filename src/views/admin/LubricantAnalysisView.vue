@@ -22,6 +22,15 @@
             Cargar Excel
           </v-btn>
           <v-btn
+            color="secondary"
+            variant="text"
+            prepend-icon="mdi-download"
+            :loading="downloadingTemplate"
+            @click="downloadImportTemplate"
+          >
+            Descargar formato
+          </v-btn>
+          <v-btn
             v-if="canPurgeAnalyses"
             color="error"
             variant="tonal"
@@ -684,6 +693,7 @@ const saving = ref(false);
 const codeLoading = ref(false);
 const dashboardLoading = ref(false);
 const importing = ref(false);
+const downloadingTemplate = ref(false);
 const purging = ref(false);
 const dialog = ref(false);
 const deleteDialog = ref(false);
@@ -1324,6 +1334,37 @@ async function restoreActiveImportJob() {
   } catch {
     persistActiveImportJob(null);
     dismissImportCardNow();
+  }
+}
+
+async function downloadImportTemplate() {
+  downloadingTemplate.value = true;
+  try {
+    const response = await api.get(
+      "/kpi_maintenance/inteligencia/analisis-lubricante/import/template",
+      {
+        responseType: "blob",
+      },
+    );
+    const blob = response.data as Blob;
+    const disposition = String(response.headers?.["content-disposition"] || "");
+    const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+    const fileName = match?.[1] || "FORMATO_CARGA_ANALISIS_LUBRICANTE.xlsx";
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e: any) {
+    ui.error(
+      e?.response?.data?.message ||
+        "No se pudo descargar el formato de carga del análisis de lubricante.",
+    );
+  } finally {
+    downloadingTemplate.value = false;
   }
 }
 
