@@ -166,9 +166,8 @@ export const router = createRouter({
         {
           path: "alertas",
           name: "alertas",
-          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
-          props: { moduleKey: "alertas" },
-          meta: { title: "Alertas", viewFile: "views/admin/MaintenanceCrudView.vue" },
+          component: () => import("@/views/admin/AlertsView.vue"),
+          meta: { title: "Alertas", viewFile: "views/admin/AlertsView.vue" },
         },
         {
           path: "work-orders",
