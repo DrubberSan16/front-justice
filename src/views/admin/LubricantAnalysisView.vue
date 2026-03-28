@@ -46,7 +46,7 @@
             variant="outlined"
             density="compact"
             prepend-inner-icon="mdi-magnify"
-            hint="Busca por codigo, lubricante, marca o compartimento"
+            hint="Busca por codigo, lubricante, marca, equipo, modelo o compartimento"
             persistent-hint
             clearable
           />
@@ -73,7 +73,7 @@
             label="Dashboard por lubricante"
             variant="outlined"
             density="compact"
-            hint="Selecciona un lubricante por codigo o nombre para ver su historial"
+            hint="Selecciona un lubricante por codigo, nombre, equipo o modelo para ver su historial"
             persistent-hint
             @update:model-value="handleDashboardSelection"
           />
@@ -85,7 +85,7 @@
           {{ analyses.length }} analisis
         </v-chip>
         <v-chip color="secondary" variant="tonal" label>
-          {{ catalogOptions.length }} lubricantes registrados
+          {{ catalogOptions.length }} grupos registrados
         </v-chip>
         <v-chip color="error" variant="tonal" label>
           {{ alertCount }} anormales
@@ -195,6 +195,15 @@
           <div class="text-caption text-medium-emphasis">
             {{ item.marca_lubricante || "Sin marca del lubricante" }}
           </div>
+        </template>
+        <template #item.equipo_group="{ item }">
+          <div class="font-weight-medium">{{ item.equipo_label || "Sin equipo" }}</div>
+          <div class="text-caption text-medium-emphasis">
+            {{ item.equipo_codigo || item.equipo_nombre || "Sin referencia" }}
+          </div>
+        </template>
+        <template #item.equipo_modelo="{ item }">
+          <span>{{ item.equipo_modelo || "Sin modelo" }}</span>
         </template>
         <template #item.ultimo_codigo="{ item }">
           <div class="font-weight-medium">{{ item.ultimo_codigo || "Sin codigo" }}</div>
@@ -511,6 +520,9 @@
             <div class="text-body-2 text-medium-emphasis">
               {{ selectedGroup?.marca_lubricante || "Sin marca del lubricante" }}
             </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ selectedGroup?.equipo_label || "Sin equipo" }} · {{ selectedGroup?.equipo_modelo || "Sin modelo" }}
+            </div>
           </div>
           <div class="d-flex flex-wrap" style="gap: 8px;">
             <v-chip color="primary" variant="tonal" label>
@@ -525,7 +537,7 @@
         <v-card-text class="pt-4">
           <div class="d-flex align-center justify-space-between page-wrap mb-4">
             <div class="text-body-2 text-medium-emphasis">
-              Revisa todos los analisis que pertenecen a este mismo lubricante y marca.
+              Revisa todos los analisis que pertenecen a este mismo lubricante, marca, equipo y modelo.
             </div>
             <v-btn
               color="primary"
@@ -645,6 +657,11 @@ type LubricantGroupRow = {
   group_key: string;
   lubricante: string;
   marca_lubricante: string;
+  equipo_id: string | null;
+  equipo_codigo: string | null;
+  equipo_nombre: string | null;
+  equipo_label: string | null;
+  equipo_modelo: string | null;
   items: AnyRow[];
   compartimentos: string[];
   compartimentos_set: Set<string>;
@@ -701,6 +718,8 @@ const dashboardCompartimento = ref<string | null>(null);
 const groupHeaders = [
   { title: "Ultimo codigo", key: "ultimo_codigo" },
   { title: "Lubricante", key: "lubricante_group" },
+  { title: "Equipo", key: "equipo_group" },
+  { title: "Modelo", key: "equipo_modelo" },
   { title: "Compartimentos", key: "compartimentos", sortable: false },
   { title: "Ultimo informe", key: "ultimo_informe" },
   { title: "Estado", key: "estado_resumen", sortable: false },
@@ -778,14 +797,41 @@ const equipmentOptions = computed(() =>
 const catalogOptions = computed(() =>
   catalog.value.map((item) => ({
     ...item,
-    label: [item.ultimo_codigo || item.lubricante_codigo, item.lubricante, item.marca_lubricante]
+    label: [
+      item.ultimo_codigo || item.lubricante_codigo,
+      item.lubricante,
+      item.marca_lubricante,
+      item.equipo_label || item.equipo_codigo || item.equipo_nombre,
+      item.equipo_modelo,
+    ]
       .filter(Boolean)
       .join(" · "),
   })),
 );
 
-function buildLubricantGroupKey(lubricante: unknown, marcaLubricante: unknown) {
-  return [lubricante, marcaLubricante]
+function resolveEquipmentLabel(item: AnyRow | null | undefined) {
+  if (!item) return "";
+  const equipoCodigo = String(item.equipo_codigo || item.sample_info?.equipo_codigo || "").trim();
+  const equipoNombre = String(item.equipo_nombre || item.sample_info?.equipo_nombre || "").trim();
+  if (equipoCodigo && equipoNombre && equipoCodigo !== equipoNombre) {
+    return `${equipoCodigo} - ${equipoNombre}`;
+  }
+  return equipoCodigo || equipoNombre || "";
+}
+
+function resolveEquipmentModel(item: AnyRow | null | undefined) {
+  return String(item?.sample_info?.equipo_modelo || item?.equipo_modelo || "").trim();
+}
+
+function buildLubricantGroupKey(
+  lubricante: unknown,
+  marcaLubricante: unknown,
+  equipoId?: unknown,
+  equipoCodigo?: unknown,
+  equipoNombre?: unknown,
+  equipoModelo?: unknown,
+) {
+  return [lubricante, marcaLubricante, equipoId, equipoCodigo, equipoNombre, equipoModelo]
     .map((value) => String(value ?? "").trim().toLowerCase())
     .join("::");
 }
@@ -822,6 +868,9 @@ function analysisMatchesSearch(item: AnyRow, search: string) {
     item.codigo,
     item.lubricante,
     item.marca_lubricante,
+    item.equipo_codigo,
+    item.equipo_nombre,
+    item.sample_info?.equipo_modelo,
     item.compartimento_principal,
     item.sample_info?.numero_muestra,
     item.sample_info?.fecha_informe,
@@ -834,13 +883,27 @@ const groupedAnalyses = computed<LubricantGroupRow[]>(() => {
   const groups = new Map<string, LubricantGroupRow>();
 
   for (const item of analyses.value) {
-    const groupKey = buildLubricantGroupKey(item.lubricante, item.marca_lubricante);
+    const equipmentLabel = resolveEquipmentLabel(item);
+    const equipmentModel = resolveEquipmentModel(item) || null;
+    const groupKey = buildLubricantGroupKey(
+      item.lubricante,
+      item.marca_lubricante,
+      item.equipo_id,
+      item.equipo_codigo,
+      item.equipo_nombre,
+      equipmentModel,
+    );
     const group =
       groups.get(groupKey) ??
       {
         group_key: groupKey,
         lubricante: item.lubricante || "Sin lubricante",
         marca_lubricante: item.marca_lubricante || "Sin marca del lubricante",
+        equipo_id: item.equipo_id || null,
+        equipo_codigo: item.equipo_codigo || null,
+        equipo_nombre: item.equipo_nombre || null,
+        equipo_label: equipmentLabel || null,
+        equipo_modelo: equipmentModel,
         items: [] as AnyRow[],
         compartimentos: [] as string[],
         compartimentos_set: new Set<string>(),
@@ -886,7 +949,11 @@ const groupedAnalyses = computed<LubricantGroupRow[]>(() => {
     .sort((a, b) => {
       const dateCompare = String(b.ultimo_informe || "").localeCompare(String(a.ultimo_informe || ""));
       if (dateCompare !== 0) return dateCompare;
-      return String(a.lubricante || "").localeCompare(String(b.lubricante || ""));
+      const lubricanteCompare = String(a.lubricante || "").localeCompare(String(b.lubricante || ""));
+      if (lubricanteCompare !== 0) return lubricanteCompare;
+      const equipoCompare = String(a.equipo_label || "").localeCompare(String(b.equipo_label || ""));
+      if (equipoCompare !== 0) return equipoCompare;
+      return String(a.equipo_modelo || "").localeCompare(String(b.equipo_modelo || ""));
     });
 });
 
@@ -1322,7 +1389,7 @@ function openEdit(item: AnyRow) {
         lubricante: item.lubricante,
         marca_lubricante: item.marca_lubricante,
         ultimo_codigo: item.codigo,
-        label: [item.codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
+        label: [item.codigo, item.lubricante, item.marca_lubricante, resolveEquipmentLabel(item), item.sample_info?.equipo_modelo].filter(Boolean).join(" · "),
       }
     : null;
   dialog.value = true;
@@ -1536,6 +1603,10 @@ async function handleDashboardSelection(value: any) {
     codigo: value.group_only ? undefined : value.ultimo_codigo || value.codigo || undefined,
     lubricante: value.lubricante || value.label,
     marca_lubricante: value.marca_lubricante || undefined,
+    equipo_id: value.equipo_id || undefined,
+    equipo_codigo: value.equipo_codigo || undefined,
+    equipo_nombre: value.equipo_nombre || undefined,
+    equipo_modelo: value.equipo_modelo || undefined,
   });
 }
 
@@ -1544,9 +1615,25 @@ async function viewDashboard(item: AnyRow) {
     lubricante: item.lubricante,
     marca_lubricante: item.marca_lubricante,
     codigo: item.codigo,
-    label: [item.codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
+    equipo_id: item.equipo_id || undefined,
+    equipo_codigo: item.equipo_codigo || undefined,
+    equipo_nombre: item.equipo_nombre || undefined,
+    equipo_modelo: item.sample_info?.equipo_modelo || undefined,
+    label: [
+      item.codigo,
+      item.lubricante,
+      item.marca_lubricante,
+      resolveEquipmentLabel(item),
+      item.sample_info?.equipo_modelo,
+    ].filter(Boolean).join(" · "),
   };
-  await loadDashboard({ codigo: item.codigo });
+  await loadDashboard({
+    codigo: item.codigo,
+    equipo_id: item.equipo_id || undefined,
+    equipo_codigo: item.equipo_codigo || undefined,
+    equipo_nombre: item.equipo_nombre || undefined,
+    equipo_modelo: item.sample_info?.equipo_modelo || undefined,
+  });
 }
 
 void viewDashboard;
@@ -1556,13 +1643,21 @@ async function viewDashboardGroup(group: AnyRow) {
   dashboardSelection.value = {
     lubricante: group.lubricante,
     marca_lubricante: group.marca_lubricante,
+    equipo_id: group.equipo_id || undefined,
+    equipo_codigo: group.equipo_codigo || undefined,
+    equipo_nombre: group.equipo_nombre || undefined,
+    equipo_modelo: group.equipo_modelo || undefined,
     ultimo_codigo: group.ultimo_codigo,
     group_only: true,
-    label: [group.lubricante, group.marca_lubricante].filter(Boolean).join(" Â· "),
+    label: [group.lubricante, group.marca_lubricante, group.equipo_label, group.equipo_modelo].filter(Boolean).join(" · "),
   };
   await loadDashboard({
     lubricante: group.lubricante,
     marca_lubricante: group.marca_lubricante,
+    equipo_id: group.equipo_id || undefined,
+    equipo_codigo: group.equipo_codigo || undefined,
+    equipo_nombre: group.equipo_nombre || undefined,
+    equipo_modelo: group.equipo_modelo || undefined,
   });
 }
 
@@ -1592,6 +1687,18 @@ async function reloadDashboard() {
     marca_lubricante:
       dashboardSelection.value?.marca_lubricante ||
       dashboard.value?.selected?.marca_lubricante,
+    equipo_id:
+      dashboardSelection.value?.equipo_id ||
+      dashboard.value?.selected?.equipo_id,
+    equipo_codigo:
+      dashboardSelection.value?.equipo_codigo ||
+      dashboard.value?.selected?.equipo_codigo,
+    equipo_nombre:
+      dashboardSelection.value?.equipo_nombre ||
+      dashboard.value?.selected?.equipo_nombre,
+    equipo_modelo:
+      dashboardSelection.value?.equipo_modelo ||
+      dashboard.value?.selected?.equipo_modelo,
   });
 }
 

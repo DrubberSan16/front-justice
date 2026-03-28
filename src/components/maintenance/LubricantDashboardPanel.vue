@@ -20,6 +20,12 @@
             <div class="text-body-2 text-medium-emphasis">
               {{ dashboard.selected.marca_lubricante || "Marca sin registrar" }}
             </div>
+            <div class="text-body-2 text-medium-emphasis mt-1">
+              {{ dashboard.selected.equipo_label || dashboard.selected.equipo_codigo || dashboard.selected.equipo_nombre || "Sin equipo" }}
+              <span v-if="dashboard.selected.equipo_modelo">
+                · {{ dashboard.selected.equipo_modelo }}
+              </span>
+            </div>
             <div class="text-caption text-medium-emphasis mt-1">
               {{ dashboard.selected.compartimentos?.join(" · ") || "Sin compartimentos" }}
             </div>
@@ -72,6 +78,8 @@
               <th>Codigo</th>
               <th>Muestra</th>
               <th>Fecha informe</th>
+              <th>Equipo</th>
+              <th>Modelo</th>
               <th>Compartimento</th>
               <th>Condicion</th>
               <th>Equipo Hrs/Km</th>
@@ -83,6 +91,8 @@
               <td>{{ item.codigo }}</td>
               <td>{{ item.numero_muestra || "Sin muestra" }}</td>
               <td>{{ item.fecha_reporte || item.fecha_muestra || "Sin fecha" }}</td>
+              <td>{{ item.equipo_nombre || item.equipo_codigo || "Sin equipo" }}</td>
+              <td>{{ item.equipo_modelo || "Sin modelo" }}</td>
               <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
               <td>
                 <v-chip size="x-small" :color="conditionColor(item.condicion)" variant="tonal">
