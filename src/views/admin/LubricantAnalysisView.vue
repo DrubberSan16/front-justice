@@ -5,7 +5,7 @@
         <div>
           <div class="text-h6 font-weight-bold">Analisis de lubricante</div>
           <div class="text-body-2 text-medium-emphasis">
-            Registro guiado de muestras, tendencias y dashboard predictivo por lubricante.
+            Captura operativa alineada al formato del reporte de laboratorio.
           </div>
         </div>
         <div class="d-flex page-wrap" style="gap: 8px;">
@@ -36,10 +36,10 @@
         <v-col cols="12" md="3">
           <v-select
             v-model="statusFilter"
-            :items="statusOptions"
+            :items="conditionOptions"
             item-title="title"
             item-value="value"
-            label="Estado"
+            label="Condicion"
             variant="outlined"
             density="compact"
             clearable
@@ -55,7 +55,7 @@
             label="Dashboard por lubricante"
             variant="outlined"
             density="compact"
-            hint="Selecciona un lubricante para abrir su historial tipo excel"
+            hint="Selecciona un lubricante por codigo o nombre para ver su historial"
             persistent-hint
             @update:model-value="handleDashboardSelection"
           />
@@ -70,7 +70,7 @@
           {{ catalogOptions.length }} lubricantes registrados
         </v-chip>
         <v-chip color="error" variant="tonal" label>
-          {{ alertCount }} alertas
+          {{ alertCount }} anormales
         </v-chip>
       </div>
     </v-card>
@@ -85,11 +85,13 @@
       >
         <template #item.lubricante="{ item }">
           <div class="font-weight-medium">{{ item.lubricante || "Sin lubricante" }}</div>
-          <div class="text-caption text-medium-emphasis">{{ item.marca_lubricante || "Sin marca" }}</div>
+          <div class="text-caption text-medium-emphasis">
+            {{ item.marca_lubricante || "Sin marca del lubricante" }}
+          </div>
         </template>
         <template #item.estado_diagnostico="{ item }">
           <v-chip size="small" :color="conditionColor(item.estado_diagnostico)" variant="tonal">
-            {{ item.estado_diagnostico || "NORMAL" }}
+            {{ item.estado_diagnostico || item.sample_info?.condicion || "N/D" }}
           </v-chip>
         </template>
         <template #item.actions="{ item }">
@@ -107,7 +109,7 @@
         <div>
           <div class="text-subtitle-1 font-weight-bold">Dashboard historico</div>
           <div class="text-body-2 text-medium-emphasis">
-            Replica operativa del excel con historial de muestras, tablas por bloque y graficos de tendencia.
+            Historial, evaluacion de la ultima muestra y tendencias por rango de fechas.
           </div>
         </div>
         <div class="d-flex page-wrap" style="gap: 8px;">
@@ -172,10 +174,25 @@
         <v-card-text class="pt-4 section-surface">
           <v-row dense>
             <v-col cols="12" md="3">
-              <v-text-field v-model="form.codigo" label="Codigo autogenerado" variant="outlined" readonly :loading="codeLoading" />
+              <v-text-field
+                v-model="form.codigo"
+                label="Codigo autogenerado"
+                variant="outlined"
+                readonly
+                :loading="codeLoading"
+              />
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model="form.cliente" label="Cliente" variant="outlined" />
+              <v-text-field v-model="form.cliente" label="Nombre del cliente" variant="outlined" />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-select
+                v-model="form.compartimento_principal"
+                :items="compartmentOptions"
+                label="Compartimento"
+                variant="outlined"
+                @update:model-value="handleCompartmentChange"
+              />
             </v-col>
             <v-col cols="12" md="3">
               <v-select
@@ -188,13 +205,24 @@
                 clearable
               />
             </v-col>
+
+            <v-col cols="12" md="3">
+              <v-text-field v-model="form.equipo_marca" label="Marca" variant="outlined" readonly />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field v-model="form.equipo_serie" label="Serie" variant="outlined" />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field v-model="form.equipo_modelo" label="Modelo" variant="outlined" />
+            </v-col>
             <v-col cols="12" md="3">
               <v-select
-                v-model="form.compartimento_principal"
-                :items="compartmentOptions"
-                label="Compartimento principal"
+                v-model="form.condicion"
+                :items="conditionOptions"
+                item-title="title"
+                item-value="value"
+                label="Condicion"
                 variant="outlined"
-                @update:model-value="handleCompartmentChange"
               />
             </v-col>
 
@@ -214,85 +242,38 @@
                 @update:search="handleLubricantSearch"
               />
             </v-col>
-            <v-col cols="12" md="3">
-              <v-text-field v-model="form.marca_lubricante" label="Marca de lubricante" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="3">
-              <v-select
-                v-model="form.estado_diagnostico"
-                :items="statusOptions"
-                item-title="title"
-                item-value="value"
-                label="Estado diagnostico"
-                variant="outlined"
-              />
+            <v-col cols="12" md="6">
+              <v-text-field v-model="form.marca_lubricante" label="Marca del lubricante" variant="outlined" />
             </v-col>
 
             <v-col cols="12">
               <div class="text-subtitle-2 font-weight-bold mb-2">Informacion de la muestra</div>
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model="form.numero_muestra" label="Numero de muestra" variant="outlined" />
+              <v-text-field v-model="form.numero_muestra" label="Numeracion de muestra" variant="outlined" />
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model="form.fecha_muestra" type="date" label="Fecha de muestra" variant="outlined" />
+              <v-text-field v-model="form.fecha_muestra" type="date" label="Fecha de muestreo" variant="outlined" />
             </v-col>
             <v-col cols="12" md="3">
               <v-text-field v-model="form.fecha_ingreso" type="date" label="Fecha de ingreso" variant="outlined" />
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model="form.fecha_reporte" type="date" label="Fecha de reporte" variant="outlined" />
+              <v-text-field v-model="form.fecha_reporte" type="date" label="Fecha de informe" variant="outlined" />
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model="form.fecha_informe" type="date" label="Fecha de informe" variant="outlined" />
+              <v-text-field v-model.number="form.horas_equipo" type="number" label="Equipo Hrs/Km" variant="outlined" />
             </v-col>
             <v-col cols="12" md="3">
-              <v-text-field v-model.number="form.horas_equipo" type="number" label="Equipo hrs / km" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="3">
-              <v-text-field v-model.number="form.horas_lubricante" type="number" label="Aceite hrs / km" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="3">
-              <v-select
-                v-model="form.condicion"
-                :items="statusOptions"
-                item-title="title"
-                item-value="value"
-                label="Condicion"
-                variant="outlined"
-              />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field v-model="form.equipo_marca" label="Marca del equipo" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field v-model="form.equipo_serie" label="Serie" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field v-model="form.equipo_modelo" label="Modelo" variant="outlined" />
-            </v-col>
-
-            <v-col cols="12">
-              <v-textarea
-                v-model="form.diagnostico"
-                label="Diagnostico de la ultima muestra"
-                variant="outlined"
-                rows="3"
-                auto-grow
-              />
+              <v-text-field v-model.number="form.horas_lubricante" type="number" label="Aceite Hrs/Km" variant="outlined" />
             </v-col>
 
             <v-col cols="12">
               <div class="d-flex align-center justify-space-between mb-2 page-wrap">
                 <div class="text-subtitle-2 font-weight-bold">Parametros del reporte</div>
-                <div class="d-flex page-wrap" style="gap: 8px;">
-                  <v-btn variant="tonal" prepend-icon="mdi-table-refresh" @click="applyDetailTemplate">
-                    Cargar plantilla del compartimento
-                  </v-btn>
-                  <v-btn variant="tonal" prepend-icon="mdi-plus" @click="addDetail">
-                    Agregar parametro
-                  </v-btn>
-                </div>
+                <v-btn variant="tonal" prepend-icon="mdi-table-refresh" @click="applyDetailTemplate">
+                  Recargar plantilla
+                </v-btn>
               </div>
 
               <v-expansion-panels multiple variant="accordion">
@@ -303,45 +284,41 @@
                 >
                   <v-expansion-panel-text>
                     <div class="detail-grid">
-                      <div v-for="(detail, index) in group.items" :key="`${group.group}-${index}-${detail.parametro}`" class="detail-card">
-                        <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px;">
+                      <div
+                        v-for="detail in group.items"
+                        :key="`${group.group}-${detail.parametro_key || detail.parametro}`"
+                        class="detail-card"
+                      >
+                        <div class="detail-card__title">
                           <div class="font-weight-medium">{{ detail.parametro }}</div>
-                          <v-btn icon="mdi-delete" size="small" variant="text" color="error" @click="removeDetail(detail)" />
+                          <div class="text-caption text-medium-emphasis">
+                            {{ detail.unidad || "Resultado" }}
+                          </div>
                         </div>
-                        <v-row dense>
-                          <v-col cols="12" md="5">
-                            <v-text-field v-model="detail.parametro" label="Parametro" variant="outlined" density="compact" />
-                          </v-col>
-                          <v-col cols="12" md="2">
-                            <v-text-field v-model="detail.unidad" label="Unidad" variant="outlined" density="compact" />
-                          </v-col>
-                          <v-col cols="12" md="2">
-                            <v-text-field v-model.number="detail.linea_base" type="number" label="Linea base" variant="outlined" density="compact" />
-                          </v-col>
-                          <v-col cols="12" md="3">
-                            <v-select
-                              v-model="detail.nivel_alerta"
-                              :items="statusOptions"
-                              item-title="title"
-                              item-value="value"
-                              label="Estado"
-                              variant="outlined"
-                              density="compact"
-                            />
-                          </v-col>
-                          <v-col cols="12" md="4">
-                            <v-text-field v-model.number="detail.resultado_numerico" type="number" label="Resultado numerico" variant="outlined" density="compact" />
-                          </v-col>
-                          <v-col cols="12" md="4">
-                            <v-text-field v-model="detail.resultado_texto" label="Resultado texto" variant="outlined" density="compact" />
-                          </v-col>
-                          <v-col cols="12" md="4">
-                            <v-text-field v-model.number="detail.tendencia" type="number" label="Tendencia" variant="outlined" density="compact" />
-                          </v-col>
-                          <v-col cols="12">
-                            <v-textarea v-model="detail.observacion" label="Observacion" variant="outlined" rows="2" auto-grow density="compact" />
-                          </v-col>
-                        </v-row>
+
+                        <v-select
+                          v-if="detail.inputType === 'select'"
+                          v-model="detail.resultado_texto"
+                          :items="detail.options || humidityValueOptions"
+                          label="Resultado"
+                          variant="outlined"
+                          density="compact"
+                        />
+                        <v-text-field
+                          v-else-if="detail.inputType === 'text'"
+                          v-model="detail.resultado_texto"
+                          label="Resultado"
+                          variant="outlined"
+                          density="compact"
+                        />
+                        <v-text-field
+                          v-else
+                          v-model.number="detail.resultado_numerico"
+                          type="number"
+                          label="Resultado"
+                          variant="outlined"
+                          density="compact"
+                        />
                       </div>
                     </div>
                   </v-expansion-panel-text>
@@ -376,14 +353,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
-  buildLubricantDetailTemplate,
   groupLubricantDetails,
+  humidityOptions,
   lubricantCompartments,
+  lubricantConditionOptions,
+  getLubricantParameterTemplate,
+  mergeLubricantDetails,
 } from "@/app/config/lubricant-analysis";
 
 type AnyRow = Record<string, any>;
@@ -403,6 +383,7 @@ const dashboardError = ref<string | null>(null);
 const analyses = ref<AnyRow[]>([]);
 const dashboard = ref<AnyRow | null>(null);
 const equipments = ref<AnyRow[]>([]);
+const brands = ref<AnyRow[]>([]);
 const catalog = ref<AnyRow[]>([]);
 const lubricantSearch = ref("");
 const lubricantSelection = ref<any>(null);
@@ -418,16 +399,14 @@ const headers = [
   { title: "Codigo", key: "codigo" },
   { title: "Lubricante", key: "lubricante" },
   { title: "Compartimento", key: "compartimento_principal" },
-  { title: "Estado", key: "estado_diagnostico" },
-  { title: "Fecha reporte", key: "fecha_reporte" },
+  { title: "Condicion", key: "estado_diagnostico" },
+  { title: "Fecha informe", key: "fecha_reporte" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
-const statusOptions = [
-  { value: "NORMAL", title: "Normal" },
-  { value: "OBSERVACION", title: "Observacion" },
-  { value: "ALERTA", title: "Alerta" },
-];
+const conditionOptions = lubricantConditionOptions;
+const compartmentOptions = lubricantCompartments;
+const humidityValueOptions = humidityOptions.map((item) => item.value);
 
 const periodOptions = [
   { value: "SEMANAL", title: "Semanal" },
@@ -446,7 +425,6 @@ const form = reactive({
   fecha_muestra: "",
   fecha_ingreso: "",
   fecha_reporte: "",
-  fecha_informe: "",
   numero_muestra: "",
   horas_equipo: null as number | null,
   horas_lubricante: null as number | null,
@@ -454,42 +432,67 @@ const form = reactive({
   equipo_marca: "",
   equipo_serie: "",
   equipo_modelo: "",
-  diagnostico: "",
-  estado_diagnostico: "NORMAL",
-  documento_origen: "",
   detalles: [] as AnyRow[],
 });
 
-const compartmentOptions = lubricantCompartments;
-
 function unwrap<T = any>(payload: any, fallback: T): T {
   return (payload?.data ?? payload ?? fallback) as T;
+}
+
+const brandMap = computed(() => {
+  const next = new Map<string, AnyRow>();
+  for (const item of brands.value) {
+    if (item?.id) next.set(String(item.id), item);
+  }
+  return next;
+});
+
+const equipmentMap = computed(() => {
+  const next = new Map<string, AnyRow>();
+  for (const item of equipments.value) {
+    if (item?.id) next.set(String(item.id), item);
+  }
+  return next;
+});
+
+function resolveEquipmentBrand(item: AnyRow | null | undefined) {
+  if (!item) return "";
+  return (
+    String(item.marca_nombre ?? item.brand_name ?? "").trim() ||
+    String(brandMap.value.get(String(item.marca_id))?.nombre ?? "").trim() ||
+    ""
+  );
 }
 
 const equipmentOptions = computed(() =>
   equipments.value.map((item) => ({
     value: item.id,
     title: `${item.codigo || "EQ"} - ${item.nombre || "Equipo"}`,
+    marca: resolveEquipmentBrand(item),
   })),
 );
 
 const catalogOptions = computed(() =>
   catalog.value.map((item) => ({
     ...item,
-    label: [item.lubricante_codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
+    label: [item.ultimo_codigo || item.lubricante_codigo, item.lubricante, item.marca_lubricante]
+      .filter(Boolean)
+      .join(" · "),
   })),
 );
 
 const filteredAnalyses = computed(() => {
   const search = String(tableSearch.value || "").trim().toLowerCase();
   return analyses.value.filter((item) => {
-    if (statusFilter.value && item.estado_diagnostico !== statusFilter.value) return false;
+    const condition = item.sample_info?.condicion || item.estado_diagnostico;
+    if (statusFilter.value && condition !== statusFilter.value) return false;
     if (!search) return true;
     return [
       item.codigo,
       item.lubricante,
       item.marca_lubricante,
       item.compartimento_principal,
+      item.sample_info?.numero_muestra,
     ]
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(search));
@@ -497,15 +500,19 @@ const filteredAnalyses = computed(() => {
 });
 
 const alertCount = computed(
-  () => analyses.value.filter((item) => item.estado_diagnostico === "ALERTA").length,
+  () =>
+    analyses.value.filter(
+      (item) => (item.sample_info?.condicion || item.estado_diagnostico) === "ANORMAL",
+    ).length,
 );
 
 const groupedFormDetails = computed(() => groupLubricantDetails(form.detalles));
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
-  if (["ALERTA", "ANORMAL", "CRITICO"].includes(raw)) return "error";
-  if (["OBSERVACION", "PRECAUCION", "WARNING"].includes(raw)) return "warning";
+  if (raw === "ANORMAL") return "error";
+  if (raw === "PRECAUCION") return "warning";
+  if (raw === "N/D" || raw === "ND") return "secondary";
   return "success";
 }
 
@@ -522,7 +529,6 @@ function resetForm() {
     fecha_muestra: "",
     fecha_ingreso: "",
     fecha_reporte: "",
-    fecha_informe: "",
     numero_muestra: "",
     horas_equipo: null,
     horas_lubricante: null,
@@ -530,11 +536,17 @@ function resetForm() {
     equipo_marca: "",
     equipo_serie: "",
     equipo_modelo: "",
-    diagnostico: "",
-    estado_diagnostico: "NORMAL",
-    documento_origen: "",
-    detalles: buildLubricantDetailTemplate("MOTOR"),
+    detalles: mergeLubricantDetails("MOTOR"),
   });
+}
+
+function applySelectedEquipmentSnapshot() {
+  const equipment = form.equipo_id ? equipmentMap.value.get(form.equipo_id) : null;
+  if (!equipment) {
+    form.equipo_marca = "";
+    return;
+  }
+  form.equipo_marca = resolveEquipmentBrand(equipment);
 }
 
 async function loadAnalyses() {
@@ -550,15 +562,24 @@ async function loadCatalog(search = "") {
 }
 
 async function loadEquipments() {
-  const { data } = await api.get("/kpi_maintenance/equipos");
+  const { data } = await api.get("/kpi_maintenance/equipos", {
+    params: { limit: 500, page: 1 },
+  });
   equipments.value = unwrap(data, []);
+}
+
+async function loadBrands() {
+  const { data } = await api.get("/kpi_inventory/marcas", {
+    params: { limit: 500, page: 1 },
+  });
+  brands.value = unwrap(data, []);
 }
 
 async function loadAll() {
   loading.value = true;
   error.value = null;
   try {
-    await Promise.all([loadAnalyses(), loadCatalog(), loadEquipments()]);
+    await Promise.all([loadAnalyses(), loadCatalog(), loadEquipments(), loadBrands()]);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudo cargar el modulo de lubricantes.";
   } finally {
@@ -578,37 +599,14 @@ async function assignCode() {
 }
 
 function applyDetailTemplate() {
-  form.detalles = buildLubricantDetailTemplate(form.compartimento_principal || "GENERAL");
+  form.detalles = mergeLubricantDetails(form.compartimento_principal || "GENERAL");
 }
 
 function handleCompartmentChange() {
-  if (!form.detalles.length) {
-    applyDetailTemplate();
-  } else {
-    form.detalles = form.detalles.map((item) => ({
-      ...item,
-      compartimento: form.compartimento_principal || "GENERAL",
-    }));
-  }
-}
-
-function addDetail() {
-  form.detalles.push({
-    compartimento: form.compartimento_principal || "GENERAL",
-    parametro: "",
-    unidad: "",
-    linea_base: null,
-    resultado_numerico: null,
-    resultado_texto: "",
-    nivel_alerta: "NORMAL",
-    tendencia: null,
-    observacion: "",
-    orden: form.detalles.length + 1,
-  });
-}
-
-function removeDetail(target: AnyRow) {
-  form.detalles = form.detalles.filter((item) => item !== target);
+  form.detalles = mergeLubricantDetails(
+    form.compartimento_principal || "GENERAL",
+    form.detalles,
+  );
 }
 
 async function openCreate() {
@@ -628,8 +626,7 @@ function fillFormFromAnalysis(item: AnyRow) {
     compartimento_principal: item.compartimento_principal || "MOTOR",
     fecha_muestra: item.fecha_muestra || "",
     fecha_ingreso: sample.fecha_ingreso || "",
-    fecha_reporte: item.fecha_reporte || "",
-    fecha_informe: sample.fecha_informe || "",
+    fecha_reporte: sample.fecha_informe || item.fecha_reporte || "",
     numero_muestra: sample.numero_muestra || "",
     horas_equipo: sample.horas_equipo ?? null,
     horas_lubricante: sample.horas_lubricante ?? null,
@@ -637,10 +634,10 @@ function fillFormFromAnalysis(item: AnyRow) {
     equipo_marca: sample.equipo_marca || "",
     equipo_serie: sample.equipo_serie || "",
     equipo_modelo: sample.equipo_modelo || "",
-    diagnostico: item.diagnostico || "",
-    estado_diagnostico: item.estado_diagnostico || "NORMAL",
-    documento_origen: item.documento_origen || "",
-    detalles: (item.detalles ?? []).map((detail: AnyRow) => ({ ...detail })),
+    detalles: mergeLubricantDetails(
+      item.compartimento_principal || "MOTOR",
+      item.detalles ?? [],
+    ),
   });
 }
 
@@ -651,8 +648,8 @@ function openEdit(item: AnyRow) {
     ? {
         lubricante: item.lubricante,
         marca_lubricante: item.marca_lubricante,
-        lubricante_codigo: item.lubricante_codigo,
-        label: [item.lubricante_codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
+        ultimo_codigo: item.codigo,
+        label: [item.codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
       }
     : null;
   dialog.value = true;
@@ -666,6 +663,8 @@ function openDelete(item: AnyRow) {
 function handleLubricantSelection(value: any) {
   if (!value) {
     form.lubricante = "";
+    form.marca_lubricante = "";
+    lubricantSelection.value = null;
     return;
   }
   if (typeof value === "string") {
@@ -685,6 +684,35 @@ async function handleLubricantSearch(value: string) {
   }
 }
 
+function buildDetailPayload(detail: AnyRow) {
+  const template = getLubricantParameterTemplate(
+    detail.parametro_key || detail.parametro,
+  );
+  const inputType = template?.inputType || "number";
+  const base = {
+    compartimento: form.compartimento_principal || "GENERAL",
+    parametro: template?.label || detail.parametro,
+    orden: template?.order ?? detail.orden ?? null,
+  } as AnyRow;
+
+  if (inputType === "select" || inputType === "text") {
+    return {
+      ...base,
+      resultado_texto: String(detail.resultado_texto ?? "").trim() || null,
+      resultado_numerico: null,
+    };
+  }
+
+  return {
+    ...base,
+    resultado_numerico:
+      detail.resultado_numerico == null || detail.resultado_numerico === ""
+        ? null
+        : Number(detail.resultado_numerico),
+    resultado_texto: null,
+  };
+}
+
 async function save() {
   saving.value = true;
   try {
@@ -697,14 +725,11 @@ async function save() {
       compartimento_principal: form.compartimento_principal,
       fecha_muestra: form.fecha_muestra || null,
       fecha_reporte: form.fecha_reporte || null,
-      diagnostico: form.diagnostico,
-      estado_diagnostico: form.estado_diagnostico,
-      documento_origen: form.documento_origen || null,
       payload_json: {
         sample_info: {
           numero_muestra: form.numero_muestra || null,
           fecha_ingreso: form.fecha_ingreso || null,
-          fecha_informe: form.fecha_informe || null,
+          fecha_informe: form.fecha_reporte || null,
           horas_equipo: form.horas_equipo,
           horas_lubricante: form.horas_lubricante,
           condicion: form.condicion,
@@ -713,18 +738,7 @@ async function save() {
           equipo_modelo: form.equipo_modelo || null,
         },
       },
-      detalles: form.detalles.map((detail) => ({
-        compartimento: detail.compartimento || form.compartimento_principal,
-        parametro: detail.parametro,
-        unidad: detail.unidad || null,
-        linea_base: detail.linea_base ?? null,
-        resultado_numerico: detail.resultado_numerico ?? null,
-        resultado_texto: detail.resultado_texto || null,
-        nivel_alerta: detail.nivel_alerta || "NORMAL",
-        tendencia: detail.tendencia ?? null,
-        observacion: detail.observacion || null,
-        orden: detail.orden ?? null,
-      })),
+      detalles: form.detalles.map(buildDetailPayload),
     };
 
     if (editingId.value) {
@@ -794,6 +808,7 @@ async function handleDashboardSelection(value: any) {
     return;
   }
   await loadDashboard({
+    codigo: value.ultimo_codigo || value.codigo || undefined,
     lubricante: value.lubricante || value.label,
     marca_lubricante: value.marca_lubricante || undefined,
   });
@@ -803,8 +818,8 @@ async function viewDashboard(item: AnyRow) {
   dashboardSelection.value = {
     lubricante: item.lubricante,
     marca_lubricante: item.marca_lubricante,
-    lubricante_codigo: item.lubricante_codigo,
-    label: [item.lubricante_codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
+    codigo: item.codigo,
+    label: [item.codigo, item.lubricante, item.marca_lubricante].filter(Boolean).join(" · "),
   };
   await loadDashboard({ codigo: item.codigo });
 }
@@ -812,6 +827,7 @@ async function viewDashboard(item: AnyRow) {
 async function reloadDashboard() {
   if (!dashboardSelection.value && !dashboard.value?.selected?.lubricante) return;
   await loadDashboard({
+    codigo: dashboardSelection.value?.codigo || dashboardSelection.value?.ultimo_codigo,
     lubricante:
       dashboardSelection.value?.lubricante || dashboard.value?.selected?.lubricante,
     marca_lubricante:
@@ -819,6 +835,13 @@ async function reloadDashboard() {
       dashboard.value?.selected?.marca_lubricante,
   });
 }
+
+watch(
+  () => form.equipo_id,
+  () => {
+    applySelectedEquipmentSnapshot();
+  },
+);
 
 onMounted(async () => {
   await loadAll();
@@ -845,6 +868,7 @@ onMounted(async () => {
 .detail-grid {
   display: grid;
   gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .detail-card {
@@ -852,5 +876,13 @@ onMounted(async () => {
   border-radius: 18px;
   border: 1px solid var(--surface-border);
   background: rgba(255, 255, 255, 0.45);
+}
+
+.detail-card__title {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 </style>

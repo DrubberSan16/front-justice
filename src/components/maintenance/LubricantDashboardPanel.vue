@@ -29,10 +29,13 @@
               {{ dashboard.metrics?.analisis_filtrados ?? 0 }} analisis
             </v-chip>
             <v-chip color="warning" variant="tonal" label>
-              {{ dashboard.metrics?.observaciones ?? 0 }} observaciones
+              {{ dashboard.metrics?.precauciones ?? 0 }} precauciones
             </v-chip>
             <v-chip color="error" variant="tonal" label>
-              {{ dashboard.metrics?.alertas ?? 0 }} alertas
+              {{ dashboard.metrics?.anormales ?? 0 }} anormales
+            </v-chip>
+            <v-chip color="secondary" variant="tonal" label>
+              {{ dashboard.metrics?.sin_dato ?? 0 }} sin dato
             </v-chip>
           </div>
         </div>
@@ -68,11 +71,11 @@
             <tr>
               <th>Codigo</th>
               <th>Muestra</th>
-              <th>Fecha reporte</th>
+              <th>Fecha informe</th>
               <th>Compartimento</th>
               <th>Condicion</th>
-              <th>Horas equipo</th>
-              <th>Horas lubricante</th>
+              <th>Equipo Hrs/Km</th>
+              <th>Aceite Hrs/Km</th>
             </tr>
           </thead>
           <tbody>
@@ -83,7 +86,7 @@
               <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
               <td>
                 <v-chip size="x-small" :color="conditionColor(item.condicion)" variant="tonal">
-                  {{ item.condicion || "NORMAL" }}
+                  {{ item.condicion || "N/D" }}
                 </v-chip>
               </td>
               <td>{{ item.horas_equipo ?? "N/A" }}</td>
@@ -106,11 +109,29 @@
               <div class="font-weight-medium">{{ dashboard.latest_analysis.compartimento_principal || "Sin compartimento" }}</div>
             </div>
             <div>
+              <div class="text-caption text-medium-emphasis">Equipo</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.equipo_nombre || dashboard.latest_analysis.equipo_codigo || "Sin equipo" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Marca</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.equipo_marca || "Sin marca" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Serie</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.equipo_serie || "Sin serie" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Modelo</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.equipo_modelo || "Sin modelo" }}</div>
+            </div>
+            <div>
               <div class="text-caption text-medium-emphasis">Lubricante</div>
               <div class="font-weight-medium">{{ dashboard.latest_analysis.lubricante || "Sin lubricante" }}</div>
             </div>
             <div>
-              <div class="text-caption text-medium-emphasis">Marca lubricante</div>
+              <div class="text-caption text-medium-emphasis">Marca del lubricante</div>
               <div class="font-weight-medium">{{ dashboard.latest_analysis.marca_lubricante || "Sin marca" }}</div>
             </div>
             <div>
@@ -118,16 +139,36 @@
               <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.numero_muestra || "Sin numero" }}</div>
             </div>
             <div>
-              <div class="text-caption text-medium-emphasis">Condicion</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.condicion || dashboard.latest_analysis.estado_diagnostico }}</div>
+              <div class="text-caption text-medium-emphasis">Fecha de muestreo</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.fecha_muestra || "Sin fecha" }}</div>
             </div>
             <div>
-              <div class="text-caption text-medium-emphasis">Fecha de muestra</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.fecha_muestra || "Sin fecha" }}</div>
+              <div class="text-caption text-medium-emphasis">Fecha de ingreso</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.fecha_ingreso || "Sin fecha" }}</div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Fecha de informe</div>
               <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.fecha_informe || dashboard.latest_analysis.fecha_reporte || "Sin fecha" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Equipo Hrs/Km</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.horas_equipo ?? "N/A" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Aceite Hrs/Km</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.horas_lubricante ?? "N/A" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Condicion</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.condicion || dashboard.latest_analysis.estado_diagnostico || "N/D" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Evaluacion</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.evaluacion_ultima_muestra || dashboard.latest_analysis.diagnostico || "Sin evaluacion" }}
+              </div>
             </div>
           </div>
 
@@ -135,7 +176,7 @@
             class="mt-4"
             :color="conditionColor(dashboard.latest_analysis.estado_diagnostico)"
             variant="tonal"
-            :text="dashboard.latest_analysis.diagnostico || 'Sin diagnostico cargado para la ultima muestra.'"
+            :text="dashboard.latest_analysis.diagnostico || 'Sin evaluacion para la ultima muestra.'"
           />
 
           <div class="mt-4" v-for="group in dashboard.detail_groups ?? []" :key="group.key">
@@ -154,13 +195,13 @@
               <tbody>
                 <tr v-for="detail in group.detalles" :key="detail.id">
                   <td>{{ detail.parametro_label || detail.parametro }}</td>
-                  <td>{{ detail.resultado_numerico ?? detail.resultado_texto ?? "N/A" }}</td>
+                  <td>{{ detail.resultado_numerico ?? detail.resultado_texto ?? "N/D" }}</td>
                   <td>{{ detail.unidad || "-" }}</td>
-                  <td>{{ detail.linea_base_resuelta ?? detail.linea_base ?? "N/A" }}</td>
-                  <td>{{ detail.delta_valor ?? detail.tendencia ?? "N/A" }}</td>
+                  <td>{{ detail.linea_base_resuelta ?? detail.linea_base ?? "N/D" }}</td>
+                  <td>{{ detail.delta_valor ?? detail.tendencia ?? "N/D" }}</td>
                   <td>
                     <v-chip size="x-small" :color="conditionColor(detail.nivel_alerta)" variant="tonal">
-                      {{ detail.nivel_alerta || "NORMAL" }}
+                      {{ detail.nivel_alerta || "N/D" }}
                     </v-chip>
                   </td>
                 </tr>
@@ -208,8 +249,9 @@ defineProps<{
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
-  if (["ALERTA", "CRITICO", "CRITICAL", "ANORMAL"].includes(raw)) return "error";
-  if (["OBSERVACION", "PRECAUCION", "WARNING"].includes(raw)) return "warning";
+  if (raw === "ANORMAL") return "error";
+  if (raw === "PRECAUCION") return "warning";
+  if (raw === "N/D" || raw === "ND") return "secondary";
   return "success";
 }
 </script>
@@ -263,13 +305,13 @@ function conditionColor(value: unknown) {
 
 .report-layout {
   display: grid;
-  gap: 12px;
+  gap: 16px;
 }
 
 .report-header-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 14px;
 }
 
 .charts-grid {
@@ -280,6 +322,6 @@ function conditionColor(value: unknown) {
 .chart-grid-inner {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
+  gap: 16px;
 }
 </style>
