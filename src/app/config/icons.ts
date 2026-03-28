@@ -99,7 +99,7 @@ export const resolveModuleIconColor = (moduleName?: string): string => {
     return "#2E7D32";
   }
 
-  if (normalized.includes("notificaciones") || normalized.includes("notificacion")) {
+  if (normalized.includes("procesos") || normalized.includes("notificaciones") || normalized.includes("notificacion")) {
     return "#EF6C00";
   }
 

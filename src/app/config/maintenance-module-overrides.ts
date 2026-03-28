@@ -4,6 +4,7 @@ export type EnhancedMaintenanceField = MaintenanceField & {
   editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
   hidden?: boolean;
   fullWidth?: boolean;
+  readonly?: boolean;
 };
 
 export type EnhancedMaintenanceModuleConfig = Omit<MaintenanceModuleConfig, "fields"> & {
@@ -52,7 +53,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
 
   if (key === "inteligencia-procedimientos") {
     return replaceFields(config, [
-      { key: "codigo", label: "Codigo", type: "text", required: true },
+      { key: "codigo", label: "Codigo autogenerado", type: "text", readonly: true },
       { key: "nombre", label: "Plantilla", type: "text", required: true },
       {
         key: "tipo_proceso",
@@ -127,7 +128,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
 
   if (key === "inteligencia-analisis-lubricante") {
     return replaceFields(config, [
-      { key: "codigo", label: "Codigo", type: "text" },
+      { key: "codigo", label: "Codigo autogenerado", type: "text", readonly: true },
       { key: "equipo_id", label: "Equipo", type: "select", relation: { endpoint: "/kpi_maintenance/equipos" } },
       { key: "equipo_codigo", label: "Codigo equipo", type: "text" },
       { key: "equipo_nombre", label: "Nombre equipo", type: "text" },

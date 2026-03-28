@@ -5,6 +5,7 @@ export type MaintenanceField = {
   label: string;
   type: FieldType;
   required?: boolean;
+  readonly?: boolean;
   sendInPayload?: boolean;
   jsonMode?: "array" | "object";
   editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
