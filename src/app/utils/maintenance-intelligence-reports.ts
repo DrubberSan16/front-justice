@@ -248,7 +248,8 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   const analysisRows = analyses.map((item) => ({
     codigo: item.codigo,
     cliente: item.cliente ?? "",
-    equipo: item.equipo_codigo ?? item.equipo_nombre ?? "",
+    lubricante: item.lubricante ?? item.equipo_codigo ?? "",
+    marca_lubricante: item.marca_lubricante ?? item.equipo_nombre ?? "",
     compartimento_principal: item.compartimento_principal ?? "",
     fecha_muestra: item.fecha_muestra ?? "",
     fecha_reporte: item.fecha_reporte ?? "",
@@ -259,7 +260,8 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   const detailRows = analyses.flatMap((item) =>
     (item.detalles ?? []).map((detail: AnyRow) => ({
       analisis_codigo: item.codigo,
-      equipo: item.equipo_codigo ?? item.equipo_nombre ?? "",
+      lubricante: item.lubricante ?? item.equipo_codigo ?? "",
+      marca_lubricante: item.marca_lubricante ?? item.equipo_nombre ?? "",
       compartimento: detail.compartimento ?? "",
       numero_muestra: detail.numero_muestra ?? "",
       parametro: detail.parametro ?? "",
@@ -282,6 +284,10 @@ export function buildLubricantReport(analyses: AnyRow[]) {
     subtitle: "Resultados, tendencias y detalle por compartimento para monitoreo predictivo.",
     summary: [
       { label: "Analisis cargados", value: analysisRows.length },
+      {
+        label: "Lubricantes registrados",
+        value: new Set(analysisRows.map((item) => item.lubricante).filter(Boolean)).size,
+      },
       { label: "Casos en alerta", value: alerts },
       { label: "Parametros evaluados", value: detailRows.length },
     ],

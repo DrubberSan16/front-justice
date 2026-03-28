@@ -31,9 +31,9 @@
           <v-card
             rounded="lg"
             variant="outlined"
-            :class="['pa-4', 'intelligence-kpi', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName) }]"
-            :role="card.routeName ? 'button' : undefined"
-            :tabindex="card.routeName ? 0 : undefined"
+            :class="['pa-4', 'intelligence-kpi', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName || card.key === 'lubricantes-dashboard') }]"
+            :role="card.routeName || card.key === 'lubricantes-dashboard' ? 'button' : undefined"
+            :tabindex="card.routeName || card.key === 'lubricantes-dashboard' ? 0 : undefined"
             @click="openCard(card)"
             @keydown.enter="openCard(card)"
             @keydown.space.prevent="openCard(card)"
@@ -44,7 +44,7 @@
             </div>
             <div class="text-h4 font-weight-bold">{{ card.value }}</div>
             <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
-            <div v-if="card.routeName" class="text-caption text-primary mt-3">Abrir mantenimiento</div>
+            <div v-if="card.routeName || card.key === 'lubricantes-dashboard'" class="text-caption text-primary mt-3">Abrir detalle</div>
           </v-card>
         </v-col>
       </v-row>
@@ -186,7 +186,7 @@
           <div class="summary-strip mb-4">
             <v-chip label color="error" variant="tonal">Alerta: {{ analysesInAlert }}</v-chip>
             <v-chip label color="secondary" variant="tonal">Parametros: {{ analysisDetailCount }}</v-chip>
-            <v-chip label color="success" variant="tonal">Equipos: {{ analysisEquipmentCount }}</v-chip>
+            <v-chip label color="success" variant="tonal">Lubricantes: {{ analysisLubricantCount }}</v-chip>
           </div>
 
           <v-table density="compact" class="report-table">
@@ -202,7 +202,10 @@
             <tbody>
               <tr v-for="item in analysisPreview" :key="item.id">
                 <td>{{ item.codigo }}</td>
-                <td>{{ item.equipo_codigo || item.equipo_nombre || "Sin equipo" }}</td>
+                <td>
+                  <div class="font-weight-medium">{{ item.lubricante || item.equipo_codigo || "Sin lubricante" }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.marca_lubricante || item.equipo_nombre || "Sin marca" }}</div>
+                </td>
                 <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
                 <td>
                   <v-chip size="small" :color="chipColorForStatus(item.estado_diagnostico)" variant="tonal">
@@ -367,12 +370,92 @@
       </v-col>
     </v-row>
   </div>
+
+  <v-dialog v-model="dashboardDialog" max-width="1400">
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">Dashboard de lubricantes</v-card-title>
+      <v-divider />
+      <v-card-text class="pt-4 section-surface">
+        <v-row dense class="mb-4">
+          <v-col cols="12" md="4">
+            <v-autocomplete
+              v-model="dashboardSelection"
+              :items="lubricantCatalogOptions"
+              item-title="label"
+              return-object
+              clearable
+              label="Lubricante"
+              variant="outlined"
+              density="compact"
+              @update:model-value="handleDashboardSelection"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-select
+              v-model="dashboardPeriod"
+              :items="dashboardPeriodOptions"
+              item-title="title"
+              item-value="value"
+              label="Periodo"
+              variant="outlined"
+              density="compact"
+              @update:model-value="reloadDashboard"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-text-field
+              v-model="dashboardFrom"
+              type="date"
+              label="Desde"
+              variant="outlined"
+              density="compact"
+              @change="reloadDashboard"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-text-field
+              v-model="dashboardTo"
+              type="date"
+              label="Hasta"
+              variant="outlined"
+              density="compact"
+              @change="reloadDashboard"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-select
+              v-model="dashboardCompartimento"
+              :items="dashboardCompartimentos"
+              clearable
+              label="Compartimento"
+              variant="outlined"
+              density="compact"
+              @update:model-value="reloadDashboard"
+            />
+          </v-col>
+        </v-row>
+
+        <LubricantDashboardPanel
+          :dashboard="lubricantDashboard"
+          :loading="lubricantDashboardLoading"
+          :error="lubricantDashboardError"
+        />
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn variant="text" @click="dashboardDialog = false">Cerrar</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
+import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
+import { lubricantCompartments } from "@/app/config/lubricant-analysis";
 import {
   buildDailyReportsReport,
   buildIndicatorsReport,
@@ -410,6 +493,22 @@ const schedules = ref<AnyRow[]>([]);
 const dailyReports = ref<AnyRow[]>([]);
 const exportState = reactive<Record<string, boolean>>({});
 const router = useRouter();
+const dashboardDialog = ref(false);
+const dashboardSelection = ref<AnyRow | null>(null);
+const dashboardPeriod = ref("MENSUAL");
+const dashboardFrom = ref("");
+const dashboardTo = ref("");
+const dashboardCompartimento = ref<string | null>(null);
+const lubricantDashboard = ref<AnyRow | null>(null);
+const lubricantDashboardLoading = ref(false);
+const lubricantDashboardError = ref<string | null>(null);
+
+const dashboardPeriodOptions = [
+  { value: "SEMANAL", title: "Semanal" },
+  { value: "MENSUAL", title: "Mensual" },
+  { value: "ANUAL", title: "Anual" },
+  { value: "PERSONALIZADO", title: "Personalizado" },
+];
 
 function unwrap<T = any>(payload: any, fallback: T): T {
   return (payload?.data ?? payload ?? fallback) as T;
@@ -511,8 +610,48 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
 }
 
 function openCard(card: IntelligenceCard) {
+  if (card.key === "lubricantes-dashboard") {
+    dashboardDialog.value = true;
+    return;
+  }
   if (!card.routeName) return;
   router.push({ name: card.routeName });
+}
+
+async function loadLubricantDashboard(params?: Record<string, any>) {
+  lubricantDashboardLoading.value = true;
+  lubricantDashboardError.value = null;
+  try {
+    const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-lubricante/dashboard", {
+      params,
+    });
+    lubricantDashboard.value = unwrap(data, null);
+  } catch (e: any) {
+    lubricantDashboardError.value =
+      e?.response?.data?.message || "No se pudo cargar el dashboard de lubricantes.";
+  } finally {
+    lubricantDashboardLoading.value = false;
+  }
+}
+
+async function handleDashboardSelection(value: AnyRow | null) {
+  if (!value) {
+    lubricantDashboard.value = null;
+    return;
+  }
+  await loadLubricantDashboard({
+    lubricante: value.lubricante,
+    marca_lubricante: value.marca_lubricante,
+    periodo: dashboardPeriod.value,
+    from: dashboardFrom.value || undefined,
+    to: dashboardTo.value || undefined,
+    compartimento: dashboardCompartimento.value || undefined,
+  });
+}
+
+async function reloadDashboard() {
+  if (!dashboardSelection.value) return;
+  await handleDashboardSelection(dashboardSelection.value);
 }
 
 const generatedAtLabel = computed(() => {
@@ -542,6 +681,13 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     helper: `${analysesInAlert.value} en alerta`,
     icon: "mdi-flask-outline",
     routeName: "inteligencia-analisis-lubricante",
+  },
+  {
+    key: "lubricantes-dashboard",
+    label: "Lubricantes registrados",
+    value: analysisLubricantCount.value,
+    helper: "Abre el dashboard predictivo por lubricante",
+    icon: "mdi-oil",
   },
   {
     key: "componentes",
@@ -623,9 +769,37 @@ const analysisPreview = computed(() => analyses.value.slice(0, 6));
 const analysisDetailCount = computed(() =>
   analyses.value.reduce((acc, item) => acc + Number(item.detalles?.length ?? 0), 0),
 );
-const analysisEquipmentCount = computed(
-  () => new Set(analyses.value.map((item) => item.equipo_codigo || item.equipo_nombre).filter(Boolean)).size,
+const analysisLubricantCount = computed(
+  () =>
+    new Set(
+      analyses.value
+        .map((item) => item.lubricante || item.equipo_codigo)
+        .filter(Boolean),
+    ).size,
 );
+const lubricantCatalogOptions = computed(() =>
+  [...new Map(
+    analyses.value
+      .filter((item) => item.lubricante || item.equipo_codigo)
+      .map((item) => {
+        const lubricante = item.lubricante || item.equipo_codigo;
+        const marca = item.marca_lubricante || item.equipo_nombre || "";
+        const codigo = item.lubricante_codigo || "";
+        const key = `${codigo}::${lubricante}::${marca}`;
+        return [
+          key,
+          {
+            key,
+            lubricante,
+            marca_lubricante: marca || null,
+            lubricante_codigo: codigo || null,
+            label: [codigo, lubricante, marca].filter(Boolean).join(" · "),
+          },
+        ] as const;
+      }),
+  ).values()],
+);
+const dashboardCompartimentos = lubricantCompartments;
 
 const latestDailyReport = computed(() => dailyReports.value[0] ?? null);
 const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 6));

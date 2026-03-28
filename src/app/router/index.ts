@@ -159,9 +159,8 @@ export const router = createRouter({
         {
           path: "inteligencia/analisis-lubricante",
           name: "inteligencia-analisis-lubricante",
-          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
-          props: { moduleKey: "inteligencia-analisis-lubricante" },
-          meta: { title: "Analisis de lubricante", viewFile: "views/admin/MaintenanceCrudView.vue" },
+          component: () => import("@/views/admin/LubricantAnalysisView.vue"),
+          meta: { title: "Analisis de lubricante", viewFile: "views/admin/LubricantAnalysisView.vue" },
         },
         {
           path: "alertas",
