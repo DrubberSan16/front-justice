@@ -42,7 +42,7 @@
         <v-col cols="12" md="4">
           <v-text-field
             v-model="tableSearch"
-            label="Buscar analisis"
+            label="Buscar lubricantes agrupados"
             variant="outlined"
             density="compact"
             prepend-inner-icon="mdi-magnify"
@@ -184,28 +184,72 @@
 
     <v-card rounded="xl" class="pa-4 enterprise-surface">
       <v-data-table
-        :headers="headers"
-        :items="filteredAnalyses"
+        :headers="groupHeaders"
+        :items="filteredLubricantGroups"
         :loading="loading"
         :items-per-page="15"
         class="enterprise-table"
       >
-        <template #item.lubricante="{ item }">
+        <template #item.lubricante_group="{ item }">
           <div class="font-weight-medium">{{ item.lubricante || "Sin lubricante" }}</div>
           <div class="text-caption text-medium-emphasis">
             {{ item.marca_lubricante || "Sin marca del lubricante" }}
           </div>
         </template>
-        <template #item.estado_diagnostico="{ item }">
-          <v-chip size="small" :color="conditionColor(item.estado_diagnostico)" variant="tonal">
-            {{ item.estado_diagnostico || item.sample_info?.condicion || "N/D" }}
-          </v-chip>
+        <template #item.ultimo_codigo="{ item }">
+          <div class="font-weight-medium">{{ item.ultimo_codigo || "Sin codigo" }}</div>
+          <div class="text-caption text-medium-emphasis">
+            {{ item.total_analisis }} analisis registrados
+          </div>
+        </template>
+        <template #item.compartimentos="{ item }">
+          <div class="group-compartments">
+            <v-chip
+              v-for="compartimento in item.compartimentos"
+              :key="`${item.group_key}-${compartimento}`"
+              size="x-small"
+              variant="tonal"
+              color="secondary"
+            >
+              {{ compartimento }}
+            </v-chip>
+            <span v-if="!item.compartimentos?.length" class="text-medium-emphasis">Sin compartimentos</span>
+          </div>
+        </template>
+        <template #item.ultimo_informe="{ item }">
+          <div class="font-weight-medium">{{ item.ultimo_informe || "Sin fecha" }}</div>
+          <div class="text-caption text-medium-emphasis">
+            {{ item.ultimo_numero_muestra || "Sin muestra" }}
+          </div>
+        </template>
+        <template #item.estado_resumen="{ item }">
+          <div class="d-flex flex-wrap" style="gap: 6px;">
+            <v-chip size="small" :color="conditionColor(item.ultimo_estado)" variant="tonal">
+              {{ item.ultimo_estado || "N/D" }}
+            </v-chip>
+            <v-chip v-if="item.anormales > 0" size="small" color="error" variant="tonal">
+              {{ item.anormales }} anormales
+            </v-chip>
+          </div>
         </template>
         <template #item.actions="{ item }">
-          <div class="d-flex" style="gap: 4px;">
-            <v-btn icon="mdi-chart-line" variant="text" @click="viewDashboard(item)" />
-            <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item)" />
-            <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item)" />
+          <div class="d-flex flex-wrap justify-end" style="gap: 6px;">
+            <v-btn
+              variant="text"
+              color="primary"
+              prepend-icon="mdi-chart-line"
+              @click="viewDashboardGroup(item)"
+            >
+              Dashboard
+            </v-btn>
+            <v-btn
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-file-document-search"
+              @click="openGroupDetail(item)"
+            >
+              Ver detalle
+            </v-btn>
           </div>
         </template>
       </v-data-table>
@@ -457,6 +501,92 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="groupDetailDialog" max-width="1320">
+      <v-card rounded="xl" class="enterprise-dialog">
+        <v-card-title class="d-flex align-center justify-space-between page-wrap">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">
+              {{ selectedGroup?.lubricante || "Lubricante" }}
+            </div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ selectedGroup?.marca_lubricante || "Sin marca del lubricante" }}
+            </div>
+          </div>
+          <div class="d-flex flex-wrap" style="gap: 8px;">
+            <v-chip color="primary" variant="tonal" label>
+              {{ selectedGroup?.total_analisis ?? 0 }} analisis
+            </v-chip>
+            <v-chip color="secondary" variant="tonal" label>
+              Ultimo informe: {{ selectedGroup?.ultimo_informe || "Sin fecha" }}
+            </v-chip>
+          </div>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          <div class="d-flex align-center justify-space-between page-wrap mb-4">
+            <div class="text-body-2 text-medium-emphasis">
+              Revisa todos los analisis que pertenecen a este mismo lubricante y marca.
+            </div>
+            <v-btn
+              color="primary"
+              variant="tonal"
+              prepend-icon="mdi-chart-line"
+              :disabled="!selectedGroup"
+              @click="selectedGroup && viewDashboardGroup(selectedGroup)"
+            >
+              Ver dashboard del grupo
+            </v-btn>
+          </div>
+
+          <v-table density="compact" class="enterprise-table">
+            <thead>
+              <tr>
+                <th>Codigo</th>
+                <th>Muestra</th>
+                <th>Compartimento</th>
+                <th>Condicion</th>
+                <th>Fecha informe</th>
+                <th>Equipo Hrs/Km</th>
+                <th>Aceite Hrs/Km</th>
+                <th class="text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in selectedGroupItems" :key="item.id">
+                <td>{{ item.codigo || "Sin codigo" }}</td>
+                <td>{{ item.sample_info?.numero_muestra || "Sin muestra" }}</td>
+                <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
+                <td>
+                  <v-chip size="x-small" :color="conditionColor(item.sample_info?.condicion || item.estado_diagnostico)" variant="tonal">
+                    {{ item.sample_info?.condicion || item.estado_diagnostico || "N/D" }}
+                  </v-chip>
+                </td>
+                <td>{{ resolveAnalysisReportDate(item) || "Sin fecha" }}</td>
+                <td>{{ item.sample_info?.horas_equipo ?? "N/A" }}</td>
+                <td>{{ item.sample_info?.horas_lubricante ?? "N/A" }}</td>
+                <td>
+                  <div class="d-flex justify-end flex-wrap" style="gap: 4px;">
+                    <v-btn icon="mdi-chart-line" variant="text" @click="viewDashboard(item)" />
+                    <v-btn icon="mdi-pencil" variant="text" @click="openEditFromGroup(item)" />
+                    <v-btn icon="mdi-delete" variant="text" color="error" @click="openDeleteFromGroup(item)" />
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!selectedGroupItems.length">
+                <td colspan="8" class="text-center text-medium-emphasis py-6">
+                  No hay analisis para este grupo.
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="groupDetailDialog = false">Cerrar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="purgeDialog" max-width="560">
       <v-card rounded="xl" class="enterprise-dialog">
         <v-card-title class="text-subtitle-1 font-weight-bold">
@@ -512,6 +642,21 @@ import {
 } from "@/app/config/lubricant-analysis";
 
 type AnyRow = Record<string, any>;
+type LubricantGroupRow = {
+  group_key: string;
+  lubricante: string;
+  marca_lubricante: string;
+  items: AnyRow[];
+  compartimentos: string[];
+  compartimentos_set: Set<string>;
+  total_analisis: number;
+  anormales: number;
+  ultimo_codigo: string;
+  ultimo_informe: string;
+  ultimo_numero_muestra: string;
+  ultimo_estado: string;
+  latest_item: AnyRow | null;
+};
 
 const ui = useUiStore();
 const auth = useAuthStore();
@@ -524,9 +669,11 @@ const importing = ref(false);
 const purging = ref(false);
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const groupDetailDialog = ref(false);
 const purgeDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
+const selectedGroupKey = ref<string | null>(null);
 const error = ref<string | null>(null);
 const dashboardError = ref<string | null>(null);
 const analyses = ref<AnyRow[]>([]);
@@ -549,12 +696,12 @@ const dashboardFrom = ref("");
 const dashboardTo = ref("");
 const dashboardCompartimento = ref<string | null>(null);
 
-const headers = [
-  { title: "Codigo", key: "codigo" },
-  { title: "Lubricante", key: "lubricante" },
-  { title: "Compartimento", key: "compartimento_principal" },
-  { title: "Condicion", key: "estado_diagnostico" },
-  { title: "Fecha informe", key: "fecha_reporte" },
+const groupHeaders = [
+  { title: "Ultimo codigo", key: "ultimo_codigo" },
+  { title: "Lubricante", key: "lubricante_group" },
+  { title: "Compartimentos", key: "compartimentos", sortable: false },
+  { title: "Ultimo informe", key: "ultimo_informe" },
+  { title: "Estado", key: "estado_resumen", sortable: false },
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
@@ -635,23 +782,130 @@ const catalogOptions = computed(() =>
   })),
 );
 
-const filteredAnalyses = computed(() => {
-  const search = String(tableSearch.value || "").trim().toLowerCase();
-  return analyses.value.filter((item) => {
-    const condition = item.sample_info?.condicion || item.estado_diagnostico;
-    if (statusFilter.value && condition !== statusFilter.value) return false;
-    if (!search) return true;
-    return [
-      item.codigo,
-      item.lubricante,
-      item.marca_lubricante,
-      item.compartimento_principal,
-      item.sample_info?.numero_muestra,
-    ]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(search));
-  });
+function buildLubricantGroupKey(lubricante: unknown, marcaLubricante: unknown) {
+  return [lubricante, marcaLubricante]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .join("::");
+}
+
+function resolveAnalysisReportDate(item: AnyRow) {
+  return (
+    String(
+      item?.sample_info?.fecha_informe ||
+        item?.fecha_reporte ||
+        item?.sample_info?.fecha_ingreso ||
+        item?.fecha_muestra ||
+        "",
+    ).trim() || null
+  );
+}
+
+function resolveAnalysisCondition(item: AnyRow) {
+  return (
+    String(item?.sample_info?.condicion || item?.estado_diagnostico || "N/D").trim() ||
+    "N/D"
+  );
+}
+
+function compareAnalysisByLatestDate(left: AnyRow, right: AnyRow) {
+  const leftDate = resolveAnalysisReportDate(left) || "";
+  const rightDate = resolveAnalysisReportDate(right) || "";
+  if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+  return String(right?.codigo || "").localeCompare(String(left?.codigo || ""));
+}
+
+function analysisMatchesSearch(item: AnyRow, search: string) {
+  if (!search) return true;
+  return [
+    item.codigo,
+    item.lubricante,
+    item.marca_lubricante,
+    item.compartimento_principal,
+    item.sample_info?.numero_muestra,
+    item.sample_info?.fecha_informe,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(search));
+}
+
+const groupedAnalyses = computed<LubricantGroupRow[]>(() => {
+  const groups = new Map<string, LubricantGroupRow>();
+
+  for (const item of analyses.value) {
+    const groupKey = buildLubricantGroupKey(item.lubricante, item.marca_lubricante);
+    const group =
+      groups.get(groupKey) ??
+      {
+        group_key: groupKey,
+        lubricante: item.lubricante || "Sin lubricante",
+        marca_lubricante: item.marca_lubricante || "Sin marca del lubricante",
+        items: [] as AnyRow[],
+        compartimentos: [] as string[],
+        compartimentos_set: new Set<string>(),
+        total_analisis: 0,
+        anormales: 0,
+        ultimo_codigo: "",
+        ultimo_informe: "",
+        ultimo_numero_muestra: "",
+        ultimo_estado: "N/D",
+        latest_item: null as AnyRow | null,
+      };
+
+    group.items.push(item);
+    group.total_analisis += 1;
+
+    const compartimento = String(item.compartimento_principal || "").trim();
+    if (compartimento && !group.compartimentos_set.has(compartimento)) {
+      group.compartimentos_set.add(compartimento);
+      group.compartimentos.push(compartimento);
+    }
+
+    if (resolveAnalysisCondition(item) === "ANORMAL") {
+      group.anormales += 1;
+    }
+
+    if (!group.latest_item || compareAnalysisByLatestDate(item, group.latest_item) < 0) {
+      group.latest_item = item;
+      group.ultimo_codigo = String(item.codigo || "").trim();
+      group.ultimo_informe = resolveAnalysisReportDate(item) || "";
+      group.ultimo_numero_muestra = String(item.sample_info?.numero_muestra || "").trim();
+      group.ultimo_estado = resolveAnalysisCondition(item);
+    }
+
+    groups.set(groupKey, group);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      items: [...group.items].sort(compareAnalysisByLatestDate),
+      compartimentos: [...group.compartimentos].sort((a, b) => a.localeCompare(b)),
+    }))
+    .sort((a, b) => {
+      const dateCompare = String(b.ultimo_informe || "").localeCompare(String(a.ultimo_informe || ""));
+      if (dateCompare !== 0) return dateCompare;
+      return String(a.lubricante || "").localeCompare(String(b.lubricante || ""));
+    });
 });
+
+const filteredLubricantGroups = computed<LubricantGroupRow[]>(() => {
+  const search = String(tableSearch.value || "").trim().toLowerCase();
+  return groupedAnalyses.value.filter((group) =>
+    group.items.some((item: AnyRow) => {
+      const condition = resolveAnalysisCondition(item);
+      if (statusFilter.value && condition !== statusFilter.value) return false;
+      return analysisMatchesSearch(item, search);
+    }),
+  );
+});
+
+const selectedGroup = computed<LubricantGroupRow | null>(
+  () =>
+    groupedAnalyses.value.find((group) => group.group_key === selectedGroupKey.value) ??
+    null,
+);
+
+const selectedGroupItems = computed<AnyRow[]>(() => selectedGroup.value?.items ?? []);
 
 const alertCount = computed(
   () =>
@@ -1073,6 +1327,8 @@ async function confirmPurge() {
     analyses.value = [];
     catalog.value = [];
     dashboard.value = null;
+    selectedGroupKey.value = null;
+    groupDetailDialog.value = false;
     importJob.value = null;
     lastImportSummary.value = null;
     importFile.value = null;
@@ -1123,7 +1379,7 @@ async function handleDashboardSelection(value: any) {
     return;
   }
   await loadDashboard({
-    codigo: value.ultimo_codigo || value.codigo || undefined,
+    codigo: value.group_only ? undefined : value.ultimo_codigo || value.codigo || undefined,
     lubricante: value.lubricante || value.label,
     marca_lubricante: value.marca_lubricante || undefined,
   });
@@ -1139,10 +1395,42 @@ async function viewDashboard(item: AnyRow) {
   await loadDashboard({ codigo: item.codigo });
 }
 
+async function viewDashboardGroup(group: AnyRow) {
+  groupDetailDialog.value = false;
+  dashboardSelection.value = {
+    lubricante: group.lubricante,
+    marca_lubricante: group.marca_lubricante,
+    ultimo_codigo: group.ultimo_codigo,
+    group_only: true,
+    label: [group.lubricante, group.marca_lubricante].filter(Boolean).join(" Â· "),
+  };
+  await loadDashboard({
+    lubricante: group.lubricante,
+    marca_lubricante: group.marca_lubricante,
+  });
+}
+
+function openGroupDetail(group: AnyRow) {
+  selectedGroupKey.value = group.group_key;
+  groupDetailDialog.value = true;
+}
+
+function openEditFromGroup(item: AnyRow) {
+  groupDetailDialog.value = false;
+  openEdit(item);
+}
+
+function openDeleteFromGroup(item: AnyRow) {
+  groupDetailDialog.value = false;
+  openDelete(item);
+}
+
 async function reloadDashboard() {
   if (!dashboardSelection.value && !dashboard.value?.selected?.lubricante) return;
   await loadDashboard({
-    codigo: dashboardSelection.value?.codigo || dashboardSelection.value?.ultimo_codigo,
+    codigo: dashboardSelection.value?.group_only
+      ? undefined
+      : dashboardSelection.value?.codigo || dashboardSelection.value?.ultimo_codigo,
     lubricante:
       dashboardSelection.value?.lubricante || dashboard.value?.selected?.lubricante,
     marca_lubricante:
@@ -1181,6 +1469,12 @@ onUnmounted(() => {
 .summary-strip {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.group-compartments {
+  display: flex;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
