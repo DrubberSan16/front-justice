@@ -22,6 +22,11 @@ export const humidityOptions = [
   { value: "POSITIVO", title: "POSITIVO" },
 ];
 
+export const positiveNegativeOptions = [
+  { value: "NEGATIVO", title: "NEGATIVO" },
+  { value: "POSITIVO", title: "POSITIVO" },
+];
+
 export const lubricantCompartments = [
   "MOTOR",
   "HIDRAULICO",
@@ -44,7 +49,7 @@ export const lubricantParameterTemplates: LubricantParameterTemplate[] = [
   { key: "TBN", label: "T.B.N. mgKOH/gr", group: "Estado del lubricante", unit: "mgKOH/gr", order: 4, inputType: "number" },
   { key: "HUMEDAD", label: "Humedad", group: "Estado del lubricante", order: 5, inputType: "select", options: humidityOptions.map((item) => item.value) },
   { key: "GLYCOL", label: "Glycol, Abs/cm", group: "Estado del lubricante", unit: "Abs/cm", order: 6, inputType: "number" },
-  { key: "COMBUSTIBLE", label: "Combustible", group: "Estado del lubricante", order: 7, inputType: "text" },
+  { key: "COMBUSTIBLE", label: "Combustible", group: "Estado del lubricante", order: 7, inputType: "select", options: positiveNegativeOptions.map((item) => item.value) },
   { key: "OXIDACION", label: "Oxidacion, Abs/cm", group: "Degradacion quimica", unit: "Abs/cm", order: 101, inputType: "number" },
   { key: "NITRACION", label: "Nitracion, Abs/cm", group: "Degradacion quimica", unit: "Abs/cm", order: 102, inputType: "number" },
   { key: "SULFATACION", label: "Sulfatacion, Abs/cm", group: "Degradacion quimica", unit: "Abs/cm", order: 103, inputType: "number" },
