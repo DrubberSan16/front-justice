@@ -21,6 +21,15 @@
           >
             Cargar Excel
           </v-btn>
+          <v-btn
+            v-if="canPurgeAnalyses"
+            color="error"
+            variant="tonal"
+            prepend-icon="mdi-delete-alert"
+            @click="openPurgeDialog"
+          >
+            Eliminar todo
+          </v-btn>
           <v-btn variant="tonal" prepend-icon="mdi-refresh" :loading="loading" @click="loadAll">
             Actualizar
           </v-btn>
@@ -447,6 +456,43 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="purgeDialog" max-width="560">
+      <v-card rounded="xl" class="enterprise-dialog">
+        <v-card-title class="text-subtitle-1 font-weight-bold">
+          Eliminar toda la informacion de analisis de lubricante
+        </v-card-title>
+        <v-card-text class="pt-4">
+          <div class="text-body-2 mb-3">
+            Esta acción realizará un borrado real del módulo: análisis, detalles, alertas derivadas,
+            eventos de proceso y archivos de importación guardados en servidor.
+          </div>
+          <div class="text-body-2 mb-3">
+            Solo debe ejecutarse si estás completamente seguro. Para continuar, escribe
+            <b>ELIMINAR TODO</b>.
+          </div>
+          <v-text-field
+            v-model="purgeConfirmation"
+            label="Confirmación"
+            placeholder="ELIMINAR TODO"
+            variant="outlined"
+            autofocus
+          />
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="closePurgeDialog">Cancelar</v-btn>
+          <v-btn
+            color="error"
+            :loading="purging"
+            :disabled="!canConfirmPurge"
+            @click="confirmPurge"
+          >
+            Eliminar todo
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -475,8 +521,10 @@ const saving = ref(false);
 const codeLoading = ref(false);
 const dashboardLoading = ref(false);
 const importing = ref(false);
+const purging = ref(false);
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const purgeDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const error = ref<string | null>(null);
@@ -493,6 +541,7 @@ const importFile = ref<File | null>(null);
 const lastImportSummary = ref<AnyRow | null>(null);
 const importJob = ref<AnyRow | null>(null);
 const importPollHandle = ref<number | null>(null);
+const purgeConfirmation = ref("");
 const tableSearch = ref("");
 const statusFilter = ref<string | null>(null);
 const dashboardPeriod = ref("MENSUAL");
@@ -614,6 +663,11 @@ const alertCount = computed(
 const groupedFormDetails = computed(() => groupLubricantDetails(form.detalles));
 const importProgress = computed(() => Number(importJob.value?.progress ?? 0));
 const importLogs = computed(() => (Array.isArray(importJob.value?.logs) ? importJob.value.logs : []));
+const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
+const canPurgeAnalyses = computed(() => currentRoleName.value.includes("ADMIN"));
+const canConfirmPurge = computed(
+  () => purgeConfirmation.value.trim().toUpperCase() === "ELIMINAR TODO",
+);
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -645,6 +699,16 @@ function resetForm() {
     equipo_modelo: "",
     detalles: mergeLubricantDetails("MOTOR"),
   });
+}
+
+function openPurgeDialog() {
+  purgeConfirmation.value = "";
+  purgeDialog.value = true;
+}
+
+function closePurgeDialog() {
+  purgeDialog.value = false;
+  purgeConfirmation.value = "";
 }
 
 function applySelectedEquipmentSnapshot() {
@@ -982,6 +1046,54 @@ async function confirmDelete() {
     ui.error(e?.response?.data?.message || "No se pudo eliminar el analisis.");
   } finally {
     saving.value = false;
+  }
+}
+
+async function confirmPurge() {
+  if (!canPurgeAnalyses.value) {
+    ui.error("Solo los administradores pueden eliminar toda la informacion de lubricantes.");
+    return;
+  }
+  if (!canConfirmPurge.value) {
+    ui.error("Debes escribir exactamente ELIMINAR TODO para continuar.");
+    return;
+  }
+
+  purging.value = true;
+  try {
+    stopImportPolling();
+    const { data } = await api.post("/kpi_maintenance/inteligencia/analisis-lubricante/purge", {
+      confirmation: purgeConfirmation.value.trim(),
+      requested_by: currentUserName(),
+      requested_role: auth.user?.role?.nombre || null,
+      purge_import_jobs: true,
+    });
+    const summary = unwrap<AnyRow>(data, {});
+
+    analyses.value = [];
+    catalog.value = [];
+    dashboard.value = null;
+    importJob.value = null;
+    lastImportSummary.value = null;
+    importFile.value = null;
+    dashboardSelection.value = null;
+    lubricantSelection.value = null;
+    tableSearch.value = "";
+    statusFilter.value = null;
+    closePurgeDialog();
+
+    await loadAll();
+
+    ui.success(
+      `Información eliminada. Analisis: ${Number(summary.deleted_analyses ?? 0)}, detalles: ${Number(summary.deleted_details ?? 0)}, alertas: ${Number(summary.deleted_alerts ?? 0)}.`,
+    );
+  } catch (e: any) {
+    ui.error(
+      e?.response?.data?.message ||
+        "No se pudo eliminar toda la informacion del modulo de lubricantes.",
+    );
+  } finally {
+    purging.value = false;
   }
 }
 
