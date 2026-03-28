@@ -516,9 +516,6 @@ async function fetchRecords() {
   loading.value = true;
   error.value = null;
   try {
-    if (moduleConfig.value?.key === "alertas") {
-      await api.post("/kpi_maintenance/alertas/recalcular");
-    }
     const rows = await listAll(endpoint);
     records.value = moduleConfig.value?.key === "alertas" ? await enrichAlertsWithRelations(rows) : rows;
     if (moduleConfig.value?.key === "alertas") {

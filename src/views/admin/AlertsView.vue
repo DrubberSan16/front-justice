@@ -18,9 +18,9 @@
           color="primary"
           prepend-icon="mdi-refresh"
           :loading="refreshing"
-          @click="refreshData(true)"
+          @click="refreshData()"
         >
-          Recalcular alertas
+          Actualizar vista
         </v-btn>
       </div>
     </div>
@@ -359,18 +359,14 @@ async function loadData() {
   }
 }
 
-async function refreshData(recalculate = false) {
+async function refreshData() {
   refreshing.value = true;
   try {
-    if (recalculate) {
-      await api.post("/kpi_maintenance/alertas/recalcular");
-      ui.success("Alertas recalculadas correctamente.");
-    }
     await loadData();
   } catch (e: any) {
     error.value =
-      e?.response?.data?.message || "No se pudieron recalcular las alertas.";
-    ui.error(error.value ?? "No se pudieron recalcular las alertas.");
+      e?.response?.data?.message || "No se pudo actualizar la vista de alertas.";
+    ui.error(error.value ?? "No se pudo actualizar la vista de alertas.");
   } finally {
     refreshing.value = false;
   }
@@ -434,6 +430,6 @@ const kpiCards = computed(() => [
 ]);
 
 onMounted(async () => {
-  await refreshData(true);
+  await refreshData();
 });
 </script>
