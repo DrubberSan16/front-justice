@@ -198,6 +198,7 @@ function onLogout() {
 
 .app-topbar__heading {
   display: grid;
+  min-width: 0;
 }
 
 .app-topbar__eyebrow {
@@ -212,6 +213,8 @@ function onLogout() {
   align-items: center;
   gap: 12px;
   padding-right: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .app-topbar__chip {
@@ -226,7 +229,26 @@ function onLogout() {
   padding: 24px;
 }
 
+@media (max-width: 1280px) {
+  .app-container {
+    padding: 20px;
+  }
+}
+
 @media (max-width: 960px) {
+  .app-drawer {
+    max-width: min(304px, 88vw);
+  }
+
+  .app-topbar {
+    padding-inline-end: 6px;
+  }
+
+  .app-topbar__heading :deep(.v-toolbar-title__placeholder) {
+    white-space: normal;
+    line-height: 1.2;
+  }
+
   .app-topbar__actions {
     gap: 6px;
     padding-right: 8px;
@@ -234,6 +256,32 @@ function onLogout() {
 
   .app-container {
     padding: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .app-drawer__header {
+    padding: 16px 14px 14px;
+  }
+
+  .app-drawer__brand {
+    align-items: flex-start;
+  }
+
+  .app-topbar__heading {
+    max-width: 48vw;
+  }
+
+  .app-topbar__eyebrow {
+    font-size: 0.72rem;
+  }
+
+  .app-topbar__actions {
+    max-width: 42vw;
+  }
+
+  .app-container {
+    padding: 12px;
   }
 }
 </style>

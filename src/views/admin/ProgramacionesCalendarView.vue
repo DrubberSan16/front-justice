@@ -418,7 +418,7 @@
       </v-window-item>
     </v-window>
 
-    <v-dialog v-model="dialog" max-width="760">
+    <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 760">
       <v-card rounded="xl">
         <v-card-title class="text-subtitle-1 font-weight-bold">
           {{ editingId ? "Editar programación" : "Nueva programación" }}
@@ -477,7 +477,7 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="weeklyEditorDialog" max-width="1480">
+    <v-dialog v-model="weeklyEditorDialog" :fullscreen="isWeeklyEditorFullscreen" :max-width="isWeeklyEditorFullscreen ? undefined : 1480">
       <v-card rounded="xl">
         <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
           <span class="text-subtitle-1 font-weight-bold">
@@ -595,7 +595,7 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="weeklyCellDialog" max-width="620">
+    <v-dialog v-model="weeklyCellDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 620">
       <v-card rounded="xl">
         <v-card-title class="text-subtitle-1 font-weight-bold">
           {{ weeklyCell.local_id ? "Editar actividad semanal" : "Nueva actividad semanal" }}
@@ -642,10 +642,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 
 const ui = useUiStore();
+const { mdAndDown, smAndDown } = useDisplay();
 
 const activeTab = ref("mensual");
 const loadingAll = ref(false);
@@ -670,6 +672,9 @@ const weeklyImportFile = ref<File | null>(null);
 const monthlyWarnings = ref<string[]>([]);
 const weeklyWarnings = ref<string[]>([]);
 const weeklyPlannerAnchorDate = ref(formatDate(new Date()));
+const isDialogFullscreen = computed(() => mdAndDown.value);
+const isWeeklyEditorFullscreen = computed(() => mdAndDown.value);
+const isWeeklyCellFullscreen = computed(() => smAndDown.value);
 
 const dialog = ref(false);
 const editingId = ref<string | null>(null);
@@ -1646,7 +1651,19 @@ onMounted(async () => {
 .calendar-event--warning { background: rgba(251, 140, 0, 0.12); }
 .calendar-event--danger { background: rgba(211, 47, 47, 0.12); }
 @media (max-width: 960px) {
+  .matrix-table { min-width: 880px; }
+  .matrix-table th, .matrix-table td { min-width: 90px; padding: 8px; }
+  .matrix-table__sticky { min-width: 96px; }
+  .matrix-table__sticky-2 { left: 96px; min-width: 156px; }
+  .matrix-cell--weekly { min-width: 190px; }
   .calendar-grid { grid-template-columns: repeat(1, minmax(0, 1fr)); }
   .calendar-weekday { display: none; }
+}
+
+@media (max-width: 600px) {
+  .programaciones-page { gap: 14px; }
+  .empty-state { min-height: 140px; padding: 18px; }
+  .slot-editor { min-width: 100%; }
+  .weekly-activity { padding: 7px; }
 }
 </style>

@@ -371,7 +371,7 @@
     </v-row>
   </div>
 
-  <v-dialog v-model="dashboardDialog" max-width="1400">
+  <v-dialog v-model="dashboardDialog" :fullscreen="isDashboardDialogFullscreen" :max-width="isDashboardDialogFullscreen ? undefined : 1400">
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Dashboard de lubricantes</v-card-title>
       <v-divider />
@@ -453,6 +453,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
@@ -493,7 +494,9 @@ const schedules = ref<AnyRow[]>([]);
 const dailyReports = ref<AnyRow[]>([]);
 const exportState = reactive<Record<string, boolean>>({});
 const router = useRouter();
+const { mdAndDown } = useDisplay();
 const dashboardDialog = ref(false);
+const isDashboardDialogFullscreen = computed(() => mdAndDown.value);
 const dashboardSelection = ref<AnyRow | null>(null);
 const dashboardPeriod = ref("MENSUAL");
 const dashboardFrom = ref("");
@@ -935,5 +938,25 @@ onMounted(() => {
 
 .h-100 {
   height: 100%;
+}
+
+@media (max-width: 960px) {
+  .intelligence-page {
+    gap: 14px;
+  }
+
+  .indicator-grid,
+  .breakdown-grid,
+  .schedule-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .indicator-tile,
+  .breakdown-chip,
+  .schedule-day {
+    padding: 12px;
+  }
 }
 </style>

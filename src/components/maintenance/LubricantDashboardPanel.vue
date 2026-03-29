@@ -374,4 +374,30 @@ function conditionColor(value: unknown) {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
 }
+
+@media (max-width: 960px) {
+  .dashboard-panel {
+    gap: 14px;
+  }
+
+  .dashboard-grid,
+  .charts-grid {
+    gap: 14px;
+  }
+
+  .report-header-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-kpi,
+  .dashboard-state {
+    padding: 12px;
+  }
+
+  .chart-grid-inner {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

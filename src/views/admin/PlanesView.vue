@@ -2,7 +2,7 @@
   <v-row dense>
     <v-col cols="12">
       <v-card rounded="xl" class="pa-4 fill-height enterprise-surface">
-        <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
+        <div class="responsive-header mb-3">
           <div>
             <div class="text-h6 font-weight-bold">Planes internos</div>
             <div class="text-body-2 text-medium-emphasis">Vista de soporte generada automaticamente desde Plantillas MPG.</div>
@@ -33,10 +33,10 @@
           :loading="loadingPlans"
           item-value="id"
           :items-per-page="10"
-          class="elevation-0 enterprise-table"
+          class="elevation-0 enterprise-table planes-table"
         >
           <template #item.actions="{ item }">
-            <div class="d-flex" style="gap: 4px;">
+            <div class="responsive-actions">
               <v-btn icon="mdi-pencil" variant="text" @click.stop="openPlanEdit(item._raw ?? item)" />
               <v-btn icon="mdi-delete" variant="text" color="error" @click.stop="openDeletePlan(item._raw ?? item)" />
             </div>
@@ -46,7 +46,7 @@
     </v-col>
   </v-row>
 
-  <v-dialog v-model="planDialog" max-width="980">
+  <v-dialog v-model="planDialog" :fullscreen="isPlanDialogFullscreen" :max-width="isPlanDialogFullscreen ? undefined : 980">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingPlanId ? "Editar" : "Crear" }} cabecera del plan</v-card-title>
       <v-divider />
@@ -68,7 +68,7 @@
 
         <v-divider class="my-4" />
 
-        <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
+        <div class="responsive-header mb-3">
           <div>
             <div class="text-subtitle-1 font-weight-bold">Detalle de tareas del plan</div>
             <div class="text-body-2 text-medium-emphasis">
@@ -84,7 +84,7 @@
           item-value="_rowKey"
           :loading="loadingTasks"
           :items-per-page="5"
-          class="elevation-0"
+          class="elevation-0 enterprise-table plan-task-table"
         >
           <template #item.orden="{ item }">
             <v-text-field
@@ -105,7 +105,7 @@
             />
           </template>
           <template #item.actions="{ item }">
-            <div class="d-flex" style="gap: 4px;">
+            <div class="responsive-actions">
               <v-btn icon="mdi-delete" variant="text" color="error" @click="removeTaskRow(resolveTask(item))" />
             </div>
           </template>
@@ -120,7 +120,7 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog v-model="deleteDialog" max-width="500">
+  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
       <v-card-text>¿Eliminar la cabecera y su detalle?</v-card-text>
@@ -135,10 +135,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 
 const ui = useUiStore();
+const { mdAndDown, smAndDown } = useDisplay();
 
 const plans = ref<any[]>([]);
 const tasks = ref<any[]>([]);
@@ -151,6 +153,8 @@ const selectedPlanId = ref<string | null>(null);
 
 const planDialog = ref(false);
 const deleteDialog = ref(false);
+const isPlanDialogFullscreen = computed(() => mdAndDown.value);
+const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 
 const editingPlanId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
@@ -385,5 +389,21 @@ onMounted(async () => {
 <style scoped>
 .order-field {
   max-width: 92px;
+}
+
+.planes-table :deep(.v-data-table-footer),
+.plan-task-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .planes-table :deep(.v-data-table-footer__items-per-page),
+  .planes-table :deep(.v-data-table-footer__pagination),
+  .plan-task-table :deep(.v-data-table-footer__items-per-page),
+  .plan-task-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 </style>

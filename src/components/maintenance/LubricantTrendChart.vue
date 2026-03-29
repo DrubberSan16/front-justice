@@ -91,7 +91,7 @@
     </div>
   </div>
 
-  <v-dialog v-model="dialog" max-width="1480">
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 1480">
     <v-card rounded="xl" class="chart-dialog-card">
       <div class="chart-dialog-header">
         <div>
@@ -285,6 +285,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useDisplay } from "vuetify";
 
 type InputPoint = {
   codigo?: string | null;
@@ -326,6 +327,8 @@ const props = defineProps<{
 }>();
 
 const dialog = ref(false);
+const { mdAndDown } = useDisplay();
+const isDialogFullscreen = computed(() => mdAndDown.value);
 const selectedPointKey = ref<string | null>(null);
 
 const miniPadding: ChartPadding = {
@@ -743,6 +746,22 @@ function openDialog() {
 
   .chart-dialog-side {
     order: -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .chart-dialog-header,
+  .chart-dialog-layout,
+  .chart-table-wrap {
+    padding-inline: 14px;
+  }
+
+  .chart-dialog-shell {
+    padding: 8px;
+  }
+
+  .chart-point-detail {
+    padding: 12px;
   }
 }
 </style>

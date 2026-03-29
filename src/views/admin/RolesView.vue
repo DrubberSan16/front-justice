@@ -4,7 +4,7 @@
   </v-alert>
 
   <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
-    <div class="d-flex align-center justify-space-between mb-3">
+    <div class="responsive-header mb-3">
       <div>
         <div class="text-h6 font-weight-bold">Roles</div>
         <div class="text-body-2 text-medium-emphasis">
@@ -62,7 +62,7 @@
       :items="roles.filtered"
       :loading="roles.loading"
       :items-per-page="itemsPerPage"
-      class="elevation-0 enterprise-table"
+      class="elevation-0 enterprise-table roles-table"
     >
       <template #item.status="{ item }">
         <v-chip size="small" :color="item.status === 'ACTIVE' ? 'green' : 'grey'" variant="tonal">
@@ -72,7 +72,7 @@
 
       <!-- ACCIONES: OCULTAR por permisos -->
       <template #item.actions="{ item }">
-        <div class="d-flex align-center" style="gap:6px;">
+        <div class="responsive-actions">
           <v-btn
             v-if="canEdit"
             icon="mdi-pencil"
@@ -288,3 +288,18 @@ async function onConfirmDelete() {
   }
 }
 </script>
+
+<style scoped>
+.roles-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .roles-table :deep(.v-data-table-footer__items-per-page),
+  .roles-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+</style>

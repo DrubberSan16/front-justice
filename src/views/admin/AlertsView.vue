@@ -10,7 +10,7 @@
           Bandeja consolidada de mantenimiento, operación, lubricantes, combustible e inventario.
         </div>
       </div>
-      <div class="d-flex align-center" style="gap: 8px; flex-wrap: wrap;">
+      <div class="responsive-actions">
         <v-chip label color="warning" variant="tonal">
           {{ summary.totals?.abiertas ?? 0 }} abiertas
         </v-chip>
@@ -109,7 +109,7 @@
           :headers="headers"
           :items="filteredAlerts"
           :loading="loading"
-          class="elevation-0 enterprise-table"
+          class="elevation-0 enterprise-table alerts-table"
           :items-per-page="15"
         >
           <template #item.nivel="{ item }">
@@ -445,3 +445,18 @@ onMounted(async () => {
   await refreshData();
 });
 </script>
+
+<style scoped>
+.alerts-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .alerts-table :deep(.v-data-table-footer__items-per-page),
+  .alerts-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+</style>

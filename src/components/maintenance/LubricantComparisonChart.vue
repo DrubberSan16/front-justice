@@ -102,7 +102,7 @@
     </div>
   </div>
 
-  <v-dialog v-model="dialog" max-width="1540">
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 1540">
     <v-card rounded="xl" class="comparison-chart__dialog">
       <div class="comparison-chart__dialog-header">
         <div>
@@ -306,6 +306,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useDisplay } from "vuetify";
 
 type InputPoint = {
   codigo?: string | null;
@@ -399,6 +400,8 @@ const COLORS = [
 ];
 
 const dialog = ref(false);
+const { mdAndDown } = useDisplay();
+const isDialogFullscreen = computed(() => mdAndDown.value);
 const selectedPointKey = ref<string | null>(null);
 
 const miniPadding: ChartPadding = {
@@ -912,6 +915,22 @@ function openDialog() {
 @media (max-width: 1100px) {
   .comparison-chart__dialog-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .comparison-chart__dialog-header,
+  .comparison-chart__dialog-layout,
+  .comparison-chart__table-wrap {
+    padding-inline: 14px;
+  }
+
+  .comparison-chart__dialog-shell {
+    padding: 8px;
+  }
+
+  .comparison-chart__detail-card {
+    padding: 12px;
   }
 }
 </style>

@@ -445,7 +445,7 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog v-model="deleteDialog" max-width="500">
+  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
       <v-card-text>¿Deseas eliminar esta orden de trabajo?</v-card-text>
@@ -460,11 +460,13 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 
 const ui = useUiStore();
+const { smAndDown } = useDisplay();
 const auth = useAuthStore();
 const loading = ref(false);
 const loadingDetails = ref(false);
@@ -475,6 +477,7 @@ const records = ref<any[]>([]);
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
@@ -1955,5 +1958,37 @@ watch(
 
 .capture-cell {
   min-width: 220px;
+}
+
+@media (max-width: 960px) {
+  .ot-dialog-content {
+    padding-inline: 12px;
+  }
+
+  .capture-cell {
+    min-width: 180px;
+  }
+}
+
+@media (max-width: 600px) {
+  .work-orders-toolbar :deep(.v-toolbar__content) {
+    height: auto;
+    min-height: 64px;
+    padding-block: 8px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .workflow-chip {
+    margin-inline-end: 0 !important;
+  }
+
+  .section-card {
+    padding: 12px !important;
+  }
+
+  .capture-cell {
+    min-width: 150px;
+  }
 }
 </style>

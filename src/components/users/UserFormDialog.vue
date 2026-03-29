@@ -1,7 +1,7 @@
 <template>
-  <v-dialog v-model="model" max-width="980">
-    <v-card rounded="xl">
-      <v-card-title class="d-flex align-center justify-space-between">
+  <v-dialog v-model="model" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 980">
+    <v-card rounded="xl" class="user-form-dialog-card">
+      <v-card-title class="responsive-header">
         <div class="text-subtitle-1 font-weight-bold">
           {{ isEdit ? "Editar usuario" : "Crear usuario" }}
         </div>
@@ -93,7 +93,7 @@
 
           <!-- PERFILERÍA SOLO EN EDICIÓN -->
           <div v-if="isEdit" class="mt-6">
-            <div class="d-flex align-center justify-space-between mb-2">
+            <div class="responsive-header mb-2">
               <div class="text-subtitle-2 font-weight-bold">Permisos por menú (usuario)</div>
               <v-chip size="small" variant="tonal">
                 UserId: {{ props.user?.id }}
@@ -133,6 +133,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, watch, ref } from "vue";
+import { useDisplay } from "vuetify";
 import type { User } from "@/app/types/users.types";
 
 import { useRolesStore } from "@/app/stores/roles.store";
@@ -167,6 +168,7 @@ const emit = defineEmits<{
 const rolesStore = useRolesStore();
 const menusFull = useMenusFullStore();
 const menuUsersProfile = useMenuUsersProfileStore();
+const { mdAndDown } = useDisplay();
 
 const model = computed({
   get: () => props.modelValue,
@@ -174,6 +176,7 @@ const model = computed({
 });
 
 const isEdit = computed(() => !!props.user?.id);
+const isDialogFullscreen = computed(() => mdAndDown.value);
 
 const statusItems = [
   { title: "ACTIVE", value: "ACTIVE" },
@@ -290,3 +293,9 @@ function submit() {
   emit("submit", { ...form });
 }
 </script>
+
+<style scoped>
+.user-form-dialog-card {
+  min-height: 100%;
+}
+</style>

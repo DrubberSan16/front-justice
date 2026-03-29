@@ -4,7 +4,7 @@
   </v-alert>
 
   <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
-    <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
+    <div class="responsive-header mb-3">
       <div>
         <div class="text-h6 font-weight-bold">{{ displayModuleTitle }}</div>
         <div class="text-body-2 text-medium-emphasis">Mantenimiento de {{ displayModuleTitle.toLowerCase() }}.</div>
@@ -40,7 +40,7 @@
       :loading="loading"
       :items-per-page="20"
       :item-props="getRowProps"
-      class="elevation-0 enterprise-table"
+      class="elevation-0 enterprise-table maintenance-crud-table"
     >
       <template #item.estado="{ item }">
         <template v-if="moduleConfig?.key === 'alertas'">
@@ -92,7 +92,7 @@
       </template>
 
       <template #item.actions="{ item }">
-        <div class="d-flex" style="gap:4px">
+        <div class="responsive-actions">
           <v-btn
             v-if="canEdit"
             icon="mdi-pencil"
@@ -111,8 +111,8 @@
     </v-data-table>
   </v-card>
 
-  <v-dialog v-model="dialog" max-width="900">
-    <v-card rounded="xl" class="enterprise-dialog">
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 900">
+    <v-card rounded="xl" class="enterprise-dialog maintenance-dialog-card">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ displayModuleTitle }}</v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
@@ -184,7 +184,7 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog v-model="deleteDialog" max-width="500">
+  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
       <v-card-text>¿Deseas eliminar este registro?</v-card-text>
@@ -199,6 +199,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import MaintenanceStructuredField from "@/components/maintenance/MaintenanceStructuredField.vue";
 import { getEnhancedMaintenanceModule, type EnhancedMaintenanceField } from "@/app/config/maintenance-module-overrides";
@@ -206,6 +207,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
+const { mdAndDown, smAndDown } = useDisplay();
 
 const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
 const canCreate = computed(() => moduleConfig.value?.allowCreate !== false);
@@ -245,6 +247,8 @@ function unwrapData<T = any>(payload: T): any {
 }
 
 const displayModuleTitle = computed(() => repairText(moduleConfig.value?.title ?? ""));
+const isDialogFullscreen = computed(() => mdAndDown.value);
+const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 
 function defaultJsonValue(field: EnhancedMaintenanceField) {
   return field.jsonMode === "array" ? [] : {};
@@ -925,6 +929,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.maintenance-dialog-card {
+  min-height: 100%;
+}
+
+.maintenance-crud-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
 
 :deep(.alert-tree-cell) {
   display: flex;
@@ -963,5 +975,13 @@ onMounted(async () => {
 
 :deep(.alert-group-row-even td) {
   background-color: transparent;
+}
+
+@media (max-width: 960px) {
+  .maintenance-crud-table :deep(.v-data-table-footer__items-per-page),
+  .maintenance-crud-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 </style>

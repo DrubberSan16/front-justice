@@ -4,7 +4,7 @@
   </v-alert>
 
   <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
-    <div class="d-flex align-center justify-space-between mb-3">
+    <div class="responsive-header mb-3">
       <div>
         <div class="text-h6 font-weight-bold">Usuarios</div>
         <div class="text-body-2 text-medium-emphasis">
@@ -79,7 +79,7 @@
       :items="users.filtered"
       :loading="users.loading"
       :items-per-page="itemsPerPage"
-      class="elevation-0 enterprise-table"
+      class="elevation-0 enterprise-table users-table"
     >
       <template #item.status="{ item }">
         <v-chip
@@ -103,7 +103,7 @@
 
       <!-- ACCIONES: OCULTAR según permisos + si está eliminado -->
       <template #item.actions="{ item }">
-        <div class="d-flex align-center" style="gap: 6px;">
+        <div class="responsive-actions">
           <v-btn
             v-if="canEdit && !item.isDeleted"
             icon="mdi-pencil"
@@ -121,12 +121,12 @@
       </template>
 
       <template #bottom>
-        <div class="d-flex align-center justify-space-between px-2 py-2">
+        <div class="responsive-header px-2 py-2">
           <div class="text-caption text-medium-emphasis">
             Total: {{ users.filtered.length }}
           </div>
 
-          <div class="d-flex align-center" style="gap: 12px;">
+          <div class="responsive-actions">
             <v-select
               v-model="itemsPerPage"
               :items="[5,10,20,50]"
@@ -369,3 +369,18 @@ async function onConfirmDelete() {
   }
 }
 </script>
+
+<style scoped>
+.users-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .users-table :deep(.v-data-table-footer__items-per-page),
+  .users-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+</style>

@@ -96,6 +96,7 @@ img {
 
 .enterprise-table {
   overflow: hidden;
+  width: 100%;
   border-radius: 16px;
   border: 1px solid var(--surface-border);
   background: var(--surface-base);
@@ -111,4 +112,91 @@ img {
 .section-surface {
   border: 1px solid var(--surface-border);
   background: var(--surface-soft);
+}
+
+.enterprise-table :is(.v-table__wrapper, .v-data-table__wrapper) {
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.enterprise-table table {
+  width: 100%;
+  min-width: max-content;
+}
+
+.report-table {
+  width: 100%;
+}
+
+.report-table :is(.v-table__wrapper, .v-data-table__wrapper) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.report-table table {
+  min-width: max-content;
+}
+
+.responsive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.responsive-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.responsive-card-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.responsive-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1280px) {
+  .enterprise-table table,
+  .report-table table {
+    min-width: 780px;
+  }
+}
+
+@media (max-width: 960px) {
+  .enterprise-table,
+  .report-table {
+    border-radius: 14px;
+  }
+
+  .enterprise-table table,
+  .report-table table {
+    min-width: 720px;
+    font-size: 0.93rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .enterprise-table table,
+  .report-table table {
+    min-width: 640px;
+    font-size: 0.9rem;
+  }
+
+  .responsive-header,
+  .responsive-actions {
+    align-items: stretch;
+  }
 }

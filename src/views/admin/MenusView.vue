@@ -45,7 +45,7 @@
     </v-card>
 
     <v-card rounded="xl" class="pa-4 enterprise-surface">
-      <div class="d-flex align-center justify-space-between mb-3">
+      <div class="responsive-header mb-3">
         <div>
           <div class="text-h6 font-weight-bold">Menu</div>
           <div class="text-body-2 text-medium-emphasis">
@@ -93,7 +93,7 @@
         :items="rows"
         :loading="menus.loading"
         :items-per-page="20"
-        class="elevation-0 enterprise-table"
+        class="elevation-0 enterprise-table menus-table"
       >
         <template #item.icon="{ item }">
           <v-icon :icon="resolveIcon(item.icon ?? undefined)" />
@@ -135,7 +135,7 @@
         </template>
 
         <template #item.actions="{ item }">
-          <div class="d-flex align-center" style="gap: 4px;">
+          <div class="responsive-actions">
             <v-btn
               v-if="canCreate && !item.isDeleted"
               icon="mdi-plus"
@@ -163,7 +163,7 @@
     </v-card>
   </template>
 
-  <v-dialog v-model="formDialog" max-width="720">
+  <v-dialog v-model="formDialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 720">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">
         {{ isEditing ? "Editar menu" : (isCreatingChild ? "Crear menu hijo" : "Crear menu padre") }}
@@ -239,7 +239,7 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog v-model="deleteDialog" max-width="500">
+  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar menu</v-card-title>
       <v-card-text>
@@ -257,6 +257,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
+import { useDisplay } from "vuetify";
 import { useMenusStore } from "@/app/stores/menus.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -279,6 +280,7 @@ const menus = useMenusStore();
 const menuStore = useMenuStore();
 const ui = useUiStore();
 const auth = useAuthStore();
+const { mdAndDown, smAndDown } = useDisplay();
 
 const perms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, ["Menu", "Menú", "Menus"])
@@ -340,6 +342,8 @@ const deleteDialog = ref(false);
 const busy = ref(false);
 const selected = ref<MenuRow | null>(null);
 const isCreatingChild = ref(false);
+const isDialogFullscreen = computed(() => mdAndDown.value);
+const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 
 const form = reactive({
   nombre: "",
@@ -547,3 +551,18 @@ async function onConfirmDelete() {
   }
 }
 </script>
+
+<style scoped>
+.menus-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .menus-table :deep(.v-data-table-footer__items-per-page),
+  .menus-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+</style>

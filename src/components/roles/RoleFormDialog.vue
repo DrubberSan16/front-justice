@@ -1,6 +1,6 @@
 <template>
-  <v-dialog v-model="dialog" max-width="900">
-    <v-card rounded="xl">
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 900">
+    <v-card rounded="xl" class="role-form-dialog-card">
       <v-card-title class="text-h6">
         {{ isEdit ? "Editar Rol" : "Crear Rol" }}
       </v-card-title>
@@ -8,7 +8,7 @@
       <v-card-text>
         <v-form @submit.prevent="submit">
           <v-row>
-            <v-col cols="6">
+            <v-col cols="12" md="6">
               <v-text-field
                 v-model="form.nombre"
                 label="Nombre"
@@ -16,7 +16,7 @@
               />
             </v-col>
 
-            <v-col cols="6">
+            <v-col cols="12" md="6">
               <v-select
                 v-model="form.status"
                 :items="['ACTIVE','INACTIVE']"
@@ -61,6 +61,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
+import { useDisplay } from "vuetify";
 import { useMenuRolesStore } from "@/app/stores/menu-roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
 
@@ -83,6 +84,8 @@ const isEdit = computed(() => !!props.role);
 
 const menus = useMenusFullStore();
 const menuRoles = useMenuRolesStore();
+const { mdAndDown } = useDisplay();
+const isDialogFullscreen = computed(() => mdAndDown.value);
 
 const form = ref({
   nombre: "",
@@ -122,3 +125,9 @@ function submit() {
   emit("submit", { ...form.value });
 }
 </script>
+
+<style scoped>
+.role-form-dialog-card {
+  min-height: 100%;
+}
+</style>

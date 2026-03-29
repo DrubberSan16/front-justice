@@ -1,14 +1,14 @@
 <template>
   <div class="lubricant-page">
     <v-card rounded="xl" class="pa-5 enterprise-surface">
-      <div class="d-flex align-center justify-space-between page-wrap">
+      <div class="responsive-header page-wrap">
         <div>
           <div class="text-h6 font-weight-bold">Analisis de lubricante</div>
           <div class="text-body-2 text-medium-emphasis">
             Captura operativa alineada al formato del reporte de laboratorio.
           </div>
         </div>
-        <div class="d-flex page-wrap" style="gap: 8px;">
+        <div class="responsive-actions page-wrap">
           <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">
             Nuevo analisis
           </v-btn>
@@ -123,7 +123,7 @@
 
       <v-card v-if="importJob" class="mt-4" rounded="lg" variant="tonal">
         <v-card-text>
-          <div class="d-flex align-center justify-space-between page-wrap mb-2">
+          <div class="responsive-header page-wrap mb-2">
             <div>
               <div class="text-subtitle-2 font-weight-bold">Carga en servidor</div>
               <div class="text-caption text-medium-emphasis">
@@ -142,7 +142,7 @@
             rounded
           />
 
-          <div class="d-flex align-center justify-space-between page-wrap mt-2">
+          <div class="responsive-header page-wrap mt-2">
             <div class="text-body-2">
               {{ importJob.current_step || "En espera" }}
             </div>
@@ -197,7 +197,7 @@
         :items="filteredLubricantGroups"
         :loading="loading"
         :items-per-page="15"
-        class="enterprise-table"
+        class="enterprise-table lubricant-groups-table"
       >
         <template #item.lubricante_group="{ item }">
           <div class="font-weight-medium">{{ item.lubricante || "Sin lubricante" }}</div>
@@ -251,7 +251,7 @@
           </div>
         </template>
         <template #item.actions="{ item }">
-          <div class="d-flex flex-wrap justify-end" style="gap: 6px;">
+          <div class="responsive-actions justify-end">
             <v-btn
               variant="text"
               color="primary"
@@ -334,7 +334,7 @@
       />
     </v-card>
 
-    <v-dialog v-model="dialog" max-width="1400">
+    <v-dialog v-model="dialog" :fullscreen="isFormDialogFullscreen" :max-width="isFormDialogFullscreen ? undefined : 1400">
       <v-card rounded="xl" class="enterprise-dialog">
         <v-card-title class="text-subtitle-1 font-weight-bold">
           {{ editingId ? "Editar" : "Crear" }} analisis de lubricante
@@ -438,7 +438,7 @@
             </v-col>
 
             <v-col cols="12">
-              <div class="d-flex align-center justify-space-between mb-2 page-wrap">
+              <div class="responsive-header mb-2 page-wrap">
                 <div class="text-subtitle-2 font-weight-bold">Parametros del reporte</div>
                 <v-btn variant="tonal" prepend-icon="mdi-table-refresh" @click="applyDetailTemplate">
                   Recargar plantilla
@@ -507,7 +507,7 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="deleteDialog" max-width="420">
+    <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 420">
       <v-card rounded="xl" class="enterprise-dialog">
         <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar analisis</v-card-title>
         <v-card-text>Se eliminara el analisis seleccionado.</v-card-text>
@@ -519,9 +519,9 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="groupDetailDialog" max-width="1320">
+    <v-dialog v-model="groupDetailDialog" :fullscreen="isGroupDialogFullscreen" :max-width="isGroupDialogFullscreen ? undefined : 1320">
       <v-card rounded="xl" class="enterprise-dialog">
-        <v-card-title class="d-flex align-center justify-space-between page-wrap">
+        <v-card-title class="responsive-header page-wrap">
           <div>
             <div class="text-subtitle-1 font-weight-bold">
               {{ selectedGroup?.lubricante || "Lubricante" }}
@@ -544,7 +544,7 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="pt-4">
-          <div class="d-flex align-center justify-space-between page-wrap mb-4">
+          <div class="responsive-header page-wrap mb-4">
             <div class="text-body-2 text-medium-emphasis">
               Revisa todos los analisis que pertenecen a este mismo lubricante, marca, equipo y modelo.
             </div>
@@ -607,7 +607,7 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="purgeDialog" max-width="560">
+    <v-dialog v-model="purgeDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 560">
       <v-card rounded="xl" class="enterprise-dialog">
         <v-card-title class="text-subtitle-1 font-weight-bold">
           Eliminar toda la informacion de analisis de lubricante
@@ -648,6 +648,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -687,6 +688,7 @@ const ACTIVE_IMPORT_STORAGE_KEY = "kpi-justice:lubricant-import:active-job";
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const { mdAndDown, smAndDown } = useDisplay();
 
 const loading = ref(false);
 const saving = ref(false);
@@ -724,6 +726,9 @@ const dashboardPeriod = ref("MENSUAL");
 const dashboardFrom = ref("");
 const dashboardTo = ref("");
 const dashboardCompartimento = ref<string | null>(null);
+const isFormDialogFullscreen = computed(() => mdAndDown.value);
+const isGroupDialogFullscreen = computed(() => mdAndDown.value);
+const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 
 const groupHeaders = [
   { title: "Ultimo codigo", key: "ultimo_codigo" },
@@ -1819,5 +1824,41 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.lubricant-groups-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .lubricant-page {
+    gap: 14px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .import-log {
+    max-height: 240px;
+  }
+
+  .lubricant-groups-table :deep(.v-data-table-footer__items-per-page),
+  .lubricant-groups-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 600px) {
+  .detail-card {
+    padding: 12px;
+  }
+
+  .detail-card__title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

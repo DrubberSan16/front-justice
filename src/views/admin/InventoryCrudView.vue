@@ -8,7 +8,7 @@
   </v-alert>
 
   <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
-    <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
+    <div class="responsive-header mb-3">
       <div>
         <div class="text-h6 font-weight-bold">{{ moduleConfig.title }}</div>
         <div class="text-body-2 text-medium-emphasis">Inventario de {{ moduleConfig.title.toLowerCase() }}.</div>
@@ -38,9 +38,9 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 enterprise-table">
+    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 enterprise-table inventory-table">
       <template #item.actions="{ item }">
-        <div class="d-flex" style="gap:4px">
+        <div class="responsive-actions">
           <v-btn
             v-if="canEdit"
             icon="mdi-pencil"
@@ -59,8 +59,8 @@
     </v-data-table>
   </v-card>
 
-  <v-dialog v-model="dialog" max-width="900">
-    <v-card rounded="xl" class="enterprise-dialog">
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 900">
+    <v-card rounded="xl" class="enterprise-dialog inventory-dialog-card">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ moduleConfig?.title }}</v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
@@ -105,7 +105,7 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog v-model="deleteDialog" max-width="500">
+  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
       <v-card-text>¿Deseas eliminar este registro?</v-card-text>
@@ -121,6 +121,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { getInventoryModule, type MaintenanceField } from "@/app/config/maintenance-modules";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -132,6 +133,7 @@ const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
 const menu = useMenuStore();
 const route = useRoute();
+const { mdAndDown, smAndDown } = useDisplay();
 
 const moduleConfig = computed(() => getInventoryModule(props.moduleKey));
 const permissionAliases = computed(() => {
@@ -156,6 +158,8 @@ const deleteDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const form = reactive<Record<string, any>>({});
+const isDialogFullscreen = computed(() => mdAndDown.value);
+const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -391,3 +395,22 @@ onMounted(async () => {
   await loadRelations();
 });
 </script>
+
+<style scoped>
+.inventory-dialog-card {
+  min-height: 100%;
+}
+
+.inventory-table :deep(.v-data-table-footer) {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+@media (max-width: 960px) {
+  .inventory-table :deep(.v-data-table-footer__items-per-page),
+  .inventory-table :deep(.v-data-table-footer__pagination) {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+</style>
