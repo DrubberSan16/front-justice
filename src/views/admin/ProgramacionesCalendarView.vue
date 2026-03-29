@@ -54,6 +54,16 @@
               >
                 Editar selección
               </v-btn>
+              <v-btn
+                v-if="canEditMonthlyColors"
+                variant="tonal"
+                color="secondary"
+                prepend-icon="mdi-palette"
+                :disabled="!selectedMonthly"
+                @click="openMonthlyPaletteDialog()"
+              >
+                Colores
+              </v-btn>
               <v-btn color="primary" prepend-icon="mdi-file-excel" :loading="importingMonthly" @click="importMonthlyWorkbook">
                 Cargar mensual
               </v-btn>
@@ -147,22 +157,29 @@
                     <td>{{ row.horometro_ultimo ?? "N/D" }}</td>
                     <td>{{ row.horometro_actual ?? "N/D" }}</td>
                     <td v-for="day in monthlyDays" :key="`${row.key}-${day.key}`" class="monthly-day-cell">
-                      <div v-if="row.cells[day.date]?.length" class="matrix-cell">
+                      <div class="matrix-cell">
                         <button
-                          v-for="item in row.cells[day.date]"
+                          v-for="item in row.cells[day.date] || []"
                           :key="item.id"
                           type="button"
                           class="matrix-chip-button"
-                          @click="selectMonthlyDetail(item)"
+                          @click="handleMonthlyItemClick(item)"
                         >
                           <v-chip
                             size="x-small"
-                            :color="monthlyCellColor(item)"
-                            variant="tonal"
+                            variant="flat"
                             class="mb-1"
+                            :style="{ backgroundColor: monthlyCellColor(item), color: monthlyCellTextColor(item) }"
                           >
                             {{ item.valor_crudo }}
                           </v-chip>
+                        </button>
+                        <button
+                          type="button"
+                          class="weekly-add-button weekly-add-button--mini"
+                          @click="openMonthlyCellCreate(day.date, row)"
+                        >
+                          <v-icon icon="mdi-plus" size="14" />
                         </button>
                       </div>
                     </td>
@@ -184,34 +201,45 @@
               </template>
               <template #item.valor_crudo="{ item }">
                 <div class="d-flex flex-column" style="gap: 4px;">
-                  <v-chip size="small" :color="monthlyCellColor(item as any)" variant="tonal">
+                  <v-chip
+                    size="small"
+                    variant="flat"
+                    :style="{ backgroundColor: monthlyCellColor(item as any), color: monthlyCellTextColor(item as any) }"
+                  >
                     {{ (item as any).valor_crudo }}
                   </v-chip>
                   <span class="text-caption text-medium-emphasis">
-                    Hora objetivo: {{ (item as any).payload_json?.horometro_programado ?? "N/D" }}
+                    <template v-if="isMonthlyWeeklyAggregate(item as any)">
+                      Horas agendadas: {{ (item as any).payload_json?.total_horas_agendadas ?? "0.00" }} h
+                    </template>
+                    <template v-else>
+                      Hora objetivo: {{ (item as any).payload_json?.horometro_programado ?? "N/D" }}
+                    </template>
                   </span>
                 </div>
               </template>
               <template #item.programacion_id="{ item }">
-                <v-chip size="small" :color="(item as any).programacion_id ? 'success' : 'secondary'" variant="tonal">
-                  {{ (item as any).programacion_id ? "Sincronizado" : "Solo reporte" }}
+                <v-chip
+                  size="small"
+                  :color="isMonthlyWeeklyAggregate(item as any) ? 'info' : (item as any).programacion_id ? 'success' : 'secondary'"
+                  variant="tonal"
+                >
+                  {{
+                    isMonthlyWeeklyAggregate(item as any)
+                      ? "Agendado semanal"
+                      : (item as any).programacion_id
+                        ? "Sincronizado"
+                        : "Solo reporte"
+                  }}
                 </v-chip>
               </template>
               <template #item.actions="{ item }">
                 <div class="d-flex" style="gap: 4px;">
                   <v-btn
-                    v-if="!(item as any).programacion_id"
-                    icon="mdi-calendar-plus"
-                    variant="text"
-                    color="secondary"
-                    @click.stop="openCreateFromMonthlyDetail(item as any)"
-                  />
-                  <v-btn
-                    v-else
                     icon="mdi-pencil"
                     variant="text"
                     color="primary"
-                    @click.stop="openEditProgramacionById((item as any).programacion_id)"
+                    @click.stop="handleMonthlyItemClick(item as any)"
                   />
                 </div>
               </template>
@@ -291,6 +319,17 @@
               {{ day.label }}: {{ day.hours.toFixed(2) }} h
             </v-chip>
           </div>
+          <div v-if="weeklyEquipmentHours.length" class="summary-strip mt-2">
+            <v-chip
+              v-for="item in weeklyEquipmentHours"
+              :key="`${item.fecha_actividad}-${item.equipo_codigo}`"
+              color="info"
+              variant="tonal"
+              label
+            >
+              {{ item.fecha_actividad }} · {{ item.equipo_codigo }} · {{ item.total_horas.toFixed(2) }} h
+            </v-chip>
+          </div>
 
           <v-alert
             v-if="weeklyWarnings.length"
@@ -325,14 +364,24 @@
                   <tr v-for="slot in weeklyTimeSlots" :key="slot.key">
                     <td class="matrix-table__sticky font-weight-bold">{{ slot.label }}</td>
                     <td v-for="day in weeklyDays" :key="`${slot.key}-${day.date}`">
-                      <div v-if="weeklyGrid[slot.key]?.[day.date]?.length" class="matrix-cell matrix-cell--weekly">
-                        <div v-for="item in getWeeklyItems(slot.key, day.date)" :key="item.id" class="weekly-activity">
+                      <div class="matrix-cell matrix-cell--weekly">
+                        <button
+                          v-for="item in getWeeklyItems(slot.key, day.date)"
+                          :key="item.id"
+                          type="button"
+                          class="weekly-activity weekly-activity--button"
+                          @click="openSelectedWeeklyCell(slot.key, day.date, item)"
+                        >
                           <div class="weekly-activity__title">{{ item.actividad }}</div>
                           <div class="text-caption text-medium-emphasis">
                             {{ item.tipo_proceso || "OPERACION" }}
-                            <span v-if="item.equipo_codigo"> · {{ item.equipo_codigo }}</span>
+                            <span v-if="item.equipo_codigo"> ? {{ item.equipo_codigo }}</span>
                           </div>
-                        </div>
+                        </button>
+                        <button type="button" class="weekly-add-button" @click="openSelectedWeeklyCell(slot.key, day.date)">
+                          <v-icon icon="mdi-plus" size="16" />
+                          <span>Agregar</span>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -421,7 +470,7 @@
     <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 760">
       <v-card rounded="xl">
         <v-card-title class="text-subtitle-1 font-weight-bold">
-          {{ editingId ? "Editar programación" : "Nueva programación" }}
+          {{ editingId ? "Editar programaci?n" : "Nueva programaci?n" }}
         </v-card-title>
         <v-divider />
         <v-card-text class="pt-4">
@@ -446,7 +495,7 @@
               />
             </v-col>
             <v-col cols="12">
-              <v-alert type="info" variant="tonal" text="El sistema sincroniza automáticamente un plan interno desde la plantilla MPG seleccionada." />
+              <v-alert type="info" variant="tonal" text="El sistema sincroniza autom?ticamente un plan interno desde la plantilla MPG seleccionada." />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field :model-value="resolvedPlanLabel" label="Plan operativo generado" variant="outlined" readonly />
@@ -455,16 +504,16 @@
               <v-text-field :model-value="selectedProcedureFrequency" label="Frecuencia de plantilla" variant="outlined" readonly />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Última ejecución fecha" variant="outlined" />
+              <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="?ltima ejecuci?n fecha" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="Última ejecución horas" variant="outlined" />
+              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="?ltima ejecuci?n horas" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.proxima_horas" type="number" step="0.01" label="Hora objetivo" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field :model-value="programacionSourceMode" label="Modo de programación" variant="outlined" readonly />
+              <v-text-field :model-value="programacionSourceMode" label="Modo de programaci?n" variant="outlined" readonly />
             </v-col>
           </v-row>
         </v-card-text>
@@ -477,6 +526,90 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="monthlyCellDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 720">
+      <v-card rounded="xl">
+        <v-card-title class="text-subtitle-1 font-weight-bold">
+          {{ monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual" }}
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="monthlyCell.equipo_id"
+                :items="equipmentOptions"
+                item-title="title"
+                item-value="value"
+                label="Equipo"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field v-model="monthlyCell.fecha_programada" type="date" label="Fecha programada" variant="outlined" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="monthlyCell.valor_crudo"
+                label="Valor mensual"
+                hint="Usa 325, 650, 975, R20 o una cantidad de horas"
+                persistent-hint
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="monthlyCell.procedimiento_id"
+                :items="procedureOptions"
+                item-title="title"
+                item-value="value"
+                label="Plantilla MPG opcional"
+                variant="outlined"
+                clearable
+              />
+            </v-col>
+            <v-col cols="12">
+              <v-textarea v-model="monthlyCell.observacion" rows="3" label="Observaci?n" variant="outlined" />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="monthlyCellDialog = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="savingMonthlyCell" @click="saveMonthlyCell">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="monthlyPaletteDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 760">
+      <v-card rounded="xl">
+        <v-card-title class="text-subtitle-1 font-weight-bold">Colores del mensual</v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          <div class="palette-grid">
+            <div v-for="field in monthlyPaletteFields" :key="field.key" class="palette-item">
+              <div class="text-body-2 font-weight-medium">{{ field.label }}</div>
+              <div class="palette-item__controls">
+                <input v-model="monthlyPaletteForm[field.key]" type="color" class="palette-color-input" />
+                <v-text-field
+                  v-model="monthlyPaletteForm[field.key]"
+                  density="compact"
+                  hide-details
+                  variant="outlined"
+                />
+              </div>
+            </div>
+          </div>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="monthlyPaletteDialog = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="savingMonthlyPalette" @click="saveMonthlyPalette">Guardar colores</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="weeklyEditorDialog" :fullscreen="isWeeklyEditorFullscreen" :max-width="isWeeklyEditorFullscreen ? undefined : 1480">
       <v-card rounded="xl">
         <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
@@ -484,9 +617,6 @@
             {{ weeklyEditor.id ? "Editar cronograma semanal" : "Nuevo cronograma semanal" }}
           </span>
           <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-            <v-btn variant="tonal" prepend-icon="mdi-plus" @click="addWeeklySlot()">
-              Agregar hora
-            </v-btn>
             <v-btn color="primary" :loading="savingWeekly" @click="saveWeeklyEditor">
               Guardar cronograma
             </v-btn>
@@ -496,7 +626,7 @@
         <v-card-text class="pt-4">
           <v-row dense>
             <v-col cols="12" md="3">
-              <v-text-field v-model="weeklyEditor.codigo" label="Código" variant="outlined" readonly />
+              <v-text-field v-model="weeklyEditor.codigo" label="C?digo" variant="outlined" readonly />
             </v-col>
             <v-col cols="12" md="3">
               <v-text-field
@@ -514,7 +644,7 @@
               <v-text-field v-model="weeklyEditor.fecha_fin" label="Fin de semana" variant="outlined" readonly />
             </v-col>
             <v-col cols="12" md="4">
-              <v-text-field v-model="weeklyEditor.locacion" label="Locación" variant="outlined" />
+              <v-text-field v-model="weeklyEditor.locacion" label="Locaci?n" variant="outlined" />
             </v-col>
             <v-col cols="12" md="4">
               <v-text-field v-model="weeklyEditor.referencia_orden" label="Referencia de orden" variant="outlined" />
@@ -576,7 +706,7 @@
                             <div class="weekly-activity__title">{{ item.actividad }}</div>
                             <div class="text-caption text-medium-emphasis">
                               {{ item.tipo_proceso || "OPERACION" }}
-                              <span v-if="item.equipo_codigo"> · {{ item.equipo_codigo }}</span>
+                              <span v-if="item.equipo_codigo"> ? {{ item.equipo_codigo }}</span>
                             </div>
                           </div>
                           <div class="d-flex" style="gap: 2px;">
@@ -590,6 +720,12 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div class="weekly-slot-footer mt-4">
+            <button type="button" class="weekly-slot-add-button" @click="addWeeklySlot()">
+              <v-icon icon="mdi-plus" size="18" />
+            </button>
+            <span class="text-body-2 text-medium-emphasis">Agregar bloque horario</span>
           </div>
         </v-card-text>
       </v-card>
@@ -616,7 +752,15 @@
               <v-select v-model="weeklyCell.tipo_proceso" :items="weeklyProcessOptions" label="Tipo de proceso" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="weeklyCell.equipo_codigo" label="Equipo" variant="outlined" />
+              <v-autocomplete
+                v-model="weeklyCell.equipo_codigo"
+                :items="equipmentCodeOptions"
+                item-title="title"
+                item-value="value"
+                label="Equipo"
+                variant="outlined"
+                clearable
+              />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="weeklyCell.responsable_area" label="Área responsable" variant="outlined" />
@@ -645,8 +789,10 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
+import { useAuthStore } from "@/app/stores/auth.store";
 
 const ui = useUiStore();
+const auth = useAuthStore();
 const { mdAndDown, smAndDown } = useDisplay();
 
 const activeTab = ref("mensual");
@@ -683,12 +829,16 @@ const programacionSourceOrigin = ref("MANUAL");
 const programacionSourcePayload = ref<Record<string, unknown>>({});
 const programacionSourceDocument = ref<string | null>(null);
 const equipmentOptions = ref<any[]>([]);
+const equipmentCatalog = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
 const procedureCatalog = ref<any[]>([]);
 const currentMonth = ref(new Date());
+const weeklyCellPersistDirect = ref(false);
 
 const weeklyEditorDialog = ref(false);
 const weeklyCellDialog = ref(false);
+const monthlyCellDialog = ref(false);
+const monthlyPaletteDialog = ref(false);
 const weeklyEditorAnchorDate = ref(formatDate(new Date()));
 const weeklyProcessOptions = ["OPERACION", "MPG", "SSA", "MIXTO"];
 const weeklyEditor = reactive<any>({
@@ -713,6 +863,27 @@ const weeklyCell = reactive<any>({
   responsable_area: "",
   equipo_codigo: "",
   observacion: "",
+});
+const monthlyCell = reactive<any>({
+  id: null,
+  programacion_mensual_id: "",
+  equipo_id: "",
+  equipo_codigo: "",
+  fecha_programada: "",
+  valor_crudo: "",
+  procedimiento_id: "",
+  observacion: "",
+});
+const savingMonthlyCell = ref(false);
+const savingMonthlyPalette = ref(false);
+const monthlyPaletteForm = reactive<Record<string, string>>({
+  MPG: "#F4DD6B",
+  HORAS_PROGRAMADAS: "#F4DD6B",
+  MANTENIMIENTO: "#F4DD6B",
+  OTRO: "#D7E0EA",
+  SEMANAL: "#9EC5FE",
+  SINCRONIZADO: "#8ED1A5",
+  DEFAULT: "#D7E0EA",
 });
 
 const form = reactive<any>({
@@ -753,6 +924,27 @@ const weeklyDetailHeaders = [
   { title: "Equipo", key: "equipo_codigo" },
   { title: "Actividad", key: "actividad" },
 ];
+const monthlyPaletteFields = [
+  { key: "MPG", label: "MPG" },
+  { key: "HORAS_PROGRAMADAS", label: "Horas programadas" },
+  { key: "MANTENIMIENTO", label: "Mantenimiento especial" },
+  { key: "SEMANAL", label: "Agendado semanal" },
+  { key: "SINCRONIZADO", label: "Sincronizado" },
+  { key: "DEFAULT", label: "Predeterminado" },
+];
+const currentRoleName = computed(() =>
+  String(auth.user?.role?.nombre || "").trim().toUpperCase(),
+);
+const canEditMonthlyColors = computed(() => currentRoleName.value.includes("ADMIN"));
+const defaultMonthlyPalette: Record<string, string> = {
+  MPG: "#F4DD6B",
+  HORAS_PROGRAMADAS: "#F4DD6B",
+  MANTENIMIENTO: "#F4DD6B",
+  OTRO: "#D7E0EA",
+  SEMANAL: "#9EC5FE",
+  SINCRONIZADO: "#8ED1A5",
+  DEFAULT: "#D7E0EA",
+};
 
 function formatDate(date: Date) {
   const year = date.getFullYear();
@@ -828,6 +1020,7 @@ async function loadCatalogs() {
     listAll("/kpi_maintenance/equipos"),
     listAll("/kpi_maintenance/inteligencia/procedimientos"),
   ]);
+  equipmentCatalog.value = equipos;
   equipmentOptions.value = equipos.map(normalize);
   procedureCatalog.value = procedimientos;
   procedureOptions.value = procedimientos.map(normalize);
@@ -938,11 +1131,31 @@ const monthlyPeriodOptions = computed(() =>
     : [],
 );
 
+const monthlyDisplayDetails = computed(() =>
+  Array.isArray(selectedMonthly.value?.detalles_consolidados)
+    ? selectedMonthly.value.detalles_consolidados
+    : Array.isArray(selectedMonthly.value?.detalles)
+      ? selectedMonthly.value.detalles
+      : [],
+);
+
 const monthlyFilteredDetails = computed(() => {
-  const details = Array.isArray(selectedMonthly.value?.detalles) ? selectedMonthly.value.detalles : [];
+  const details = monthlyDisplayDetails.value;
   if (!selectedMonthlyPeriod.value) return details;
   return details.filter((item: any) => String(item.fecha_programada || "").startsWith(selectedMonthlyPeriod.value || ""));
 });
+
+const equipmentCodeOptions = computed(() =>
+  equipmentCatalog.value.map((item) => ({
+    value: item.codigo,
+    title: `${item.codigo || "SIN CÓDIGO"} - ${item.nombre || "Sin nombre"}`,
+  })),
+);
+
+const selectedMonthlyColorPalette = computed(() => ({
+  ...defaultMonthlyPalette,
+  ...((selectedMonthly.value?.color_palette || selectedMonthly.value?.payload_json?.color_palette || {}) as Record<string, string>),
+}));
 
 const monthlyDays = computed(() => {
   if (!selectedMonthlyPeriod.value) return [];
@@ -1041,6 +1254,12 @@ const weeklyDailyHours = computed(() => {
   }));
 });
 
+const weeklyEquipmentHours = computed(() =>
+  Array.isArray(selectedWeekly.value?.daily_equipment_hours)
+    ? selectedWeekly.value.daily_equipment_hours
+    : [],
+);
+
 const weeklyEditorDays = computed(() => {
   if (!weeklyEditor.fecha_inicio || !weeklyEditor.fecha_fin) return [];
   const start = new Date(`${weeklyEditor.fecha_inicio}T00:00:00`);
@@ -1104,11 +1323,57 @@ function eventClass(status: string) {
   return "calendar-event--normal";
 }
 
+function isMonthlyWeeklyAggregate(item: any) {
+  return String(item?.payload_json?.fuente_programacion || "").toUpperCase() === "SEMANAL";
+}
+
+function resolveMonthlyColorKey(item: any) {
+  if (item?.payload_json?.color_key) return String(item.payload_json.color_key).toUpperCase();
+  if (isMonthlyWeeklyAggregate(item)) return "SEMANAL";
+  if (item?.programacion_id) return "SINCRONIZADO";
+  return String(item?.tipo_mantenimiento || "DEFAULT").toUpperCase();
+}
+
 function monthlyCellColor(item: any) {
-  if (item?.programacion_id) return "success";
-  if (String(item?.tipo_mantenimiento || "").toUpperCase() === "MPG") return "primary";
-  if (String(item?.tipo_mantenimiento || "").toUpperCase() === "HORAS_PROGRAMADAS") return "info";
-  return "secondary";
+  const explicit = String(item?.payload_json?.color_hex || "").trim();
+  if (explicit) return explicit;
+  const key = resolveMonthlyColorKey(item);
+  return String(
+    selectedMonthlyColorPalette.value[key] ||
+      selectedMonthlyColorPalette.value.DEFAULT ||
+      defaultMonthlyPalette.DEFAULT,
+  );
+}
+
+function monthlyCellTextColor(item: any) {
+  const hex = monthlyCellColor(item).replace("#", "");
+  if (!/^[0-9A-Fa-f]{6}$/.test(hex)) return "#1f2937";
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
+  return brightness >= 165 ? "#1f2937" : "#ffffff";
+}
+
+function findEquipmentByCode(code: string) {
+  const normalized = String(code || "").replace(/\s+/g, "").toUpperCase();
+  return (
+    equipmentCatalog.value.find(
+      (item) =>
+        String(item.codigo || "")
+          .replace(/\s+/g, "")
+          .toUpperCase() === normalized,
+    ) ?? null
+  );
+}
+
+function fillMonthlyPaletteForm() {
+  const palette = selectedMonthlyColorPalette.value;
+  for (const field of monthlyPaletteFields) {
+    monthlyPaletteForm[field.key] = String(
+      palette[field.key] || defaultMonthlyPalette[field.key] || defaultMonthlyPalette.DEFAULT,
+    );
+  }
 }
 
 function getWeeklyItems(slotKey: string, date: string) {
@@ -1159,19 +1424,161 @@ function openCreateForDate(date: string) {
 }
 
 function openMonthlyProgramacionCreate() {
-  resetForm();
-  form.proxima_fecha = selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date());
-  programacionSourceMode.value = "CALENDARIO";
-  programacionSourceOrigin.value = "MENSUAL_MANUAL";
-  dialog.value = true;
-}
-
-function selectMonthlyDetail(item: any) {
-  selectedMonthlyDetail.value = item;
+  openMonthlyCellCreate(selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date()));
 }
 
 function onMonthlyRowClick(_event: unknown, row: any) {
-  selectedMonthlyDetail.value = row?.item ?? row;
+  const item = row?.item ?? row;
+  handleMonthlyItemClick(item);
+}
+
+function resetMonthlyCell() {
+  monthlyCell.id = null;
+  monthlyCell.programacion_mensual_id = selectedMonthly.value?.id || "";
+  monthlyCell.equipo_id = "";
+  monthlyCell.equipo_codigo = "";
+  monthlyCell.fecha_programada = selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date());
+  monthlyCell.valor_crudo = "";
+  monthlyCell.procedimiento_id = "";
+  monthlyCell.observacion = "";
+}
+
+function openMonthlyCellCreate(date: string, row?: any) {
+  if (!selectedMonthly.value?.id) {
+    ui.error("Primero selecciona un calendario mensual.");
+    return;
+  }
+  resetMonthlyCell();
+  monthlyCell.fecha_programada = date;
+  monthlyCell.programacion_mensual_id = selectedMonthly.value.id;
+  if (row?.equipo_id) {
+    monthlyCell.equipo_id = row.equipo_id;
+  } else if (row?.equipo_codigo) {
+    const equipment = findEquipmentByCode(row.equipo_codigo);
+    monthlyCell.equipo_id = equipment?.id || "";
+    monthlyCell.equipo_codigo = row.equipo_codigo;
+  }
+  monthlyCellDialog.value = true;
+}
+
+function openMonthlyCellEdit(item: any) {
+  resetMonthlyCell();
+  monthlyCell.id = item.id;
+  monthlyCell.programacion_mensual_id = item.programacion_mensual_id || selectedMonthly.value?.id || "";
+  monthlyCell.equipo_id = item.equipo_id || findEquipmentByCode(item.equipo_codigo || "")?.id || "";
+  monthlyCell.equipo_codigo = item.equipo_codigo || "";
+  monthlyCell.fecha_programada = item.fecha_programada || "";
+  monthlyCell.valor_crudo = item.valor_crudo || "";
+  monthlyCell.procedimiento_id = item.procedimiento_id || "";
+  monthlyCell.observacion = item.observacion || "";
+  monthlyCellDialog.value = true;
+}
+
+async function openWeeklyEditorEditById(id: string) {
+  try {
+    const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${id}`);
+    const payload = data?.data ?? null;
+    if (!payload) return;
+    selectedWeeklyId.value = payload.id;
+    selectedWeekly.value = payload;
+    loadWeeklyEditorFromSchedule(payload);
+    weeklyEditorDialog.value = true;
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo abrir el cronograma semanal asociado.");
+  }
+}
+
+async function openWeeklyAggregateFromMonthly(item: any) {
+  const cronogramaIds = Array.isArray(item?.payload_json?.cronograma_ids) ? item.payload_json.cronograma_ids : [];
+  const targetId = cronogramaIds[0];
+  if (!targetId) {
+    ui.error("El bloque semanal no tiene un cronograma vinculado para editar.");
+    return;
+  }
+  if (cronogramaIds.length > 1) {
+    ui.open("Se abrirá el primer cronograma semanal asociado a ese total diario.", "info");
+  }
+  await openWeeklyEditorEditById(String(targetId));
+}
+
+function handleMonthlyItemClick(item: any) {
+  selectedMonthlyDetail.value = item;
+  if (isMonthlyWeeklyAggregate(item)) {
+    void openWeeklyAggregateFromMonthly(item);
+    return;
+  }
+  openMonthlyCellEdit(item);
+}
+
+async function saveMonthlyCell() {
+  if (!selectedMonthly.value?.id && !monthlyCell.programacion_mensual_id) {
+    ui.error("Selecciona un calendario mensual antes de guardar.");
+    return;
+  }
+  if (!monthlyCell.equipo_id) {
+    ui.error("Debes seleccionar un equipo.");
+    return;
+  }
+  if (!monthlyCell.fecha_programada) {
+    ui.error("Debes indicar la fecha del bloque mensual.");
+    return;
+  }
+  if (!String(monthlyCell.valor_crudo || "").trim()) {
+    ui.error("Debes indicar el valor mensual, por ejemplo 325, 650, 975, R20 o una cantidad de horas.");
+    return;
+  }
+  savingMonthlyCell.value = true;
+  try {
+    const payload = {
+      equipo_id: monthlyCell.equipo_id,
+      fecha_programada: monthlyCell.fecha_programada,
+      valor_crudo: String(monthlyCell.valor_crudo || "").trim(),
+      procedimiento_id: monthlyCell.procedimiento_id || undefined,
+      observacion: monthlyCell.observacion || undefined,
+    };
+    if (monthlyCell.id) {
+      await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}`, payload);
+      ui.success("Bloque mensual actualizado.");
+    } else {
+      await api.post(`/kpi_maintenance/programaciones/mensuales/${monthlyCell.programacion_mensual_id || selectedMonthly.value.id}/detalles`, payload);
+      ui.success("Bloque mensual creado.");
+    }
+    monthlyCellDialog.value = false;
+    await Promise.all([
+      loadMonthlyImports(),
+      selectedMonthlyId.value ? loadSelectedMonthly(selectedMonthlyId.value) : Promise.resolve(),
+      loadAgendaRows(),
+    ]);
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo guardar el bloque mensual.");
+  } finally {
+    savingMonthlyCell.value = false;
+  }
+}
+
+function openMonthlyPaletteDialog() {
+  fillMonthlyPaletteForm();
+  monthlyPaletteDialog.value = true;
+}
+
+async function saveMonthlyPalette() {
+  if (!selectedMonthly.value?.id) {
+    ui.error("Selecciona un calendario mensual antes de editar colores.");
+    return;
+  }
+  savingMonthlyPalette.value = true;
+  try {
+    await api.patch(`/kpi_maintenance/programaciones/mensuales/${selectedMonthly.value.id}/config`, {
+      color_palette: { ...monthlyPaletteForm },
+    });
+    monthlyPaletteDialog.value = false;
+    await loadSelectedMonthly(selectedMonthly.value.id);
+    ui.success("Paleta del mensual actualizada.");
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo actualizar la paleta de colores.");
+  } finally {
+    savingMonthlyPalette.value = false;
+  }
 }
 
 function openCreateFromMonthlyDetail(item: any) {
@@ -1438,7 +1845,27 @@ function openWeeklyCell(slotKey: string, date: string, item?: any) {
   weeklyCellDialog.value = true;
 }
 
-function saveWeeklyCell() {
+async function openSelectedWeeklyCell(slotKey: string, date: string, item?: any) {
+  if (!selectedWeekly.value?.id) {
+    ui.error("Selecciona un cronograma semanal antes de editar bloques.");
+    return;
+  }
+  try {
+    const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${selectedWeekly.value.id}`);
+    const payload = data?.data ?? selectedWeekly.value;
+    loadWeeklyEditorFromSchedule(payload);
+    weeklyCellPersistDirect.value = true;
+    if (!weeklyEditorSlots.value.find((entry) => entry.key === slotKey)) {
+      const [start = "07:00", end = "08:00"] = slotKey.split("-");
+      ensureWeeklySlot(start, end);
+    }
+    openWeeklyCell(slotKey, date, item);
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo preparar la edición del cronograma semanal.");
+  }
+}
+
+async function saveWeeklyCell() {
   if (!weeklyCell.actividad.trim()) {
     ui.error("Debes ingresar la actividad del bloque semanal.");
     return;
@@ -1461,6 +1888,10 @@ function saveWeeklyCell() {
     weeklyEditorItems.value.push(payload);
   }
   weeklyCellDialog.value = false;
+  if (weeklyCellPersistDirect.value && weeklyEditor.id) {
+    await persistWeeklyEditor({ showToast: true });
+    weeklyCellPersistDirect.value = false;
+  }
 }
 
 function removeWeeklyItem(localId: string) {
@@ -1486,6 +1917,7 @@ function computeWeeklyDailyHours(details: any[]) {
 
 async function openWeeklyEditorCreate() {
   resetWeeklyEditor();
+  weeklyCellPersistDirect.value = false;
   setWeeklyEditorWeek(weeklyPlannerAnchorDate.value || formatDate(new Date()));
   try {
     weeklyEditor.codigo = await fetchNextWeeklyCode();
@@ -1526,6 +1958,7 @@ function loadWeeklyEditorFromSchedule(schedule: any) {
 
 async function openWeeklyEditorEdit(schedule: any) {
   try {
+    weeklyCellPersistDirect.value = false;
     const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${schedule.id}`);
     loadWeeklyEditorFromSchedule(data?.data ?? schedule);
     weeklyEditorDialog.value = true;
@@ -1591,8 +2024,79 @@ async function saveWeeklyEditor() {
       selectedWeeklyId.value = savedId;
       await loadSelectedWeekly(savedId);
     }
+    if (selectedMonthlyId.value) {
+      await loadSelectedMonthly(selectedMonthlyId.value);
+    }
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar el cronograma semanal.");
+  } finally {
+    savingWeekly.value = false;
+  }
+}
+
+async function persistWeeklyEditor(options?: { showToast?: boolean }) {
+  if (!weeklyEditor.codigo || !weeklyEditor.fecha_inicio || !weeklyEditor.fecha_fin) {
+    ui.error("Debes definir código y rango semanal.");
+    return false;
+  }
+  const slotMap = new Map(weeklyEditorSlots.value.map((slot) => [slot.key, slot]));
+  const detalles = weeklyEditorItems.value.map((item, index) => {
+    const slot = slotMap.get(item.slot_key);
+    return {
+      dia_semana: item.dia_semana || resolveWeekDayLabel(item.fecha_actividad),
+      fecha_actividad: item.fecha_actividad,
+      hora_inicio: normalizeTimeInput(slot?.hora_inicio || "07:00"),
+      hora_fin: normalizeTimeInput(slot?.hora_fin || "08:00"),
+      tipo_proceso: item.tipo_proceso || "OPERACION",
+      actividad: item.actividad,
+      responsable_area: item.responsable_area || undefined,
+      equipo_codigo: item.equipo_codigo || undefined,
+      observacion: item.observacion || undefined,
+      orden: index + 1,
+    };
+  });
+  if (!detalles.length) {
+    ui.error("Debes agregar al menos una actividad al cronograma semanal.");
+    return false;
+  }
+  savingWeekly.value = true;
+  try {
+    const payload = {
+      codigo: weeklyEditor.codigo,
+      fecha_inicio: weeklyEditor.fecha_inicio,
+      fecha_fin: weeklyEditor.fecha_fin,
+      locacion: weeklyEditor.locacion || undefined,
+      referencia_orden: weeklyEditor.referencia_orden || undefined,
+      documento_origen: weeklyEditor.documento_origen || "MANUAL",
+      resumen: weeklyEditor.resumen || undefined,
+      payload_json: {
+        editor_source: "MANUAL",
+        daily_hours: computeWeeklyDailyHours(detalles),
+      },
+      detalles,
+    };
+    let savedId = weeklyEditor.id as string | null;
+    if (weeklyEditor.id) {
+      const { data } = await api.patch(`/kpi_maintenance/inteligencia/cronogramas-semanales/${weeklyEditor.id}`, payload);
+      savedId = data?.data?.id || weeklyEditor.id;
+      if (options?.showToast !== false) ui.success("Cronograma semanal actualizado.");
+    } else {
+      const { data } = await api.post("/kpi_maintenance/inteligencia/cronogramas-semanales", payload);
+      savedId = data?.data?.id || null;
+      if (options?.showToast !== false) ui.success("Cronograma semanal creado.");
+    }
+    await loadWeeklySchedules();
+    if (savedId) {
+      selectedWeeklyId.value = savedId;
+      await loadSelectedWeekly(savedId);
+    }
+    if (selectedMonthlyId.value) {
+      await loadSelectedMonthly(selectedMonthlyId.value);
+    }
+    return true;
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo guardar el cronograma semanal.");
+    return false;
   } finally {
     savingWeekly.value = false;
   }
@@ -1635,11 +2139,52 @@ onMounted(async () => {
 .weekly-activity { padding: 8px; border-radius: 12px; background: rgba(31, 75, 122, 0.06); white-space: pre-line; }
 .weekly-activity__title { font-size: 0.8rem; font-weight: 600; }
 .weekly-activity--editable { border: 1px solid rgba(31, 75, 122, 0.08); }
+.weekly-activity--button {
+  width: 100%;
+  border: 1px solid rgba(31, 75, 122, 0.08);
+  text-align: left;
+  cursor: pointer;
+}
 .weekly-add-button {
   display: flex; align-items: center; gap: 6px; border: 1px dashed rgba(31, 75, 122, 0.24);
   border-radius: 12px; padding: 8px 10px; background: rgba(31, 75, 122, 0.03); cursor: pointer; font-size: 0.8rem;
 }
+.weekly-add-button--mini { padding: 6px 8px; min-width: auto; }
 .slot-editor { display: grid; gap: 8px; min-width: 200px; }
+.weekly-slot-footer { display: flex; align-items: center; gap: 10px; }
+.weekly-slot-add-button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px dashed rgba(31, 75, 122, 0.28);
+  background: rgba(31, 75, 122, 0.04);
+  cursor: pointer;
+}
+.palette-grid { display: grid; gap: 14px; }
+.palette-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(17, 35, 58, 0.08);
+  border-radius: 16px;
+  background: rgba(248, 250, 252, 0.8);
+}
+.palette-item__controls {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+.palette-color-input {
+  width: 56px;
+  height: 40px;
+  border: 1px solid rgba(17, 35, 58, 0.1);
+  border-radius: 12px;
+  background: transparent;
+  padding: 0;
+}
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 .calendar-weekday { font-size: 0.8rem; font-weight: 700; color: rgba(0, 0, 0, 0.65); text-align: center; }
 .calendar-cell { min-height: 150px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 18px; padding: 10px; background: white; cursor: pointer; }
