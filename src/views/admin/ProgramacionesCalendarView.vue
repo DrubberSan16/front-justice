@@ -109,16 +109,12 @@
               />
             </v-col>
             <v-col cols="12" md="2">
-              <v-select
-                v-model="selectedMonthlyPeriod"
-                :items="monthlyPeriodOptions"
-                item-title="title"
-                item-value="value"
-                label="Periodo disponible"
+              <v-text-field
+                :model-value="selectedMonthlyPeriod || ''"
+                label="Periodo"
                 variant="outlined"
                 density="compact"
-                clearable
-                :disabled="!selectedMonthlyMonth"
+                readonly
               />
             </v-col>
           </v-row>
@@ -138,18 +134,17 @@
             :text="monthlyWarnings.join(' · ')"
           />
 
-          <div v-if="!selectedMonthly" class="empty-state mt-4">
-            <v-icon icon="mdi-calendar-month" size="28" />
-            <span>Selecciona un calendario mensual importado para ver la matriz.</span>
-          </div>
-
-          <template v-else>
-            <div class="text-body-2 text-medium-emphasis mt-4">
+          <div class="text-body-2 text-medium-emphasis mt-4">
+            <template v-if="selectedMonthly">
               {{ selectedMonthly.codigo }} ·
               {{ selectedMonthly.nombre_archivo || selectedMonthly.documento_origen || "Sin archivo" }}
-            </div>
+            </template>
+            <template v-else>
+              {{ selectedMonthlyPeriod || "Sin periodo" }} · Sin importación mensual
+            </template>
+          </div>
 
-            <div class="matrix-wrap mt-4">
+          <div class="matrix-wrap mt-4">
               <table class="matrix-table matrix-table--monthly">
                 <thead>
                   <tr>
@@ -201,13 +196,13 @@
               </table>
             </div>
 
-            <v-data-table
-              class="enterprise-table mt-5"
-              :headers="monthlyDetailHeaders"
-              :items="monthlyFilteredDetails"
-              :items-per-page="12"
-              @click:row="onMonthlyRowClick"
-            >
+          <v-data-table
+            class="enterprise-table mt-5"
+            :headers="monthlyDetailHeaders"
+            :items="monthlyFilteredDetails"
+            :items-per-page="12"
+            @click:row="onMonthlyRowClick"
+          >
               <template #item.equipo_codigo="{ item }">
                 <div class="font-weight-medium">{{ (item as any).equipo_codigo }}</div>
                 <div class="text-caption text-medium-emphasis">{{ (item as any).equipo_nombre || "Sin nombre" }}</div>
@@ -256,8 +251,7 @@
                   />
                 </div>
               </template>
-            </v-data-table>
-          </template>
+          </v-data-table>
         </v-card>
       </v-window-item>
 
@@ -342,7 +336,7 @@
             </v-col>
             <v-col cols="12" md="4">
               <v-text-field
-                :model-value="selectedWeekly ? `${selectedWeekly.fecha_inicio || ''} / ${selectedWeekly.fecha_fin || ''}` : ''"
+                :model-value="weeklyDisplayRange ? `${weeklyDisplayRange.start} / ${weeklyDisplayRange.end}` : ''"
                 label="Rango seleccionado"
                 variant="outlined"
                 density="compact"
@@ -378,17 +372,16 @@
             :text="weeklyWarnings.join(' · ')"
           />
 
-          <div v-if="!selectedWeekly" class="empty-state mt-4">
-            <v-icon icon="mdi-calendar-week" size="28" />
-            <span>Selecciona un cronograma semanal para ver su reporte.</span>
+          <div class="text-body-2 text-medium-emphasis mt-4">
+            <template v-if="selectedWeekly">
+              {{ selectedWeekly.codigo }} · {{ selectedWeekly.fecha_inicio }} / {{ selectedWeekly.fecha_fin }}
+            </template>
+            <template v-else-if="weeklyDisplayRange">
+              Semana {{ weeklyDisplayRange.start }} / {{ weeklyDisplayRange.end }} · Sin cronograma
+            </template>
           </div>
 
-          <template v-else>
-            <div class="text-body-2 text-medium-emphasis mt-4">
-              {{ selectedWeekly.codigo }} · {{ selectedWeekly.fecha_inicio }} / {{ selectedWeekly.fecha_fin }}
-            </div>
-
-            <div class="matrix-wrap mt-4">
+          <div class="matrix-wrap mt-4">
               <table class="matrix-table">
                 <thead>
                   <tr>
@@ -428,8 +421,7 @@
               </table>
             </div>
 
-            <v-data-table class="enterprise-table mt-5" :headers="weeklyDetailHeaders" :items="selectedWeekly.detalles || []" :items-per-page="12" />
-          </template>
+          <v-data-table class="enterprise-table mt-5" :headers="weeklyDetailHeaders" :items="selectedWeekly?.detalles || []" :items-per-page="12" />
         </v-card>
       </v-window-item>
 
@@ -871,11 +863,11 @@ const selectedMonthly = ref<any | null>(null);
 const selectedWeekly = ref<any | null>(null);
 const selectedMonthlyId = ref<string | null>(null);
 const selectedWeeklyId = ref<string | null>(null);
-const selectedMonthlyYear = ref<number | null>(null);
-const selectedMonthlyMonth = ref<number | null>(null);
+const selectedMonthlyYear = ref<number | null>(new Date().getFullYear());
+const selectedMonthlyMonth = ref<number | null>(new Date().getMonth() + 1);
 const selectedMonthlyPeriod = ref<string | null>(null);
-const selectedWeeklyYear = ref<number | null>(null);
-const selectedWeeklyMonth = ref<number | null>(null);
+const selectedWeeklyYear = ref<number | null>(new Date().getFullYear());
+const selectedWeeklyMonth = ref<number | null>(new Date().getMonth() + 1);
 const selectedWeeklyPeriod = ref<string | null>(null);
 const selectedMonthlyDetail = ref<any | null>(null);
 const monthlyImportFile = ref<File | null>(null);
@@ -1200,235 +1192,123 @@ const monthlyAvailablePeriods = computed(() => {
   );
 });
 
+const universalYearRange = Array.from({ length: 101 }, (_, index) => 2000 + index);
+
 const monthlyYearOptions = computed(() =>
-  [...new Set(monthlyAvailablePeriods.value.map((item) => item.year))]
-    .sort((a, b) => b - a)
-    .map((value) => ({ value, title: String(value) })),
+  [...universalYearRange].reverse().map((value) => ({ value, title: String(value) })),
 );
 
 const monthlyMonthOptions = computed(() =>
-  monthlyAvailablePeriods.value
-    .filter((item) => item.year === selectedMonthlyYear.value)
-    .reduce<Array<{ value: number; title: string }>>((acc, item) => {
-      if (acc.some((entry) => entry.value === item.month)) return acc;
-      acc.push({
-        value: item.month,
-        title: new Date(item.year, item.month - 1, 1).toLocaleDateString(
-          "es-EC",
-          { month: "long" },
-        ),
-      });
-      return acc;
-    }, [])
-    .sort((a, b) => a.value - b.value),
+  Array.from({ length: 12 }, (_, index) => {
+    const value = index + 1;
+    return {
+      value,
+      title: new Date(2026, index, 1).toLocaleDateString("es-EC", { month: "long" }),
+    };
+  }),
 );
 
-const weeklyAvailablePeriods = computed(() =>
-  weeklySchedules.value
-    .map((item) => {
-      const start = String(item?.fecha_inicio || "").slice(0, 10);
-      const end = String(item?.fecha_fin || "").slice(0, 10);
-      const base = start ? new Date(`${start}T00:00:00`) : null;
-      if (!base || Number.isNaN(base.getTime())) return null;
-      return {
-        value: String(item.id || ""),
-        year: base.getFullYear(),
-        month: base.getMonth() + 1,
-        weekStart: start,
-        weekEnd: end,
-        title: `Semana ${start || "N/D"} / ${end || "N/D"}${
-          item?.codigo ? ` · ${item.codigo}` : ""
-        }`,
-      };
-    })
-    .filter(Boolean)
-    .sort((a: any, b: any) =>
-      String(b.weekStart || "").localeCompare(String(a.weekStart || "")),
-    ),
-);
+const weeklyAvailablePeriods = computed(() => {
+  if (!selectedWeeklyYear.value || !selectedWeeklyMonth.value) return [];
+  const year = selectedWeeklyYear.value;
+  const monthIndex = selectedWeeklyMonth.value - 1;
+  const monthStart = new Date(year, monthIndex, 1);
+  const monthEnd = new Date(year, monthIndex + 1, 0);
+  const firstWeekStart = getWeekRangeFromDate(formatDate(monthStart)).start;
+  const periods: Array<{
+    value: string;
+    scheduleId: string | null;
+    year: number;
+    month: number;
+    weekStart: string;
+    weekEnd: string;
+    title: string;
+  }> = [];
+
+  for (
+    let cursor = new Date(`${firstWeekStart}T00:00:00`);
+    cursor <= monthEnd;
+    cursor.setDate(cursor.getDate() + 7)
+  ) {
+    const weekStart = formatDate(cursor);
+    const range = getWeekRangeFromDate(weekStart);
+    const match = weeklySchedules.value.find(
+      (item) =>
+        String(item?.fecha_inicio || "").slice(0, 10) === range.start &&
+        String(item?.fecha_fin || "").slice(0, 10) === range.end,
+    );
+    periods.push({
+      value: range.start,
+      scheduleId: match?.id ? String(match.id) : null,
+      year,
+      month: selectedWeeklyMonth.value,
+      weekStart: range.start,
+      weekEnd: range.end,
+      title: `Semana ${range.start} / ${range.end}${match?.codigo ? ` · ${match.codigo}` : " · Sin cronograma"}`,
+    });
+  }
+
+  return periods;
+});
 
 const weeklyYearOptions = computed(() =>
-  [...new Set(weeklyAvailablePeriods.value.map((item: any) => item.year))]
-    .sort((a, b) => b - a)
-    .map((value) => ({ value, title: String(value) })),
+  [...universalYearRange].reverse().map((value) => ({ value, title: String(value) })),
 );
 
 const weeklyMonthOptions = computed(() =>
-  weeklyAvailablePeriods.value
-    .filter((item: any) => item.year === selectedWeeklyYear.value)
-    .reduce<Array<{ value: number; title: string }>>((acc, item: any) => {
-      if (acc.some((entry) => entry.value === item.month)) return acc;
-      acc.push({
-        value: item.month,
-        title: new Date(item.year, item.month - 1, 1).toLocaleDateString(
-          "es-EC",
-          { month: "long" },
-        ),
-      });
-      return acc;
-    }, [])
-    .sort((a, b) => a.value - b.value),
+  Array.from({ length: 12 }, (_, index) => {
+    const value = index + 1;
+    return {
+      value,
+      title: new Date(2026, index, 1).toLocaleDateString("es-EC", { month: "long" }),
+    };
+  }),
 );
 
 watch(
-  () => selectedMonthly.value?.periodos,
-  (periods) => {
-    const current = selectedMonthlyPeriod.value;
-    const available = Array.isArray(periods) ? periods.map((item: any) => item.period) : [];
-    if (current && available.includes(current)) return;
-    selectedMonthlyPeriod.value = available[available.length - 1] ?? null;
-  },
-  { immediate: true },
-);
-
-watch(
-  monthlyAvailablePeriods,
-  (periods) => {
-    if (!periods.length) {
-      selectedMonthlyYear.value = null;
-      selectedMonthlyMonth.value = null;
-      selectedMonthlyPeriod.value = null;
-      selectedMonthlyId.value = null;
-      return;
-    }
-    const stillValid =
-      selectedMonthlyYear.value != null &&
-      selectedMonthlyMonth.value != null &&
-      periods.some(
-        (item) =>
-          item.year === selectedMonthlyYear.value &&
-          item.month === selectedMonthlyMonth.value,
-      );
-    if (stillValid) return;
-    const firstPeriod = periods[0];
-    if (!firstPeriod) return;
-    selectedMonthlyYear.value = firstPeriod.year;
-    selectedMonthlyMonth.value = firstPeriod.month;
-  },
-  { immediate: true },
-);
-
-watch(selectedMonthlyYear, (year) => {
-  const months = monthlyAvailablePeriods.value.filter((item) => item.year === year);
-  if (!months.length) {
-    selectedMonthlyMonth.value = null;
-    return;
-  }
-  if (months.some((item) => item.month === selectedMonthlyMonth.value)) return;
-  const firstMonth = months[0];
-  if (!firstMonth) return;
-  selectedMonthlyMonth.value = firstMonth.month;
-});
-
-watch(
-  [selectedMonthlyYear, selectedMonthlyMonth],
+  [selectedMonthlyYear, selectedMonthlyMonth, monthlyAvailablePeriods],
   ([year, month]) => {
     if (year == null || month == null) {
       selectedMonthlyPeriod.value = null;
       selectedMonthlyId.value = null;
       return;
     }
-    const options = monthlyAvailablePeriods.value.filter(
-      (item) => item.year === year && item.month === month,
-    );
-    if (!options.length) {
-      selectedMonthlyPeriod.value = null;
-      selectedMonthlyId.value = null;
-      return;
-    }
-    const fallback = options[0];
-    if (!fallback) return;
-    if (!options.some((item) => item.period === selectedMonthlyPeriod.value)) {
-      selectedMonthlyPeriod.value = fallback.period;
-    }
-    const match =
-      options.find((item) => item.period === selectedMonthlyPeriod.value) ?? fallback;
-    selectedMonthlyId.value = match.importId;
+    const period = `${year}-${String(month).padStart(2, "0")}`;
+    selectedMonthlyPeriod.value = period;
+    const match = monthlyAvailablePeriods.value.find((item) => item.period === period);
+    selectedMonthlyId.value = match?.importId ?? null;
   },
   { immediate: true },
 );
 
 watch(
-  weeklyAvailablePeriods,
-  (periods: any[]) => {
-    if (!periods.length) {
-      selectedWeeklyYear.value = null;
-      selectedWeeklyMonth.value = null;
-      selectedWeeklyPeriod.value = null;
-      selectedWeeklyId.value = null;
-      return;
-    }
-    const stillValid =
-      selectedWeeklyYear.value != null &&
-      selectedWeeklyMonth.value != null &&
-      periods.some(
-        (item) =>
-          item.year === selectedWeeklyYear.value &&
-          item.month === selectedWeeklyMonth.value,
-      );
-    if (stillValid) return;
-    const firstPeriod = periods[0];
-    if (!firstPeriod) return;
-    selectedWeeklyYear.value = firstPeriod.year;
-    selectedWeeklyMonth.value = firstPeriod.month;
-  },
-  { immediate: true },
-);
-
-watch(selectedWeeklyYear, (year) => {
-  const months = weeklyAvailablePeriods.value.filter((item: any) => item.year === year);
-  if (!months.length) {
-    selectedWeeklyMonth.value = null;
-    return;
-  }
-  if (months.some((item: any) => item.month === selectedWeeklyMonth.value)) return;
-  const firstMonth = months[0];
-  if (!firstMonth) return;
-  selectedWeeklyMonth.value = firstMonth.month;
-});
-
-watch(
-  [selectedWeeklyYear, selectedWeeklyMonth],
+  [selectedWeeklyYear, selectedWeeklyMonth, weeklyAvailablePeriods],
   ([year, month]) => {
     if (year == null || month == null) {
       selectedWeeklyPeriod.value = null;
       selectedWeeklyId.value = null;
       return;
     }
-    const options = weeklyAvailablePeriods.value.filter(
-      (item: any) => item.year === year && item.month === month,
-    );
+    const options = weeklyAvailablePeriods.value;
     if (!options.length) {
       selectedWeeklyPeriod.value = null;
       selectedWeeklyId.value = null;
       return;
     }
-    const fallback = options[0];
-    if (!fallback) return;
     if (!options.some((item: any) => item.value === selectedWeeklyPeriod.value)) {
-      selectedWeeklyPeriod.value = fallback.value;
+      selectedWeeklyPeriod.value = options[0]?.value ?? null;
     }
-    selectedWeeklyId.value = selectedWeeklyPeriod.value || fallback.value;
+    const match = options.find((item: any) => item.value === selectedWeeklyPeriod.value);
+    selectedWeeklyId.value = match?.scheduleId ?? null;
   },
   { immediate: true },
 );
 
 watch(selectedWeeklyPeriod, (value) => {
-  selectedWeeklyId.value = value || null;
+  if (value) weeklyPlannerAnchorDate.value = value;
+  const match = weeklyAvailablePeriods.value.find((item: any) => item.value === value);
+  selectedWeeklyId.value = match?.scheduleId ?? null;
 });
-
-const monthlyPeriodOptions = computed(() =>
-  monthlyAvailablePeriods.value
-    .filter(
-      (item) =>
-        item.year === selectedMonthlyYear.value &&
-        item.month === selectedMonthlyMonth.value,
-    )
-    .map((item) => ({
-      value: item.period,
-      title: `${item.label}${item.importCode ? ` · ${item.importCode}` : ""}`,
-    })),
-);
 
 const weeklyPeriodOptions = computed(() =>
   weeklyAvailablePeriods.value
@@ -1444,25 +1324,31 @@ const weeklyPeriodOptions = computed(() =>
 );
 
 function applyMonthlySelectionByImportId(importId: string | null | undefined) {
-  const match = monthlyAvailablePeriods.value.find(
-    (item) => String(item.importId) === String(importId || ""),
+  const row = monthlyImports.value.find(
+    (item) => String(item?.id || "") === String(importId || ""),
   );
-  if (!match) return;
-  selectedMonthlyYear.value = match.year;
-  selectedMonthlyMonth.value = match.month;
-  selectedMonthlyPeriod.value = match.period;
-  selectedMonthlyId.value = match.importId;
+  const start = String(row?.fecha_inicio || "").slice(0, 10);
+  if (!start) return;
+  const date = new Date(`${start}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return;
+  selectedMonthlyYear.value = date.getFullYear();
+  selectedMonthlyMonth.value = date.getMonth() + 1;
+  selectedMonthlyPeriod.value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  selectedMonthlyId.value = String(importId || "");
 }
 
 function applyWeeklySelectionByScheduleId(scheduleId: string | null | undefined) {
-  const match = weeklyAvailablePeriods.value.find(
-    (item: any) => String(item.value) === String(scheduleId || ""),
+  const row = weeklySchedules.value.find(
+    (item) => String(item?.id || "") === String(scheduleId || ""),
   );
-  if (!match) return;
-  selectedWeeklyYear.value = match.year;
-  selectedWeeklyMonth.value = match.month;
-  selectedWeeklyPeriod.value = match.value;
-  selectedWeeklyId.value = match.value;
+  const start = String(row?.fecha_inicio || "").slice(0, 10);
+  if (!start) return;
+  const date = new Date(`${start}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return;
+  selectedWeeklyYear.value = date.getFullYear();
+  selectedWeeklyMonth.value = date.getMonth() + 1;
+  selectedWeeklyPeriod.value = start;
+  selectedWeeklyId.value = String(scheduleId || "");
 }
 
 const monthlyDisplayDetails = computed(() =>
@@ -1506,11 +1392,25 @@ const monthlyDays = computed(() => {
 
 const monthlyMatrixRows = computed(() => {
   const rows = new Map<string, any>();
+  for (const equipment of equipmentCatalog.value) {
+    const key = String(equipment.id || equipment.codigo || "");
+    if (!key) continue;
+    rows.set(key, {
+      key,
+      equipo_id: equipment.id,
+      equipo_codigo: equipment.codigo || "",
+      equipo_nombre: equipment.nombre || "Sin nombre",
+      horometro_ultimo: null,
+      horometro_actual: Number(equipment.horometro_actual || 0) || null,
+      cells: {} as Record<string, any[]>,
+    });
+  }
   for (const item of monthlyFilteredDetails.value) {
     const key = String(item.equipo_id || item.equipo_codigo || item.id);
     if (!rows.has(key)) {
       rows.set(key, {
         key,
+        equipo_id: item.equipo_id || null,
         equipo_codigo: item.equipo_codigo,
         equipo_nombre: item.equipo_nombre,
         horometro_ultimo: item.payload_json?.horometro_ultimo ?? null,
@@ -1534,14 +1434,27 @@ const monthlySummary = computed(() => {
   return {
     totalEvents: details.length,
     syncedEvents: details.filter((item: any) => Boolean(item.programacion_id)).length,
-    totalEquipments: new Set(details.map((item: any) => String(item.equipo_codigo || item.equipo_id || ""))).size,
+    totalEquipments: monthlyMatrixRows.value.length,
   };
 });
 
+const weeklyDisplayRange = computed(() => {
+  if (selectedWeekly.value?.fecha_inicio && selectedWeekly.value?.fecha_fin) {
+    return {
+      start: String(selectedWeekly.value.fecha_inicio).slice(0, 10),
+      end: String(selectedWeekly.value.fecha_fin).slice(0, 10),
+    };
+  }
+  if (selectedWeeklyPeriod.value) {
+    return getWeekRangeFromDate(selectedWeeklyPeriod.value);
+  }
+  return null;
+});
+
 const weeklyDays = computed(() => {
-  if (!selectedWeekly.value?.fecha_inicio || !selectedWeekly.value?.fecha_fin) return [];
-  const start = new Date(`${selectedWeekly.value.fecha_inicio}T00:00:00`);
-  const end = new Date(`${selectedWeekly.value.fecha_fin}T00:00:00`);
+  if (!weeklyDisplayRange.value?.start || !weeklyDisplayRange.value?.end) return [];
+  const start = new Date(`${weeklyDisplayRange.value.start}T00:00:00`);
+  const end = new Date(`${weeklyDisplayRange.value.end}T00:00:00`);
   const days: Array<{ date: string; title: string }> = [];
   for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
     const date = formatDate(cursor);
@@ -1557,13 +1470,16 @@ const weeklyTimeSlots = computed(() => {
   const slots = Array.isArray(selectedWeekly.value?.time_slots) ? selectedWeekly.value.time_slots : [];
   if (slots.length) return slots;
   const details = Array.isArray(selectedWeekly.value?.detalles) ? selectedWeekly.value.detalles : [];
-  return [...new Set(details.map((item: any) => `${item.hora_inicio || ""}-${item.hora_fin || ""}`))]
+  const dynamicSlots = [...new Set(details.map((item: any) => `${item.hora_inicio || ""}-${item.hora_fin || ""}`))]
     .filter(Boolean)
     .map((key) => {
       const slotKey = String(key);
       const [hora_inicio = "", hora_fin = ""] = slotKey.split("-");
       return { key: slotKey, label: `${hora_inicio.slice(0, 5)} - ${hora_fin.slice(0, 5)}` };
     });
+  return dynamicSlots.length
+    ? dynamicSlots
+    : [{ key: "07:00:00-08:00:00", label: "07:00 - 08:00" }];
 });
 
 const weeklyGrid = computed(() => {
@@ -1581,10 +1497,19 @@ const weeklyGrid = computed(() => {
 
 const weeklyDailyHours = computed(() => {
   const source = selectedWeekly.value?.daily_hours || {};
-  return Object.entries(source).map(([date, hours]) => ({
+  const rows = Object.entries(source).map(([date, hours]) => ({
     date,
     hours: Number(hours || 0),
     label: new Date(`${date}T00:00:00`).toLocaleDateString("es-EC", { weekday: "short", day: "2-digit" }),
+  }));
+  if (rows.length) return rows;
+  return weeklyDays.value.map((day) => ({
+    date: day.date,
+    hours: 0,
+    label: new Date(`${day.date}T00:00:00`).toLocaleDateString("es-EC", {
+      weekday: "short",
+      day: "2-digit",
+    }),
   }));
 });
 
@@ -1779,7 +1704,12 @@ function resetMonthlyCell() {
 
 function openMonthlyCellCreate(date: string, row?: any) {
   if (!selectedMonthly.value?.id) {
-    ui.error("Primero selecciona un calendario mensual.");
+    resetForm();
+    form.proxima_fecha = date;
+    form.equipo_id = row?.equipo_id || "";
+    programacionSourceMode.value = "DINAMICA";
+    programacionSourceOrigin.value = "MANUAL";
+    dialog.value = true;
     return;
   }
   resetMonthlyCell();
@@ -2252,7 +2182,13 @@ function openWeeklyCell(slotKey: string, date: string, item?: any) {
 
 async function openSelectedWeeklyCell(slotKey: string, date: string, item?: any) {
   if (!selectedWeekly.value?.id) {
-    ui.error("Selecciona un cronograma semanal antes de editar bloques.");
+    weeklyPlannerAnchorDate.value = date;
+    await openWeeklyEditorCreate(date);
+    if (!weeklyEditorSlots.value.find((entry) => entry.key === slotKey)) {
+      const [start = "07:00", end = "08:00"] = slotKey.split("-");
+      ensureWeeklySlot(start, end);
+    }
+    openWeeklyCell(slotKey, date, item);
     return;
   }
   try {
@@ -2320,10 +2256,10 @@ function computeWeeklyDailyHours(details: any[]) {
   }, {});
 }
 
-async function openWeeklyEditorCreate() {
+async function openWeeklyEditorCreate(anchorDate?: string) {
   resetWeeklyEditor();
   weeklyCellPersistDirect.value = false;
-  setWeeklyEditorWeek(weeklyPlannerAnchorDate.value || formatDate(new Date()));
+  setWeeklyEditorWeek(anchorDate || weeklyPlannerAnchorDate.value || formatDate(new Date()));
   try {
     weeklyEditor.codigo = await fetchNextWeeklyCode();
   } catch {
