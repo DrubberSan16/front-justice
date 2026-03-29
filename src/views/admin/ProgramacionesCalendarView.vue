@@ -954,7 +954,7 @@ const form = reactive<any>({
   activo: true,
 });
 
-const weekDays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const weekDays = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const agendaHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Plantilla MPG", key: "procedimiento_nombre" },
@@ -1012,7 +1012,7 @@ function formatDate(date: Date) {
 
 function startOfCalendarMonth(source: Date) {
   const date = new Date(source.getFullYear(), source.getMonth(), 1);
-  const day = (date.getDay() + 6) % 7;
+  const day = date.getDay();
   date.setDate(date.getDate() - day);
   return date;
 }
@@ -1037,7 +1037,7 @@ function getWeekRangeFromDate(value: string) {
   if (Number.isNaN(base.getTime())) {
     return getWeekRangeFromDate(formatDate(new Date()));
   }
-  const day = (base.getDay() + 6) % 7;
+  const day = base.getDay();
   const start = new Date(base);
   start.setDate(base.getDate() - day);
   const end = new Date(start);
