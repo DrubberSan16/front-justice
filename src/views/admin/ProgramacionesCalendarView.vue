@@ -688,6 +688,14 @@
                         @update:model-value="updateWeeklySlot(slot.key, 'hora_fin', String($event || ''))"
                       />
                       <v-btn icon="mdi-delete" variant="text" color="error" @click="removeWeeklySlot(slot.key)" />
+                      <button
+                        type="button"
+                        class="weekly-slot-inline-add"
+                        @click="addWeeklySlotAfter(slot.key)"
+                      >
+                        <v-icon icon="mdi-plus" size="16" />
+                        <span>Agregar hora debajo</span>
+                      </button>
                     </div>
                   </td>
                   <td v-for="day in weeklyEditorDays" :key="`${slot.key}-${day.date}`">
@@ -715,6 +723,19 @@
                           </div>
                         </div>
                       </div>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="matrix-table__sticky">
+                    <button type="button" class="weekly-slot-inline-add weekly-slot-inline-add--footer" @click="addWeeklySlot()">
+                      <v-icon icon="mdi-plus" size="16" />
+                      <span>Agregar hora</span>
+                    </button>
+                  </td>
+                  <td :colspan="Math.max(weeklyEditorDays.length, 1)">
+                    <div class="text-caption text-medium-emphasis py-2">
+                      Agrega un nuevo bloque horario para seguir detallando la programación semanal.
                     </div>
                   </td>
                 </tr>
@@ -1784,6 +1805,41 @@ function buildWeeklySlotKey(start: string, end: string) {
   return `${normalizeTimeInput(start)}-${normalizeTimeInput(end)}`;
 }
 
+function addMinutesToTime(value: string, minutes: number) {
+  const [hourRaw = "0", minuteRaw = "0"] = String(value || "")
+    .slice(0, 5)
+    .split(":");
+  const totalMinutes =
+    Number.parseInt(hourRaw, 10) * 60 + Number.parseInt(minuteRaw, 10) + minutes;
+  const normalized = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hours = Math.floor(normalized / 60)
+    .toString()
+    .padStart(2, "0");
+  const mins = (normalized % 60).toString().padStart(2, "0");
+  return `${hours}:${mins}`;
+}
+
+function getLatestWeeklySlot() {
+  if (!weeklyEditorSlots.value.length) return null;
+  return [...weeklyEditorSlots.value].sort((a, b) =>
+    `${a.hora_inicio}-${a.hora_fin}`.localeCompare(`${b.hora_inicio}-${b.hora_fin}`),
+  )[weeklyEditorSlots.value.length - 1] ?? null;
+}
+
+function resolveUniqueWeeklySlotRange(start: string, end: string) {
+  let nextStart = String(start || "").slice(0, 5) || "07:00";
+  let nextEnd = String(end || "").slice(0, 5) || addMinutesToTime(nextStart, 60);
+  let key = buildWeeklySlotKey(nextStart, nextEnd);
+
+  while (weeklyEditorSlots.value.find((item) => item.key === key)) {
+    nextStart = addMinutesToTime(nextStart, 60);
+    nextEnd = addMinutesToTime(nextEnd, 60);
+    key = buildWeeklySlotKey(nextStart, nextEnd);
+  }
+
+  return { start: nextStart, end: nextEnd };
+}
+
 function ensureWeeklySlot(start: string, end: string) {
   const hora_inicio = String(start || "").slice(0, 5);
   const hora_fin = String(end || "").slice(0, 5);
@@ -1801,7 +1857,43 @@ async function fetchNextWeeklyCode() {
 }
 
 function addWeeklySlot(start = "07:00", end = "08:00") {
-  ensureWeeklySlot(start, end);
+  if (!weeklyEditorSlots.value.length) {
+    ensureWeeklySlot(start, end);
+    return;
+  }
+
+  const useProvidedRange =
+    !!String(start || "").trim() && !!String(end || "").trim() &&
+    !(start === "07:00" && end === "08:00");
+
+  const baseRange = useProvidedRange
+    ? { start: String(start).slice(0, 5), end: String(end).slice(0, 5) }
+    : (() => {
+        const latest = getLatestWeeklySlot();
+        const nextStart = latest?.hora_fin?.slice(0, 5) || "07:00";
+        return {
+          start: nextStart,
+          end: addMinutesToTime(nextStart, 60),
+        };
+      })();
+
+  const uniqueRange = resolveUniqueWeeklySlotRange(baseRange.start, baseRange.end);
+  ensureWeeklySlot(uniqueRange.start, uniqueRange.end);
+}
+
+function addWeeklySlotAfter(slotKey: string) {
+  const slot = weeklyEditorSlots.value.find((item) => item.key === slotKey);
+  if (!slot) {
+    addWeeklySlot();
+    return;
+  }
+
+  const nextStart = slot.hora_fin?.slice(0, 5) || slot.hora_inicio?.slice(0, 5) || "07:00";
+  const uniqueRange = resolveUniqueWeeklySlotRange(
+    nextStart,
+    addMinutesToTime(nextStart, 60),
+  );
+  ensureWeeklySlot(uniqueRange.start, uniqueRange.end);
 }
 
 function updateWeeklySlot(slotKey: string, field: "hora_inicio" | "hora_fin", value: string) {
@@ -2151,6 +2243,24 @@ onMounted(async () => {
 }
 .weekly-add-button--mini { padding: 6px 8px; min-width: auto; }
 .slot-editor { display: grid; gap: 8px; min-width: 200px; }
+.weekly-slot-inline-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px dashed rgba(31, 75, 122, 0.24);
+  border-radius: 12px;
+  background: rgba(31, 75, 122, 0.03);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.weekly-slot-inline-add--footer {
+  position: sticky;
+  left: 0;
+}
 .weekly-slot-footer { display: flex; align-items: center; gap: 10px; }
 .weekly-slot-add-button {
   display: inline-grid;
@@ -2210,5 +2320,6 @@ onMounted(async () => {
   .empty-state { min-height: 140px; padding: 18px; }
   .slot-editor { min-width: 100%; }
   .weekly-activity { padding: 7px; }
+  .weekly-slot-inline-add { font-size: 0.76rem; }
 }
 </style>
