@@ -221,6 +221,28 @@
         </div>
       </v-card>
 
+      <v-card rounded="xl" class="pa-4 enterprise-surface">
+        <div class="text-subtitle-1 font-weight-bold mb-3">Gráficos comparativos por bloque</div>
+        <div class="chart-grid-inner">
+          <LubricantComparisonChart
+            title="Desgaste del equipo"
+            subtitle="Comparativa de todas las líneas de desgaste del equipo"
+            :metrics="comparisonCharts.desgaste"
+          />
+          <LubricantComparisonChart
+            title="Contaminación del lubricante"
+            subtitle="Comparativa parabólica de contaminantes y elementos de ingreso"
+            :metrics="comparisonCharts.contaminacion"
+            curve-mode="smooth"
+          />
+          <LubricantComparisonChart
+            title="Estado del lubricante"
+            subtitle="Comparativa de viscosidad, TBN y variables de condición"
+            :metrics="comparisonCharts.estado"
+          />
+        </div>
+      </v-card>
+
       <div class="charts-grid">
         <v-card
           v-for="section in dashboard.chart_sections ?? []"
@@ -249,13 +271,31 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
+import LubricantComparisonChart from "@/components/maintenance/LubricantComparisonChart.vue";
 import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
 
-defineProps<{
+const props = defineProps<{
   dashboard: Record<string, any> | null;
   loading?: boolean;
   error?: string | null;
 }>();
+
+const comparisonCharts = computed(() => {
+  const sections = Array.isArray(props.dashboard?.chart_sections)
+    ? props.dashboard.chart_sections
+    : [];
+  const findMetrics = (key: string) =>
+    (sections.find((section: Record<string, any>) => section.key === key)?.metrics || []) as Array<
+      Record<string, any>
+    >;
+
+  return {
+    desgaste: findMetrics("desgaste"),
+    contaminacion: findMetrics("contaminacion"),
+    estado: findMetrics("estado"),
+  };
+});
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
