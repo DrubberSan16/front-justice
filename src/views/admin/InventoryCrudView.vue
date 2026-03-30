@@ -233,6 +233,7 @@ function getSelectOptions(field: MaintenanceField) {
   if (field.options) return field.options;
   const options = relationOptions.value[field.key] ?? [];
   if (!isWarehouseDependentProductField(field)) return options;
+  if (!options.some((option) => String(option.bodegaId || "").trim())) return options;
 
   const warehouseId = String(form.bodega_id || "").trim();
   if (!warehouseId) return [];

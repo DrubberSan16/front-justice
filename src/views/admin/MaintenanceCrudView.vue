@@ -427,6 +427,33 @@ function normalizeLabel(item: any) {
   return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 
+function buildStockScopedMaterialOptions(productos: any[], stockRows: any[]) {
+  const productMap = new Map(
+    productos.map((item: any) => [String(item?.id || ""), item]),
+  );
+  const seen = new Set<string>();
+
+  return stockRows
+    .map((row: any) => {
+      const productoId = String(row?.producto_id || "").trim();
+      const bodegaId = String(row?.bodega_id || "").trim();
+      if (!productoId || !bodegaId) return null;
+      const dedupeKey = `${bodegaId}:${productoId}`;
+      if (seen.has(dedupeKey)) return null;
+      seen.add(dedupeKey);
+      const producto = productMap.get(productoId);
+      const baseLabel = repairText(
+        `${producto?.codigo ? `${producto.codigo} - ` : ""}${normalizeLabel(producto || row)}`,
+      );
+      return {
+        value: productoId,
+        title: `${baseLabel} · Stock: ${row?.stock_actual ?? 0}`,
+        bodegaId,
+      };
+    })
+    .filter((item): item is { value: string; title: string; bodegaId: string } => Boolean(item));
+}
+
 async function loadRelations() {
   relationOptions.value = {};
   if (!moduleConfig.value) return;
@@ -441,22 +468,35 @@ async function loadRelations() {
     }));
   }
 
-  if (moduleConfig.value.key === "work-order-issue-materials") {
-    const [productos, bodegas] = await Promise.all([
+  const needsStockScopedMaterials =
+    moduleConfig.value.key === "work-order-issue-materials" ||
+    moduleConfig.value.fields.some(
+      (field) =>
+        field.relation?.endpoint === "/kpi_inventory/productos" ||
+        field.key === "materiales",
+    );
+
+  if (needsStockScopedMaterials) {
+    const [productos, bodegas, stockRows] = await Promise.all([
       listAll("/kpi_inventory/productos"),
       listAll("/kpi_inventory/bodegas"),
+      listAll("/kpi_inventory/stock-bodega"),
     ]);
+    const stockScopedOptions = buildStockScopedMaterialOptions(productos, stockRows);
 
-    relationOptions.value.producto_id = productos.map((r: any) => ({
-      value: r.id,
-      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
-      bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
-    }));
+    for (const field of moduleConfig.value.fields) {
+      if (field.relation?.endpoint === "/kpi_inventory/productos" || field.key === "materiales") {
+        relationOptions.value[field.key] = stockScopedOptions;
+      }
+    }
 
-    relationOptions.value.bodega_id = bodegas.map((r: any) => ({
-      value: r.id,
-      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
-    }));
+    if (moduleConfig.value.key === "work-order-issue-materials") {
+      relationOptions.value.producto_id = stockScopedOptions;
+      relationOptions.value.bodega_id = bodegas.map((r: any) => ({
+        value: r.id,
+        title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+      }));
+    }
   }
 }
 
@@ -651,6 +691,7 @@ function getSelectOptions(field: EnhancedMaintenanceField) {
   if (field.options) return field.options;
   const options = relationOptions.value[field.key] ?? [];
   if (!isWarehouseDependentProductField(field)) return options;
+  if (!options.some((option) => String(option.bodegaId || "").trim())) return options;
 
   const warehouseId = String(form.bodega_id || "").trim();
   if (!warehouseId) return [];
@@ -676,6 +717,7 @@ function pruneWarehouseDependentSelections() {
 
   if (Array.isArray(form.materiales)) {
     const materialOptions = warehouseId ? (relationOptions.value.materiales ?? []) : [];
+    if (!materialOptions.some((option) => String(option.bodegaId || "").trim())) return;
     const allowed = new Set(
       materialOptions
         .filter((option) => String(option.bodegaId || "") === warehouseId)

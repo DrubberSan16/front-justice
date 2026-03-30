@@ -102,7 +102,6 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
     endpoint: "/kpi_inventory/productos",
     fields: [
       statusField,
-      { key: "bodega_id", label: "Bodega", type: "select", required: true, relation: { endpoint: "/kpi_inventory/bodegas" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "descripcion", label: "Descripción", type: "text" },

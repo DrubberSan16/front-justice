@@ -591,7 +591,13 @@ const relationOptions = computed(() => props.relationOptions ?? {});
 
 function resolveRelationMultiSelectLabel(value: unknown) {
   const key = String(value ?? "").trim();
-  return relationOptions.value[props.field.key]?.find((item) => String(item.value) === key)?.title || key;
+  return (
+    filteredRelationMultiSelectOptions.value.find(
+      (item) => String(item.value) === key,
+    )?.title ||
+    relationOptions.value[props.field.key]?.find((item) => String(item.value) === key)?.title ||
+    key
+  );
 }
 
 function removeRelationMultiSelectItem(value: unknown) {
