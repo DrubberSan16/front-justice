@@ -128,6 +128,7 @@
               v-model="form[field.key]"
               :field="field"
               :relation-options="relationOptions"
+              :form-state="form"
               @patch-form="applyFormPatch"
             />
             <v-select
@@ -223,7 +224,7 @@ const error = ref<string | null>(null);
 const search = ref("");
 const expandedAlertGroups = ref<Record<string, boolean>>({});
 
-const relationOptions = ref<Record<string, Array<{ value: any; title: string }>>>({});
+const relationOptions = ref<Record<string, Array<{ value: any; title: string; bodegaId?: string | null }>>>({});
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
@@ -436,6 +437,7 @@ async function loadRelations() {
     relationOptions.value[field.key] = rows.map((r: any) => ({
       value: r.id,
       title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+      bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
 
@@ -448,6 +450,7 @@ async function loadRelations() {
     relationOptions.value.producto_id = productos.map((r: any) => ({
       value: r.id,
       title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+      bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
 
     relationOptions.value.bodega_id = bodegas.map((r: any) => ({
@@ -640,13 +643,46 @@ function resetForm() {
   }
 }
 
+function isWarehouseDependentProductField(field: EnhancedMaintenanceField) {
+  return field.relation?.endpoint === "/kpi_inventory/productos";
+}
+
 function getSelectOptions(field: EnhancedMaintenanceField) {
   if (field.options) return field.options;
-  return relationOptions.value[field.key] ?? [];
+  const options = relationOptions.value[field.key] ?? [];
+  if (!isWarehouseDependentProductField(field)) return options;
+
+  const warehouseId = String(form.bodega_id || "").trim();
+  if (!warehouseId) return [];
+
+  return options.filter((option) => String(option.bodegaId || "") === warehouseId);
 }
 
 function applyFormPatch(patch: Record<string, any>) {
   Object.assign(form, patch);
+}
+
+function pruneWarehouseDependentSelections() {
+  const warehouseId = String(form.bodega_id || "").trim();
+  const productField = moduleConfig.value?.fields.find((field) => field.key === "producto_id");
+  if (productField) {
+    const stillExists = getSelectOptions(productField).some(
+      (option) => String(option.value) === String(form.producto_id || ""),
+    );
+    if (!stillExists) {
+      form.producto_id = "";
+    }
+  }
+
+  if (Array.isArray(form.materiales)) {
+    const materialOptions = warehouseId ? (relationOptions.value.materiales ?? []) : [];
+    const allowed = new Set(
+      materialOptions
+        .filter((option) => String(option.bodegaId || "") === warehouseId)
+        .map((option) => String(option.value)),
+    );
+    form.materiales = form.materiales.filter((item: unknown) => allowed.has(String(item ?? "")));
+  }
 }
 
 const visibleFields = computed(() => (moduleConfig.value?.fields ?? []).filter((field) => !field.hidden));
@@ -948,6 +984,13 @@ watch(
     if (!moduleConfig.value?.pathParam) return;
     await fetchRecords();
   }
+);
+
+watch(
+  () => form.bodega_id,
+  () => {
+    pruneWarehouseDependentSelections();
+  },
 );
 
 onMounted(async () => {

@@ -102,6 +102,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
     endpoint: "/kpi_inventory/productos",
     fields: [
       statusField,
+      { key: "bodega_id", label: "Bodega", type: "select", required: true, relation: { endpoint: "/kpi_inventory/bodegas" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "descripcion", label: "Descripción", type: "text" },
@@ -246,6 +247,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "codigo", label: "Codigo", type: "text", required: true },
       { key: "nombre", label: "Plantilla", type: "text", required: true },
       { key: "tipo_proceso", label: "Tipo de proceso", type: "text", required: true },
+      { key: "bodega_id", label: "Bodega", type: "select", relation: { endpoint: "/kpi_inventory/bodegas" } },
       { key: "clase_mantenimiento", label: "Clase de mantenimiento", type: "text" },
       { key: "frecuencia_horas", label: "Frecuencia horas", type: "number" },
       { key: "documento_referencia", label: "Documento referencia", type: "text" },
@@ -421,8 +423,8 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     },
     fields: [
       { key: "work_order_id", label: "Work Order", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/work-orders" } },
-      { key: "producto_id", label: "Material", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
       { key: "bodega_id", label: "Bodega", type: "select", relation: { endpoint: "/kpi_inventory/bodegas" } },
+      { key: "producto_id", label: "Material", type: "select", required: true, relation: { endpoint: "/kpi_inventory/productos" } },
       { key: "cantidad", label: "Cantidad", type: "number", required: true },
       { key: "costo_unitario", label: "Costo unitario", type: "number", required: true },
       { key: "observacion", label: "Observación", type: "text" },

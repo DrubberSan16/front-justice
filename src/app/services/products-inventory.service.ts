@@ -5,6 +5,7 @@ export type ProductRow = {
   id: string;
   codigo: string;
   nombre: string;
+  bodega_id?: string | null;
   costo_promedio: string;
   precio_venta: string;
   porcentaje_utilidad: string;

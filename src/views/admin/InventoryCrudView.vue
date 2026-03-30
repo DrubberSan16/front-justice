@@ -151,7 +151,7 @@ const saving = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
 
-const relationOptions = ref<Record<string, Array<{ value: any; title: string }>>>({});
+const relationOptions = ref<Record<string, Array<{ value: any; title: string; bodegaId?: string | null }>>>({});
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
@@ -196,8 +196,13 @@ async function loadRelations() {
     relationOptions.value[field.key] = rows.map((r: any) => ({
       value: r.id,
       title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+      bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
+}
+
+function isWarehouseDependentProductField(field: MaintenanceField) {
+  return field.relation?.endpoint === "/kpi_inventory/productos";
 }
 
 async function fetchRecords() {
@@ -226,7 +231,13 @@ function resetForm() {
 
 function getSelectOptions(field: MaintenanceField) {
   if (field.options) return field.options;
-  return relationOptions.value[field.key] ?? [];
+  const options = relationOptions.value[field.key] ?? [];
+  if (!isWarehouseDependentProductField(field)) return options;
+
+  const warehouseId = String(form.bodega_id || "").trim();
+  if (!warehouseId) return [];
+
+  return options.filter((option) => String(option.bodegaId || "") === warehouseId);
 }
 
 const headers = computed(() => {
@@ -388,6 +399,22 @@ watch(
     await fetchRecords();
   },
   { immediate: true }
+);
+
+watch(
+  () => form.bodega_id,
+  () => {
+    const cfg = moduleConfig.value;
+    if (!cfg) return;
+    const productField = cfg.fields.find((field) => field.key === "producto_id");
+    if (!productField) return;
+    const stillExists = getSelectOptions(productField).some(
+      (option) => String(option.value) === String(form.producto_id || ""),
+    );
+    if (!stillExists) {
+      form.producto_id = "";
+    }
+  },
 );
 
 onMounted(async () => {

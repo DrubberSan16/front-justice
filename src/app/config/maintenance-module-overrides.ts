@@ -35,6 +35,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         { value: "ACTIVE", title: "ACTIVE" },
         { value: "INACTIVE", title: "INACTIVE" },
       ] },
+      { key: "bodega_id", label: "Bodega", type: "select", required: true, relation: { endpoint: "/kpi_inventory/bodegas" } },
       { key: "codigo", label: "Codigo material", type: "text", required: true },
       { key: "nombre", label: "Nombre del material", type: "text", required: true },
       { key: "descripcion", label: "Descripcion del material", type: "text" },
@@ -66,6 +67,13 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
           { value: "INSPECCION", title: "Inspeccion" },
           { value: "LUBRICACION", title: "Lubricacion" },
         ],
+      },
+      {
+        key: "bodega_id",
+        label: "Bodega",
+        type: "select",
+        required: true,
+        relation: { endpoint: "/kpi_inventory/bodegas" },
       },
       {
         key: "clase_mantenimiento",

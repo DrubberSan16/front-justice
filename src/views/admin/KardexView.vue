@@ -306,10 +306,13 @@ const productOptions = computed(() => {
 
   return products.value
     .filter((product) => {
-      if (movementForm.tipo !== "SALIDA") return true;
+      const belongsToWarehouse =
+        String(product?.bodega_id || "") === String(movementForm.bodegaId || "");
       const stock = stockByWarehouseProduct.value.get(
         `${movementForm.bodegaId}:${product.id}`,
       );
+      if (!belongsToWarehouse && !stock) return false;
+      if (movementForm.tipo !== "SALIDA") return true;
       return Number(stock?.stock_actual || 0) > 0;
     })
     .map((product) => {

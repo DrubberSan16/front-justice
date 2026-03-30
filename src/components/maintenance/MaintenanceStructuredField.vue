@@ -115,7 +115,7 @@
     <div class="text-subtitle-2 font-weight-medium mb-2">{{ repairText(field.label) }}</div>
     <v-select
       :model-value="relationMultiSelectValue"
-      :items="relationOptions[field.key] ?? []"
+      :items="filteredRelationMultiSelectOptions"
       item-title="title"
       item-value="value"
       :label="repairText(field.label)"
@@ -124,6 +124,9 @@
       multiple
       chips
       closable-chips
+      :disabled="requiresWarehouseSelection && !selectedWarehouseId"
+      :hint="requiresWarehouseSelection && !selectedWarehouseId ? 'Selecciona primero la bodega.' : ''"
+      persistent-hint
       @update:model-value="updateRelationMultiSelect"
     />
     <div v-if="relationMultiSelectValue.length" class="chip-list">
@@ -280,11 +283,11 @@
     </div>
 
     <v-row v-for="(item, index) in issueItems" :key="`issue-${index}`" dense class="mb-1">
-      <v-col cols="12" md="5">
-        <v-select :model-value="item.producto_id ?? null" :items="relationOptions.producto_id ?? []" item-title="title" item-value="value" label="Material" variant="outlined" density="compact" @update:model-value="updateIssueItem(index, 'producto_id', $event)" />
-      </v-col>
       <v-col cols="12" md="4">
         <v-select :model-value="item.bodega_id ?? null" :items="relationOptions.bodega_id ?? []" item-title="title" item-value="value" label="Bodega" variant="outlined" density="compact" @update:model-value="updateIssueItem(index, 'bodega_id', $event)" />
+      </v-col>
+      <v-col cols="12" md="5">
+        <v-select :model-value="item.producto_id ?? null" :items="getIssueProductOptions(item.bodega_id)" item-title="title" item-value="value" label="Material" variant="outlined" density="compact" :disabled="!item.bodega_id" @update:model-value="updateIssueItem(index, 'producto_id', $event)" />
       </v-col>
       <v-col cols="10" md="2">
         <v-text-field :model-value="item.cantidad ?? 1" label="Cantidad" type="number" variant="outlined" density="compact" @update:model-value="updateIssueItem(index, 'cantidad', asNumber($event, 1))" />
@@ -324,6 +327,7 @@ const props = defineProps<{
   field: EnhancedMaintenanceField;
   modelValue: any;
   relationOptions?: Record<string, SelectOption[]>;
+  formState?: Record<string, any>;
 }>();
 
 const emit = defineEmits<{
@@ -397,6 +401,21 @@ const relationMultiSelectValue = computed<string[]>(() =>
     ? props.modelValue.map((item) => String(item ?? "").trim()).filter(Boolean)
     : [],
 );
+
+const selectedWarehouseId = computed(() =>
+  String(props.formState?.bodega_id ?? "").trim(),
+);
+
+const requiresWarehouseSelection = computed(() => props.field.key === "materiales");
+
+const filteredRelationMultiSelectOptions = computed(() => {
+  const options = relationOptions.value[props.field.key] ?? [];
+  if (!requiresWarehouseSelection.value) return options;
+  if (!selectedWarehouseId.value) return [];
+  return options.filter(
+    (item: AnyRow) => String(item?.bodegaId || "") === selectedWarehouseId.value,
+  );
+});
 
 function addStringListItem() {
   const draft = String(drafts[props.field.key] ?? "").trim();
@@ -587,7 +606,23 @@ function addIssueItem() {
 function updateIssueItem(index: number, key: string, value: any) {
   const next = cloneValue(issueItems.value);
   next[index] = { ...(next[index] ?? {}), [key]: value };
+  if (key === "bodega_id") {
+    const validForWarehouse = getIssueProductOptions(value).some(
+      (option) => String(option.value) === String(next[index]?.producto_id ?? ""),
+    );
+    if (!validForWarehouse) {
+      next[index].producto_id = null;
+    }
+  }
   emitValue(next);
+}
+
+function getIssueProductOptions(bodegaId: unknown) {
+  const warehouseId = String(bodegaId ?? "").trim();
+  if (!warehouseId) return [];
+  return (relationOptions.value.producto_id ?? []).filter(
+    (item: AnyRow) => String(item?.bodegaId || "") === warehouseId,
+  );
 }
 
 function removeIssueItem(index: number) {
