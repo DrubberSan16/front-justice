@@ -56,19 +56,18 @@
         </v-alert>
 
         <v-text-field
+          :model-value="selectedUnitCostLabel"
+          label="Costo unitario del material"
+          variant="outlined"
+          class="mb-2"
+          readonly
+        />
+
+        <v-text-field
           v-model="movementForm.cantidad"
           type="number"
           min="0"
           label="Cantidad"
-          variant="outlined"
-          class="mb-2"
-        />
-
-        <v-text-field
-          v-model="movementForm.costoUnitario"
-          type="number"
-          min="0"
-          label="Costo unitario"
           variant="outlined"
           class="mb-2"
         />
@@ -246,7 +245,6 @@ const movementForm = reactive({
   productoId: "",
   bodegaId: "",
   cantidad: "1",
-  costoUnitario: "0",
   observacion: "",
 });
 
@@ -283,6 +281,25 @@ const selectedStockRow = computed(() => {
     ) ?? null
   );
 });
+
+const selectedProduct = computed(() => {
+  if (!movementForm.productoId) return null;
+  return (
+    products.value.find((product) => product.id === movementForm.productoId) ?? null
+  );
+});
+
+const selectedUnitCost = computed(() => {
+  const productCost = Number(selectedProduct.value?.costo_promedio || 0);
+  if (Number.isFinite(productCost) && productCost > 0) return productCost;
+
+  const stockCost = Number(selectedStockRow.value?.costo_promedio_bodega || 0);
+  return Number.isFinite(stockCost) ? stockCost : 0;
+});
+
+const selectedUnitCostLabel = computed(() =>
+  formatNumberForDisplay(String(selectedUnitCost.value || 0)),
+);
 
 const productOptions = computed(() => {
   if (!movementForm.bodegaId) return [];
@@ -391,7 +408,6 @@ async function loadKardex() {
 
 async function saveMovement() {
   const cantidad = parsePositiveNumber(movementForm.cantidad);
-  const costoUnitario = Number(movementForm.costoUnitario);
 
   if (!movementForm.bodegaId) {
     ui.error("La bodega es obligatoria.");
@@ -408,11 +424,6 @@ async function saveMovement() {
     return;
   }
 
-  if (!Number.isFinite(costoUnitario) || costoUnitario < 0) {
-    ui.error("El costo unitario no es válido.");
-    return;
-  }
-
   savingMovement.value = true;
   try {
     await api.post("/kpi_inventory/kardex/movimiento-manual", {
@@ -420,7 +431,6 @@ async function saveMovement() {
       bodega_id: movementForm.bodegaId,
       producto_id: movementForm.productoId,
       cantidad,
-      costo_unitario: costoUnitario,
       observacion: movementForm.observacion || undefined,
       created_by: getUserName(),
       updated_by: getUserName(),
