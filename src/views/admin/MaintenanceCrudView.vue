@@ -204,9 +204,11 @@ import { api } from "@/app/http/api";
 import MaintenanceStructuredField from "@/components/maintenance/MaintenanceStructuredField.vue";
 import { getEnhancedMaintenanceModule, type EnhancedMaintenanceField } from "@/app/config/maintenance-module-overrides";
 import { useUiStore } from "@/app/stores/ui.store";
+import { useAuthStore } from "@/app/stores/auth.store";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
+const auth = useAuthStore();
 const { mdAndDown, smAndDown } = useDisplay();
 
 const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
@@ -244,6 +246,20 @@ function unwrapData<T = any>(payload: T): any {
     return (payload as any).data;
   }
   return payload;
+}
+
+function buildAuditPayload(isEditing: boolean) {
+  return {
+    actor_user_id: auth.user?.id || null,
+    actor_username: auth.user?.nameUser || null,
+    actor_name: auth.user?.nameSurname || auth.user?.nameUser || null,
+    actor_email: auth.user?.email || null,
+    actor_role: auth.user?.role?.nombre || null,
+    created_by: isEditing ? undefined : auth.user?.nameUser || null,
+    created_by_email: isEditing ? undefined : auth.user?.email || null,
+    updated_by: auth.user?.nameUser || null,
+    updated_by_email: auth.user?.email || null,
+  };
 }
 
 const displayModuleTitle = computed(() => repairText(moduleConfig.value?.title ?? ""));
@@ -779,6 +795,18 @@ function sanitizePayload() {
       }
     }
     payload[field.key] = val;
+  }
+
+  const hasPayloadJsonField = cfg.fields.some((field) => field.key === "payload_json");
+  if (hasPayloadJsonField) {
+    const currentPayload =
+      payload.payload_json && typeof payload.payload_json === "object" && !Array.isArray(payload.payload_json)
+        ? payload.payload_json
+        : {};
+    payload.payload_json = {
+      ...currentPayload,
+      ...buildAuditPayload(Boolean(editingId.value)),
+    };
   }
 
   return payload;

@@ -992,6 +992,32 @@ const monthlyPaletteFields = [
 const currentRoleName = computed(() =>
   String(auth.user?.role?.nombre || "").trim().toUpperCase(),
 );
+function currentUserName() {
+  return auth.user?.nameUser || "admin";
+}
+
+function currentUserEmail() {
+  return auth.user?.email || "";
+}
+
+function currentUserId() {
+  return auth.user?.id || "";
+}
+
+function buildAuditPayload(isEditing = false) {
+  return {
+    actor_user_id: currentUserId() || null,
+    actor_username: currentUserName(),
+    actor_name: auth.user?.nameSurname || auth.user?.nameUser || null,
+    actor_email: currentUserEmail() || null,
+    actor_role: auth.user?.role?.nombre || null,
+    created_by: isEditing ? undefined : currentUserName(),
+    created_by_email: isEditing ? undefined : currentUserEmail() || null,
+    updated_by: currentUserName(),
+    updated_by_email: currentUserEmail() || null,
+  };
+}
+
 const canEditMonthlyColors = computed(() => currentRoleName.value.includes("ADMIN"));
 const defaultMonthlyPalette: Record<string, string> = {
   MPG: "#F4DD6B",
@@ -1799,6 +1825,9 @@ async function saveMonthlyCell() {
       valor_crudo: String(monthlyCell.valor_crudo || "").trim(),
       procedimiento_id: monthlyCell.procedimiento_id || undefined,
       observacion: monthlyCell.observacion || undefined,
+      payload_json: {
+        ...buildAuditPayload(Boolean(monthlyCell.id)),
+      },
     };
     if (monthlyCell.id) {
       await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}`, payload);
@@ -1834,6 +1863,9 @@ async function saveMonthlyPalette() {
   try {
     await api.patch(`/kpi_maintenance/programaciones/mensuales/${selectedMonthly.value.id}/config`, {
       color_palette: { ...monthlyPaletteForm },
+      payload_json: {
+        ...buildAuditPayload(true),
+      },
     });
     monthlyPaletteDialog.value = false;
     await loadSelectedMonthly(selectedMonthly.value.id);
@@ -1898,6 +1930,10 @@ async function openEditProgramacionById(id: string) {
 }
 
 function buildPayload() {
+  const sourcePayload =
+    Object.keys(programacionSourcePayload.value || {}).length
+      ? programacionSourcePayload.value
+      : {};
   return {
     equipo_id: form.equipo_id,
     procedimiento_id: form.procedimiento_id || undefined,
@@ -1909,7 +1945,10 @@ function buildPayload() {
     modo_programacion: programacionSourceMode.value,
     origen_programacion: programacionSourceOrigin.value,
     documento_origen: programacionSourceDocument.value || undefined,
-    payload_json: Object.keys(programacionSourcePayload.value || {}).length ? programacionSourcePayload.value : undefined,
+    payload_json: {
+      ...sourcePayload,
+      ...buildAuditPayload(Boolean(editingId.value)),
+    },
     activo: !!form.activo,
   };
 }
@@ -1967,6 +2006,9 @@ async function importMonthlyWorkbook() {
   try {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("requested_by", currentUserName());
+    if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
+    if (currentUserId()) formData.append("requested_user_id", currentUserId());
     const { data } = await api.post("/kpi_maintenance/programaciones/import/mensual/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -1995,6 +2037,9 @@ async function importWeeklyWorkbook() {
   try {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("requested_by", currentUserName());
+    if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
+    if (currentUserId()) formData.append("requested_user_id", currentUserId());
     const { data } = await api.post("/kpi_maintenance/inteligencia/cronogramas-semanales/import/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -2346,6 +2391,7 @@ async function saveWeeklyEditor() {
       payload_json: {
         editor_source: "MANUAL",
         daily_hours: computeWeeklyDailyHours(detalles),
+        ...buildAuditPayload(Boolean(weeklyEditor.id)),
       },
       detalles,
     };
@@ -2413,6 +2459,7 @@ async function persistWeeklyEditor(options?: { showToast?: boolean }) {
       payload_json: {
         editor_source: "MANUAL",
         daily_hours: computeWeeklyDailyHours(detalles),
+        ...buildAuditPayload(Boolean(weeklyEditor.id)),
       },
       detalles,
     };

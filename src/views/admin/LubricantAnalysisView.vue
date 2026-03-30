@@ -1100,6 +1100,14 @@ function currentUserName() {
   return auth.user?.nameUser || "admin";
 }
 
+function currentUserEmail() {
+  return auth.user?.email || "";
+}
+
+function currentUserId() {
+  return auth.user?.id || "";
+}
+
 function getSelectedImportFile() {
   if (Array.isArray(importFile.value)) {
     return (importFile.value[0] as File) || null;
@@ -1291,6 +1299,8 @@ async function processWorkbookImport() {
     formData.append("file", file);
     formData.append("upsert_existing", "true");
     formData.append("requested_by", currentUserName());
+    if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
+    if (currentUserId()) formData.append("requested_user_id", currentUserId());
 
     /*
       ui.open(parsed.warnings[0] || "El archivo contiene advertencias de importacion.", "warning");
@@ -1523,6 +1533,15 @@ async function save() {
           equipo_serie: form.equipo_serie || null,
           equipo_modelo: form.equipo_modelo || null,
         },
+        actor_user_id: currentUserId() || null,
+        actor_username: currentUserName(),
+        actor_name: auth.user?.nameSurname || auth.user?.nameUser || null,
+        actor_email: currentUserEmail() || null,
+        actor_role: auth.user?.role?.nombre || null,
+        created_by: editingId.value ? undefined : currentUserName(),
+        created_by_email: editingId.value ? undefined : currentUserEmail() || null,
+        updated_by: currentUserName(),
+        updated_by_email: currentUserEmail() || null,
       },
       detalles: form.detalles.map(buildDetailPayload),
     };
