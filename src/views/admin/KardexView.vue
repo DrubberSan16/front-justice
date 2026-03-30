@@ -4,8 +4,31 @@
       <v-card rounded="xl" class="pa-4 h-100 enterprise-surface">
         <div class="text-h6 font-weight-bold mb-2">Movimiento manual</div>
         <div class="text-body-2 text-medium-emphasis mb-4">
-          Registra entradas y salidas (compra / venta) y genera Kardex automáticamente.
+          Selecciona primero la bodega y luego el material para registrar ingresos y salidas con mejor control.
         </div>
+
+        <v-select
+          v-model="movementForm.bodegaId"
+          :items="warehouseOptions"
+          item-title="title"
+          item-value="value"
+          label="Bodega"
+          variant="outlined"
+          class="mb-2"
+        />
+
+        <v-autocomplete
+          v-model="movementForm.productoId"
+          :items="productOptions"
+          item-title="title"
+          item-value="value"
+          label="Material"
+          variant="outlined"
+          class="mb-2"
+          :disabled="!movementForm.bodegaId"
+          clearable
+          no-data-text="Selecciona una bodega para listar materiales"
+        />
 
         <v-select
           v-model="movementForm.tipo"
@@ -17,25 +40,20 @@
           class="mb-2"
         />
 
-        <v-select
-          v-model="movementForm.productoId"
-          :items="productOptions"
-          item-title="title"
-          item-value="value"
-          label="Producto"
-          variant="outlined"
-          class="mb-2"
-        />
-
-        <v-select
-          v-model="movementForm.bodegaId"
-          :items="warehouseOptions"
-          item-title="title"
-          item-value="value"
-          label="Bodega"
-          variant="outlined"
-          class="mb-2"
-        />
+        <v-alert
+          v-if="selectedStockRow"
+          :type="movementForm.tipo === 'SALIDA' ? 'warning' : 'info'"
+          variant="tonal"
+          class="mb-3"
+        >
+          <div class="font-weight-medium">
+            Stock actual en bodega: {{ formatNumberForDisplay(selectedStockRow.stock_actual) }}
+          </div>
+          <div class="text-caption">
+            Mínimo: {{ formatNumberForDisplay(selectedStockRow.stock_min_bodega) }} · Máximo:
+            {{ formatNumberForDisplay(selectedStockRow.stock_max_bodega) }}
+          </div>
+        </v-alert>
 
         <v-text-field
           v-model="movementForm.cantidad"
@@ -74,9 +92,7 @@
       <v-card rounded="xl" class="pa-4 mb-4 enterprise-surface">
         <div class="text-h6 font-weight-bold mb-2">Carga masiva XLSX</div>
         <div class="text-body-2 text-medium-emphasis mb-3">
-          Formato esperado: Cod. Sucursal, Sucursal, Cod. Bodega, Bodega, Línea, Categoría,
-          Cod. Ítem, Ítem, Costo promedio, Precio, % UTILIDAD, Tipo de unidad, Por contenedores,
-          Stock, Stock mín. bodega, Stock máx. bodega, Stock contenedores, Stock mínimo.
+          Sube el inventario por Excel. El sistema creará materiales nuevos y ajustará ingresos o salidas por diferencia de stock.
         </div>
 
         <v-file-input
@@ -89,22 +105,47 @@
           class="mb-3"
         />
 
-        <div class="d-flex" style="gap: 8px; flex-wrap: wrap;">
-          <v-btn color="primary" :loading="uploading" @click="processXlsx">
+        <div class="d-flex flex-wrap" style="gap: 8px;">
+          <v-btn color="primary" prepend-icon="mdi-upload" :loading="uploading" @click="processXlsx">
             Procesar carga masiva
           </v-btn>
+          <v-btn variant="outlined" prepend-icon="mdi-download" :loading="downloadingTemplate" @click="downloadTemplate">
+            Descargar formato
+          </v-btn>
           <v-chip v-if="lastBulkSummary" color="success" variant="tonal">
-            Creados: {{ lastBulkSummary.creados }} · Actualizados: {{ lastBulkSummary.actualizados }} ·
-            Ingresos: {{ lastBulkSummary.ingresos }} · Salidas: {{ lastBulkSummary.salidas }}
+            Procesados: {{ lastBulkSummary.procesados }} · Creados: {{ lastBulkSummary.creados }} ·
+            Actualizados: {{ lastBulkSummary.actualizados }} · Ingresos: {{ lastBulkSummary.ingresos }} ·
+            Salidas: {{ lastBulkSummary.salidas }}
           </v-chip>
         </div>
+
+        <v-alert
+          v-if="lastBulkSummary?.errores?.length"
+          type="warning"
+          variant="tonal"
+          class="mt-3"
+        >
+          <div class="font-weight-medium mb-2">Errores detectados en la importación</div>
+          <div
+            v-for="(error, index) in lastBulkSummary.errores.slice(0, 8)"
+            :key="`${index}-${error}`"
+            class="text-caption"
+          >
+            {{ error }}
+          </div>
+          <div v-if="lastBulkSummary.errores.length > 8" class="text-caption mt-1">
+            ... y {{ lastBulkSummary.errores.length - 8 }} errores adicionales.
+          </div>
+        </v-alert>
       </v-card>
 
       <v-card rounded="xl" class="pa-4 enterprise-surface">
         <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
           <div>
             <div class="text-h6 font-weight-bold">Kardex</div>
-            <div class="text-body-2 text-medium-emphasis">Historial de entradas y salidas.</div>
+            <div class="text-body-2 text-medium-emphasis">
+              Historial de movimientos con indicación clara de ingreso o salida.
+            </div>
           </div>
           <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex">
             Recargar
@@ -117,22 +158,55 @@
           :loading="loadingKardex"
           :items-per-page="20"
           class="elevation-0 enterprise-table"
-        />
+        >
+          <template #item.tipo="{ item }">
+            <v-chip
+              size="small"
+              variant="tonal"
+              :color="item.tipo_movimiento === 'INGRESO' ? 'success' : 'error'"
+            >
+              {{ item.tipo_movimiento === "INGRESO" ? "Ingreso" : "Salida" }}
+            </v-chip>
+          </template>
+
+          <template #item.movimiento="{ item }">
+            <span
+              class="font-weight-bold"
+              :class="item.tipo_movimiento === 'INGRESO' ? 'text-success' : 'text-error'"
+            >
+              {{ item.tipo_movimiento === "INGRESO" ? "+" : "-" }}
+              {{ item.tipo_movimiento === "INGRESO"
+                ? item.entrada_cantidad
+                : item.salida_cantidad }}
+            </span>
+          </template>
+        </v-data-table>
       </v-card>
     </v-col>
   </v-row>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import * as XLSX from "xlsx";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
-import { bulkUpsertFromRows, fetchProductsWithStock, performManualMovement } from "@/app/services/products-inventory.service";
+import { fetchProductsWithStock } from "@/app/services/products-inventory.service";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 type MovementType = "INGRESO" | "SALIDA";
+
+type StockRow = {
+  id: string;
+  bodega_id: string;
+  producto_id: string;
+  stock_actual: string;
+  stock_min_bodega: string;
+  stock_max_bodega: string;
+  stock_min_global: string;
+  stock_contenedores: string;
+  costo_promedio_bodega: string;
+};
 
 type KardexRow = {
   id: string;
@@ -146,15 +220,26 @@ type KardexRow = {
   costo_unitario: string;
 };
 
+type ImportSummary = {
+  procesados: number;
+  omitidos: number;
+  creados: number;
+  actualizados: number;
+  ingresos: number;
+  salidas: number;
+  errores: string[];
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 
 const savingMovement = ref(false);
 const uploading = ref(false);
+const downloadingTemplate = ref(false);
 const loadingKardex = ref(false);
 
 const xlsxFile = ref<File | null>(null);
-const lastBulkSummary = ref<{ creados: number; actualizados: number; ingresos: number; salidas: number } | null>(null);
+const lastBulkSummary = ref<ImportSummary | null>(null);
 
 const movementForm = reactive({
   tipo: "INGRESO" as MovementType,
@@ -167,19 +252,13 @@ const movementForm = reactive({
 
 const products = ref<any[]>([]);
 const bodegas = ref<any[]>([]);
+const stocks = ref<StockRow[]>([]);
 const kardex = ref<KardexRow[]>([]);
 
 const movementTypes = [
-  { value: "INGRESO", title: "Ingreso (compra)" },
-  { value: "SALIDA", title: "Salida (venta)" },
+  { value: "INGRESO", title: "Ingreso de material" },
+  { value: "SALIDA", title: "Salida de material" },
 ];
-
-const productOptions = computed(() =>
-  products.value.map((p) => ({
-    value: p.id,
-    title: `${p.codigo} - ${p.nombre}`,
-  }))
-);
 
 const warehouseOptions = computed(() =>
   bodegas.value.map((b) => ({
@@ -188,30 +267,75 @@ const warehouseOptions = computed(() =>
   }))
 );
 
+const stockByWarehouseProduct = computed(() => {
+  const map = new Map<string, StockRow>();
+  for (const row of stocks.value) {
+    map.set(`${row.bodega_id}:${row.producto_id}`, row);
+  }
+  return map;
+});
+
+const selectedStockRow = computed(() => {
+  if (!movementForm.bodegaId || !movementForm.productoId) return null;
+  return (
+    stockByWarehouseProduct.value.get(
+      `${movementForm.bodegaId}:${movementForm.productoId}`,
+    ) ?? null
+  );
+});
+
+const productOptions = computed(() => {
+  if (!movementForm.bodegaId) return [];
+
+  return products.value
+    .filter((product) => {
+      if (movementForm.tipo !== "SALIDA") return true;
+      const stock = stockByWarehouseProduct.value.get(
+        `${movementForm.bodegaId}:${product.id}`,
+      );
+      return Number(stock?.stock_actual || 0) > 0;
+    })
+    .map((product) => {
+      const stock = stockByWarehouseProduct.value.get(
+        `${movementForm.bodegaId}:${product.id}`,
+      );
+      const stockLabel = stock
+        ? ` · stock ${formatNumberForDisplay(stock.stock_actual)}`
+        : "";
+      return {
+        value: product.id,
+        title: `${product.codigo} - ${product.nombre}${stockLabel}`,
+      };
+    });
+});
+
 const kardexHeaders = [
   { title: "Fecha", key: "fecha" },
-  { title: "Tipo", key: "tipo_movimiento" },
-  { title: "Producto", key: "producto" },
+  { title: "Tipo", key: "tipo" },
+  { title: "Movimiento", key: "movimiento" },
+  { title: "Material", key: "producto" },
   { title: "Bodega", key: "bodega" },
-  { title: "Entrada", key: "entrada_cantidad" },
-  { title: "Salida", key: "salida_cantidad" },
   { title: "Saldo", key: "saldo_cantidad" },
   { title: "Costo unitario", key: "costo_unitario" },
 ];
 
 const kardexRows = computed(() => {
-  const productNameById = new Map(products.value.map((p) => [p.id, `${p.codigo} - ${p.nombre}`]));
-  const bodegaNameById = new Map(bodegas.value.map((b) => [b.id, `${b.codigo} - ${b.nombre}`]));
+  const productNameById = new Map(
+    products.value.map((p) => [p.id, `${p.codigo} - ${p.nombre}`]),
+  );
+  const bodegaNameById = new Map(
+    bodegas.value.map((b) => [b.id, `${b.codigo} - ${b.nombre}`]),
+  );
 
-  return kardex.value.map((r) => ({
-    ...r,
-    fecha: new Date(r.fecha).toLocaleString(),
-    producto: productNameById.get(r.producto_id) ?? r.producto_id,
-    bodega: bodegaNameById.get(r.bodega_id) ?? r.bodega_id,
-    entrada_cantidad: formatNumberForDisplay(r.entrada_cantidad),
-    salida_cantidad: formatNumberForDisplay(r.salida_cantidad),
-    saldo_cantidad: formatNumberForDisplay(r.saldo_cantidad),
-    costo_unitario: formatNumberForDisplay(r.costo_unitario),
+  return kardex.value.map((row) => ({
+    ...row,
+    fecha: new Date(row.fecha).toLocaleString(),
+    producto: productNameById.get(row.producto_id) ?? row.producto_id,
+    bodega: bodegaNameById.get(row.bodega_id) ?? row.bodega_id,
+    entrada_cantidad: formatNumberForDisplay(row.entrada_cantidad),
+    salida_cantidad: formatNumberForDisplay(row.salida_cantidad),
+    saldo_cantidad: formatNumberForDisplay(row.saldo_cantidad),
+    costo_unitario: formatNumberForDisplay(row.costo_unitario),
   }));
 });
 
@@ -251,6 +375,7 @@ async function loadBaseData() {
   const inventory = await fetchProductsWithStock();
   products.value = inventory.productos;
   bodegas.value = inventory.bodegas;
+  stocks.value = inventory.stocks as StockRow[];
 }
 
 async function loadKardex() {
@@ -268,8 +393,13 @@ async function saveMovement() {
   const cantidad = parsePositiveNumber(movementForm.cantidad);
   const costoUnitario = Number(movementForm.costoUnitario);
 
-  if (!movementForm.productoId || !movementForm.bodegaId) {
-    ui.error("Producto y bodega son obligatorios.");
+  if (!movementForm.bodegaId) {
+    ui.error("La bodega es obligatoria.");
+    return;
+  }
+
+  if (!movementForm.productoId) {
+    ui.error("El material es obligatorio.");
     return;
   }
 
@@ -285,22 +415,29 @@ async function saveMovement() {
 
   savingMovement.value = true;
   try {
-    await performManualMovement({
-      tipo: movementForm.tipo,
-      productoId: movementForm.productoId,
-      bodegaId: movementForm.bodegaId,
+    await api.post("/kpi_inventory/kardex/movimiento-manual", {
+      tipo_movimiento: movementForm.tipo,
+      bodega_id: movementForm.bodegaId,
+      producto_id: movementForm.productoId,
       cantidad,
-      costoUnitario,
+      costo_unitario: costoUnitario,
       observacion: movementForm.observacion || undefined,
-      userName: getUserName(),
+      created_by: getUserName(),
+      updated_by: getUserName(),
     });
 
-    ui.success("Movimiento registrado correctamente.");
+    ui.success(
+      `${movementForm.tipo === "INGRESO" ? "Ingreso" : "Salida"} registrado correctamente.`,
+    );
     movementForm.observacion = "";
-    await loadKardex();
-    await loadBaseData();
+    movementForm.cantidad = "1";
+    await Promise.all([loadKardex(), loadBaseData()]);
   } catch (error: any) {
-    ui.error(error?.response?.data?.message || error?.message || "No se pudo registrar el movimiento.");
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo registrar el movimiento.",
+    );
   } finally {
     savingMovement.value = false;
   }
@@ -314,39 +451,75 @@ async function processXlsx() {
 
   uploading.value = true;
   try {
-    const buffer = await xlsxFile.value.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const [firstSheetName] = workbook.SheetNames;
-    if (!firstSheetName) {
-      ui.error("El archivo XLSX no contiene hojas válidas.");
-      return;
-    }
+    const formData = new FormData();
+    formData.append("file", xlsxFile.value);
+    formData.append("requested_by", getUserName());
 
-    const sheet = workbook.Sheets[firstSheetName];
-    if (!sheet) {
-      ui.error("No se pudo leer la hoja del archivo XLSX.");
-      return;
-    }
+    const { data } = await api.post("/kpi_inventory/kardex/import/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
 
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
-
-    if (!rows.length) {
-      ui.error("El archivo no contiene filas de datos.");
-      return;
-    }
-
-    const summary = await bulkUpsertFromRows(rows, getUserName());
-    lastBulkSummary.value = summary;
+    lastBulkSummary.value = data?.data ?? null;
     ui.success("Carga masiva procesada correctamente.");
-
-    await loadBaseData();
-    await loadKardex();
+    xlsxFile.value = null;
+    await Promise.all([loadBaseData(), loadKardex()]);
   } catch (error: any) {
-    ui.error(error?.response?.data?.message || error?.message || "No se pudo procesar la carga masiva.");
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo procesar la carga masiva.",
+    );
   } finally {
     uploading.value = false;
   }
 }
+
+async function downloadTemplate() {
+  downloadingTemplate.value = true;
+  try {
+    const response = await api.post("/kpi_inventory/kardex/import/template", null, {
+      responseType: "blob",
+    });
+
+    const blob = new Blob([response.data], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "FORMATO_CARGA_INVENTARIO.xlsx";
+    link.click();
+    window.URL.revokeObjectURL(url);
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo descargar el formato.",
+    );
+  } finally {
+    downloadingTemplate.value = false;
+  }
+}
+
+watch(
+  () => movementForm.bodegaId,
+  () => {
+    movementForm.productoId = "";
+  },
+);
+
+watch(
+  () => movementForm.tipo,
+  () => {
+    if (!movementForm.productoId) return;
+    const stillExists = productOptions.value.some(
+      (item) => item.value === movementForm.productoId,
+    );
+    if (!stillExists) {
+      movementForm.productoId = "";
+    }
+  },
+);
 
 onMounted(async () => {
   await Promise.all([loadBaseData(), loadKardex()]);
