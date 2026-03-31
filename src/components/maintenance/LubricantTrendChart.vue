@@ -123,6 +123,7 @@
             <svg
               :viewBox="`0 0 ${detailChart.width} ${detailChart.height}`"
               class="chart-svg chart-svg--detail"
+              :style="{ width: `${detailChart.width}px`, height: `${detailChart.height}px` }"
               preserveAspectRatio="xMidYMid meet"
             >
               <line

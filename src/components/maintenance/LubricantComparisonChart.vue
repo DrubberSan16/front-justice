@@ -134,6 +134,7 @@
             <svg
               :viewBox="`0 0 ${detailChart.width} ${detailChart.height}`"
               class="comparison-chart__svg comparison-chart__svg--detail"
+              :style="{ width: `${detailChart.width}px`, height: `${detailChart.height}px` }"
               preserveAspectRatio="xMidYMid meet"
             >
               <line

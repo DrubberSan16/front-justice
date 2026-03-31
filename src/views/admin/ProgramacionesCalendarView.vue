@@ -2526,34 +2526,34 @@ onMounted(async () => {
 .summary-strip { display: flex; flex-wrap: wrap; gap: 8px; }
 .empty-state {
   min-height: 180px; border-radius: 22px; border: 1px dashed var(--surface-border);
-  background: rgba(31, 75, 122, 0.05); display: grid; place-items: center;
-  gap: 10px; padding: 24px; text-align: center; color: rgba(26, 34, 43, 0.72);
+  background: var(--chart-empty-bg); display: grid; place-items: center;
+  gap: 10px; padding: 24px; text-align: center; color: var(--chart-label);
 }
-.matrix-wrap { overflow: auto; border: 1px solid var(--surface-border); border-radius: 22px; }
-.matrix-table { border-collapse: separate; border-spacing: 0; min-width: 1100px; width: max-content; background: white; }
+.matrix-wrap { overflow: auto; border: 1px solid var(--surface-border); border-radius: 22px; background: var(--surface-base); }
+.matrix-table { border-collapse: separate; border-spacing: 0; min-width: 1100px; width: max-content; background: var(--chart-card-bg-strong); color: var(--app-text); }
 .matrix-table th, .matrix-table td {
-  border-right: 1px solid rgba(17, 35, 58, 0.08); border-bottom: 1px solid rgba(17, 35, 58, 0.08);
+  border-right: 1px solid var(--surface-border); border-bottom: 1px solid var(--surface-border);
   padding: 10px; vertical-align: top; min-width: 110px;
 }
-.matrix-table th { position: sticky; top: 0; z-index: 3; background: #f6f8fb; font-size: 0.82rem; }
-.matrix-table__sticky { position: sticky; left: 0; z-index: 2; background: #fbfcfe; min-width: 110px; }
-.matrix-table__sticky-2 { position: sticky; left: 110px; z-index: 2; background: #fbfcfe; min-width: 180px; }
+.matrix-table th { position: sticky; top: 0; z-index: 3; background: var(--surface-soft); font-size: 0.82rem; color: var(--app-text); }
+.matrix-table__sticky { position: sticky; left: 0; z-index: 2; background: var(--chart-card-bg-strong); min-width: 110px; }
+.matrix-table__sticky-2 { position: sticky; left: 110px; z-index: 2; background: var(--chart-card-bg-strong); min-width: 180px; }
 .matrix-cell { display: flex; flex-wrap: wrap; gap: 6px; min-height: 44px; }
 .matrix-cell--weekly { min-width: 220px; display: grid; gap: 8px; }
 .monthly-day-cell { min-width: 120px; }
 .matrix-chip-button { border: none; background: transparent; padding: 0; cursor: pointer; }
-.weekly-activity { padding: 8px; border-radius: 12px; background: rgba(31, 75, 122, 0.06); white-space: pre-line; }
+.weekly-activity { padding: 8px; border-radius: 12px; background: var(--chart-empty-bg); border: 1px solid var(--chart-guide); white-space: pre-line; color: var(--app-text); }
 .weekly-activity__title { font-size: 0.8rem; font-weight: 600; }
-.weekly-activity--editable { border: 1px solid rgba(31, 75, 122, 0.08); }
+.weekly-activity--editable { border: 1px solid var(--chart-guide); }
 .weekly-activity--button {
   width: 100%;
-  border: 1px solid rgba(31, 75, 122, 0.08);
+  border: 1px solid var(--chart-guide);
   text-align: left;
   cursor: pointer;
 }
 .weekly-add-button {
-  display: flex; align-items: center; gap: 6px; border: 1px dashed rgba(31, 75, 122, 0.24);
-  border-radius: 12px; padding: 8px 10px; background: rgba(31, 75, 122, 0.03); cursor: pointer; font-size: 0.8rem;
+  display: flex; align-items: center; gap: 6px; border: 1px dashed var(--chart-axis);
+  border-radius: 12px; padding: 8px 10px; background: var(--surface-soft); cursor: pointer; font-size: 0.8rem; color: var(--app-text);
 }
 .weekly-add-button--mini { padding: 6px 8px; min-width: auto; }
 .slot-editor { display: grid; gap: 8px; min-width: 200px; }
@@ -2565,11 +2565,12 @@ onMounted(async () => {
   width: 100%;
   min-height: 34px;
   padding: 7px 10px;
-  border: 1px dashed rgba(31, 75, 122, 0.24);
+  border: 1px dashed var(--chart-axis);
   border-radius: 12px;
-  background: rgba(31, 75, 122, 0.03);
+  background: var(--surface-soft);
   cursor: pointer;
   font-size: 0.8rem;
+  color: var(--app-text);
 }
 .weekly-slot-inline-add--footer {
   position: sticky;
@@ -2582,18 +2583,19 @@ onMounted(async () => {
   width: 36px;
   height: 36px;
   border-radius: 999px;
-  border: 1px dashed rgba(31, 75, 122, 0.28);
-  background: rgba(31, 75, 122, 0.04);
+  border: 1px dashed var(--chart-axis);
+  background: var(--surface-soft);
   cursor: pointer;
+  color: var(--app-text);
 }
 .palette-grid { display: grid; gap: 14px; }
 .palette-item {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px solid rgba(17, 35, 58, 0.08);
+  border: 1px solid var(--surface-border);
   border-radius: 16px;
-  background: rgba(248, 250, 252, 0.8);
+  background: var(--chart-card-bg);
 }
 .palette-item__controls {
   display: grid;
@@ -2604,21 +2606,21 @@ onMounted(async () => {
 .palette-color-input {
   width: 56px;
   height: 40px;
-  border: 1px solid rgba(17, 35, 58, 0.1);
+  border: 1px solid var(--surface-border);
   border-radius: 12px;
   background: transparent;
   padding: 0;
 }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
-.calendar-weekday { font-size: 0.8rem; font-weight: 700; color: rgba(0, 0, 0, 0.65); text-align: center; }
-.calendar-cell { min-height: 150px; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 18px; padding: 10px; background: white; cursor: pointer; }
+.calendar-weekday { font-size: 0.8rem; font-weight: 700; color: var(--chart-label); text-align: center; }
+.calendar-cell { min-height: 150px; border: 1px solid var(--surface-border); border-radius: 18px; padding: 10px; background: var(--chart-card-bg-strong); cursor: pointer; color: var(--app-text); }
 .calendar-cell--muted { opacity: 0.55; }
-.calendar-cell--today { border-color: rgba(25, 118, 210, 0.45); box-shadow: inset 0 0 0 1px rgba(25, 118, 210, 0.15); }
+.calendar-cell--today { border-color: var(--chart-card-hover-border); box-shadow: inset 0 0 0 1px var(--chart-guide); }
 .calendar-events { display: flex; flex-direction: column; gap: 6px; }
-.calendar-event { width: 100%; text-align: left; border: none; border-radius: 12px; padding: 8px; font-size: 0.75rem; cursor: pointer; }
-.calendar-event--normal { background: rgba(25, 118, 210, 0.08); }
-.calendar-event--warning { background: rgba(251, 140, 0, 0.12); }
-.calendar-event--danger { background: rgba(211, 47, 47, 0.12); }
+.calendar-event { width: 100%; text-align: left; border: 1px solid transparent; border-radius: 12px; padding: 8px; font-size: 0.75rem; cursor: pointer; color: var(--app-text); }
+.calendar-event--normal { background: rgba(25, 118, 210, 0.12); border-color: rgba(25, 118, 210, 0.18); }
+.calendar-event--warning { background: rgba(251, 140, 0, 0.16); border-color: rgba(251, 140, 0, 0.22); }
+.calendar-event--danger { background: rgba(211, 47, 47, 0.16); border-color: rgba(211, 47, 47, 0.22); }
 @media (max-width: 960px) {
   .matrix-table { min-width: 880px; }
   .matrix-table th, .matrix-table td { min-width: 90px; padding: 8px; }
