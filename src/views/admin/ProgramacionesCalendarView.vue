@@ -434,13 +434,50 @@
                 Programa manualmente mantenimientos y controla vencimientos por fecha u horas.
               </div>
             </div>
-            <div class="d-flex align-center" style="gap: 8px;">
+            <div class="d-flex align-center flex-wrap agenda-toolbar" style="gap: 8px;">
               <v-btn icon="mdi-chevron-left" variant="text" @click="changeMonth(-1)" />
+              <v-select
+                v-model="agendaYear"
+                :items="agendaYearOptions"
+                item-title="title"
+                item-value="value"
+                label="Año"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="agenda-toolbar__select"
+              />
+              <v-select
+                v-model="agendaMonth"
+                :items="agendaMonthOptions"
+                item-title="title"
+                item-value="value"
+                label="Mes"
+                variant="outlined"
+                density="compact"
+                hide-details
+                class="agenda-toolbar__select agenda-toolbar__select--month"
+              />
+              <v-btn variant="tonal" size="small" @click="goToToday">
+                Hoy
+              </v-btn>
               <div class="text-subtitle-1 font-weight-bold" style="min-width: 220px; text-align: center;">
                 {{ monthLabel }}
               </div>
               <v-btn icon="mdi-chevron-right" variant="text" @click="changeMonth(1)" />
             </div>
+          </div>
+
+          <div class="summary-strip mb-4">
+            <v-chip color="primary" variant="tonal" label>
+              {{ agendaMonthSummary.weeklyActivities }} actividades semanales
+            </v-chip>
+            <v-chip color="secondary" variant="tonal" label>
+              {{ agendaMonthSummary.monthlyHoursLabel }}
+            </v-chip>
+            <v-chip color="info" variant="tonal" label>
+              {{ agendaMonthSummary.programaciones }} programaciones en agenda
+            </v-chip>
           </div>
 
           <div class="calendar-grid mb-4">
@@ -450,25 +487,26 @@
               :key="cell.key"
               class="calendar-cell"
               :class="{ 'calendar-cell--muted': !cell.inCurrentMonth, 'calendar-cell--today': cell.isToday }"
-              @click="openCreateForDate(cell.date)"
+              @click="openAgendaDay(cell.date)"
             >
               <div class="d-flex align-center justify-space-between mb-1">
                 <span class="text-caption font-weight-bold">{{ cell.day }}</span>
-                <v-chip v-if="eventsByDate[cell.date]?.length" size="x-small" color="primary" variant="tonal">
-                  {{ eventsByDate[cell.date]?.length ?? 0 }}
+                <v-chip v-if="agendaCellItems[cell.date]?.length" size="x-small" color="primary" variant="tonal">
+                  {{ agendaCellItems[cell.date]?.length ?? 0 }}
                 </v-chip>
               </div>
               <div class="calendar-events">
                 <button
-                  v-for="event in (eventsByDate[cell.date] || []).slice(0, 3)"
-                  :key="event.id"
+                  v-for="event in (agendaCellItems[cell.date] || []).slice(0, 3)"
+                  :key="event.key"
                   class="calendar-event"
-                  :class="eventClass(event.estado_programacion)"
-                  @click.stop="openEdit(event)"
+                  :class="agendaCalendarEventClass(event)"
+                  @click.stop="handleAgendaItemClick(event)"
                 >
-                  {{ event.equipo_nombre }} - {{ displayProgramacionName(event) }}
+                  <span class="calendar-event__title">{{ event.title }}</span>
+                  <span v-if="event.subtitle" class="calendar-event__subtitle">{{ event.subtitle }}</span>
                 </button>
-                <div v-if="(eventsByDate[cell.date] || []).length > 3" class="text-caption text-medium-emphasis mt-1">
+                <div v-if="(agendaCellItems[cell.date] || []).length > 3" class="text-caption text-medium-emphasis mt-1">
                   +{{ (eventsByDate[cell.date]?.length ?? 0) - 3 }} más
                 </div>
               </div>
@@ -833,6 +871,91 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="agendaDayDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 920">
+      <v-card rounded="xl" class="enterprise-dialog">
+        <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">Detalle del día</div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ agendaSelectedDayLabel }}
+            </div>
+          </div>
+          <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <v-btn variant="tonal" prepend-icon="mdi-plus" @click="agendaSelectedDate && openCreateFromAgendaDialog()">
+              Nueva programación
+            </v-btn>
+            <v-btn icon="mdi-close" variant="text" @click="agendaDayDialog = false" />
+          </div>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          <div class="agenda-day-grid">
+            <div class="agenda-day-section enterprise-surface pa-4">
+              <div class="text-subtitle-2 font-weight-bold mb-3">Semanal</div>
+              <div v-if="!agendaDayWeeklyItems.length" class="text-body-2 text-medium-emphasis">
+                Sin actividades semanales registradas.
+              </div>
+              <div v-else class="agenda-day-list">
+                <button
+                  v-for="item in agendaDayWeeklyItems"
+                  :key="item.key"
+                  type="button"
+                  class="agenda-day-item agenda-day-item--weekly"
+                  @click="handleAgendaItemClick(item)"
+                >
+                  <div class="agenda-day-item__title">{{ item.title }}</div>
+                  <div v-if="item.subtitle" class="agenda-day-item__subtitle">{{ item.subtitle }}</div>
+                </button>
+              </div>
+            </div>
+
+            <div class="agenda-day-section enterprise-surface pa-4">
+              <div class="text-subtitle-2 font-weight-bold mb-3">Mensual MPG</div>
+              <div class="mb-3">
+                <v-chip color="secondary" variant="tonal" label>
+                  {{ agendaDayMonthlyHoursLabel }}
+                </v-chip>
+              </div>
+              <div v-if="!agendaDayMonthlyItems.length" class="text-body-2 text-medium-emphasis">
+                Sin bloques mensuales registrados.
+              </div>
+              <div v-else class="agenda-day-list">
+                <button
+                  v-for="item in agendaDayMonthlyItems"
+                  :key="item.key"
+                  type="button"
+                  class="agenda-day-item agenda-day-item--monthly"
+                  @click="handleAgendaItemClick(item)"
+                >
+                  <div class="agenda-day-item__title">{{ item.title }}</div>
+                  <div v-if="item.subtitle" class="agenda-day-item__subtitle">{{ item.subtitle }}</div>
+                </button>
+              </div>
+            </div>
+
+            <div class="agenda-day-section enterprise-surface pa-4">
+              <div class="text-subtitle-2 font-weight-bold mb-3">Agenda manual / sincronizada</div>
+              <div v-if="!agendaDayProgramaciones.length" class="text-body-2 text-medium-emphasis">
+                Sin programaciones registradas.
+              </div>
+              <div v-else class="agenda-day-list">
+                <button
+                  v-for="item in agendaDayProgramaciones"
+                  :key="item.key"
+                  type="button"
+                  class="agenda-day-item agenda-day-item--agenda"
+                  @click="handleAgendaItemClick(item)"
+                >
+                  <div class="agenda-day-item__title">{{ item.title }}</div>
+                  <div v-if="item.subtitle" class="agenda-day-item__subtitle">{{ item.subtitle }}</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -890,6 +1013,12 @@ const equipmentCatalog = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
 const procedureCatalog = ref<any[]>([]);
 const currentMonth = ref(new Date());
+const agendaYear = ref(currentMonth.value.getFullYear());
+const agendaMonth = ref(currentMonth.value.getMonth() + 1);
+const agendaDayDialog = ref(false);
+const agendaSelectedDate = ref("");
+const monthlyImportDetailCache = ref<Record<string, any>>({});
+const weeklyScheduleDetailCache = ref<Record<string, any>>({});
 const weeklyCellPersistDirect = ref(false);
 
 const weeklyEditorDialog = ref(false);
@@ -955,6 +1084,11 @@ const form = reactive<any>({
 });
 
 const weekDays = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const agendaMonthOptions = Array.from({ length: 12 }, (_, index) => ({
+  value: index + 1,
+  title: new Date(2026, index, 1).toLocaleDateString("es-EC", { month: "long" }),
+}));
+
 const agendaHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Plantilla MPG", key: "procedimiento_nombre" },
@@ -1219,6 +1353,7 @@ const monthlyAvailablePeriods = computed(() => {
 });
 
 const universalYearRange = Array.from({ length: 101 }, (_, index) => 2000 + index);
+const agendaYearOptions = [...universalYearRange].reverse().map((value) => ({ value, title: String(value) }));
 
 const monthlyYearOptions = computed(() =>
   [...universalYearRange].reverse().map((value) => ({ value, title: String(value) })),
@@ -1586,15 +1721,202 @@ const monthCells = computed(() => {
   return out;
 });
 
-const eventsByDate = computed(() =>
+const agendaMonthPeriod = computed(() => getMonthPeriod(currentMonth.value));
+
+const agendaProgramacionesByDate = computed(() =>
   agendaRows.value.reduce((acc: Record<string, any[]>, row) => {
-    const key = row?.proxima_fecha;
-    if (!key) return acc;
+    const key = String(row?.proxima_fecha || "");
+    if (!key || !key.startsWith(agendaMonthPeriod.value)) return acc;
     acc[key] = acc[key] || [];
     acc[key].push(row);
     return acc;
   }, {}),
 );
+
+const agendaMonthlyDetails = computed(() => {
+  const rows = Object.values(monthlyImportDetailCache.value)
+    .flatMap((item: any) =>
+      Array.isArray(item?.detalles_consolidados)
+        ? item.detalles_consolidados
+        : Array.isArray(item?.detalles)
+          ? item.detalles
+          : [],
+    )
+    .filter((item: any) => String(item?.fecha_programada || "").startsWith(agendaMonthPeriod.value));
+  return rows;
+});
+
+const agendaWeeklyDetails = computed(() => {
+  const rows = Object.values(weeklyScheduleDetailCache.value)
+    .flatMap((item: any) => (Array.isArray(item?.detalles) ? item.detalles.map((detail: any) => ({
+      ...detail,
+      cronograma_id: item?.id,
+      cronograma_codigo: item?.codigo,
+      cronograma_resumen: item?.resumen,
+    })) : []))
+    .filter((item: any) => String(item?.fecha_actividad || "").startsWith(agendaMonthPeriod.value));
+  return rows;
+});
+
+function parseAgendaHours(value: any) {
+  if (value === null || value === undefined) return 0;
+  const raw = String(value).replace(",", ".").replace(/[^0-9.-]/g, "");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const agendaMonthlyHoursByDate = computed(() =>
+  agendaMonthlyDetails.value.reduce((acc: Record<string, { totalHours: number; items: any[] }>, item: any) => {
+    const key = String(item?.fecha_programada || "");
+    if (!key) return acc;
+    if (!acc[key]) acc[key] = { totalHours: 0, items: [] };
+    acc[key].items.push(item);
+    const payloadHours = Number(item?.payload_json?.total_horas_agendadas || 0);
+    const sourceHours = payloadHours > 0 ? payloadHours : parseAgendaHours(item?.valor_crudo);
+    acc[key].totalHours = Number((acc[key].totalHours + sourceHours).toFixed(2));
+    return acc;
+  }, {}),
+);
+
+type AgendaCalendarItem = {
+  key: string;
+  type: "agenda" | "weekly" | "monthly";
+  title: string;
+  subtitle?: string;
+  colorClass: string;
+  raw: any;
+};
+
+const agendaCellItems = computed<Record<string, AgendaCalendarItem[]>>(() => {
+  const out: Record<string, AgendaCalendarItem[]> = {};
+
+  for (const [date, rows] of Object.entries(agendaProgramacionesByDate.value)) {
+    out[date] = out[date] || [];
+    for (const row of rows) {
+      out[date].push({
+        key: `agenda-${row.id}`,
+        type: "agenda",
+        title: `${row.equipo_nombre || row.equipo_codigo || "Equipo"} · ${displayProgramacionName(row)}`,
+        subtitle: row.estado_programacion || row.modo_programacion || "Programación",
+        colorClass: eventClass(row.estado_programacion),
+        raw: row,
+      });
+    }
+  }
+
+  for (const [date, summary] of Object.entries(agendaMonthlyHoursByDate.value)) {
+    out[date] = out[date] || [];
+    const itemCount = summary.items.length;
+    out[date].push({
+      key: `monthly-${date}`,
+      type: "monthly",
+      title:
+        summary.totalHours > 0
+          ? `Mensual MPG · ${summary.totalHours.toFixed(2)} h`
+          : `Mensual MPG · ${itemCount} bloque${itemCount === 1 ? "" : "s"}`,
+      subtitle: itemCount === 1
+        ? `${summary.items[0]?.equipo_codigo || "Equipo"} · ${summary.items[0]?.valor_crudo || "Sin valor"}`
+        : `${itemCount} equipos / bloques programados`,
+      colorClass: "calendar-event--monthly",
+      raw: summary,
+    });
+  }
+
+  for (const item of agendaWeeklyDetails.value) {
+    const date = String(item?.fecha_actividad || "");
+    if (!date) continue;
+    out[date] = out[date] || [];
+    out[date].push({
+      key: `weekly-${item.cronograma_id || "manual"}-${item.id || item.actividad}-${item.hora_inicio}-${date}`,
+      type: "weekly",
+      title: item.actividad || "Actividad semanal",
+      subtitle: `${formatTimeLabel(item.hora_inicio, item.hora_fin)}${item.equipo_codigo ? ` · ${item.equipo_codigo}` : ""}`,
+      colorClass: "calendar-event--weekly",
+      raw: item,
+    });
+  }
+
+  const orderMap: Record<string, number> = {
+    weekly: 0,
+    monthly: 1,
+    agenda: 2,
+  };
+
+  for (const date of Object.keys(out)) {
+    out[date] = [...(out[date] || [])].sort(
+      (a, b) => (orderMap[a.type] ?? 99) - (orderMap[b.type] ?? 99),
+    );
+  }
+
+  return out;
+});
+
+const eventsByDate = computed(() => agendaCellItems.value);
+
+const agendaMonthSummary = computed(() => {
+  const weeklyActivities = agendaWeeklyDetails.value.length;
+  const monthlyHours = Object.values(agendaMonthlyHoursByDate.value).reduce(
+    (acc, item) => acc + Number(item.totalHours || 0),
+    0,
+  );
+  const monthlyCount = agendaMonthlyDetails.value.length;
+  const programaciones = Object.values(agendaProgramacionesByDate.value).reduce(
+    (acc, rows) => acc + rows.length,
+    0,
+  );
+  return {
+    weeklyActivities,
+    monthlyHours,
+    monthlyCount,
+    programaciones,
+    monthlyHoursLabel:
+      monthlyHours > 0
+        ? `${monthlyHours.toFixed(2)} h mensuales`
+        : `${monthlyCount} bloque${monthlyCount === 1 ? "" : "s"} mensuales`,
+  };
+});
+
+const agendaSelectedDayLabel = computed(() =>
+  agendaSelectedDate.value
+    ? new Date(`${agendaSelectedDate.value}T00:00:00`).toLocaleDateString("es-EC", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "2-digit",
+      })
+    : "Sin fecha seleccionada",
+);
+
+const agendaDayWeeklyItems = computed(() => (agendaSelectedDate.value
+  ? agendaCellItems.value[agendaSelectedDate.value]?.filter((item) => item.type === "weekly") || []
+  : []));
+
+const agendaDayMonthlyItems = computed<AgendaCalendarItem[]>(() => {
+  if (!agendaSelectedDate.value) return [];
+  const summary = agendaMonthlyHoursByDate.value[agendaSelectedDate.value];
+  if (!summary?.items?.length) return [];
+  return summary.items.map((item: any, index: number) => ({
+    key: `monthly-day-${item.id || index}-${agendaSelectedDate.value}`,
+    type: "monthly",
+    title: `${item.equipo_codigo || item.equipo_nombre || "Equipo"} · ${item.valor_crudo || "MPG"}`,
+    subtitle: item.procedimiento_codigo || item.procedimiento_nombre || item.tipo_mantenimiento || "Bloque mensual",
+    colorClass: "calendar-event--monthly",
+    raw: item,
+  }));
+});
+
+const agendaDayProgramaciones = computed(() => (agendaSelectedDate.value
+  ? agendaCellItems.value[agendaSelectedDate.value]?.filter((item) => item.type === "agenda") || []
+  : []));
+
+const agendaDayMonthlyHoursLabel = computed(() => {
+  if (!agendaSelectedDate.value) return "0.00 h mensuales";
+  const summary = agendaMonthlyHoursByDate.value[agendaSelectedDate.value];
+  if (!summary) return "0.00 h mensuales";
+  return summary.totalHours > 0
+    ? `${summary.totalHours.toFixed(2)} h programadas`
+    : `${summary.items.length} bloque${summary.items.length === 1 ? "" : "s"} mensuales`;
+});
 
 function chipColor(status: string) {
   if (status === "VENCIDA") return "error";
@@ -1606,6 +1928,10 @@ function eventClass(status: string) {
   if (status === "VENCIDA") return "calendar-event--danger";
   if (status === "PROXIMA") return "calendar-event--warning";
   return "calendar-event--normal";
+}
+
+function agendaCalendarEventClass(item: AgendaCalendarItem) {
+  return item?.colorClass || "calendar-event--normal";
 }
 
 function isMonthlyWeeklyAggregate(item: any) {
@@ -1661,6 +1987,85 @@ function fillMonthlyPaletteForm() {
   }
 }
 
+function getMonthPeriod(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthRange(date: Date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return {
+    start: formatDate(start),
+    end: formatDate(end),
+  };
+}
+
+function rangesOverlap(startA: string, endA: string, startB: string, endB: string) {
+  return !(endA < startB || startA > endB);
+}
+
+async function ensureMonthlyImportDetail(importId: string) {
+  const key = String(importId || "").trim();
+  if (!key) return null;
+  if (monthlyImportDetailCache.value[key]) return monthlyImportDetailCache.value[key];
+  const { data } = await api.get(`/kpi_maintenance/programaciones/mensuales/${key}`);
+  const payload = data?.data ?? null;
+  if (payload) {
+    monthlyImportDetailCache.value = {
+      ...monthlyImportDetailCache.value,
+      [key]: payload,
+    };
+  }
+  return payload;
+}
+
+async function ensureWeeklyScheduleDetail(scheduleId: string) {
+  const key = String(scheduleId || "").trim();
+  if (!key) return null;
+  if (weeklyScheduleDetailCache.value[key]) return weeklyScheduleDetailCache.value[key];
+  const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${key}`);
+  const payload = data?.data ?? null;
+  if (payload) {
+    weeklyScheduleDetailCache.value = {
+      ...weeklyScheduleDetailCache.value,
+      [key]: payload,
+    };
+  }
+  return payload;
+}
+
+async function loadAgendaMonthContext() {
+  const range = getMonthRange(currentMonth.value);
+  const targetPeriod = getMonthPeriod(currentMonth.value);
+  const monthlyMatches = monthlyImports.value.filter((item) => {
+    const start = String(item?.fecha_inicio || "").slice(0, 10);
+    const end = String(item?.fecha_fin || "").slice(0, 10);
+    if (!start || !end) return false;
+    return rangesOverlap(start, end, range.start, range.end);
+  });
+  const weeklyMatches = weeklySchedules.value.filter((item) => {
+    const start = String(item?.fecha_inicio || "").slice(0, 10);
+    const end = String(item?.fecha_fin || "").slice(0, 10);
+    if (!start || !end) return false;
+    return rangesOverlap(start, end, range.start, range.end);
+  });
+
+  try {
+    await Promise.all([
+      ...monthlyMatches
+        .map((item) => String(item?.id || "").trim())
+        .filter(Boolean)
+        .map((id) => ensureMonthlyImportDetail(id)),
+      ...weeklyMatches
+        .map((item) => String(item?.id || "").trim())
+        .filter(Boolean)
+        .map((id) => ensureWeeklyScheduleDetail(id)),
+    ]);
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || `No se pudo cargar el contexto de agenda ${targetPeriod}.`);
+  }
+}
+
 function getWeeklyItems(slotKey: string, date: string) {
   return weeklyGrid.value[slotKey]?.[date] || [];
 }
@@ -1706,6 +2111,12 @@ function openCreateForDate(date: string) {
   programacionSourceMode.value = "DINAMICA";
   programacionSourceOrigin.value = "MANUAL";
   dialog.value = true;
+}
+
+function openCreateFromAgendaDialog() {
+  if (!agendaSelectedDate.value) return;
+  agendaDayDialog.value = false;
+  openCreateForDate(agendaSelectedDate.value);
 }
 
 function openMonthlyProgramacionCreate() {
@@ -1842,6 +2253,8 @@ async function saveMonthlyCell() {
       selectedMonthlyId.value ? loadSelectedMonthly(selectedMonthlyId.value) : Promise.resolve(),
       loadAgendaRows(),
     ]);
+    monthlyImportDetailCache.value = {};
+    await loadAgendaMonthContext();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar el bloque mensual.");
   } finally {
@@ -1918,6 +2331,41 @@ function openEdit(item: any) {
   form.proxima_horas = item.proxima_horas ?? "";
   form.activo = item.activo !== false;
   dialog.value = true;
+}
+
+async function handleAgendaItemClick(item: AgendaCalendarItem) {
+  if (!item) return;
+  if (item.type === "agenda") {
+    agendaDayDialog.value = false;
+    openEdit(item.raw);
+    return;
+  }
+  if (item.type === "monthly") {
+    agendaDayDialog.value = false;
+    const monthlyRaw = item.raw?.items?.[0] || item.raw;
+    if (monthlyRaw) handleMonthlyItemClick(monthlyRaw);
+    return;
+  }
+  if (item.type === "weekly") {
+    agendaDayDialog.value = false;
+    if (item.raw?.cronograma_id) {
+      await openWeeklyEditorEditById(String(item.raw.cronograma_id));
+      openWeeklyCell(
+        `${item.raw?.hora_inicio || ""}-${item.raw?.hora_fin || ""}`,
+        item.raw?.fecha_actividad,
+        {
+          local_id: item.raw?.id || item.raw?.local_id || "",
+          ...item.raw,
+        },
+      );
+      return;
+    }
+    await openSelectedWeeklyCell(
+      `${item.raw?.hora_inicio || ""}-${item.raw?.hora_fin || ""}`,
+      item.raw?.fecha_actividad,
+      item.raw,
+    );
+  }
 }
 
 async function openEditProgramacionById(id: string) {
@@ -2020,6 +2468,8 @@ async function importMonthlyWorkbook() {
       applyMonthlySelectionByImportId(data.data.id);
       await loadSelectedMonthly(data.data.id);
     }
+    monthlyImportDetailCache.value = {};
+    await loadAgendaMonthContext();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo importar el Excel mensual.");
   } finally {
@@ -2052,6 +2502,8 @@ async function importWeeklyWorkbook() {
       applyWeeklySelectionByScheduleId(cronograma.id);
       selectedWeekly.value = cronograma;
     }
+    weeklyScheduleDetailCache.value = {};
+    await loadAgendaMonthContext();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo importar el Excel semanal.");
   } finally {
@@ -2414,6 +2866,8 @@ async function saveWeeklyEditor() {
     if (selectedMonthlyId.value) {
       await loadSelectedMonthly(selectedMonthlyId.value);
     }
+    weeklyScheduleDetailCache.value = {};
+    await loadAgendaMonthContext();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar el cronograma semanal.");
   } finally {
@@ -2481,6 +2935,8 @@ async function persistWeeklyEditor(options?: { showToast?: boolean }) {
     if (selectedMonthlyId.value) {
       await loadSelectedMonthly(selectedMonthlyId.value);
     }
+    weeklyScheduleDetailCache.value = {};
+    await loadAgendaMonthContext();
     return true;
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar el cronograma semanal.");
@@ -2494,6 +2950,16 @@ function changeMonth(offset: number) {
   const next = new Date(currentMonth.value);
   next.setMonth(next.getMonth() + offset);
   currentMonth.value = next;
+}
+
+function goToToday() {
+  const today = new Date();
+  currentMonth.value = new Date(today.getFullYear(), today.getMonth(), 1);
+}
+
+function openAgendaDay(date: string) {
+  agendaSelectedDate.value = date;
+  agendaDayDialog.value = true;
 }
 
 watch(selectedMonthlyPeriod, (period) => {
@@ -2514,9 +2980,34 @@ watch(
   },
 );
 
+watch(
+  currentMonth,
+  async (value) => {
+    agendaYear.value = value.getFullYear();
+    agendaMonth.value = value.getMonth() + 1;
+    await loadAgendaMonthContext();
+  },
+  { immediate: true },
+);
+
+watch(
+  [agendaYear, agendaMonth],
+  ([year, month]) => {
+    if (!year || !month) return;
+    const next = new Date(year, month - 1, 1);
+    if (
+      next.getFullYear() !== currentMonth.value.getFullYear() ||
+      next.getMonth() !== currentMonth.value.getMonth()
+    ) {
+      currentMonth.value = next;
+    }
+  },
+);
+
 onMounted(async () => {
   setWeeklyEditorWeek(weeklyPlannerAnchorDate.value);
   await loadAll();
+  await loadAgendaMonthContext();
 });
 </script>
 
@@ -2611,6 +3102,9 @@ onMounted(async () => {
   background: transparent;
   padding: 0;
 }
+.agenda-toolbar { justify-content: flex-end; }
+.agenda-toolbar__select { min-width: 120px; }
+.agenda-toolbar__select--month { min-width: 180px; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
 .calendar-weekday { font-size: 0.8rem; font-weight: 700; color: var(--chart-label); text-align: center; }
 .calendar-cell { min-height: 150px; border: 1px solid var(--surface-border); border-radius: 18px; padding: 10px; background: var(--chart-card-bg-strong); cursor: pointer; color: var(--app-text); }
@@ -2621,12 +3115,52 @@ onMounted(async () => {
 .calendar-event--normal { background: rgba(25, 118, 210, 0.12); border-color: rgba(25, 118, 210, 0.18); }
 .calendar-event--warning { background: rgba(251, 140, 0, 0.16); border-color: rgba(251, 140, 0, 0.22); }
 .calendar-event--danger { background: rgba(211, 47, 47, 0.16); border-color: rgba(211, 47, 47, 0.22); }
+.calendar-event--weekly { background: rgba(25, 118, 210, 0.16); border-color: rgba(25, 118, 210, 0.24); }
+.calendar-event--monthly { background: rgba(126, 87, 194, 0.16); border-color: rgba(126, 87, 194, 0.24); }
+.calendar-event__title,
+.agenda-day-item__title { display: block; font-weight: 600; }
+.calendar-event__subtitle,
+.agenda-day-item__subtitle { display: block; margin-top: 2px; font-size: 0.72rem; opacity: 0.78; }
+.agenda-day-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.agenda-day-section {
+  border-radius: 20px;
+}
+.agenda-day-list {
+  display: grid;
+  gap: 10px;
+}
+.agenda-day-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: var(--chart-card-bg);
+  color: var(--app-text);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+.agenda-day-item--weekly {
+  border-color: rgba(25, 118, 210, 0.24);
+}
+.agenda-day-item--monthly {
+  border-color: rgba(126, 87, 194, 0.24);
+}
+.agenda-day-item--agenda {
+  border-color: rgba(0, 150, 136, 0.24);
+}
 @media (max-width: 960px) {
   .matrix-table { min-width: 880px; }
   .matrix-table th, .matrix-table td { min-width: 90px; padding: 8px; }
   .matrix-table__sticky { min-width: 96px; }
   .matrix-table__sticky-2 { left: 96px; min-width: 156px; }
   .matrix-cell--weekly { min-width: 190px; }
+  .agenda-toolbar { justify-content: stretch; }
+  .agenda-toolbar__select,
+  .agenda-toolbar__select--month { min-width: 100%; }
   .calendar-grid { grid-template-columns: repeat(1, minmax(0, 1fr)); }
   .calendar-weekday { display: none; }
 }
