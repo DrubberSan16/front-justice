@@ -344,13 +344,14 @@ function conditionColor(value: unknown) {
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.45);
+  background: var(--chart-card-bg);
 }
 
 .report-table {
   border: 1px solid var(--surface-border);
   border-radius: 18px;
   overflow: hidden;
+  background: var(--chart-card-bg-strong);
 }
 
 .report-layout {

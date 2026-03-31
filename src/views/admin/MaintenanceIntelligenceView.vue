@@ -911,7 +911,7 @@ onMounted(() => {
   border: 1px solid var(--surface-border);
   border-radius: 18px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--chart-card-bg);
 }
 
 .schedule-grid {
@@ -931,8 +931,8 @@ onMounted(() => {
 .schedule-item {
   padding: 10px 12px;
   border-radius: 14px;
-  border: 1px solid rgba(31, 75, 122, 0.12);
-  background: rgba(31, 75, 122, 0.06);
+  border: 1px solid var(--chart-guide);
+  background: var(--chart-empty-bg);
   margin-bottom: 10px;
 }
 

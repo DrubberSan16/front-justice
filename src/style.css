@@ -20,6 +20,31 @@
   --surface-border: rgba(15, 23, 42, 0.09);
   --surface-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
   --field-background: rgba(248, 250, 252, 0.9);
+  --chart-card-bg: rgba(255, 255, 255, 0.55);
+  --chart-card-bg-strong: rgba(255, 255, 255, 0.78);
+  --chart-card-hover-border: rgba(31, 75, 122, 0.25);
+  --chart-card-hover-shadow: 0 16px 36px rgba(17, 35, 58, 0.12);
+  --chart-guide: rgba(31, 75, 122, 0.12);
+  --chart-axis: rgba(31, 75, 122, 0.35);
+  --chart-drop: rgba(31, 75, 122, 0.16);
+  --chart-line: #1f4b7a;
+  --chart-label: rgba(26, 34, 43, 0.72);
+  --chart-muted: rgba(26, 34, 43, 0.58);
+  --chart-hint: rgba(31, 75, 122, 0.75);
+  --chart-empty-bg: rgba(31, 75, 122, 0.06);
+  --chart-empty-text: rgba(26, 34, 43, 0.68);
+  --chart-table-active: rgba(31, 75, 122, 0.08);
+  --chart-dialog-header-bg:
+    radial-gradient(circle at top right, rgba(31, 75, 122, 0.14), transparent 46%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(250, 252, 255, 0.94));
+  --chart-dialog-shell-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 248, 255, 0.92)),
+    radial-gradient(circle at top, rgba(31, 75, 122, 0.08), transparent 62%);
+  --chart-detail-bg: rgba(255, 255, 255, 0.75);
+  --chart-dot-border: #ffffff;
+  --chart-success-soft: #daf2df;
+  --chart-warning-soft: #fdf1c7;
+  --chart-error-soft: #f8d7d3;
 }
 
 :root[data-theme="dark"] {
@@ -37,6 +62,31 @@
   --surface-border: rgba(148, 163, 184, 0.16);
   --surface-shadow: 0 24px 44px rgba(0, 0, 0, 0.34);
   --field-background: rgba(13, 28, 44, 0.92);
+  --chart-card-bg: rgba(12, 27, 43, 0.88);
+  --chart-card-bg-strong: rgba(14, 31, 49, 0.96);
+  --chart-card-hover-border: rgba(119, 174, 242, 0.42);
+  --chart-card-hover-shadow: 0 20px 42px rgba(0, 0, 0, 0.42);
+  --chart-guide: rgba(119, 174, 242, 0.18);
+  --chart-axis: rgba(180, 212, 248, 0.48);
+  --chart-drop: rgba(119, 174, 242, 0.24);
+  --chart-line: #8ac0ff;
+  --chart-label: rgba(237, 244, 255, 0.88);
+  --chart-muted: rgba(191, 209, 231, 0.72);
+  --chart-hint: rgba(160, 208, 255, 0.88);
+  --chart-empty-bg: rgba(119, 174, 242, 0.12);
+  --chart-empty-text: rgba(231, 240, 255, 0.84);
+  --chart-table-active: rgba(119, 174, 242, 0.14);
+  --chart-dialog-header-bg:
+    radial-gradient(circle at top right, rgba(119, 174, 242, 0.18), transparent 48%),
+    linear-gradient(180deg, rgba(16, 31, 48, 0.96), rgba(10, 22, 37, 0.98));
+  --chart-dialog-shell-bg:
+    linear-gradient(180deg, rgba(14, 31, 49, 0.98), rgba(9, 22, 36, 0.96)),
+    radial-gradient(circle at top, rgba(119, 174, 242, 0.1), transparent 62%);
+  --chart-detail-bg: rgba(16, 34, 53, 0.94);
+  --chart-dot-border: rgba(7, 17, 29, 0.92);
+  --chart-success-soft: #234f37;
+  --chart-warning-soft: #6b530f;
+  --chart-error-soft: #6c2b2b;
 }
 
 * {

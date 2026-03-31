@@ -687,7 +687,7 @@ function openDialog() {
   padding: 16px;
   border-radius: 20px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--chart-card-bg);
 }
 
 .comparison-chart--interactive {
@@ -701,8 +701,8 @@ function openDialog() {
 .comparison-chart--interactive:hover,
 .comparison-chart--interactive:focus-visible {
   transform: translateY(-2px);
-  border-color: rgba(31, 75, 122, 0.25);
-  box-shadow: 0 16px 36px rgba(17, 35, 58, 0.12);
+  border-color: var(--chart-card-hover-border);
+  box-shadow: var(--chart-card-hover-shadow);
   outline: none;
 }
 
@@ -724,12 +724,12 @@ function openDialog() {
 }
 
 .comparison-chart__guide {
-  stroke: rgba(31, 75, 122, 0.12);
+  stroke: var(--chart-guide);
   stroke-width: 1;
 }
 
 .comparison-chart__axis {
-  stroke: rgba(31, 75, 122, 0.35);
+  stroke: var(--chart-axis);
   stroke-width: 1.2;
 }
 
@@ -741,13 +741,13 @@ function openDialog() {
 }
 
 .comparison-chart__drop {
-  stroke: rgba(31, 75, 122, 0.14);
+  stroke: var(--chart-drop);
   stroke-width: 1;
   stroke-dasharray: 4 4;
 }
 
 .comparison-chart__dot {
-  fill: #ffffff;
+  fill: var(--chart-card-bg-strong);
   stroke-width: 2.4;
 }
 
@@ -756,15 +756,15 @@ function openDialog() {
 }
 
 .comparison-chart__dot--normal {
-  fill: #daf2df;
+  fill: var(--chart-success-soft);
 }
 
 .comparison-chart__dot--warning {
-  fill: #fdf1c7;
+  fill: var(--chart-warning-soft);
 }
 
 .comparison-chart__dot--alert {
-  fill: #f8d7d3;
+  fill: var(--chart-error-soft);
 }
 
 .comparison-chart__scale,
@@ -773,7 +773,7 @@ function openDialog() {
   justify-content: space-between;
   gap: 12px;
   font-size: 12px;
-  color: rgba(26, 34, 43, 0.72);
+  color: var(--chart-label);
 }
 
 .comparison-chart__legend {
@@ -791,7 +791,7 @@ function openDialog() {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: rgba(26, 34, 43, 0.76);
+  color: var(--chart-label);
 }
 
 .comparison-chart__legend-line {
@@ -804,8 +804,8 @@ function openDialog() {
 .comparison-chart__empty {
   padding: 24px;
   border-radius: 18px;
-  background: rgba(31, 75, 122, 0.06);
-  color: rgba(26, 34, 43, 0.68);
+  background: var(--chart-empty-bg);
+  color: var(--chart-empty-text);
   font-size: 14px;
 }
 
@@ -820,9 +820,7 @@ function openDialog() {
   padding: 20px 24px 12px;
   flex-wrap: wrap;
   border-bottom: 1px solid var(--surface-border);
-  background:
-    radial-gradient(circle at top right, rgba(31, 75, 122, 0.14), transparent 46%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(250, 252, 255, 0.94));
+  background: var(--chart-dialog-header-bg);
 }
 
 .comparison-chart__dialog-layout {
@@ -836,9 +834,7 @@ function openDialog() {
   overflow-x: auto;
   border-radius: 24px;
   border: 1px solid var(--surface-border);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 248, 255, 0.92)),
-    radial-gradient(circle at top, rgba(31, 75, 122, 0.08), transparent 62%);
+  background: var(--chart-dialog-shell-bg);
   padding: 12px;
 }
 
@@ -854,7 +850,7 @@ function openDialog() {
   padding: 16px;
   border-radius: 22px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--chart-detail-bg);
 }
 
 .comparison-chart__detail-row {
@@ -866,32 +862,32 @@ function openDialog() {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(26, 34, 43, 0.58);
+  color: var(--chart-muted);
 }
 
 .comparison-chart__detail-value {
   font-size: 15px;
   font-weight: 600;
-  color: #1a222b;
+  color: var(--app-text);
 }
 
 .comparison-chart__detail-empty {
   padding: 16px;
   border-radius: 18px;
-  background: rgba(31, 75, 122, 0.06);
-  color: rgba(26, 34, 43, 0.7);
+  background: var(--chart-empty-bg);
+  color: var(--chart-empty-text);
 }
 
 .comparison-chart__y-label,
 .comparison-chart__x-label,
 .comparison-chart__point-value {
   font-size: 12px;
-  fill: rgba(26, 34, 43, 0.72);
+  fill: var(--chart-label);
 }
 
 .comparison-chart__point-value {
   font-weight: 700;
-  fill: #1f4b7a;
+  fill: var(--chart-line);
 }
 
 .comparison-chart__table-wrap {
@@ -909,7 +905,7 @@ function openDialog() {
 }
 
 .comparison-chart__table-row--active {
-  background: rgba(31, 75, 122, 0.08);
+  background: var(--chart-table-active);
 }
 
 @media (max-width: 1100px) {

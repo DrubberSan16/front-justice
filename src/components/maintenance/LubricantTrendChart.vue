@@ -498,7 +498,7 @@ function openDialog() {
   padding: 16px;
   border-radius: 20px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--chart-card-bg);
 }
 
 .chart-card--interactive {
@@ -512,8 +512,8 @@ function openDialog() {
 .chart-card--interactive:hover,
 .chart-card--interactive:focus-visible {
   transform: translateY(-2px);
-  border-color: rgba(31, 75, 122, 0.25);
-  box-shadow: 0 16px 36px rgba(17, 35, 58, 0.12);
+  border-color: var(--chart-card-hover-border);
+  box-shadow: var(--chart-card-hover-shadow);
   outline: none;
 }
 
@@ -535,31 +535,31 @@ function openDialog() {
 }
 
 .chart-guide {
-  stroke: rgba(31, 75, 122, 0.12);
+  stroke: var(--chart-guide);
   stroke-width: 1;
 }
 
 .chart-axis {
-  stroke: rgba(31, 75, 122, 0.35);
+  stroke: var(--chart-axis);
   stroke-width: 1.2;
 }
 
 .chart-line {
   fill: none;
-  stroke: #1f4b7a;
+  stroke: var(--chart-line);
   stroke-width: 3;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .chart-drop {
-  stroke: rgba(31, 75, 122, 0.16);
+  stroke: var(--chart-drop);
   stroke-width: 1.2;
   stroke-dasharray: 4 4;
 }
 
 .chart-dot {
-  stroke: white;
+  stroke: var(--chart-dot-border);
   stroke-width: 2;
 }
 
@@ -594,19 +594,19 @@ function openDialog() {
   justify-content: space-between;
   gap: 12px;
   font-size: 12px;
-  color: rgba(26, 34, 43, 0.7);
+  color: var(--chart-label);
 }
 
 .chart-hint {
   font-size: 12px;
-  color: rgba(31, 75, 122, 0.75);
+  color: var(--chart-hint);
 }
 
 .chart-empty {
   padding: 24px;
   border-radius: 18px;
-  background: rgba(31, 75, 122, 0.06);
-  color: rgba(26, 34, 43, 0.68);
+  background: var(--chart-empty-bg);
+  color: var(--chart-empty-text);
   font-size: 14px;
 }
 
@@ -621,9 +621,7 @@ function openDialog() {
   padding: 20px 24px 12px;
   flex-wrap: wrap;
   border-bottom: 1px solid var(--surface-border);
-  background:
-    radial-gradient(circle at top right, rgba(31, 75, 122, 0.14), transparent 46%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(250, 252, 255, 0.94));
+  background: var(--chart-dialog-header-bg);
 }
 
 .chart-dialog-layout {
@@ -641,9 +639,7 @@ function openDialog() {
   overflow-x: auto;
   border-radius: 24px;
   border: 1px solid var(--surface-border);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 248, 255, 0.92)),
-    radial-gradient(circle at top, rgba(31, 75, 122, 0.08), transparent 62%);
+  background: var(--chart-dialog-shell-bg);
   padding: 12px;
 }
 
@@ -659,7 +655,7 @@ function openDialog() {
   padding: 16px;
   border-radius: 22px;
   border: 1px solid var(--surface-border);
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--chart-detail-bg);
 }
 
 .chart-point-detail-row {
@@ -671,32 +667,32 @@ function openDialog() {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: rgba(26, 34, 43, 0.58);
+  color: var(--chart-muted);
 }
 
 .chart-point-detail-value {
   font-size: 15px;
   font-weight: 600;
-  color: #1a222b;
+  color: var(--app-text);
 }
 
 .chart-point-empty {
   padding: 16px;
   border-radius: 18px;
-  background: rgba(31, 75, 122, 0.06);
-  color: rgba(26, 34, 43, 0.7);
+  background: var(--chart-empty-bg);
+  color: var(--chart-empty-text);
 }
 
 .chart-y-label,
 .chart-x-label,
 .chart-point-value {
   font-size: 12px;
-  fill: rgba(26, 34, 43, 0.72);
+  fill: var(--chart-label);
 }
 
 .chart-point-value {
   font-weight: 700;
-  fill: #1f4b7a;
+  fill: var(--chart-line);
 }
 
 .chart-legend {
@@ -711,7 +707,7 @@ function openDialog() {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: rgba(26, 34, 43, 0.76);
+  color: var(--chart-label);
 }
 
 .chart-legend-dot {
@@ -736,7 +732,7 @@ function openDialog() {
 }
 
 .chart-table-row--active {
-  background: rgba(31, 75, 122, 0.08);
+  background: var(--chart-table-active);
 }
 
 @media (max-width: 1100px) {
