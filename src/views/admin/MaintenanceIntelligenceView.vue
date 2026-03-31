@@ -26,6 +26,30 @@
 
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
 
+      <div class="d-flex align-center flex-wrap intelligence-filter-toolbar mt-4">
+        <v-select
+          v-model="selectedYear"
+          :items="yearOptions"
+          label="Año"
+          density="comfortable"
+          hide-details
+          variant="outlined"
+          class="intelligence-filter-toolbar__select"
+        />
+        <v-select
+          v-model="selectedMonth"
+          :items="monthOptions"
+          label="Mes"
+          density="comfortable"
+          hide-details
+          variant="outlined"
+          class="intelligence-filter-toolbar__select intelligence-filter-toolbar__select--month"
+        />
+        <v-chip label color="secondary" variant="tonal">
+          {{ selectedPeriodLabel }}
+        </v-chip>
+      </div>
+
       <v-row dense class="mt-3">
         <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="2">
           <v-card
@@ -177,7 +201,7 @@
               <div class="text-body-2 text-medium-emphasis">Control predictivo por compartimento, diagnostico y nivel de alerta.</div>
             </div>
             <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-              <v-chip label color="warning" variant="tonal">{{ analyses.length }} analisis</v-chip>
+              <v-chip label color="warning" variant="tonal">{{ filteredAnalyses.length }} analisis</v-chip>
               <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('analisis', 'excel')" @click="exportModule('analisis', 'excel')">Excel</v-btn>
               <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('analisis', 'pdf')" @click="exportModule('analisis', 'pdf')">PDF</v-btn>
             </div>
@@ -232,7 +256,7 @@
               <div class="text-body-2 text-medium-emphasis">Disponibilidad, MPG, combustible y componente por jornada.</div>
             </div>
             <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-              <v-chip label color="success" variant="tonal">{{ dailyReports.length }} reportes</v-chip>
+              <v-chip label color="success" variant="tonal">{{ filteredDailyReports.length }} reportes</v-chip>
               <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('reportes', 'excel')" @click="exportModule('reportes', 'excel')">Excel</v-btn>
               <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('reportes', 'pdf')" @click="exportModule('reportes', 'pdf')">PDF</v-btn>
             </div>
@@ -246,6 +270,9 @@
               <v-chip label color="success" variant="tonal">Unidades: {{ latestDailyReport.unidades?.length ?? 0 }}</v-chip>
               <v-chip label color="warning" variant="tonal">Combustible: {{ latestDailyReport.combustibles?.length ?? 0 }}</v-chip>
               <v-chip label color="error" variant="tonal">Componentes: {{ latestDailyReport.componentes?.length ?? 0 }}</v-chip>
+              <v-chip label color="primary" variant="tonal">Programado: {{ operationScheduleSummary.days }} días</v-chip>
+              <v-chip label color="secondary" variant="tonal">Actividades: {{ operationScheduleSummary.activities }}</v-chip>
+              <v-chip label color="info" variant="tonal">Horas: {{ operationScheduleSummary.hoursLabel }}</v-chip>
             </div>
 
             <v-row dense>
@@ -334,7 +361,7 @@
               <div class="text-body-2 text-medium-emphasis">Vista operativa semanal para mantenimiento, SSA y actividades de soporte.</div>
             </div>
             <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-              <v-chip label color="info" variant="tonal">{{ schedules.length }} cronogramas</v-chip>
+              <v-chip label color="info" variant="tonal">{{ filteredSchedules.length }} cronogramas</v-chip>
               <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('cronogramas', 'excel')" @click="exportModule('cronogramas', 'excel')">Excel</v-btn>
               <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('cronogramas', 'pdf')" @click="exportModule('cronogramas', 'pdf')">PDF</v-btn>
             </div>
@@ -451,7 +478,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
@@ -492,6 +519,9 @@ const procedures = ref<AnyRow[]>([]);
 const analyses = ref<AnyRow[]>([]);
 const schedules = ref<AnyRow[]>([]);
 const dailyReports = ref<AnyRow[]>([]);
+const now = new Date();
+const selectedYear = ref(now.getFullYear());
+const selectedMonth = ref(now.getMonth() + 1);
 const exportState = reactive<Record<string, boolean>>({});
 const router = useRouter();
 const { mdAndDown } = useDisplay();
@@ -513,9 +543,87 @@ const dashboardPeriodOptions = [
   { value: "PERSONALIZADO", title: "Personalizado" },
 ];
 
+const monthOptions = [
+  { value: 1, title: "Enero" },
+  { value: 2, title: "Febrero" },
+  { value: 3, title: "Marzo" },
+  { value: 4, title: "Abril" },
+  { value: 5, title: "Mayo" },
+  { value: 6, title: "Junio" },
+  { value: 7, title: "Julio" },
+  { value: 8, title: "Agosto" },
+  { value: 9, title: "Septiembre" },
+  { value: 10, title: "Octubre" },
+  { value: 11, title: "Noviembre" },
+  { value: 12, title: "Diciembre" },
+];
+
+const yearOptions = Array.from({ length: 101 }, (_, index) => 2000 + index)
+  .reverse()
+  .map((value) => ({ value, title: String(value) }));
+
 function unwrap<T = any>(payload: any, fallback: T): T {
   return (payload?.data ?? payload ?? fallback) as T;
 }
+
+function buildMonthRange(year: number, month: number) {
+  return {
+    start: new Date(year, month - 1, 1, 0, 0, 0, 0),
+    end: new Date(year, month, 0, 23, 59, 59, 999),
+  };
+}
+
+function parseDateValue(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isInSelectedPeriod(value: unknown) {
+  const parsed = parseDateValue(value);
+  if (!parsed) return false;
+  return parsed >= selectedPeriodRange.value.start && parsed <= selectedPeriodRange.value.end;
+}
+
+function overlapsSelectedPeriod(fromValue: unknown, toValue: unknown) {
+  const from = parseDateValue(fromValue);
+  const to = parseDateValue(toValue || fromValue);
+  if (!from && !to) return false;
+  const start = from ?? to;
+  const end = to ?? from;
+  if (!start || !end) return false;
+  return start <= selectedPeriodRange.value.end && end >= selectedPeriodRange.value.start;
+}
+
+function normalizeProcessType(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function parseDurationHours(startValue: unknown, endValue: unknown) {
+  const start = String(startValue || "").trim();
+  const end = String(endValue || "").trim();
+  const startMatch = /^(\d{1,2}):(\d{2})$/.exec(start);
+  const endMatch = /^(\d{1,2}):(\d{2})$/.exec(end);
+  if (!startMatch || !endMatch) return 0;
+  const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+  const endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return 0;
+  return (endMinutes - startMinutes) / 60;
+}
+
+const selectedPeriodRange = computed(() => buildMonthRange(selectedYear.value, selectedMonth.value));
+const selectedPeriodLabel = computed(() =>
+  new Intl.DateTimeFormat("es-EC", { month: "long", year: "numeric" }).format(
+    new Date(selectedYear.value, selectedMonth.value - 1, 1),
+  ),
+);
 
 function resetState() {
   summary.generated_at = undefined;
@@ -535,7 +643,9 @@ async function loadIntelligence() {
 
   try {
     const [summaryRes, proceduresRes, analysesRes, schedulesRes, reportsRes] = await Promise.all([
-      api.get("/kpi_maintenance/inteligencia/summary"),
+      api.get("/kpi_maintenance/inteligencia/summary", {
+        params: { year: selectedYear.value, month: selectedMonth.value },
+      }),
       api.get("/kpi_maintenance/inteligencia/procedimientos"),
       api.get("/kpi_maintenance/inteligencia/analisis-lubricante"),
       api.get("/kpi_maintenance/inteligencia/cronogramas-semanales"),
@@ -577,12 +687,62 @@ function dayOrder(value: unknown) {
   return index >= 0 ? index : order.length + 1;
 }
 
+const filteredAnalyses = computed(() =>
+  analyses.value.filter((item) => isInSelectedPeriod(item.fecha_reporte || item.fecha_muestra || item.created_at)),
+);
+
+const filteredSchedules = computed(() =>
+  schedules.value.filter((item) =>
+    overlapsSelectedPeriod(item.fecha_inicio || item.created_at, item.fecha_fin || item.fecha_inicio || item.created_at),
+  ),
+);
+
+const filteredDailyReports = computed(() =>
+  dailyReports.value.filter((item) => isInSelectedPeriod(item.fecha_reporte || item.created_at)),
+);
+
+const operationalScheduleItems = computed(() =>
+  filteredSchedules.value
+    .flatMap((schedule) =>
+      (schedule?.detalles ?? [])
+        .filter((detail: AnyRow) => {
+          const process = normalizeProcessType(detail?.tipo_proceso);
+          return ["OPERACION", "MPG"].includes(process) && isInSelectedPeriod(detail?.fecha_actividad || schedule?.fecha_inicio);
+        })
+        .map((detail: AnyRow) => ({
+          ...detail,
+          cronograma_codigo: schedule?.codigo || null,
+          fecha_resuelta: detail?.fecha_actividad || schedule?.fecha_inicio || null,
+          duracion_horas: parseDurationHours(detail?.hora_inicio, detail?.hora_fin),
+        })),
+    )
+    .sort(
+      (a, b) =>
+        (parseDateValue(a?.fecha_resuelta)?.getTime() ?? 0) -
+          (parseDateValue(b?.fecha_resuelta)?.getTime() ?? 0) ||
+        String(a?.hora_inicio || "").localeCompare(String(b?.hora_inicio || "")),
+    ),
+);
+
+const operationScheduleSummary = computed(() => {
+  const totalHours = operationalScheduleItems.value.reduce((acc, item) => acc + Number(item?.duracion_horas || 0), 0);
+  const uniqueDays = new Set(
+    operationalScheduleItems.value.map((item) => String(item?.fecha_resuelta || "").slice(0, 10)).filter(Boolean),
+  );
+  return {
+    days: uniqueDays.size,
+    activities: operationalScheduleItems.value.length,
+    totalHours,
+    hoursLabel: `${totalHours.toFixed(1)} h`,
+  };
+});
+
 function moduleReport(moduleKey: string) {
   if (moduleKey === "indicadores") return buildIndicatorsReport(summary);
   if (moduleKey === "procedimientos") return buildProceduresReport(procedures.value);
-  if (moduleKey === "analisis") return buildLubricantReport(analyses.value);
-  if (moduleKey === "reportes") return buildDailyReportsReport(dailyReports.value);
-  return buildWeeklyScheduleReport(schedules.value);
+  if (moduleKey === "analisis") return buildLubricantReport(filteredAnalyses.value);
+  if (moduleKey === "reportes") return buildDailyReportsReport(filteredDailyReports.value);
+  return buildWeeklyScheduleReport(filteredSchedules.value);
 }
 
 function exportKey(moduleKey: string, format: "excel" | "pdf") {
@@ -665,7 +825,7 @@ const generatedAtLabel = computed(() => {
 const breakdownItems = computed(() => summary.process_breakdown ?? []);
 
 const analysesInAlert = computed(
-  () => analyses.value.filter((item) => String(item.estado_diagnostico || "").toUpperCase() === "ALERTA").length,
+  () => filteredAnalyses.value.filter((item) => String(item.estado_diagnostico || "").toUpperCase() === "ALERTA").length,
 );
 
 const kpiCards = computed<IntelligenceCard[]>(() => [
@@ -680,7 +840,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
   {
     key: "analisis",
     label: "Analisis lubricante",
-    value: analyses.value.length,
+    value: filteredAnalyses.value.length,
     helper: `${analysesInAlert.value} en alerta`,
     icon: "mdi-flask-outline",
     routeName: "inteligencia-analisis-lubricante",
@@ -702,14 +862,14 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
   {
     key: "reportes",
     label: "Reportes diarios",
-    value: dailyReports.value.length,
-    helper: "Operacion, combustible y MPG",
+    value: operationScheduleSummary.value.days,
+    helper: `${operationScheduleSummary.value.activities} actividades OPERACION/MPG`,
     icon: "mdi-text-box-check-outline",
   },
   {
     key: "cronogramas",
     label: "Cronogramas",
-    value: schedules.value.length,
+    value: filteredSchedules.value.length,
     helper: "Planificacion semanal de campo",
     icon: "mdi-calendar-week-outline",
   },
@@ -768,21 +928,20 @@ const procedureDocumentCount = computed(
   () => new Set(procedures.value.map((item) => item.documento_referencia).filter(Boolean)).size,
 );
 
-const analysisPreview = computed(() => analyses.value.slice(0, 6));
 const analysisDetailCount = computed(() =>
-  analyses.value.reduce((acc, item) => acc + Number(item.detalles?.length ?? 0), 0),
+  filteredAnalyses.value.reduce((acc, item) => acc + Number(item.detalles?.length ?? 0), 0),
 );
 const analysisLubricantCount = computed(
   () =>
     new Set(
-      analyses.value
+      filteredAnalyses.value
         .map((item) => item.lubricante || item.equipo_codigo)
         .filter(Boolean),
     ).size,
 );
 const lubricantCatalogOptions = computed(() =>
   [...new Map(
-    analyses.value
+    filteredAnalyses.value
       .filter((item) => item.lubricante || item.equipo_codigo)
       .map((item) => {
         const lubricante = item.lubricante || item.equipo_codigo;
@@ -804,12 +963,14 @@ const lubricantCatalogOptions = computed(() =>
 );
 const dashboardCompartimentos = lubricantCompartments;
 
-const latestDailyReport = computed(() => dailyReports.value[0] ?? null);
+const analysisPreview = computed(() => filteredAnalyses.value.slice(0, 6));
+
+const latestDailyReport = computed(() => filteredDailyReports.value[0] ?? null);
 const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 6));
 const latestDailyFuel = computed(() => (latestDailyReport.value?.combustibles ?? []).slice(0, 4));
 const latestDailyComponents = computed(() => (latestDailyReport.value?.componentes ?? []).slice(0, 4));
 
-const latestSchedule = computed(() => schedules.value[0] ?? null);
+const latestSchedule = computed(() => filteredSchedules.value[0] ?? null);
 const scheduleWeek = computed(() => {
   const base = [
     { key: "LUNES", label: "Lunes", items: [] as AnyRow[] },
@@ -838,6 +999,10 @@ const scheduleWeek = computed(() => {
 });
 
 onMounted(() => {
+  loadIntelligence();
+});
+
+watch([selectedYear, selectedMonth], () => {
   loadIntelligence();
 });
 </script>
@@ -873,6 +1038,18 @@ onMounted(() => {
 .intelligence-wrap {
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.intelligence-filter-toolbar {
+  gap: 12px;
+}
+
+.intelligence-filter-toolbar__select {
+  min-width: 120px;
+}
+
+.intelligence-filter-toolbar__select--month {
+  min-width: 180px;
 }
 
 .indicator-grid {
@@ -957,6 +1134,13 @@ onMounted(() => {
   .breakdown-chip,
   .schedule-day {
     padding: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .intelligence-filter-toolbar__select,
+  .intelligence-filter-toolbar__select--month {
+    min-width: 100%;
   }
 }
 </style>

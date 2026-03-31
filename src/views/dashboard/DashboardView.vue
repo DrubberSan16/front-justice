@@ -31,6 +31,30 @@
 
           <v-alert v-if="error" type="warning" variant="tonal" class="mb-3" :text="error" />
 
+          <div class="d-flex align-center flex-wrap period-toolbar mb-4">
+            <v-select
+              v-model="selectedYear"
+              :items="yearOptions"
+              label="Año"
+              density="comfortable"
+              hide-details
+              variant="outlined"
+              class="period-toolbar__select"
+            />
+            <v-select
+              v-model="selectedMonth"
+              :items="monthOptions"
+              label="Mes"
+              density="comfortable"
+              hide-details
+              variant="outlined"
+              class="period-toolbar__select period-toolbar__select--month"
+            />
+            <v-chip label color="primary" variant="tonal">
+              {{ selectedPeriodLabel }}
+            </v-chip>
+          </div>
+
           <v-row dense>
             <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="3">
               <v-card rounded="lg" variant="outlined" class="pa-4 kpi-card h-100">
@@ -109,7 +133,7 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="text-subtitle-1 font-weight-bold">Órdenes de trabajo recientes</div>
-            <v-chip label color="primary" variant="tonal">{{ workOrders.length }} totales</v-chip>
+            <v-chip label color="primary" variant="tonal">{{ filteredWorkOrders.length }} totales</v-chip>
           </div>
 
           <v-list density="compact" class="bg-transparent pa-0">
@@ -181,10 +205,32 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="text-subtitle-1 font-weight-bold">Reporte diario de operacion</div>
-            <v-chip label color="success" variant="tonal">{{ latestDailyReport?.codigo || "Sin reporte" }}</v-chip>
+            <v-chip label color="success" variant="tonal">{{ operationScheduleSummary.days }} días programados</v-chip>
           </div>
 
-          <div v-if="latestDailyReport" class="dashboard-stack">
+          <div v-if="operationScheduleDays.length" class="dashboard-stack">
+            <div class="text-body-2 text-medium-emphasis">
+              {{ selectedPeriodLabel }}<span v-if="latestDailyReport?.codigo"> · Último reporte real {{ latestDailyReport.codigo }}</span>
+            </div>
+
+            <div class="summary-strip">
+              <v-chip size="small" label color="primary" variant="tonal">Actividades: {{ operationScheduleSummary.activities }}</v-chip>
+              <v-chip size="small" label color="secondary" variant="tonal">Horas: {{ operationScheduleSummary.hoursLabel }}</v-chip>
+              <v-chip size="small" label color="info" variant="tonal">Reportes reales: {{ filteredDailyReports.length }}</v-chip>
+            </div>
+
+            <v-list density="compact" class="bg-transparent pa-0">
+              <v-list-item
+                v-for="item in operationScheduleDays.slice(0, 6)"
+                :key="item.date"
+                :title="item.title"
+                :subtitle="item.subtitle"
+                class="px-0"
+              />
+            </v-list>
+          </div>
+
+          <div v-else-if="latestDailyReport" class="dashboard-stack">
             <div class="text-body-2 text-medium-emphasis">
               {{ latestDailyReport.fecha_reporte || "Sin fecha" }}<span v-if="latestDailyReport.turno"> · {{ latestDailyReport.turno }}</span><span v-if="latestDailyReport.locacion"> · {{ latestDailyReport.locacion }}</span>
             </div>
@@ -212,7 +258,7 @@
             </v-list>
           </div>
 
-          <div v-else class="text-body-2 text-medium-emphasis">Aun no existen reportes diarios cargados.</div>
+          <div v-else class="text-body-2 text-medium-emphasis">No hay programación semanal OPERACION/MPG ni reportes diarios para el período seleccionado.</div>
         </v-card>
       </v-col>
 
@@ -253,7 +299,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -280,6 +326,28 @@ const stockRows = ref<AnyRow[]>([]);
 const intelligenceSummary = ref<AnyRow>({});
 const weeklySchedules = ref<AnyRow[]>([]);
 const dailyReports = ref<AnyRow[]>([]);
+const now = new Date();
+const selectedYear = ref(now.getFullYear());
+const selectedMonth = ref(now.getMonth() + 1);
+
+const monthOptions = [
+  { value: 1, title: "Enero" },
+  { value: 2, title: "Febrero" },
+  { value: 3, title: "Marzo" },
+  { value: 4, title: "Abril" },
+  { value: 5, title: "Mayo" },
+  { value: 6, title: "Junio" },
+  { value: 7, title: "Julio" },
+  { value: 8, title: "Agosto" },
+  { value: 9, title: "Septiembre" },
+  { value: 10, title: "Octubre" },
+  { value: 11, title: "Noviembre" },
+  { value: 12, title: "Diciembre" },
+];
+
+const yearOptions = Array.from({ length: 101 }, (_, index) => 2000 + index)
+  .reverse()
+  .map((value) => ({ value, title: String(value) }));
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -315,6 +383,69 @@ function normalizeDayLabel(value: unknown) {
     .replace(/_/g, " ")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function normalizeProcessType(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function buildMonthRange(year: number, month: number) {
+  return {
+    start: new Date(year, month - 1, 1, 0, 0, 0, 0),
+    end: new Date(year, month, 0, 23, 59, 59, 999),
+  };
+}
+
+function parseDateValue(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseDurationHours(startValue: unknown, endValue: unknown) {
+  const start = String(startValue || "").trim();
+  const end = String(endValue || "").trim();
+  const startMatch = /^(\d{1,2}):(\d{2})$/.exec(start);
+  const endMatch = /^(\d{1,2}):(\d{2})$/.exec(end);
+  if (!startMatch || !endMatch) return 0;
+  const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+  const endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+  if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return 0;
+  return (endMinutes - startMinutes) / 60;
+}
+
+const selectedPeriodRange = computed(() => buildMonthRange(selectedYear.value, selectedMonth.value));
+const selectedPeriodLabel = computed(() =>
+  new Intl.DateTimeFormat("es-EC", { month: "long", year: "numeric" }).format(
+    new Date(selectedYear.value, selectedMonth.value - 1, 1),
+  ),
+);
+
+function isInSelectedPeriod(value: unknown) {
+  const parsed = parseDateValue(value);
+  if (!parsed) return false;
+  return parsed >= selectedPeriodRange.value.start && parsed <= selectedPeriodRange.value.end;
+}
+
+function overlapsSelectedPeriod(fromValue: unknown, toValue: unknown) {
+  const from = parseDateValue(fromValue);
+  const to = parseDateValue(toValue || fromValue);
+  if (!from && !to) return false;
+  const start = from ?? to;
+  const end = to ?? from;
+  if (!start || !end) return false;
+  return start <= selectedPeriodRange.value.end && end >= selectedPeriodRange.value.start;
+}
+
+function resolveWorkOrderDate(row: AnyRow) {
+  return row?.scheduled_start || row?.created_at || row?.updated_at || row?.closed_at || null;
 }
 
 async function listAll(endpoint: string, params: Record<string, any> = {}) {
@@ -361,7 +492,9 @@ async function loadDashboard() {
       listAll("/kpi_maintenance/work-orders"),
       listAll("/kpi_inventory/productos"),
       listAll("/kpi_inventory/stock-bodega"),
-      api.get("/kpi_maintenance/inteligencia/summary"),
+      api.get("/kpi_maintenance/inteligencia/summary", {
+        params: { year: selectedYear.value, month: selectedMonth.value },
+      }),
       api.get("/kpi_maintenance/inteligencia/cronogramas-semanales"),
       api.get("/kpi_maintenance/inteligencia/reportes-diarios"),
     ]);
@@ -389,10 +522,40 @@ const openAlerts = computed(() =>
   alertas.value.filter((item) => {
     const status = String(item?.estado || "").toUpperCase();
     return !["CERRADA", "RESUELTA", "CLOSED"].includes(status);
-  }),
+  }).filter((item) => isInSelectedPeriod(item?.fecha_generada || item?.created_at || item?.updated_at)),
 );
 
 const openAlertsCount = computed(() => openAlerts.value.length);
+const filteredWorkOrders = computed(() =>
+  workOrders.value.filter((item) => isInSelectedPeriod(resolveWorkOrderDate(item))),
+);
+const filteredDailyReports = computed(() =>
+  dailyReports.value.filter((item) => isInSelectedPeriod(item?.fecha_reporte || item?.created_at)),
+);
+const filteredWeeklySchedules = computed(() =>
+  weeklySchedules.value.filter((item) =>
+    overlapsSelectedPeriod(
+      item?.fecha_inicio || item?.created_at,
+      item?.fecha_fin || item?.fecha_inicio || item?.created_at,
+    ),
+  ),
+);
+const activeEquipmentCount = computed(() => {
+  const keys = new Set<string>();
+  for (const report of filteredDailyReports.value) {
+    for (const unit of report?.unidades ?? []) {
+      const key = String(unit?.equipo_id || unit?.equipo_codigo || "").trim();
+      if (key) keys.add(key);
+    }
+  }
+  for (const schedule of filteredWeeklySchedules.value) {
+    for (const detail of schedule?.detalles ?? []) {
+      const key = String(detail?.equipo_id || detail?.equipo_codigo || "").trim();
+      if (key) keys.add(key);
+    }
+  }
+  return keys.size;
+});
 
 const workOrdersByStatus = computed(() => {
   const summary = {
@@ -401,7 +564,7 @@ const workOrdersByStatus = computed(() => {
     CLOSED: 0,
   };
 
-  for (const item of workOrders.value) {
+  for (const item of filteredWorkOrders.value) {
     const key = normalizeWorkflowStatus(item?.status_workflow);
     if (key in summary) summary[key as keyof typeof summary] += 1;
   }
@@ -413,14 +576,14 @@ const kpiCards = computed(() => [
   {
     key: "equipos",
     label: "Equipos",
-    value: equipos.value.length,
-    helper: `${planes.value.length} planes cargados`,
+    value: activeEquipmentCount.value,
+    helper: `Con actividad en ${selectedPeriodLabel.value}`,
     icon: "mdi-cog-outline",
   },
   {
     key: "ots",
     label: "Órdenes de trabajo",
-    value: workOrders.value.length,
+    value: filteredWorkOrders.value.length,
     helper: `${workOrdersByStatus.value.IN_PROGRESS} en proceso`,
     icon: "mdi-clipboard-text-outline",
   },
@@ -447,7 +610,7 @@ const workOrderStatusCards = computed(() => [
 ]);
 
 const recentAlerts = computed(() =>
-  [...alertas.value]
+  [...openAlerts.value]
     .sort((a, b) => new Date(b?.fecha_generada || 0).getTime() - new Date(a?.fecha_generada || 0).getTime())
     .slice(0, 5)
     .map((item) => ({
@@ -458,7 +621,7 @@ const recentAlerts = computed(() =>
 );
 
 const recentWorkOrders = computed(() =>
-  [...workOrders.value]
+  [...filteredWorkOrders.value]
     .sort((a, b) => String(b?.code || "").localeCompare(String(a?.code || "")))
     .slice(0, 5)
     .map((item) => ({
@@ -518,12 +681,12 @@ const processIndicatorCards = computed(() => [
   },
 ]);
 
-const latestDailyReport = computed(() => dailyReports.value[0] ?? null);
+const latestDailyReport = computed(() => filteredDailyReports.value[0] ?? null);
 const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 4));
 const latestDailyFuel = computed(() => (latestDailyReport.value?.combustibles ?? []).slice(0, 3));
 const latestDailyComponents = computed(() => (latestDailyReport.value?.componentes ?? []).slice(0, 3));
 
-const latestWeeklySchedule = computed(() => weeklySchedules.value[0] ?? null);
+const latestWeeklySchedule = computed(() => filteredWeeklySchedules.value[0] ?? null);
 const latestWeeklyActivities = computed(() =>
   [...(latestWeeklySchedule.value?.detalles ?? [])]
     .sort(
@@ -534,6 +697,75 @@ const latestWeeklyActivities = computed(() =>
     .slice(0, 6),
 );
 
+const operationScheduleItems = computed(() =>
+  filteredWeeklySchedules.value
+    .flatMap((schedule) =>
+      (schedule?.detalles ?? [])
+        .filter((detail: AnyRow) => {
+          const process = normalizeProcessType(detail?.tipo_proceso);
+          return ["OPERACION", "MPG"].includes(process) && isInSelectedPeriod(detail?.fecha_actividad || schedule?.fecha_inicio);
+        })
+        .map((detail: AnyRow) => ({
+          ...detail,
+          cronograma_codigo: schedule?.codigo || null,
+          fecha_resuelta: detail?.fecha_actividad || schedule?.fecha_inicio || null,
+          duracion_horas: parseDurationHours(detail?.hora_inicio, detail?.hora_fin),
+        })),
+    )
+    .sort(
+      (a, b) =>
+        (parseDateValue(a?.fecha_resuelta)?.getTime() ?? 0) -
+          (parseDateValue(b?.fecha_resuelta)?.getTime() ?? 0) ||
+        String(a?.hora_inicio || "").localeCompare(String(b?.hora_inicio || "")),
+    ),
+);
+
+const operationScheduleDays = computed(() => {
+  const grouped = new Map<
+    string,
+    { date: string; count: number; totalHours: number; activities: string[]; equipments: string[] }
+  >();
+
+  for (const item of operationScheduleItems.value) {
+    const date = String(item?.fecha_resuelta || "").slice(0, 10);
+    if (!date) continue;
+    const current = grouped.get(date) ?? {
+      date,
+      count: 0,
+      totalHours: 0,
+      activities: [],
+      equipments: [],
+    };
+    current.count += 1;
+    current.totalHours += Number(item?.duracion_horas || 0);
+    if (item?.actividad) current.activities.push(String(item.actividad));
+    if (item?.equipo_codigo) current.equipments.push(String(item.equipo_codigo));
+    grouped.set(date, current);
+  }
+
+  return [...grouped.values()]
+    .sort((a, b) => (parseDateValue(a.date)?.getTime() ?? 0) - (parseDateValue(b.date)?.getTime() ?? 0))
+    .map((item) => ({
+      ...item,
+      title: new Intl.DateTimeFormat("es-EC", { day: "2-digit", month: "long", year: "numeric" }).format(
+        parseDateValue(item.date) ?? new Date(),
+      ),
+      subtitle: `${item.count} actividades · ${item.totalHours.toFixed(1)} h${
+        item.equipments.length ? ` · ${[...new Set(item.equipments)].slice(0, 3).join(", ")}` : ""
+      }`,
+    }));
+});
+
+const operationScheduleSummary = computed(() => {
+  const totalHours = operationScheduleItems.value.reduce((acc, item) => acc + Number(item?.duracion_horas || 0), 0);
+  return {
+    days: operationScheduleDays.value.length,
+    activities: operationScheduleItems.value.length,
+    totalHours,
+    hoursLabel: `${totalHours.toFixed(1)} h`,
+  };
+});
+
 const lastUpdatedLabel = computed(() => {
   if (!lastUpdatedAt.value) return "Sin datos";
   return lastUpdatedAt.value.toLocaleString();
@@ -542,11 +774,27 @@ const lastUpdatedLabel = computed(() => {
 onMounted(() => {
   loadDashboard();
 });
+
+watch([selectedYear, selectedMonth], () => {
+  loadDashboard();
+});
 </script>
 
 <style scoped>
 .dashboard-page {
   gap: 12px;
+}
+
+.period-toolbar {
+  gap: 12px;
+}
+
+.period-toolbar__select {
+  min-width: 120px;
+}
+
+.period-toolbar__select--month {
+  min-width: 180px;
 }
 
 .kpi-card {
@@ -587,5 +835,12 @@ onMounted(() => {
 
 .h-100 {
   height: 100%;
+}
+
+@media (max-width: 768px) {
+  .period-toolbar__select,
+  .period-toolbar__select--month {
+    min-width: 100%;
+  }
 }
 </style>
