@@ -38,6 +38,7 @@
       :headers="headers"
       :items="rows"
       :loading="loading"
+      loading-text="Obteniendo información del módulo..."
       :items-per-page="20"
       :item-props="getRowProps"
       class="elevation-0 enterprise-table maintenance-crud-table"

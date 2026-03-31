@@ -78,6 +78,7 @@
       :headers="headers"
       :items="users.filtered"
       :loading="users.loading"
+      loading-text="Obteniendo usuarios..."
       :items-per-page="itemsPerPage"
       class="elevation-0 enterprise-table users-table"
     >

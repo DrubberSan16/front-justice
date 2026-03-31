@@ -31,6 +31,7 @@
           :headers="planHeaders"
           :items="filteredPlans"
           :loading="loadingPlans"
+          loading-text="Obteniendo planes..."
           item-value="id"
           :items-per-page="10"
           class="elevation-0 enterprise-table planes-table"
@@ -83,6 +84,7 @@
           :items="tasks"
           item-value="_rowKey"
           :loading="loadingTasks"
+          loading-text="Obteniendo tareas del plan..."
           :items-per-page="5"
           class="elevation-0 enterprise-table plan-task-table"
         >

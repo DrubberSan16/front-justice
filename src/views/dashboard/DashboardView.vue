@@ -111,7 +111,8 @@
             <v-chip label color="warning" variant="tonal">{{ openAlertsCount }} abiertas</v-chip>
           </div>
 
-          <v-list density="compact" class="bg-transparent pa-0">
+          <LoadingTableState v-if="loading" message="Cargando alertas recientes..." :rows="4" :columns="1" />
+          <v-list v-else density="compact" class="bg-transparent pa-0">
             <v-list-item
               v-for="alert in recentAlerts"
               :key="alert.id"
@@ -136,7 +137,8 @@
             <v-chip label color="primary" variant="tonal">{{ filteredWorkOrders.length }} totales</v-chip>
           </div>
 
-          <v-list density="compact" class="bg-transparent pa-0">
+          <LoadingTableState v-if="loading" message="Cargando órdenes de trabajo..." :rows="4" :columns="1" />
+          <v-list v-else density="compact" class="bg-transparent pa-0">
             <v-list-item
               v-for="order in recentWorkOrders"
               :key="order.id"
@@ -161,7 +163,8 @@
             <v-chip label color="error" variant="tonal">{{ lowStockItems.length }} bajo mínimo</v-chip>
           </div>
 
-          <v-list density="compact" class="bg-transparent pa-0">
+          <LoadingTableState v-if="loading" message="Cargando inventario crítico..." :rows="4" :columns="1" />
+          <v-list v-else density="compact" class="bg-transparent pa-0">
             <v-list-item
               v-for="item in lowStockPreview"
               :key="item.id"
@@ -191,7 +194,8 @@
             <v-chip label color="secondary" variant="tonal">{{ processIndicatorCards.length }} KPI</v-chip>
           </div>
 
-          <div class="process-indicator-grid">
+          <LoadingTableState v-if="loading" message="Cargando indicadores de proceso..." :rows="4" :columns="2" />
+          <div v-else class="process-indicator-grid">
             <div v-for="item in processIndicatorCards" :key="item.key" class="process-indicator-item">
               <div class="text-caption text-medium-emphasis">{{ item.label }}</div>
               <div class="text-h6 font-weight-bold">{{ item.value }}</div>
@@ -208,7 +212,8 @@
             <v-chip label color="success" variant="tonal">{{ operationScheduleSummary.days }} días programados</v-chip>
           </div>
 
-          <div v-if="operationScheduleDays.length" class="dashboard-stack">
+          <LoadingTableState v-if="loading" message="Cargando reporte diario de operación..." :rows="4" :columns="1" />
+          <div v-else-if="operationScheduleDays.length" class="dashboard-stack">
             <div class="text-body-2 text-medium-emphasis">
               {{ selectedPeriodLabel }}<span v-if="latestDailyReport?.codigo"> · Último reporte real {{ latestDailyReport.codigo }}</span>
             </div>
@@ -269,7 +274,8 @@
             <v-chip label color="info" variant="tonal">{{ latestWeeklySchedule?.codigo || "Sin cronograma" }}</v-chip>
           </div>
 
-          <div v-if="latestWeeklySchedule" class="dashboard-stack">
+          <LoadingTableState v-if="loading" message="Cargando cronograma semanal..." :rows="4" :columns="1" />
+          <div v-else-if="latestWeeklySchedule" class="dashboard-stack">
             <div class="text-body-2 text-medium-emphasis">
               {{ latestWeeklySchedule.fecha_inicio || "Sin fecha" }} / {{ latestWeeklySchedule.fecha_fin || "Sin fecha" }}<span v-if="latestWeeklySchedule.locacion"> · {{ latestWeeklySchedule.locacion }}</span>
             </div>
@@ -304,6 +310,7 @@ import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 
 type AnyRow = Record<string, any>;
 

@@ -109,6 +109,7 @@
           :headers="headers"
           :items="filteredAlerts"
           :loading="loading"
+          loading-text="Obteniendo alertas operativas..."
           class="elevation-0 enterprise-table alerts-table"
           :items-per-page="15"
         >

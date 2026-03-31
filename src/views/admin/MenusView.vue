@@ -92,6 +92,7 @@
         :headers="headers"
         :items="rows"
         :loading="menus.loading"
+        loading-text="Obteniendo menúes..."
         :items-per-page="20"
         class="elevation-0 enterprise-table menus-table"
       >

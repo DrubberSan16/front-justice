@@ -155,6 +155,7 @@
           :headers="kardexHeaders"
           :items="kardexRows"
           :loading="loadingKardex"
+          loading-text="Obteniendo movimientos de kardex..."
           :items-per-page="20"
           class="elevation-0 enterprise-table"
         >

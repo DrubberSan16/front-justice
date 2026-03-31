@@ -144,7 +144,8 @@
             </template>
           </div>
 
-          <div class="matrix-wrap mt-4">
+          <LoadingTableState v-if="loadingAll" message="Cargando programación mensual..." :rows="5" :columns="5" class="mt-4" />
+          <div v-else class="matrix-wrap mt-4">
               <table class="matrix-table matrix-table--monthly">
                 <thead>
                   <tr>
@@ -200,6 +201,8 @@
             class="enterprise-table mt-5"
             :headers="monthlyDetailHeaders"
             :items="monthlyFilteredDetails"
+            :loading="loadingAll"
+            loading-text="Obteniendo detalles del mensual..."
             :items-per-page="12"
             @click:row="onMonthlyRowClick"
           >
@@ -381,7 +384,8 @@
             </template>
           </div>
 
-          <div class="matrix-wrap mt-4">
+          <LoadingTableState v-if="loadingAll" message="Cargando cronograma semanal..." :rows="5" :columns="4" class="mt-4" />
+          <div v-else class="matrix-wrap mt-4">
               <table class="matrix-table">
                 <thead>
                   <tr>
@@ -421,7 +425,14 @@
               </table>
             </div>
 
-          <v-data-table class="enterprise-table mt-5" :headers="weeklyDetailHeaders" :items="selectedWeekly?.detalles || []" :items-per-page="12" />
+          <v-data-table
+            class="enterprise-table mt-5"
+            :headers="weeklyDetailHeaders"
+            :items="selectedWeekly?.detalles || []"
+            :loading="loadingAll"
+            loading-text="Obteniendo detalles del cronograma..."
+            :items-per-page="12"
+          />
         </v-card>
       </v-window-item>
 
@@ -480,7 +491,8 @@
             </v-chip>
           </div>
 
-          <div class="calendar-grid mb-4">
+          <LoadingTableState v-if="agendaLoading" message="Cargando agenda de programaciones..." :rows="5" :columns="7" class="mb-4" />
+          <div v-else class="calendar-grid mb-4">
             <div v-for="day in weekDays" :key="day" class="calendar-weekday">{{ day }}</div>
             <div
               v-for="cell in monthCells"
@@ -515,7 +527,14 @@
 
           <v-divider class="mb-3" />
 
-          <v-data-table :headers="agendaHeaders" :items="agendaRows" :loading="agendaLoading" :items-per-page="10" class="elevation-0 enterprise-table">
+          <v-data-table
+            :headers="agendaHeaders"
+            :items="agendaRows"
+            :loading="agendaLoading"
+            loading-text="Obteniendo agenda programada..."
+            :items-per-page="10"
+            class="elevation-0 enterprise-table"
+          >
             <template #item.procedimiento_nombre="{ item }">
               <div class="font-weight-medium">{{ displayProgramacionName(item as any) }}</div>
               <div class="text-caption text-medium-emphasis">{{ (item as any).plan_codigo || (item as any).plan_nombre || "Plan interno" }}</div>
@@ -963,6 +982,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
+import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 

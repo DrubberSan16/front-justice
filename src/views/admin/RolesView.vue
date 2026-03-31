@@ -61,6 +61,7 @@
       :headers="headers"
       :items="roles.filtered"
       :loading="roles.loading"
+      loading-text="Obteniendo roles..."
       :items-per-page="itemsPerPage"
       class="elevation-0 enterprise-table roles-table"
     >

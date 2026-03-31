@@ -196,6 +196,7 @@
         :headers="groupHeaders"
         :items="filteredLubricantGroups"
         :loading="loading"
+        loading-text="Obteniendo análisis de lubricante..."
         :items-per-page="15"
         class="enterprise-table lubricant-groups-table"
       >

@@ -23,7 +23,14 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 table-enterprise enterprise-table">
+    <v-data-table
+      :headers="headers"
+      :items="rows"
+      :loading="loading"
+      loading-text="Obteniendo órdenes de trabajo..."
+      :items-per-page="20"
+      class="elevation-0 table-enterprise enterprise-table"
+    >
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
@@ -175,7 +182,13 @@
               class="mb-3"
               text="Las tareas se cargan automaticamente desde la plantilla MPG seleccionada y muestran sus requisitos operativos."
             />
-            <v-data-table :headers="taskHeaders" :items="taskRows" :loading="loadingDetails" class="elevation-0 enterprise-table">
+            <v-data-table
+              :headers="taskHeaders"
+              :items="taskRows"
+              :loading="loadingDetails"
+              loading-text="Obteniendo tareas de la orden..."
+              class="elevation-0 enterprise-table"
+            >
               <template #item.plan_id="{ item }">
                 {{ getPlanLabelForTask(item._raw ?? item) }}
               </template>
@@ -289,7 +302,13 @@
               </v-col>
             </v-row>
             <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar</v-btn></div>
-            <v-data-table :headers="attachmentHeaders" :items="attachmentRows" :loading="loadingDetails" class="elevation-0 enterprise-table">
+            <v-data-table
+              :headers="attachmentHeaders"
+              :items="attachmentRows"
+              :loading="loadingDetails"
+              loading-text="Obteniendo adjuntos de la orden..."
+              class="elevation-0 enterprise-table"
+            >
               <template #item.nombre="{ item }">
                 <a
                   href="#"
@@ -323,6 +342,8 @@
             <v-data-table
               :headers="consumoHeaders"
               :items="consumoRows"
+              :loading="loadingDetails"
+              loading-text="Obteniendo consumos de la orden..."
               density="comfortable"
               class="table-enterprise enterprise-table"
               :items-per-page="5"
@@ -416,6 +437,8 @@
             <v-data-table
               :headers="issueHeaders"
               :items="issueRows"
+              :loading="loadingDetails"
+              loading-text="Obteniendo salidas de materiales..."
               density="comfortable"
               class="table-enterprise enterprise-table"
               :items-per-page="5"

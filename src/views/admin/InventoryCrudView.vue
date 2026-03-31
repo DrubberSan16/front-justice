@@ -38,7 +38,14 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table :headers="headers" :items="rows" :loading="loading" :items-per-page="20" class="elevation-0 enterprise-table inventory-table">
+    <v-data-table
+      :headers="headers"
+      :items="rows"
+      :loading="loading"
+      loading-text="Obteniendo información del módulo..."
+      :items-per-page="20"
+      class="elevation-0 enterprise-table inventory-table"
+    >
       <template #item.actions="{ item }">
         <div class="responsive-actions">
           <v-btn

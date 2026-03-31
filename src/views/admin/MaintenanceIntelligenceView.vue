@@ -85,7 +85,8 @@
             <v-chip label color="secondary" variant="tonal">{{ processIndicatorRows.length }} indicadores</v-chip>
           </div>
 
-          <div class="indicator-grid">
+          <LoadingTableState v-if="loading" message="Cargando indicadores de proceso..." :rows="4" :columns="2" />
+          <div v-else class="indicator-grid">
             <div v-for="item in processIndicatorRows" :key="item.key" class="indicator-tile">
               <div class="text-caption text-medium-emphasis">{{ item.label }}</div>
               <div class="text-h6 font-weight-bold">{{ item.value }}</div>
@@ -96,7 +97,8 @@
           <v-divider class="my-4" />
 
           <div class="text-subtitle-2 font-weight-medium mb-2">Distribucion por proceso</div>
-          <div class="breakdown-grid">
+          <LoadingTableState v-if="loading" message="Cargando distribución por proceso..." :rows="3" :columns="2" />
+          <div v-else class="breakdown-grid">
             <div v-for="item in breakdownItems" :key="item.tipo_proceso" class="breakdown-chip">
               <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
               <div class="text-h6 font-weight-bold">{{ item.total }}</div>
@@ -118,7 +120,8 @@
             <v-chip label color="secondary" variant="tonal">{{ recentEvents.length }} eventos recientes</v-chip>
           </div>
 
-          <v-list density="comfortable" class="bg-transparent pa-0">
+          <LoadingTableState v-if="loading" message="Cargando eventos recientes..." :rows="4" :columns="1" />
+          <v-list v-else density="comfortable" class="bg-transparent pa-0">
             <v-list-item
               v-for="item in recentEvents"
               :key="item.id"
@@ -164,7 +167,8 @@
             <v-chip label color="success" variant="tonal">Documentos base: {{ procedureDocumentCount }}</v-chip>
           </div>
 
-          <v-table density="compact" class="report-table">
+          <LoadingTableState v-if="loading" message="Cargando plantillas MPG..." :rows="5" :columns="5" />
+          <v-table v-else density="compact" class="report-table">
             <thead>
               <tr>
                 <th>Codigo</th>
@@ -213,7 +217,8 @@
             <v-chip label color="success" variant="tonal">Lubricantes: {{ analysisLubricantCount }}</v-chip>
           </div>
 
-          <v-table density="compact" class="report-table">
+          <LoadingTableState v-if="loading" message="Cargando análisis de lubricante..." :rows="5" :columns="5" />
+          <v-table v-else density="compact" class="report-table">
             <thead>
               <tr>
                 <th>Codigo</th>
@@ -262,7 +267,8 @@
             </div>
           </div>
 
-          <div v-if="latestDailyReport">
+          <LoadingTableState v-if="loading" message="Cargando reporte diario de operación..." :rows="5" :columns="3" />
+          <div v-else-if="latestDailyReport">
             <div class="summary-strip mb-4">
               <v-chip label color="primary" variant="tonal">{{ latestDailyReport.codigo }}</v-chip>
               <v-chip label color="info" variant="tonal">{{ latestDailyReport.fecha_reporte }}</v-chip>
@@ -367,7 +373,8 @@
             </div>
           </div>
 
-          <div v-if="latestSchedule">
+          <LoadingTableState v-if="loading" message="Cargando cronograma semanal..." :rows="4" :columns="2" />
+          <div v-else-if="latestSchedule">
             <div class="summary-strip mb-4">
               <v-chip label color="primary" variant="tonal">{{ latestSchedule.codigo }}</v-chip>
               <v-chip label color="secondary" variant="tonal">{{ latestSchedule.locacion || "Sin locacion" }}</v-chip>
@@ -483,6 +490,7 @@ import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
+import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
 import {
   buildDailyReportsReport,
