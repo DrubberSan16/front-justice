@@ -118,6 +118,12 @@
           <v-chip size="small" color="secondary" variant="tonal">
             Escala comparativa 0% - 100%
           </v-chip>
+          <v-btn icon="mdi-magnify-minus-outline" variant="text" :disabled="zoomLevel <= MIN_ZOOM" @click="zoomOut" />
+          <v-chip size="small" color="info" variant="tonal">
+            Zoom {{ Math.round(zoomLevel * 100) }}%
+          </v-chip>
+          <v-btn icon="mdi-fit-to-page-outline" variant="text" :disabled="zoomLevel === 1" @click="resetZoom" />
+          <v-btn icon="mdi-magnify-plus-outline" variant="text" :disabled="zoomLevel >= MAX_ZOOM" @click="zoomIn" />
           <v-btn icon="mdi-close" variant="text" @click="dialog = false" />
         </div>
       </div>
@@ -189,6 +195,7 @@
                     @click.stop="selectPoint(point.key)"
                   />
                   <text
+                    v-if="shouldRenderPointValue(point)"
                     :x="point.x"
                     :y="point.y - 14"
                     class="comparison-chart__point-value"
@@ -202,6 +209,7 @@
               <text
                 v-for="category in detailChart.categories"
                 :key="`category-${category.key}`"
+                v-show="shouldRenderCategoryLabel(category.key)"
                 :x="category.x"
                 :y="detailChart.chartBottom + 22"
                 class="comparison-chart__x-label"
@@ -403,6 +411,10 @@ const dialog = ref(false);
 const { mdAndDown } = useDisplay();
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const selectedPointKey = ref<string | null>(null);
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 3;
+const ZOOM_STEP = 0.25;
+const zoomLevel = ref(1);
 
 const miniPadding: ChartPadding = {
   left: 44,
@@ -626,10 +638,13 @@ function buildChartModel(width: number, height: number, padding: ChartPadding) {
 
 const miniChart = computed(() => buildChartModel(440, 200, miniPadding));
 const detailWidth = computed(() =>
-  Math.max(1180, 180 + chartCategories.value.length * 92),
+  Math.round(Math.max(1180, 180 + chartCategories.value.length * 92) * zoomLevel.value),
+);
+const detailHeight = computed(() =>
+  Math.round(Math.max(460, 460 * Math.min(zoomLevel.value, 2))),
 );
 const detailChart = computed(() =>
-  buildChartModel(detailWidth.value, 460, detailPadding),
+  buildChartModel(detailWidth.value, detailHeight.value, detailPadding),
 );
 
 const allPoints = computed(() =>
@@ -669,6 +684,47 @@ watch(
   { immediate: true },
 );
 
+const categoryLabelStep = computed(() => {
+  if (zoomLevel.value >= 1.5 || detailChart.value.categories.length <= 8) return 1;
+  return Math.max(1, Math.ceil(detailChart.value.categories.length / 6));
+});
+
+function clampZoom(next: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(next.toFixed(2))));
+}
+
+function zoomIn() {
+  zoomLevel.value = clampZoom(zoomLevel.value + ZOOM_STEP);
+}
+
+function zoomOut() {
+  zoomLevel.value = clampZoom(zoomLevel.value - ZOOM_STEP);
+}
+
+function resetZoom() {
+  zoomLevel.value = 1;
+}
+
+function shouldRenderPointValue(point: PlottedPoint) {
+  return (
+    selectedPointKey.value === point.key ||
+    zoomLevel.value >= 2.1 ||
+    (chartSeries.value.length <= 3 && detailChart.value.categories.length <= 8)
+  );
+}
+
+function shouldRenderCategoryLabel(categoryKey: string) {
+  if (zoomLevel.value >= 1.5 || detailChart.value.categories.length <= 8) return true;
+  const index = detailChart.value.categories.findIndex((category) => category.key === categoryKey);
+  if (index === -1) return false;
+  const selected = selectedPoint.value?.categoryKey;
+  return (
+    index % categoryLabelStep.value === 0 ||
+    index === detailChart.value.categories.length - 1 ||
+    selected === categoryKey
+  );
+}
+
 function selectPoint(key: string) {
   selectedPointKey.value = key;
 }
@@ -678,6 +734,7 @@ function openDialog() {
   if (!selectedPointKey.value) {
     selectedPointKey.value = allPoints.value[allPoints.value.length - 1]?.key || null;
   }
+  zoomLevel.value = 1;
   dialog.value = true;
 }
 </script>
@@ -831,7 +888,7 @@ function openDialog() {
 }
 
 .comparison-chart__dialog-shell {
-  overflow-x: auto;
+  overflow: auto;
   border-radius: 24px;
   border: 1px solid var(--surface-border);
   background: var(--chart-dialog-shell-bg);
