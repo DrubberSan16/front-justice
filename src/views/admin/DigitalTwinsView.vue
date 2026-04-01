@@ -283,6 +283,77 @@
             </v-chip>
           </div>
 
+          <v-row dense class="mb-2">
+            <v-col cols="12" md="4">
+              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
+                <div class="text-subtitle-2 font-weight-bold mb-3">Contexto del equipo</div>
+                <div class="text-body-2"><strong>Código:</strong> {{ detail.snapshot.equipment?.code || detail.twin?.equipment_code || "No registrado" }}</div>
+                <div class="text-body-2 mt-1"><strong>Nombre real:</strong> {{ detail.snapshot.equipment?.display_name || detail.twin?.equipment_name || "No registrado" }}</div>
+                <div class="text-body-2 mt-1" v-if="detail.snapshot.equipment?.operational_name && detail.snapshot.equipment?.operational_name !== detail.snapshot.equipment?.display_name">
+                  <strong>Nombre operativo:</strong> {{ detail.snapshot.equipment?.operational_name }}
+                </div>
+                <div class="text-body-2 mt-1"><strong>Modelo:</strong> {{ detail.snapshot.equipment?.model || detail.twin?.equipment_model || "No registrado" }}</div>
+                <div class="text-body-2 mt-1"><strong>Marca:</strong> {{ detail.snapshot.equipment?.brand_name || "No registrada" }}</div>
+                <div class="text-body-2 mt-1"><strong>Estado:</strong> {{ detail.snapshot.equipment?.estado_operativo || "No registrado" }}</div>
+                <div class="text-body-2 mt-1"><strong>Criticidad:</strong> {{ detail.snapshot.equipment?.criticidad || "No registrada" }}</div>
+              </v-card>
+            </v-col>
+
+            <v-col cols="12" md="4">
+              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
+                <div class="text-subtitle-2 font-weight-bold mb-3">Lubricación y comparación</div>
+                <div class="text-body-2"><strong>Esperado:</strong> {{ detail.snapshot.lubricant?.expected_lubricant_code || detail.snapshot.equipment?.codigo_lubricante || "No definido" }}</div>
+                <div class="text-body-2 mt-1"><strong>Último analizado:</strong> {{ detail.snapshot.lubricant?.latest_lubricant || "Sin análisis" }}</div>
+                <div class="text-body-2 mt-1"><strong>Marca:</strong> {{ detail.snapshot.lubricant?.latest_lubricant_brand || "No registrada" }}</div>
+                <div class="text-body-2 mt-1"><strong>Informe:</strong> {{ detail.snapshot.lubricant?.latest_report_code || "Sin código" }}</div>
+                <div class="mt-3 d-flex align-center justify-space-between" style="gap: 8px; flex-wrap: wrap;">
+                  <div class="text-body-2"><strong>Estado:</strong> {{ detail.snapshot.lubricant?.latest_state || "SIN_ANALISIS" }}</div>
+                  <v-chip
+                    :color="lubricantMatchColor(detail.snapshot.lubricant?.match_status)"
+                    variant="tonal"
+                    size="small"
+                    label
+                  >
+                    {{ detail.snapshot.lubricant?.match_status || "SIN_REFERENCIA" }}
+                  </v-chip>
+                </div>
+              </v-card>
+            </v-col>
+
+            <v-col cols="12" md="4">
+              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
+                <div class="text-subtitle-2 font-weight-bold mb-3">Materiales e inventario</div>
+                <div class="text-body-2"><strong>Materiales sugeridos:</strong> {{ detail.snapshot.inventory?.total_materials ?? 0 }}</div>
+                <div class="text-body-2 mt-1"><strong>Con stock comprometido:</strong> {{ detail.snapshot.inventory?.low_stock_materials ?? 0 }}</div>
+                <div
+                  v-if="Array.isArray(detail.snapshot.inventory?.recommended_materials) && detail.snapshot.inventory?.recommended_materials.length"
+                  class="mt-3"
+                >
+                  <div
+                    v-for="material in (detail.snapshot.inventory?.recommended_materials || []).slice(0, 3)"
+                    :key="material.producto_id || `${material.codigo}-${material.nombre}`"
+                    class="mb-2"
+                  >
+                    <div class="font-weight-medium">{{ material.codigo || "Sin código" }} · {{ material.nombre || "Material" }}</div>
+                    <div class="text-caption text-medium-emphasis">
+                      Stock {{ material.stock_total ?? 0 }} · {{ material.stock_status || "SIN_STOCK" }}
+                      <span v-if="material.bodega_sugerida">
+                        · Bodega {{ material.bodega_sugerida.codigo || material.bodega_sugerida.nombre }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <v-alert
+                  v-else
+                  type="info"
+                  variant="tonal"
+                  density="compact"
+                  text="Todavía no hay materiales sugeridos para este equipo."
+                />
+              </v-card>
+            </v-col>
+          </v-row>
+
           <v-row dense>
             <v-col cols="12" lg="5">
               <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
@@ -335,6 +406,59 @@
                     </div>
                     <div class="mb-2">{{ insight.summary }}</div>
                     <div class="text-body-2 text-medium-emphasis">{{ insight.recommendation }}</div>
+                    <v-card
+                      v-if="insightSimilarEquipment(insight)"
+                      rounded="lg"
+                      variant="tonal"
+                      color="secondary"
+                      class="pa-3 mt-3"
+                    >
+                      <div class="text-caption text-uppercase mb-1">Equipo comparable</div>
+                      <div class="font-weight-bold">
+                        {{ insightSimilarEquipment(insight)?.equipment_code || "Sin código" }}
+                        <span v-if="insightSimilarEquipment(insight)?.equipment_name">
+                          · {{ insightSimilarEquipment(insight)?.equipment_name }}
+                        </span>
+                      </div>
+                      <div class="text-body-2 mt-1">
+                        {{ insightSimilarEquipment(insight)?.similarity_reason }}
+                      </div>
+                      <div class="text-caption text-medium-emphasis mt-1">
+                        Modelo: {{ insightSimilarEquipment(insight)?.equipment_model || "No registrado" }}
+                        <span v-if="insightSimilarEquipment(insight)?.health_score != null">
+                          · Salud {{ insightSimilarEquipment(insight)?.health_score }}%
+                        </span>
+                        <span v-if="insightSimilarEquipment(insight)?.risk_level">
+                          · Riesgo {{ insightSimilarEquipment(insight)?.risk_level }}
+                        </span>
+                      </div>
+                    </v-card>
+                    <div v-if="insightImprovementSteps(insight).length" class="mt-3">
+                      <div class="text-caption text-uppercase mb-1">Pasos de mejora</div>
+                      <ol class="improvement-list">
+                        <li v-for="(step, index) in insightImprovementSteps(insight)" :key="`${insight.id}-${index}`">
+                          {{ step }}
+                        </li>
+                      </ol>
+                    </div>
+                    <div v-if="insightRecommendedMaterials(insight).length" class="mt-3">
+                      <div class="text-caption text-uppercase mb-1">Materiales sugeridos</div>
+                      <div
+                        v-for="material in insightRecommendedMaterials(insight).slice(0, 4)"
+                        :key="material.producto_id || `${material.codigo}-${material.nombre}`"
+                        class="text-body-2 mb-2"
+                      >
+                        <div class="font-weight-medium">
+                          {{ material.codigo || "Sin código" }} · {{ material.nombre || "Material" }}
+                        </div>
+                        <div class="text-medium-emphasis">
+                          Stock {{ material.stock_total ?? 0 }} · {{ material.stock_status || "SIN_STOCK" }}
+                          <span v-if="material.bodega_sugerida">
+                            · Bodega {{ material.bodega_sugerida.codigo || material.bodega_sugerida.nombre }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </v-timeline-item>
                 </v-timeline>
               </v-card>
@@ -368,6 +492,27 @@ type TwinRow = {
   lubricant?: {
     latest_state?: string;
     latest_report_date?: string | null;
+    latest_report_code?: string | null;
+    latest_lubricant?: string | null;
+    latest_lubricant_brand?: string | null;
+    expected_lubricant_code?: string | null;
+    match_status?: string | null;
+  };
+  equipment?: {
+    code?: string | null;
+    operational_name?: string | null;
+    real_name?: string | null;
+    display_name?: string | null;
+    model?: string | null;
+    brand_name?: string | null;
+    criticidad?: string | null;
+    estado_operativo?: string | null;
+    codigo_lubricante?: string | null;
+  };
+  inventory?: {
+    total_materials?: number;
+    low_stock_materials?: number;
+    recommended_materials?: Array<Record<string, any>>;
   };
   snapshot?: TwinRow;
 };
@@ -491,6 +636,38 @@ function displaySignalValue(signal: any) {
   return `${value}${unit ? ` ${unit}` : ""}`;
 }
 
+function insightSimilarEquipment(insight: any) {
+  const payload = insight?.payload_json;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const similar = (payload as Record<string, any>).similar_equipment;
+  if (!similar || typeof similar !== "object" || Array.isArray(similar)) return null;
+  if (!similar.equipment_code && !similar.equipment_name) return null;
+  return similar;
+}
+
+function insightImprovementSteps(insight: any) {
+  const payload = insight?.payload_json;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  const steps = (payload as Record<string, any>).improvement_steps;
+  if (!Array.isArray(steps)) return [];
+  return steps.filter((step) => typeof step === "string" && step.trim().length > 0);
+}
+
+function insightRecommendedMaterials(insight: any) {
+  const payload = insight?.payload_json;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  const materials = (payload as Record<string, any>).recommended_materials;
+  if (!Array.isArray(materials)) return [];
+  return materials.filter((item) => item && typeof item === "object");
+}
+
+function lubricantMatchColor(value?: string | null) {
+  const normalized = String(value || "").toUpperCase();
+  if (normalized === "NO_COINCIDE") return "error";
+  if (normalized === "SIN_REFERENCIA" || normalized === "SIN_ANALISIS") return "warning";
+  return "success";
+}
+
 async function loadDashboard() {
   loading.value = true;
   error.value = null;
@@ -514,7 +691,20 @@ async function loadDashboard() {
 
 async function loadEquipmentOptions() {
   const { data } = await api.get("/kpi_process/digital-twins/equipment-options");
-  equipmentOptions.value = data;
+  equipmentOptions.value = Array.isArray(data)
+    ? data.map((item: any) => ({
+        ...item,
+        label:
+          [
+            item.codigo,
+            item.nombre_real || item.nombre,
+            item.modelo || null,
+            item.codigo_lubricante || null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || item.label,
+      }))
+    : [];
 }
 
 async function openCreate() {
@@ -573,9 +763,10 @@ function handleEquipmentSelected(value: string | null) {
   const selected = equipmentOptions.value.find((item) => item.id === value);
   if (!selected) return;
   form.equipment_code = selected.codigo || "";
-  form.equipment_name = selected.nombre || "";
+  form.equipment_name = selected.nombre_real || selected.nombre || "";
+  form.equipment_model = selected.modelo || form.equipment_model || "";
   if (!form.name.trim()) {
-    form.name = `Gemelo ${selected.codigo || selected.nombre}`;
+    form.name = `Gemelo ${selected.codigo || selected.nombre_real || selected.nombre}`;
   }
 }
 
@@ -739,6 +930,13 @@ onMounted(() => {
 
 .twin-kpi-card {
   min-height: 148px;
+}
+
+.improvement-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
 }
 
 @media (max-width: 960px) {
