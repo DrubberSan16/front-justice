@@ -150,6 +150,12 @@ export const router = createRouter({
           meta: { title: "Inteligencia Operativa", viewFile: "views/admin/MaintenanceIntelligenceView.vue" },
         },
         {
+          path: "gemelos-digitales",
+          name: "gemelos-digitales",
+          component: () => import("@/views/admin/DigitalTwinsView.vue"),
+          meta: { title: "Gemelos digitales", viewFile: "views/admin/DigitalTwinsView.vue" },
+        },
+        {
           path: "inteligencia/procedimientos",
           name: "inteligencia-procedimientos",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),
