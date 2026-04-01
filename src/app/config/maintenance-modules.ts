@@ -46,6 +46,21 @@ const statusField: MaintenanceField = {
   ],
 };
 
+const criticidadEquipoOptions = [
+  { value: "BAJA", title: "Baja" },
+  { value: "MEDIA", title: "Media" },
+  { value: "ALTA", title: "Alta" },
+  { value: "CRITICA", title: "Crítica" },
+];
+
+const estadoOperativoEquipoOptions = [
+  { value: "OPERATIVO", title: "Operativo" },
+  { value: "RESERVA", title: "Reserva" },
+  { value: "MPG", title: "MPG" },
+  { value: "CORRECTIVO", title: "Correctivo" },
+  { value: "BLOQUEADA", title: "Bloqueada" },
+];
+
 export const inventoryModules: MaintenanceModuleConfig[] = [
   {
     key: "sucursales",
@@ -161,8 +176,8 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "equipo_tipo_id", label: "Tipo de equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/tipo-equipo" } },
       { key: "location_id", label: "Ubicación", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/locaciones" } },
       { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
-      { key: "criticidad", label: "Criticidad", type: "text" },
-      { key: "estado_operativo", label: "Estado operativo", type: "text" },
+      { key: "criticidad", label: "Criticidad", type: "select", options: criticidadEquipoOptions },
+      { key: "estado_operativo", label: "Estado operativo", type: "select", options: estadoOperativoEquipoOptions },
       { key: "horometro_actual", label: "Horómetro actual", type: "number" },
     ],
   },
