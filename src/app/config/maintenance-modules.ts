@@ -77,9 +77,6 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "sucursal_id", label: "Sucursal", type: "select", required: true, relation: { endpoint: "/kpi_inventory/sucursales" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
-      { key: "nombre_real", label: "Nombre real del equipo", type: "text" },
-      { key: "modelo", label: "Modelo", type: "text" },
-      { key: "codigo_lubricante", label: "CÃ³digo lubricante", type: "text" },
       { key: "direccion", label: "Dirección", type: "text" },
       { key: "es_principal", label: "Es principal", type: "boolean", required: true },
     ],
@@ -176,6 +173,8 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     fields: [
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
+      { key: "nombre_real", label: "Nombre real del equipo", type: "text", required: true },
+      { key: "modelo", label: "Modelo", type: "text", required: true },
       { key: "equipo_tipo_id", label: "Tipo de equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/tipo-equipo" } },
       { key: "location_id", label: "Ubicación", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/locaciones" } },
       { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },

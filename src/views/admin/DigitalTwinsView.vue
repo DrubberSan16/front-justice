@@ -301,20 +301,24 @@
 
             <v-col cols="12" md="4">
               <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
-                <div class="text-subtitle-2 font-weight-bold mb-3">Lubricación y comparación</div>
-                <div class="text-body-2"><strong>Esperado:</strong> {{ detail.snapshot.lubricant?.expected_lubricant_code || detail.snapshot.equipment?.codigo_lubricante || "No definido" }}</div>
+                <div class="text-subtitle-2 font-weight-bold mb-3">Lubricación analizada</div>
                 <div class="text-body-2 mt-1"><strong>Último analizado:</strong> {{ detail.snapshot.lubricant?.latest_lubricant || "Sin análisis" }}</div>
                 <div class="text-body-2 mt-1"><strong>Marca:</strong> {{ detail.snapshot.lubricant?.latest_lubricant_brand || "No registrada" }}</div>
                 <div class="text-body-2 mt-1"><strong>Informe:</strong> {{ detail.snapshot.lubricant?.latest_report_code || "Sin código" }}</div>
-                <div class="mt-3 d-flex align-center justify-space-between" style="gap: 8px; flex-wrap: wrap;">
-                  <div class="text-body-2"><strong>Estado:</strong> {{ detail.snapshot.lubricant?.latest_state || "SIN_ANALISIS" }}</div>
+                <div class="text-body-2 mt-3"><strong>Estado:</strong> {{ detail.snapshot.lubricant?.latest_state || "SIN_ANALISIS" }}</div>
+                <div
+                  v-if="detail.snapshot.lubricant?.match_status && detail.snapshot.lubricant?.match_status !== 'NO_APLICA'"
+                  class="mt-2 d-flex align-center justify-space-between"
+                  style="gap: 8px; flex-wrap: wrap;"
+                >
+                  <div class="text-body-2"><strong>Consistencia:</strong></div>
                   <v-chip
                     :color="lubricantMatchColor(detail.snapshot.lubricant?.match_status)"
                     variant="tonal"
                     size="small"
                     label
                   >
-                    {{ detail.snapshot.lubricant?.match_status || "SIN_REFERENCIA" }}
+                    {{ detail.snapshot.lubricant?.match_status }}
                   </v-chip>
                 </div>
               </v-card>
@@ -699,7 +703,6 @@ async function loadEquipmentOptions() {
             item.codigo,
             item.nombre_real || item.nombre,
             item.modelo || null,
-            item.codigo_lubricante || null,
           ]
             .filter(Boolean)
             .join(" · ") || item.label,
