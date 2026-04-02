@@ -87,10 +87,10 @@
             <v-text-field v-model="headerForm.code" label="Code" variant="outlined" readonly />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isClosed || isEditingLockedFields" />
+            <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isReadOnlyWorkflow || isEditingLockedFields" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptions" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isClosed" />
+            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptions" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow" />
           </v-col>
           <v-col cols="12" md="4">
             <v-select
@@ -100,7 +100,7 @@
               item-value="value"
               label="Estado workflow"
               variant="outlined"
-              :disabled="isClosed"
+              :disabled="isReadOnlyWorkflow"
             />
           </v-col>
           <v-col cols="12" md="4">
@@ -112,7 +112,7 @@
               label="Plantilla MPG"
               clearable
               variant="outlined"
-              :disabled="isClosed || isEditingLockedFields"
+              :disabled="isReadOnlyWorkflow || isEditingLockedFields"
               hint="La plantilla define el checklist y requisitos de la OT."
               persistent-hint
             />
@@ -126,11 +126,11 @@
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isClosed || isEditingLockedFields" />
+            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isReadOnlyWorkflow || isEditingLockedFields" />
           </v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow :disabled="isClosed" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
           </v-row>
         </v-card>
 
@@ -168,7 +168,7 @@
                   color="primary"
                   variant="tonal"
                   prepend-icon="mdi-sync"
-                  :disabled="!headerForm.plan_id || isClosed"
+                  :disabled="!headerForm.plan_id || isReadOnlyWorkflow"
                   :loading="loadingTaskOptions"
                   @click="syncChecklistFromTemplate"
                 >
@@ -217,7 +217,7 @@
                     color="primary"
                     hide-details
                     inset
-                    :disabled="isClosed"
+                    :disabled="isReadOnlyWorkflow"
                     @update:model-value="setTaskBooleanValue(item._raw ?? item, $event)"
                   />
                   <v-text-field
@@ -228,7 +228,7 @@
                     density="compact"
                     variant="outlined"
                     hide-details
-                    :disabled="isClosed"
+                    :disabled="isReadOnlyWorkflow"
                     @update:model-value="setTaskNumericValue(item._raw ?? item, $event)"
                   />
                   <v-text-field
@@ -238,7 +238,7 @@
                     density="compact"
                     variant="outlined"
                     hide-details
-                    :disabled="isClosed"
+                    :disabled="isReadOnlyWorkflow"
                     @update:model-value="setTaskTextValue(item._raw ?? item, $event)"
                   />
                   <v-textarea
@@ -250,7 +250,7 @@
                     density="compact"
                     variant="outlined"
                     hide-details
-                    :disabled="isClosed"
+                    :disabled="isReadOnlyWorkflow"
                     @update:model-value="setTaskJsonValue(item._raw ?? item, $event)"
                   />
                   <div
@@ -268,7 +268,7 @@
                   density="compact"
                   variant="outlined"
                   hide-details
-                  :disabled="isClosed"
+                  :disabled="isReadOnlyWorkflow"
                   @update:model-value="setTaskObservation(item._raw ?? item, $event)"
                 />
               </template>
@@ -301,7 +301,7 @@
                 </div>
               </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isClosed" @click="createAttachment">Agregar</v-btn></div>
+            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isReadOnlyWorkflow" @click="createAttachment">Agregar</v-btn></div>
             <v-data-table
               :headers="attachmentHeaders"
               :items="attachmentRows"
@@ -324,14 +324,14 @@
           </v-window-item>
 
           <v-window-item value="consumos">
-            <v-row v-if="!isClosed" dense class="pt-2">
+            <v-row v-if="!isReadOnlyWorkflow" dense class="pt-2">
               <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
               <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="getWarehouseProductOptions(consumoForm.bodega_id)" item-title="title" item-value="value" label="Material" :disabled="!consumoForm.bodega_id" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col v-if="canViewCosts" cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" readonly /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
-            <div v-if="!isClosed" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
+            <div v-if="!isReadOnlyWorkflow" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
             <v-alert
               v-else
               type="info"
@@ -358,7 +358,7 @@
           </v-window-item>
 
           <v-window-item value="materiales">
-            <template v-if="!isClosed">
+            <template v-if="!isReadOnlyWorkflow">
               <v-row dense class="pt-2">
                 <v-col cols="12">
                   <div class="d-flex align-center justify-space-between mb-2" style="gap:8px; flex-wrap:wrap;">
@@ -421,7 +421,7 @@
               <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Guardar salida de materiales</v-btn></div>
             </template>
             <v-alert
-              v-if="isClosed"
+              v-if="isReadOnlyWorkflow"
               type="success"
               variant="tonal"
               class="mb-3"
@@ -612,8 +612,9 @@ const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.sta
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
+const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
 const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
-const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value) && consumoRows.value.length > 0);
+const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const isEditingLockedFields = computed(() => !!editingId.value);
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
@@ -1325,7 +1326,7 @@ async function openEdit(item: any) {
   headerForm.equipment_id = item.equipment_id ?? "";
   headerForm.maintenance_kind = item.maintenance_kind ?? "CORRECTIVO";
   const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
-  headerForm.status_workflow = initialWorkflow === "CLOSED" ? "CLOSED" : "IN_PROGRESS";
+  headerForm.status_workflow = initialWorkflow;
   headerForm.procedimiento_id = item.procedimiento_id ?? "";
   headerForm.plan_id = item.plan_id ?? "";
   taskForm.plan_id = headerForm.plan_id || "";
@@ -1336,7 +1337,7 @@ async function openEdit(item: any) {
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
   dialog.value = true;
   await loadDetailData();
-  if (!isClosed.value) {
+  if (!isReadOnlyWorkflow.value) {
     await syncChecklistFromTemplate(false);
   }
   ensureTabVisible();
@@ -1576,11 +1577,11 @@ async function saveAll() {
     await persistDraftTasks();
     await persistDraftAttachments();
 
-    if (normalizedWorkflow.value === "CLOSED") {
-      await saveHeader(false, false);
-    }
     await fetchWorkOrders();
     await loadDetailData();
+    if (normalizedWorkflow.value === "CLOSED") {
+      closingFlow.value = false;
+    }
     ensureTabVisible();
   } finally {
     savingHeader.value = false;
@@ -1652,7 +1653,7 @@ async function persistDraftAttachments() {
 }
 
 async function deleteTask(item: any) {
-  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (item?._isDraft) {
     taskRows.value = taskRows.value.filter((row) => row.id !== item.id);
     return;
@@ -1668,7 +1669,7 @@ async function deleteTask(item: any) {
 }
 
 async function createAttachment(showToast = true) {
-  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
   const draftId = `draft-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1692,7 +1693,7 @@ async function createAttachment(showToast = true) {
 }
 
 async function deleteAttachment(item: any) {
-  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (item?._isDraft) {
     attachmentRows.value = attachmentRows.value.filter((row) => row.id !== item.id);
     return;
@@ -1708,7 +1709,7 @@ async function deleteAttachment(item: any) {
 }
 
 async function createConsumo() {
-  if (isClosed.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
   if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad) {
     return ui.error("Bodega, material y cantidad son obligatorios.");
@@ -1737,7 +1738,7 @@ async function createConsumo() {
 }
 
 async function issueMaterials() {
-  if (isClosed.value && !closingFlow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
 
   const items = materialItems.value
