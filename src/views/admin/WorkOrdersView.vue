@@ -433,7 +433,7 @@
                     <v-col cols="12" md="5">
                       <v-select
                         v-model="item.producto_id"
-                        :items="getWarehouseProductOptions(item.bodega_id)"
+                        :items="getWarehouseReservedProductOptions(item.bodega_id)"
                         item-title="title"
                         item-value="value"
                         label="Material"
@@ -478,7 +478,7 @@
               type="info"
               variant="tonal"
               class="mb-3"
-              text="La emisión de materiales solo funciona si el backend ya creó reservas de stock. Si no existe esa reserva, la OT puede cerrarse sin emitir materiales desde esta pantalla."
+              text="La emisión de materiales se valida contra lo reservado en Consumos para esta OT. El selector prioriza materiales con cantidad pendiente por emitir."
             />
             <v-data-table
               :headers="issueHeaders"
@@ -713,7 +713,9 @@ const consumoHeaders = computed(() => {
   const base = [
     { title: "Bodega", key: "bodega_label" },
     { title: "Material", key: "producto_label" },
-    { title: "Cantidad", key: "cantidad" },
+    { title: "Reservado", key: "cantidad_reservada" },
+    { title: "Emitido", key: "cantidad_emitida" },
+    { title: "Pendiente", key: "cantidad_pendiente" },
   ];
   if (canViewCosts.value) {
     base.push(
@@ -807,11 +809,40 @@ function getWarehouseProductOptions(warehouseId: string) {
     .sort((a: any, b: any) => String(a.title).localeCompare(String(b.title)));
 }
 
+function getWarehouseReservedProductOptions(warehouseId: string) {
+  const warehouseKey = String(warehouseId || "");
+  const grouped = new Map<string, { value: string; title: string; pending: number }>();
+  for (const row of consumoRows.value) {
+    if (String(row?.bodega_id || "") !== warehouseKey) continue;
+    const productKey = String(row?.producto_id || "");
+    if (!productKey) continue;
+    const current = grouped.get(productKey) ?? {
+      value: productKey,
+      title: productNameMap.value[productKey] || productKey,
+      pending: 0,
+    };
+    current.pending += toPositiveNumber(row?.cantidad_pendiente);
+    grouped.set(productKey, current);
+  }
+  const reservedOptions = [...grouped.values()]
+    .filter((item) => item.pending > 0)
+    .map((item) => ({
+      value: item.value,
+      title: `${item.title} · Reservado pendiente: ${item.pending}`,
+    }))
+    .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+
+  return reservedOptions.length ? reservedOptions : getWarehouseProductOptions(warehouseId);
+}
+
 const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   ...item,
   producto_label: item?.producto_label || item?.producto_nombre || productNameMap.value[String(item?.producto_id || "")] || item?.producto_id || "-",
   bodega_label: item?.bodega_label || item?.bodega_nombre || warehouseNameMap.value[String(item?.bodega_id || "")] || item?.bodega_id || "-",
   cantidad: toPositiveNumber(item?.cantidad),
+  cantidad_reservada: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
+  cantidad_emitida: toPositiveNumber(item?.cantidad_emitida),
+  cantidad_pendiente: toPositiveNumber(item?.cantidad_pendiente ?? item?.cantidad),
   costo_unitario: toPositiveNumber(item?.costo_unitario),
   subtotal: toPositiveNumber(item?.subtotal ?? (toPositiveNumber(item?.cantidad) * toPositiveNumber(item?.costo_unitario))),
   observacion: item?.observacion || "-",
@@ -848,7 +879,7 @@ function resetMaterialProductIfInvalid(index: number) {
     current.producto_id = "";
     return;
   }
-  const exists = getWarehouseProductOptions(String(current.bodega_id)).some((option: any) => String(option.value) === String(current.producto_id || ""));
+  const exists = getWarehouseReservedProductOptions(String(current.bodega_id)).some((option: any) => String(option.value) === String(current.producto_id || ""));
   if (!exists) current.producto_id = "";
 }
 
