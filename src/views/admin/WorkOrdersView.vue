@@ -464,7 +464,16 @@
                 </v-col>
                 <v-col cols="12"><v-text-field v-model="materialsForm.observacion" label="Observación" variant="outlined" /></v-col>
               </v-row>
-              <div class="d-flex justify-end mb-3"><v-btn color="primary" @click="issueMaterials">Guardar salida de materiales</v-btn></div>
+              <div class="d-flex justify-end mb-3">
+                <v-btn
+                  color="primary"
+                  :loading="issuingMaterials"
+                  :disabled="issuingMaterials"
+                  @click="issueMaterials"
+                >
+                  Guardar salida de materiales
+                </v-btn>
+              </div>
             </template>
             <v-alert
               v-if="isReadOnlyWorkflow"
@@ -540,6 +549,7 @@ const auth = useAuthStore();
 const loading = ref(false);
 const loadingDetails = ref(false);
 const savingHeader = ref(false);
+const issuingMaterials = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
 const records = ref<any[]>([]);
@@ -2163,6 +2173,7 @@ async function createConsumo() {
 }
 
 async function issueMaterials() {
+  if (issuingMaterials.value) return;
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
 
@@ -2187,6 +2198,7 @@ async function issueMaterials() {
   };
 
   try {
+    issuingMaterials.value = true;
     await api.post(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, payload);
     materialItems.value = [newMaterialItem()];
     materialsForm.observacion = "";
@@ -2195,6 +2207,8 @@ async function issueMaterials() {
     ui.success("Salida de materiales registrada.");
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo emitir materiales.");
+  } finally {
+    issuingMaterials.value = false;
   }
 }
 
