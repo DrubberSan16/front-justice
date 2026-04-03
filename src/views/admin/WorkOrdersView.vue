@@ -241,6 +241,49 @@
                     :disabled="isReadOnlyWorkflow"
                     @update:model-value="setTaskTextValue(item._raw ?? item, $event)"
                   />
+                  <template v-else-if="isTaskEvidenceField(item._raw ?? item)">
+                    <div class="task-evidence-stack">
+                      <div
+                        v-for="requirement in getTaskEvidenceRequirements(item._raw ?? item)"
+                        :key="`${(item._raw ?? item).id}-${requirement}`"
+                        class="task-evidence-group"
+                      >
+                        <div class="text-caption font-weight-medium mb-1">
+                          {{ getTaskEvidenceRequirementLabel(requirement) }}
+                        </div>
+                        <v-file-input
+                          :key="getTaskEvidenceInputKey(item._raw ?? item, requirement)"
+                          :label="`Subir ${getTaskEvidenceRequirementLabel(requirement).toLowerCase()}`"
+                          density="compact"
+                          variant="outlined"
+                          hide-details
+                          multiple
+                          prepend-icon="mdi-paperclip"
+                          :accept="getTaskEvidenceAccept(requirement)"
+                          :disabled="isReadOnlyWorkflow"
+                          @update:model-value="handleTaskEvidenceFiles(item._raw ?? item, requirement, $event)"
+                        />
+                        <div
+                          v-if="getTaskEvidenceEntries(item._raw ?? item, requirement).length"
+                          class="d-flex flex-wrap mt-2"
+                          style="gap: 6px;"
+                        >
+                          <v-chip
+                            v-for="attachment in getTaskEvidenceEntries(item._raw ?? item, requirement)"
+                            :key="getTaskEvidenceEntryKey(attachment)"
+                            size="small"
+                            color="secondary"
+                            variant="tonal"
+                            closable
+                            @click="openTaskEvidenceAttachment(attachment)"
+                            @click:close="removeTaskEvidenceAttachment(item._raw ?? item, attachment)"
+                          >
+                            {{ attachment.nombre || attachment.name || attachment.attachment_id || "Adjunto" }}
+                          </v-chip>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
                   <v-textarea
                     v-else
                     :model-value="getTaskJsonText(item._raw ?? item)"
@@ -309,6 +352,9 @@
               loading-text="Obteniendo adjuntos de la orden..."
               class="elevation-0 enterprise-table"
             >
+              <template #item.origen="{ item }">
+                {{ getAttachmentOriginLabel(item._raw ?? item) }}
+              </template>
               <template #item.nombre="{ item }">
                 <a
                   href="#"
@@ -521,6 +567,7 @@ const loadingTaskOptions = ref(false);
 const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
 const planTaskCatalogByPlan = ref<Record<string, any[]>>({});
 const procedureCatalog = ref<any[]>([]);
+const taskEvidenceInputKeys = ref<Record<string, number>>({});
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -657,6 +704,7 @@ function parseValorJson(valorJson: unknown) {
 const attachmentHeaders = [
   { title: "ID", key: "id" },
   { title: "Tipo", key: "tipo" },
+  { title: "Origen", key: "origen", sortable: false },
   { title: "Nombre", key: "nombre" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -933,6 +981,129 @@ function normalizeTaskFieldType(value: unknown) {
   return "BOOLEAN";
 }
 
+function normalizeEvidenceKind(value: unknown) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (["IMAGEN", "IMAGE", "FOTO", "PHOTO"].includes(raw)) return "IMAGEN";
+  if (["DOCUMENTO", "DOCUMENT", "DOC", "PDF"].includes(raw)) return "DOCUMENTO";
+  if (["VIDEO"].includes(raw)) return "VIDEO";
+  return raw || "ARCHIVO";
+}
+
+function getTaskEvidenceRequirements(task: any): string[] {
+  const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
+  const meta = definition?.meta ?? task?.task_meta ?? {};
+  const evidencias: string[] = Array.isArray(meta?.evidencias_requeridas)
+    ? meta.evidencias_requeridas
+      .map((value: unknown) => normalizeEvidenceKind(value))
+      .filter((value: string) => Boolean(value))
+    : [];
+  if (evidencias.length) return [...new Set(evidencias)];
+  if (meta?.requiere_evidencia) return ["ARCHIVO"];
+  return [];
+}
+
+function getTaskEvidenceRequirementLabel(requirement: string) {
+  const normalized = normalizeEvidenceKind(requirement);
+  if (normalized === "IMAGEN") return "Imagen";
+  if (normalized === "DOCUMENTO") return "Documento";
+  if (normalized === "VIDEO") return "Video";
+  return "Archivo";
+}
+
+function getTaskEvidenceAccept(requirement: string) {
+  const normalized = normalizeEvidenceKind(requirement);
+  if (normalized === "IMAGEN") return "image/*";
+  if (normalized === "DOCUMENTO") {
+    return [
+      ".pdf",
+      ".doc",
+      ".docx",
+      ".xls",
+      ".xlsx",
+      ".ppt",
+      ".pptx",
+      ".txt",
+      ".csv",
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/plain",
+      "text/csv",
+    ].join(",");
+  }
+  if (normalized === "VIDEO") return "video/*";
+  return undefined;
+}
+
+function getTaskJsonObject(task: any): Record<string, any> {
+  if (task?.valor_json && typeof task.valor_json === "object" && !Array.isArray(task.valor_json)) {
+    return { ...(task.valor_json as Record<string, any>) };
+  }
+  const raw = typeof task?._json_text === "string" ? task._json_text.trim() : "";
+  if (!raw) {
+    return {
+      evidencias_requeridas: getTaskEvidenceRequirements(task),
+      adjuntos: [],
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return {
+        ...(parsed as Record<string, any>),
+        evidencias_requeridas: getTaskEvidenceRequirements(task),
+      };
+    }
+  } catch {
+    // fallback handled by JSON validation elsewhere
+  }
+  return {
+    evidencias_requeridas: getTaskEvidenceRequirements(task),
+    adjuntos: [],
+  };
+}
+
+function setTaskJsonObject(task: any, value: Record<string, unknown>) {
+  task.valor_json = value;
+  task._json_text = JSON.stringify(value, null, 2);
+  markTaskDirty(task);
+}
+
+function isTaskEvidenceField(task: any) {
+  return getTaskFieldType(task) === "JSON" && getTaskEvidenceRequirements(task).length > 0;
+}
+
+function getTaskEvidenceEntries(task: any, requirement?: string): any[] {
+  const payload = getTaskJsonObject(task);
+  const legacyEvidence = (payload as any)?.evidencia;
+  const adjuntos: any[] = Array.isArray(payload?.adjuntos)
+    ? payload.adjuntos
+    : legacyEvidence
+      ? [legacyEvidence]
+      : [];
+  const normalizedRequirement = requirement ? normalizeEvidenceKind(requirement) : "";
+  return adjuntos.filter((entry: any) => {
+    if (!normalizedRequirement) return true;
+    return normalizeEvidenceKind(entry?.evidence_kind || entry?.tipo) === normalizedRequirement;
+  });
+}
+
+function getTaskEvidenceEntryKey(entry: any) {
+  return String(entry?.draft_attachment_id || entry?.attachment_id || entry?.nombre || Math.random());
+}
+
+function getTaskEvidenceInputKey(task: any, requirement: string) {
+  const baseKey = `${String(task?.id || task?.tarea_id || "task")}:${normalizeEvidenceKind(requirement)}`;
+  return `${baseKey}:${taskEvidenceInputKeys.value[baseKey] ?? 0}`;
+}
+
+function bumpTaskEvidenceInputKey(task: any, requirement: string) {
+  const baseKey = `${String(task?.id || task?.tarea_id || "task")}:${normalizeEvidenceKind(requirement)}`;
+  taskEvidenceInputKeys.value[baseKey] = (taskEvidenceInputKeys.value[baseKey] ?? 0) + 1;
+}
+
 function getTaskFieldType(task: any) {
   const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
   return normalizeTaskFieldType(
@@ -953,11 +1124,10 @@ function markTaskDirty(task: any) {
 }
 
 function getTaskJsonText(task: any) {
-  if (typeof task?._json_text === "string") return task._json_text;
-  if (task?.valor_json && typeof task.valor_json === "object") {
-    return JSON.stringify(task.valor_json, null, 2);
+  if (!isTaskEvidenceField(task) && typeof task?._json_text === "string" && task._json_text.trim()) {
+    return task._json_text;
   }
-  return "";
+  return JSON.stringify(getTaskJsonObject(task), null, 2);
 }
 
 function setTaskBooleanValue(task: any, value: unknown) {
@@ -983,7 +1153,159 @@ function setTaskObservation(task: any, value: unknown) {
 
 function setTaskJsonValue(task: any, value: unknown) {
   task._json_text = String(value ?? "");
+  try {
+    const parsed = JSON.parse(task._json_text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      task.valor_json = parsed;
+    }
+  } catch {
+    // keep raw text so validation can surface the issue on save
+  }
   markTaskDirty(task);
+}
+
+function getAttachmentOriginLabel(attachment: any) {
+  const meta = attachment?.meta ?? {};
+  const source = String(meta?.source || "").trim().toUpperCase();
+  if (source === "TASK_EVIDENCE") {
+    const taskLabel = String(meta?.task_label || meta?.tarea_label || "").trim();
+    const evidenceKind = String(meta?.evidence_kind || "").trim();
+    return [taskLabel || "Tarea", evidenceKind ? `· ${getTaskEvidenceRequirementLabel(evidenceKind)}` : ""]
+      .join(" ")
+      .trim();
+  }
+  return "OT general";
+}
+
+function buildTaskEvidenceAttachmentMeta(task: any, requirement: string) {
+  return {
+    source: "TASK_EVIDENCE",
+    plan_id: task?.plan_id || null,
+    tarea_id: task?.tarea_id || null,
+    task_label: getTaskLabelForTask(task),
+    plan_label: getPlanLabelForTask(task),
+    evidence_kind: normalizeEvidenceKind(requirement),
+  };
+}
+
+function buildTaskEvidenceAttachmentRef(draftAttachment: any, requirement: string) {
+  return {
+    draft_attachment_id: draftAttachment.id,
+    attachment_id: null,
+    evidence_kind: normalizeEvidenceKind(requirement),
+    nombre: draftAttachment.nombre,
+    mime_type: draftAttachment.mime_type || null,
+    tipo: draftAttachment.tipo || "EVIDENCIA",
+  };
+}
+
+async function handleTaskEvidenceFiles(task: any, requirement: string, value: File | File[] | null) {
+  if (isReadOnlyWorkflow.value) {
+    ui.error("La OT está cerrada y no permite edición.");
+    return;
+  }
+
+  const files = Array.isArray(value) ? value.filter(Boolean) : value ? [value] : [];
+  if (!files.length) return;
+
+  const payload = getTaskJsonObject(task);
+  const attachments: any[] = Array.isArray(payload.adjuntos) ? [...payload.adjuntos] : [];
+
+  for (const file of files) {
+    const base64 = await fileToBase64(file);
+    const draftId = `draft-task-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const draftAttachment = {
+      id: draftId,
+      tipo: "EVIDENCIA",
+      nombre: file.name,
+      contenido_base64: base64,
+      mime_type: file.type || "application/octet-stream",
+      preview_url: URL.createObjectURL(file),
+      meta: buildTaskEvidenceAttachmentMeta(task, requirement),
+      _isDraft: true,
+      _raw: null,
+    };
+    attachmentRows.value.unshift(draftAttachment);
+    attachments.push(buildTaskEvidenceAttachmentRef(draftAttachment, requirement));
+  }
+
+  setTaskJsonObject(task, {
+    ...payload,
+    evidencias_requeridas: getTaskEvidenceRequirements(task),
+    adjuntos: attachments,
+  });
+  bumpTaskEvidenceInputKey(task, requirement);
+  ui.success("Evidencia agregada a la tarea.");
+}
+
+function openTaskEvidenceAttachment(attachment: any) {
+  const draftAttachmentId = String(attachment?.draft_attachment_id || "").trim();
+  if (draftAttachmentId) {
+    const draft = attachmentRows.value.find((row) => String(row?.id || "") === draftAttachmentId);
+    if (draft) {
+      openAttachment(draft);
+      return;
+    }
+  }
+
+  const attachmentId = String(attachment?.attachment_id || "").trim();
+  if (!attachmentId || !editingId.value) return;
+  const persisted = attachmentRows.value.find((row) => String(row?.id || "") === attachmentId);
+  if (persisted) {
+    openAttachment(persisted);
+  }
+}
+
+function removeDraftAttachmentIfUnreferenced(draftAttachmentId: string) {
+  const isStillReferenced = taskRows.value.some((row) =>
+    getTaskEvidenceEntries(row).some(
+      (attachment: any) => String(attachment?.draft_attachment_id || "") === draftAttachmentId,
+    ),
+  );
+  if (!isStillReferenced) {
+    attachmentRows.value = attachmentRows.value.filter((row) => String(row?.id || "") !== draftAttachmentId);
+  }
+}
+
+function unlinkAttachmentFromTaskEvidence(attachmentId?: string | null, draftAttachmentId?: string | null) {
+  for (const task of taskRows.value) {
+    const payload = getTaskJsonObject(task);
+    const currentEntries = getTaskEvidenceEntries(task);
+    const adjuntos = currentEntries.filter((entry: any) => {
+      const matchesAttachment = attachmentId && String(entry?.attachment_id || "") === String(attachmentId);
+      const matchesDraft = draftAttachmentId && String(entry?.draft_attachment_id || "") === String(draftAttachmentId);
+      return !matchesAttachment && !matchesDraft;
+    });
+    if (adjuntos.length !== currentEntries.length) {
+      setTaskJsonObject(task, {
+        ...payload,
+        evidencias_requeridas: getTaskEvidenceRequirements(task),
+        adjuntos,
+      });
+    }
+  }
+}
+
+function removeTaskEvidenceAttachment(task: any, attachment: any) {
+  if (isReadOnlyWorkflow.value) {
+    ui.error("La OT está cerrada y no permite edición.");
+    return;
+  }
+  const payload = getTaskJsonObject(task);
+  const attachmentKey = getTaskEvidenceEntryKey(attachment);
+  const adjuntos = getTaskEvidenceEntries(task).filter(
+    (entry: any) => getTaskEvidenceEntryKey(entry) !== attachmentKey,
+  );
+  setTaskJsonObject(task, {
+    ...payload,
+    evidencias_requeridas: getTaskEvidenceRequirements(task),
+    adjuntos,
+  });
+
+  const draftAttachmentId = String(attachment?.draft_attachment_id || "").trim();
+  if (draftAttachmentId) {
+    removeDraftAttachmentIfUnreferenced(draftAttachmentId);
+  }
 }
 
 function validateTaskValue(task: any) {
@@ -995,6 +1317,14 @@ function validateTaskValue(task: any) {
     return String(task.valor_text ?? "").trim().length > 0;
   }
   if (fieldType === "JSON") {
+    if (isTaskEvidenceField(task)) {
+      const requiredKinds = getTaskEvidenceRequirements(task);
+      const entries = getTaskEvidenceEntries(task);
+      if (!entries.length) return false;
+      return requiredKinds.every((kind) =>
+        entries.some((entry: any) => normalizeEvidenceKind(entry?.evidence_kind) === normalizeEvidenceKind(kind)),
+      );
+    }
     const raw = String(getTaskJsonText(task) ?? "").trim();
     if (!raw) return false;
     try {
@@ -1024,12 +1354,27 @@ function buildTaskPersistencePayload(task: any) {
   } else if (fieldType === "TEXT") {
     valor_text = String(task.valor_text ?? "").trim() || null;
   } else {
-    const raw = String(getTaskJsonText(task) ?? "").trim();
-    if (raw) {
-      try {
-        valor_json = JSON.parse(raw);
-      } catch {
-        throw new Error(`La tarea ${getTaskLabelForTask(task)} requiere un JSON válido.`);
+    if (isTaskEvidenceField(task)) {
+      const payload = getTaskJsonObject(task);
+      valor_json = {
+        ...payload,
+        evidencias_requeridas: getTaskEvidenceRequirements(task),
+        adjuntos: getTaskEvidenceEntries(task).map((attachment: any) => ({
+          attachment_id: attachment?.attachment_id || null,
+          evidence_kind: normalizeEvidenceKind(attachment?.evidence_kind),
+          nombre: attachment?.nombre || null,
+          mime_type: attachment?.mime_type || null,
+          tipo: attachment?.tipo || "EVIDENCIA",
+        })),
+      };
+    } else {
+      const raw = String(getTaskJsonText(task) ?? "").trim();
+      if (raw) {
+        try {
+          valor_json = JSON.parse(raw);
+        } catch {
+          throw new Error(`La tarea ${getTaskLabelForTask(task)} requiere un JSON válido.`);
+        }
       }
     }
   }
@@ -1091,14 +1436,22 @@ async function syncChecklistFromTemplate(showToast = true) {
       valor_boolean: normalizeTaskFieldType(definition.field_type) === "BOOLEAN" ? false : null,
       valor_numeric: null,
       valor_text: "",
-      valor_json: null,
+      valor_json:
+        normalizeTaskFieldType(definition.field_type) === "JSON"
+          ? {
+              evidencias_requeridas: Array.isArray(definition?.meta?.evidencias_requeridas)
+                ? definition.meta.evidencias_requeridas.map((value: unknown) => normalizeEvidenceKind(value))
+                : [],
+              adjuntos: [],
+            }
+          : null,
       _json_text:
         normalizeTaskFieldType(definition.field_type) === "JSON"
           ? JSON.stringify(
               {
-                evidencia: "",
+                adjuntos: [],
                 evidencias_requeridas: Array.isArray(definition?.meta?.evidencias_requeridas)
-                  ? definition.meta.evidencias_requeridas
+                  ? definition.meta.evidencias_requeridas.map((value: unknown) => normalizeEvidenceKind(value))
                   : [],
               },
               null,
@@ -1573,9 +1926,9 @@ async function saveAll() {
       await run();
     }
 
-    await persistEditedTasks();
-    await persistDraftTasks();
     await persistDraftAttachments();
+    await persistEditedTasks(false);
+    await persistDraftTasks(false);
 
     await fetchWorkOrders();
     await loadDetailData();
@@ -1588,7 +1941,7 @@ async function saveAll() {
   }
 }
 
-async function persistDraftTasks() {
+async function persistDraftTasks(refreshAfterSave = true) {
   if (!editingId.value) return;
   const drafts = taskRows.value.filter((row) => row?._isDraft);
   for (const draft of drafts) {
@@ -1605,12 +1958,12 @@ async function persistDraftTasks() {
       ui.error(errorMessage);
     }
   }
-  if (drafts.length) {
+  if (refreshAfterSave && drafts.length) {
     await loadDetailData();
   }
 }
 
-async function persistEditedTasks() {
+async function persistEditedTasks(refreshAfterSave = true) {
   const editedRows = taskRows.value.filter((row) => !row?._isDraft && row?._dirty);
   for (const row of editedRows) {
     try {
@@ -1627,7 +1980,7 @@ async function persistEditedTasks() {
       ui.error(errorMessage);
     }
   }
-  if (editedRows.length) {
+  if (refreshAfterSave && editedRows.length) {
     await loadDetailData();
   }
 }
@@ -1637,18 +1990,54 @@ async function persistDraftAttachments() {
   const drafts = attachmentRows.value.filter((row) => row?._isDraft);
   for (const draft of drafts) {
     try {
-      await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
+      const { data } = await api.post(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`, {
         tipo: draft.tipo || "EVIDENCIA",
         nombre: draft.nombre,
         contenido_base64: draft.contenido_base64,
         mime_type: draft.mime_type || null,
+        meta: draft.meta || null,
       });
+      const savedAttachment = unwrapData(data);
+      attachmentRows.value = attachmentRows.value.map((row) =>
+        String(row?.id || "") === String(draft.id)
+          ? {
+              ...savedAttachment,
+              meta: savedAttachment?.meta || draft.meta || {},
+              _raw: savedAttachment,
+            }
+          : row,
+      );
+      replaceDraftAttachmentReferencesInTasks(String(draft.id), savedAttachment);
     } catch (e: any) {
       ui.error(e?.response?.data?.message || `No se pudo guardar el adjunto ${draft.nombre}.`);
     }
   }
-  if (drafts.length) {
-    await loadDetailData();
+}
+
+function replaceDraftAttachmentReferencesInTasks(draftAttachmentId: string, savedAttachment: any) {
+  for (const task of taskRows.value) {
+    const payload = getTaskJsonObject(task);
+    const adjuntos = getTaskEvidenceEntries(task).map((attachment: any) => {
+      if (String(attachment?.draft_attachment_id || "") !== draftAttachmentId) return attachment;
+      return {
+        attachment_id: savedAttachment?.id || null,
+        draft_attachment_id: null,
+        evidence_kind: normalizeEvidenceKind(
+          attachment?.evidence_kind || savedAttachment?.meta?.evidence_kind,
+        ),
+        nombre: savedAttachment?.nombre || attachment?.nombre || null,
+        mime_type: savedAttachment?.meta?.mime_type || attachment?.mime_type || null,
+        tipo: savedAttachment?.tipo || attachment?.tipo || "EVIDENCIA",
+      };
+    });
+    const changed = adjuntos.some((attachment: any) => String(attachment?.attachment_id || "") === String(savedAttachment?.id || ""));
+    if (changed) {
+      setTaskJsonObject(task, {
+        ...payload,
+        evidencias_requeridas: getTaskEvidenceRequirements(task),
+        adjuntos,
+      });
+    }
   }
 }
 
@@ -1681,6 +2070,9 @@ async function createAttachment(showToast = true) {
     contenido_base64: attachmentForm.contenido_base64,
     mime_type: attachmentForm.mime_type || null,
     preview_url: attachmentPreviewUrl.value,
+    meta: {
+      source: "OT_GENERAL",
+    },
     _isDraft: true,
     _raw: null,
   });
@@ -1695,12 +2087,14 @@ async function createAttachment(showToast = true) {
 async function deleteAttachment(item: any) {
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (item?._isDraft) {
+    unlinkAttachmentFromTaskEvidence(null, String(item?.id || ""));
     attachmentRows.value = attachmentRows.value.filter((row) => row.id !== item.id);
     return;
   }
   if (!editingId.value || !item?.id) return;
   try {
     await api.delete(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`);
+    unlinkAttachmentFromTaskEvidence(String(item.id), null);
     ui.success("Adjunto eliminado.");
     await loadDetailData();
   } catch (e: any) {
@@ -1982,6 +2376,18 @@ watch(
 
 .capture-cell {
   min-width: 220px;
+}
+
+.task-evidence-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.task-evidence-group {
+  padding: 10px;
+  border: 1px dashed var(--surface-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-base) 86%, transparent);
 }
 
 @media (max-width: 960px) {
