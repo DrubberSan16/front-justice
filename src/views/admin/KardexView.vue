@@ -119,6 +119,42 @@
         </div>
 
         <v-alert
+          v-if="activeImportJob"
+          type="info"
+          variant="tonal"
+          class="mt-3"
+        >
+          <div class="d-flex align-center justify-space-between" style="gap: 12px; flex-wrap: wrap;">
+            <div>
+              <div class="font-weight-medium">Carga en servidor</div>
+              <div class="text-caption">
+                {{ activeImportJob.source_file_name || activeImportJob.stored_file_name || "Inventario" }}
+              </div>
+            </div>
+            <v-chip :color="importJobColor(activeImportJob.status)" variant="tonal" label>
+              {{ importJobStatusLabel(activeImportJob.status) }}
+            </v-chip>
+          </div>
+          <div class="text-body-2 mt-2">
+            {{ activeImportJob.current_step || "Procesando archivo..." }}
+          </div>
+          <v-progress-linear
+            class="mt-3"
+            :model-value="activeImportProgress"
+            :color="importJobColor(activeImportJob.status)"
+            :indeterminate="activeImportProgress <= 0 || activeImportProgress >= 100 && activeImportJob.status === 'PROCESSING'"
+            rounded
+            height="10"
+          />
+          <div class="text-caption mt-2">
+            {{ activeImportProgress }}% · {{ activeImportJob.current_index || 0 }} / {{ activeImportJob.total_rows || 0 }} fila(s)
+          </div>
+          <div v-if="activeImportJob.error_message" class="text-caption text-error mt-2">
+            {{ activeImportJob.error_message }}
+          </div>
+        </v-alert>
+
+        <v-alert
           v-if="lastBulkSummary?.errores?.length"
           type="warning"
           variant="tonal"
@@ -187,7 +223,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { fetchProductsWithStock } from "@/app/services/products-inventory.service";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -230,6 +266,19 @@ type ImportSummary = {
   errores: string[];
 };
 
+type ImportJob = {
+  id: string;
+  status: string;
+  progress: number;
+  source_file_name?: string | null;
+  stored_file_name?: string | null;
+  current_step?: string | null;
+  current_index?: number;
+  total_rows?: number;
+  summary?: ImportSummary | null;
+  error_message?: string | null;
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 
@@ -237,9 +286,13 @@ const savingMovement = ref(false);
 const uploading = ref(false);
 const downloadingTemplate = ref(false);
 const loadingKardex = ref(false);
+const importJob = ref<ImportJob | null>(null);
+const importPollHandle = ref<number | null>(null);
 
 const xlsxFile = ref<File | null>(null);
 const lastBulkSummary = ref<ImportSummary | null>(null);
+
+const KARDEx_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 
 const movementForm = reactive({
   tipo: "INGRESO" as MovementType,
@@ -301,6 +354,18 @@ const selectedUnitCost = computed(() => {
 const selectedUnitCostLabel = computed(() =>
   formatNumberForDisplay(String(selectedUnitCost.value || 0)),
 );
+
+const activeImportJob = computed(() => {
+  if (!importJob.value) return null;
+  const status = String(importJob.value.status || "").toUpperCase();
+  return status === "QUEUED" || status === "PROCESSING" ? importJob.value : null;
+});
+
+const activeImportProgress = computed(() => {
+  const progress = Number(importJob.value?.progress || 0);
+  if (!Number.isFinite(progress)) return 0;
+  return Math.min(100, Math.max(0, Math.round(progress)));
+});
 
 const productOptions = computed(() => {
   if (!movementForm.bodegaId) return [];
@@ -390,10 +455,21 @@ async function listAll(endpoint: string) {
 }
 
 async function loadBaseData() {
-  const inventory = await fetchProductsWithStock();
-  products.value = inventory.productos;
-  bodegas.value = inventory.bodegas;
-  stocks.value = inventory.stocks as StockRow[];
+  try {
+    const inventory = await fetchProductsWithStock();
+    products.value = inventory.productos;
+    bodegas.value = inventory.bodegas;
+    stocks.value = inventory.stocks as StockRow[];
+  } catch (error: any) {
+    products.value = [];
+    bodegas.value = [];
+    stocks.value = [];
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudieron cargar los catálogos de inventario.",
+    );
+  }
 }
 
 async function loadKardex() {
@@ -442,7 +518,7 @@ async function saveMovement() {
     );
     movementForm.observacion = "";
     movementForm.cantidad = "1";
-    await Promise.all([loadKardex(), loadBaseData()]);
+    await Promise.allSettled([loadKardex(), loadBaseData()]);
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
@@ -451,6 +527,135 @@ async function saveMovement() {
     );
   } finally {
     savingMovement.value = false;
+  }
+}
+
+function requestBrowserNotificationPermission() {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (window.Notification.permission === "default") {
+    void window.Notification.requestPermission().catch(() => undefined);
+  }
+}
+
+function emitBrowserNotification(title: string, body: string, tag: string) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (window.Notification.permission !== "granted") return;
+  try {
+    new window.Notification(title, { body, tag });
+  } catch {
+    // ignore notification failures
+  }
+}
+
+function notifyImportLifecycle(options: {
+  title: string;
+  message: string;
+  variant?: "success" | "error" | "info" | "warning";
+  requestPermission?: boolean;
+  tag: string;
+}) {
+  if (options.requestPermission) requestBrowserNotificationPermission();
+  ui.open(options.message, options.variant ?? "info", 5000);
+  emitBrowserNotification(options.title, options.message, options.tag);
+}
+
+function importJobColor(status: unknown) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "FAILED") return "error";
+  if (normalized === "COMPLETED") return "success";
+  if (normalized === "PROCESSING") return "warning";
+  return "secondary";
+}
+
+function importJobStatusLabel(status: unknown) {
+  const normalized = String(status || "").toUpperCase();
+  if (normalized === "FAILED") return "Falló";
+  if (normalized === "COMPLETED") return "Completada";
+  if (normalized === "PROCESSING") return "Procesando";
+  if (normalized === "QUEUED") return "En cola";
+  return normalized || "Pendiente";
+}
+
+function persistImportJobId(jobId: string | null) {
+  if (typeof window === "undefined") return;
+  if (jobId) {
+    window.localStorage.setItem(KARDEx_IMPORT_JOB_STORAGE_KEY, jobId);
+    return;
+  }
+  window.localStorage.removeItem(KARDEx_IMPORT_JOB_STORAGE_KEY);
+}
+
+function getPersistedImportJobId() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(KARDEx_IMPORT_JOB_STORAGE_KEY);
+}
+
+function stopImportPolling() {
+  if (importPollHandle.value != null) {
+    window.clearInterval(importPollHandle.value);
+    importPollHandle.value = null;
+  }
+}
+
+async function fetchImportJobStatus(jobId: string) {
+  const { data } = await api.get(`/kpi_inventory/kardex/import/${jobId}`);
+  importJob.value = (data?.data ?? data) as ImportJob | null;
+
+  if (!importJob.value) {
+    persistImportJobId(null);
+    stopImportPolling();
+    return;
+  }
+
+  const status = String(importJob.value.status || "").toUpperCase();
+  if (status === "COMPLETED") {
+    stopImportPolling();
+    persistImportJobId(null);
+    lastBulkSummary.value = importJob.value.summary ?? null;
+    importJob.value = null;
+    notifyImportLifecycle({
+      title: "Carga de inventario finalizada",
+      message: "El archivo de inventario se procesó correctamente.",
+      variant: "success",
+      tag: "inventory-import-completed",
+    });
+    await Promise.allSettled([loadBaseData(), loadKardex()]);
+    return;
+  }
+
+  if (status === "FAILED") {
+    stopImportPolling();
+    persistImportJobId(null);
+    const failureMessage =
+      importJob.value.error_message || "La carga de inventario falló.";
+    importJob.value = null;
+    notifyImportLifecycle({
+      title: "Carga de inventario fallida",
+      message: failureMessage,
+      variant: "error",
+      tag: "inventory-import-failed",
+    });
+  }
+}
+
+function startImportPolling(jobId: string) {
+  stopImportPolling();
+  importPollHandle.value = window.setInterval(() => {
+    void fetchImportJobStatus(jobId).catch(() => undefined);
+  }, 2500);
+}
+
+async function restoreImportJob() {
+  const jobId = getPersistedImportJobId();
+  if (!jobId) return;
+  try {
+    await fetchImportJobStatus(jobId);
+    if (importJob.value) {
+      startImportPolling(jobId);
+    }
+  } catch {
+    persistImportJobId(null);
+    importJob.value = null;
   }
 }
 
@@ -470,10 +675,25 @@ async function processXlsx() {
       headers: { "Content-Type": "multipart/form-data" },
     });
 
-    lastBulkSummary.value = data?.data ?? null;
-    ui.success("Carga masiva CSV/XLSX procesada correctamente.");
+    const job = (data?.data ?? data) as ImportJob | null;
+    importJob.value = job;
+    lastBulkSummary.value = null;
     xlsxFile.value = null;
-    await Promise.all([loadBaseData(), loadKardex()]);
+    if (job?.id) {
+      persistImportJobId(job.id);
+      notifyImportLifecycle({
+        title: "Carga de inventario iniciada",
+        message:
+          "Archivo recibido. El sistema lo está procesando en segundo plano.",
+        variant: "info",
+        requestPermission: true,
+        tag: "inventory-import-started",
+      });
+      startImportPolling(job.id);
+      await fetchImportJobStatus(job.id);
+    } else {
+      ui.open("La carga fue recibida, pero no se pudo identificar el job.", "warning");
+    }
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
@@ -533,6 +753,11 @@ watch(
 );
 
 onMounted(async () => {
-  await Promise.all([loadBaseData(), loadKardex()]);
+  await Promise.allSettled([loadBaseData(), loadKardex()]);
+  await restoreImportJob();
+});
+
+onBeforeUnmount(() => {
+  stopImportPolling();
 });
 </script>
