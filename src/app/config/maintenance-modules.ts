@@ -122,6 +122,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "descripcion", label: "Descripción", type: "text" },
       { key: "linea_id", label: "Línea", type: "select", relation: { endpoint: "/kpi_inventory/lineas" } },
       { key: "categoria_id", label: "Categoría", type: "select", relation: { endpoint: "/kpi_inventory/categorias" } },
+      { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
       { key: "unidad_medida_id", label: "Unidad de medida", type: "select", relation: { endpoint: "/kpi_inventory/unidades-medida" } },
       { key: "sku", label: "SKU", type: "text" },
       { key: "codigo_barras", label: "Código barras", type: "text" },

@@ -333,14 +333,14 @@ function levelColor(level: unknown) {
   const normalized = String(level || "").trim().toUpperCase();
   if (normalized === "CRITICAL") return "error";
   if (normalized === "WARNING") return "warning";
-  return "info";
+  return "success";
 }
 
 function stateColor(state: unknown) {
   const normalized = String(state || "").trim().toUpperCase();
   if (normalized === "ABIERTA") return "error";
   if (normalized === "EN_PROCESO") return "warning";
-  if (normalized === "RESUELTA") return "success";
+  if (normalized === "RESUELTA" || normalized === "CERRADA") return "success";
   return "secondary";
 }
 

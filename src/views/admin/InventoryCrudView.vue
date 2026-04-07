@@ -49,6 +49,13 @@
       <template #item.actions="{ item }">
         <div class="responsive-actions">
           <v-btn
+            v-if="isStockBodegaModule"
+            icon="mdi-eye"
+            variant="text"
+            color="info"
+            @click="openReservationDetail(item)"
+          />
+          <v-btn
             v-if="canEdit"
             icon="mdi-pencil"
             variant="text"
@@ -65,6 +72,100 @@
       </template>
     </v-data-table>
   </v-card>
+
+  <v-dialog
+    v-model="reservationDialog"
+    :fullscreen="isDeleteDialogFullscreen"
+    :max-width="isDeleteDialogFullscreen ? undefined : 980"
+  >
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Reservas del material
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pt-4">
+        <div class="reservation-summary mb-4">
+          <div>
+            <div class="text-caption text-medium-emphasis">Material</div>
+            <div class="text-body-1 font-weight-medium">
+              {{ reservationContext.productoLabel || "-" }}
+            </div>
+          </div>
+          <div>
+            <div class="text-caption text-medium-emphasis">Bodega</div>
+            <div class="text-body-1 font-weight-medium">
+              {{ reservationContext.bodegaLabel || "-" }}
+            </div>
+          </div>
+          <div>
+            <div class="text-caption text-medium-emphasis">Cantidad reservada</div>
+            <div class="text-body-1 font-weight-medium">
+              {{ formatNumberForDisplay(reservationContext.totalCantidad || 0) }}
+            </div>
+          </div>
+          <div>
+            <div class="text-caption text-medium-emphasis">Reservas activas</div>
+            <div class="text-body-1 font-weight-medium">
+              {{ reservationContext.activeCount || 0 }}
+            </div>
+          </div>
+        </div>
+
+        <v-alert
+          v-if="reservationError"
+          type="error"
+          variant="tonal"
+          class="mb-3"
+        >
+          {{ reservationError }}
+        </v-alert>
+
+        <v-data-table
+          :headers="reservationHeaders"
+          :items="reservationRows"
+          :loading="reservationLoading"
+          loading-text="Obteniendo reservas ligadas a órdenes de trabajo..."
+          :items-per-page="10"
+          class="elevation-0 enterprise-table inventory-table"
+        >
+          <template #item.estado="{ item }">
+            <v-chip
+              size="small"
+              variant="tonal"
+              :color="reservationStateColor(item.estado)"
+            >
+              {{ item.estado }}
+            </v-chip>
+          </template>
+          <template #item.work_order_status="{ item }">
+            <v-chip
+              size="small"
+              variant="tonal"
+              :color="workflowStatusColor(item.work_order_status)"
+            >
+              {{ item.work_order_status || "Sin estado" }}
+            </v-chip>
+          </template>
+          <template #item.cantidad="{ item }">
+            {{ formatNumberForDisplay(item.cantidad || 0) }}
+          </template>
+          <template #bottom>
+            <div
+              v-if="!reservationLoading && !reservationRows.length && !reservationError"
+              class="pa-4 text-medium-emphasis"
+            >
+              No hay reservas registradas para este material en esta bodega.
+            </div>
+          </template>
+        </v-data-table>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn variant="text" @click="reservationDialog = false">Cerrar</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
   <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 900">
     <v-card rounded="xl" class="enterprise-dialog inventory-dialog-card">
@@ -152,6 +253,7 @@ const canRead = computed(() => menuPermissions.value.isReaded);
 const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && menuPermissions.value.isCreated);
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPermissions.value.isEdited);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
+const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
 const records = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -162,11 +264,28 @@ const relationOptions = ref<Record<string, Array<{ value: any; title: string; bo
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const reservationDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
+const reservationLoading = ref(false);
+const reservationError = ref<string | null>(null);
+const reservationRows = ref<any[]>([]);
+const reservationContext = reactive({
+  productoLabel: "",
+  bodegaLabel: "",
+  totalCantidad: 0,
+  activeCount: 0,
+});
 const form = reactive<Record<string, any>>({});
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
+const reservationHeaders = [
+  { title: "Reserva", key: "estado" },
+  { title: "Cantidad", key: "cantidad" },
+  { title: "OT", key: "work_order_label" },
+  { title: "Estado OT", key: "work_order_status" },
+  { title: "Equipo", key: "equipment_label" },
+];
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -246,6 +365,23 @@ function getSelectOptions(field: MaintenanceField) {
   if (!warehouseId) return [];
 
   return options.filter((option) => String(option.bodegaId || "") === warehouseId);
+}
+
+function reservationStateColor(value: string) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "RESERVADO") return "warning";
+  if (normalized === "CONSUMIDO") return "success";
+  if (normalized === "ANULADO") return "error";
+  return "info";
+}
+
+function workflowStatusColor(value: string) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "CLOSED") return "success";
+  if (normalized === "IN_PROGRESS") return "warning";
+  if (normalized === "PLANNED") return "info";
+  if (normalized === "CANCELLED") return "error";
+  return "secondary";
 }
 
 const headers = computed(() => {
@@ -346,6 +482,53 @@ function openDelete(item: any) {
   deleteDialog.value = true;
 }
 
+async function openReservationDetail(item: any) {
+  const raw = item?._raw ?? item;
+  const productoId = String(raw?.producto_id || "").trim();
+  const bodegaId = String(raw?.bodega_id || "").trim();
+
+  if (!productoId || !bodegaId) {
+    ui.error("No se pudo determinar el material y la bodega de este stock.");
+    return;
+  }
+
+  reservationDialog.value = true;
+  reservationLoading.value = true;
+  reservationError.value = null;
+  reservationRows.value = [];
+  reservationContext.productoLabel = String(item?.producto_id || raw?.producto_id || "");
+  reservationContext.bodegaLabel = String(item?.bodega_id || raw?.bodega_id || "");
+  reservationContext.totalCantidad = 0;
+  reservationContext.activeCount = 0;
+
+  try {
+    const { data } = await api.get("/kpi_maintenance/work-orders/material-reservations", {
+      params: {
+        producto_id: productoId,
+        bodega_id: bodegaId,
+      },
+    });
+    const payload = data?.data ?? data ?? {};
+    reservationContext.productoLabel = String(
+      payload?.producto_label || reservationContext.productoLabel || "",
+    );
+    reservationContext.bodegaLabel = String(
+      payload?.bodega_label || reservationContext.bodegaLabel || "",
+    );
+    reservationContext.totalCantidad = Number(payload?.total_cantidad || 0);
+    reservationContext.activeCount = Number(payload?.reservas_activas || 0);
+    reservationRows.value = asArray(payload?.items).map((row: any) => ({
+      ...row,
+      cantidad: Number(row?.cantidad || 0),
+    }));
+  } catch (e: any) {
+    reservationError.value =
+      e?.response?.data?.message || "No se pudo obtener el detalle de reservas.";
+  } finally {
+    reservationLoading.value = false;
+  }
+}
+
 async function save() {
   if (!moduleConfig.value) return;
   if (!canRead.value) return;
@@ -439,6 +622,12 @@ onMounted(async () => {
 .inventory-table :deep(.v-data-table-footer) {
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.reservation-summary {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 @media (max-width: 960px) {

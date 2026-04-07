@@ -89,16 +89,16 @@
 
     <v-col cols="12" lg="8">
       <v-card rounded="xl" class="pa-4 mb-4 enterprise-surface">
-        <div class="text-h6 font-weight-bold mb-2">Carga masiva XLSX</div>
+        <div class="text-h6 font-weight-bold mb-2">Carga masiva CSV/XLSX</div>
         <div class="text-body-2 text-medium-emphasis mb-3">
-          Sube el inventario por Excel. El sistema creará materiales nuevos y ajustará ingresos o salidas por diferencia de stock.
+          Sube el inventario por CSV o Excel. El sistema creará materiales nuevos, dará de alta catálogos faltantes y ajustará ingresos o salidas por diferencia de stock.
         </div>
 
         <v-file-input
           v-model="xlsxFile"
-          accept=".xlsx,.xls"
+          accept=".csv,.xlsx,.xls,text/csv"
           prepend-icon="mdi-file-excel"
-          label="Selecciona archivo XLSX"
+          label="Selecciona archivo CSV o XLSX"
           variant="outlined"
           show-size
           class="mb-3"
@@ -456,7 +456,7 @@ async function saveMovement() {
 
 async function processXlsx() {
   if (!xlsxFile.value) {
-    ui.error("Debes seleccionar un archivo XLSX.");
+    ui.error("Debes seleccionar un archivo CSV o XLSX.");
     return;
   }
 
@@ -471,7 +471,7 @@ async function processXlsx() {
     });
 
     lastBulkSummary.value = data?.data ?? null;
-    ui.success("Carga masiva procesada correctamente.");
+    ui.success("Carga masiva CSV/XLSX procesada correctamente.");
     xlsxFile.value = null;
     await Promise.all([loadBaseData(), loadKardex()]);
   } catch (error: any) {
