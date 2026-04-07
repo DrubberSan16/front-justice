@@ -146,6 +146,34 @@
             >
               {{ resolveRow(item).accion_sugerida }}
             </div>
+            <div
+              v-if="inventoryAlertItems(resolveRow(item)).length"
+              class="inventory-alert-table mt-3"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Bodega</th>
+                    <th>Actual</th>
+                    <th>Mínimo</th>
+                    <th>Observación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="inventoryItem in inventoryAlertItems(resolveRow(item))"
+                    :key="String(inventoryItem.stock_id || inventoryItem.producto_id || inventoryItem.producto_label)"
+                  >
+                    <td>{{ inventoryItem.producto_label || "-" }}</td>
+                    <td>{{ inventoryItem.bodega_label || "-" }}</td>
+                    <td>{{ formatInventoryNumber(inventoryItem.stock_actual) }}</td>
+                    <td>{{ formatInventoryNumber(inventoryItem.stock_min_bodega) }}</td>
+                    <td>{{ inventoryItem.observacion || "-" }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </template>
 
           <template #item.scope="{ item }">
@@ -329,6 +357,11 @@ function resolveRow(item: any) {
   return item?.raw ?? item?._raw ?? item;
 }
 
+function inventoryAlertItems(item: any) {
+  const payload = item?.payload_json;
+  return Array.isArray(payload?.inventory_items) ? payload.inventory_items : [];
+}
+
 function levelColor(level: unknown) {
   const normalized = String(level || "").trim().toUpperCase();
   if (normalized === "CRITICAL") return "error";
@@ -349,6 +382,11 @@ function formatDate(value: unknown) {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
+}
+
+function formatInventoryNumber(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : "0.00";
 }
 
 async function loadData() {
@@ -453,6 +491,34 @@ onMounted(async () => {
 .alerts-table :deep(.v-data-table-footer) {
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.inventory-alert-table {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid rgba(120, 144, 156, 0.24);
+  border-radius: 12px;
+}
+
+.inventory-alert-table table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.inventory-alert-table th,
+.inventory-alert-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(120, 144, 156, 0.16);
+}
+
+.inventory-alert-table th {
+  position: sticky;
+  top: 0;
+  background: rgba(var(--v-theme-surface), 0.96);
+  z-index: 1;
 }
 
 @media (max-width: 960px) {
