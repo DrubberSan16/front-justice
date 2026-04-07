@@ -1,5 +1,6 @@
 import { api } from "@/app/http/api";
 import { createLogTransact } from "@/app/services/log-transacts.service";
+import { listAllPages } from "@/app/utils/list-all-pages";
 
 export type ProductRow = {
   id: string;
@@ -37,30 +38,8 @@ type MovementArgs = {
   userName: string;
 };
 
-function asArray(data: any): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data?.records)) return data.records;
-  return [];
-}
-
 async function listAll(path: string): Promise<any[]> {
-  const limit = 100;
-  let page = 1;
-  const acc: any[] = [];
-
-  while (true) {
-    const { data } = await api.get(path, { params: { page, limit } });
-    const rows = asArray(data);
-    acc.push(...rows);
-    if (rows.length < limit) break;
-    page += 1;
-    if (page > 100) break;
-  }
-
-  return acc;
+  return listAllPages(path);
 }
 
 function parseNumber(v: any, fallback = 0): number {

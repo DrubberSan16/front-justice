@@ -174,8 +174,22 @@
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
           <v-col v-for="field in moduleConfig?.fields ?? []" :key="field.key" cols="12" md="6">
+            <v-autocomplete
+              v-if="field.type === 'select' && isMaterialField(field)"
+              v-model="form[field.key]"
+              :items="getSelectOptions(field)"
+              item-title="title"
+              item-value="value"
+              :label="field.label"
+              :hint="field.required ? 'Obligatorio' : ''"
+              persistent-hint
+              clearable
+              variant="outlined"
+              density="comfortable"
+              no-data-text="No hay materiales disponibles para este filtro"
+            />
             <v-select
-              v-if="field.type === 'select'"
+              v-else-if="field.type === 'select'"
               v-model="form[field.key]"
               :items="getSelectOptions(field)"
               item-title="title"
@@ -236,6 +250,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
+import { listAllPages } from "@/app/utils/list-all-pages";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -297,15 +312,7 @@ function asArray(data: any): any[] {
 }
 
 async function listAll(endpoint: string) {
-  const out: any[] = [];
-  const limit = 100;
-  for (let page = 1; page <= 100; page += 1) {
-    const { data } = await api.get(endpoint, { params: { page, limit } });
-    const rows = asArray(data);
-    out.push(...rows);
-    if (rows.length < limit) break;
-  }
-  return out;
+  return listAllPages(endpoint);
 }
 
 function normalizeLabel(item: any) {
@@ -329,6 +336,13 @@ async function loadRelations() {
 
 function isWarehouseDependentProductField(field: MaintenanceField) {
   return field.relation?.endpoint === "/kpi_inventory/productos";
+}
+
+function isMaterialField(field: MaintenanceField) {
+  return (
+    field.relation?.endpoint === "/kpi_inventory/productos" ||
+    ["producto_id", "materiales"].includes(String(field.key || ""))
+  );
 }
 
 async function fetchRecords() {

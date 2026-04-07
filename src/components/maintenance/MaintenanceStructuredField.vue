@@ -113,7 +113,7 @@
 
   <div v-else-if="field.editor === 'relation-multi-select'" class="structured-field">
     <div class="text-subtitle-2 font-weight-medium mb-2">{{ repairText(field.label) }}</div>
-    <v-select
+    <v-autocomplete
       :model-value="relationMultiSelectValue"
       :items="filteredRelationMultiSelectOptions"
       item-title="title"
@@ -127,6 +127,7 @@
       :disabled="requiresWarehouseSelection && !selectedWarehouseId"
       :hint="requiresWarehouseSelection && !selectedWarehouseId ? 'Selecciona primero la bodega.' : ''"
       persistent-hint
+      no-data-text="No hay materiales disponibles para este filtro"
       @update:model-value="updateRelationMultiSelect"
     />
     <div v-if="relationMultiSelectValue.length" class="chip-list">

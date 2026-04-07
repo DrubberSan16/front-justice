@@ -311,6 +311,7 @@ import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
+import { listAllPages } from "@/app/utils/list-all-pages";
 
 type AnyRow = Record<string, any>;
 
@@ -355,15 +356,6 @@ const monthOptions = [
 const yearOptions = Array.from({ length: 101 }, (_, index) => 2000 + index)
   .reverse()
   .map((value) => ({ value, title: String(value) }));
-
-function asArray(data: any): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data?.records)) return data.records;
-  return [];
-}
 
 function unwrap<T = any>(payload: any, fallback: T): T {
   return (payload?.data ?? payload ?? fallback) as T;
@@ -456,21 +448,7 @@ function resolveWorkOrderDate(row: AnyRow) {
 }
 
 async function listAll(endpoint: string, params: Record<string, any> = {}) {
-  const out: any[] = [];
-  const limit = 100;
-
-  for (let page = 1; page <= 100; page += 1) {
-    const { data } = await api.get(endpoint, { params: { page, limit, ...params } });
-    const rows = asArray(data);
-    out.push(...rows);
-
-    const totalPages = Number(data?.pagination?.totalPages ?? data?.meta?.totalPages ?? 0);
-    if (!rows.length || rows.length < limit || (totalPages > 0 && page >= totalPages)) {
-      break;
-    }
-  }
-
-  return out;
+  return listAllPages(endpoint, params);
 }
 
 async function loadDashboard() {

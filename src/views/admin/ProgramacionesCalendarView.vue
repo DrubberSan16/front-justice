@@ -985,6 +985,7 @@ import { api } from "@/app/http/api";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { listAllPages } from "@/app/utils/list-all-pages";
 
 const ui = useUiStore();
 const auth = useAuthStore();
@@ -1236,15 +1237,7 @@ function createLocalId() {
 }
 
 async function listAll(endpoint: string) {
-  const out: any[] = [];
-  const limit = 100;
-  for (let page = 1; page <= 100; page += 1) {
-    const { data } = await api.get(endpoint, { params: { page, limit } });
-    const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
-    out.push(...rows);
-    if (rows.length < limit) break;
-  }
-  return out;
+  return listAllPages(endpoint);
 }
 
 function normalize(item: any) {

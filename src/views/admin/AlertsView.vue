@@ -356,7 +356,9 @@ async function loadData() {
   error.value = null;
   try {
     const [alertsRes, summaryRes] = await Promise.all([
-      api.get("/kpi_maintenance/alertas"),
+      api.get("/kpi_maintenance/alertas", {
+        params: { page: 1, limit: 500 },
+      }),
       api.get("/kpi_maintenance/alertas/summary"),
     ]);
     alerts.value = asArray(alertsRes.data);

@@ -246,6 +246,7 @@ import { fetchProductsWithStock } from "@/app/services/products-inventory.servic
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
+import { listAllPages } from "@/app/utils/list-all-pages";
 
 type MovementType = "INGRESO" | "SALIDA";
 
@@ -462,27 +463,8 @@ function parsePositiveNumber(value: string): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-function asArray(data: any): any[] {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data?.records)) return data.records;
-  return [];
-}
-
 async function listAll(endpoint: string) {
-  const limit = 100;
-  const out: any[] = [];
-
-  for (let page = 1; page <= 100; page += 1) {
-    const { data } = await api.get(endpoint, { params: { page, limit } });
-    const rows = asArray(data);
-    out.push(...rows);
-    if (rows.length < limit) break;
-  }
-
-  return out;
+  return listAllPages(endpoint);
 }
 
 async function loadBaseData() {
