@@ -138,6 +138,20 @@
           <div class="text-body-2 mt-2">
             {{ activeImportJob.current_step || "Procesando archivo..." }}
           </div>
+          <div class="d-flex flex-wrap mt-3" style="gap: 8px;">
+            <v-chip size="small" variant="tonal" color="primary" label>
+              Total: {{ activeImportTotalRows }}
+            </v-chip>
+            <v-chip size="small" variant="tonal" color="success" label>
+              Procesados: {{ activeImportProcessedRows }}
+            </v-chip>
+            <v-chip size="small" variant="tonal" color="warning" label>
+              Pendientes: {{ activeImportPendingRows }}
+            </v-chip>
+            <v-chip size="small" variant="tonal" color="secondary" label>
+              Avance: {{ activeImportProgress }}%
+            </v-chip>
+          </div>
           <v-progress-linear
             class="mt-3"
             :model-value="activeImportProgress"
@@ -147,7 +161,10 @@
             height="10"
           />
           <div class="text-caption mt-2">
-            {{ activeImportProgress }}% · {{ activeImportJob.current_index || 0 }} / {{ activeImportJob.total_rows || 0 }} fila(s)
+            {{ activeImportProcessedRows }} procesadas de {{ activeImportTotalRows }} fila(s). Faltan {{ activeImportPendingRows }}.
+          </div>
+          <div class="text-caption text-medium-emphasis mt-1">
+            Si sales de esta pantalla y vuelves a entrar, el progreso seguirá mostrándose automáticamente.
           </div>
           <div v-if="activeImportJob.error_message" class="text-caption text-error mt-2">
             {{ activeImportJob.error_message }}
@@ -366,6 +383,20 @@ const activeImportProgress = computed(() => {
   if (!Number.isFinite(progress)) return 0;
   return Math.min(100, Math.max(0, Math.round(progress)));
 });
+
+const activeImportTotalRows = computed(() => {
+  const total = Number(importJob.value?.total_rows || 0);
+  return Number.isFinite(total) && total > 0 ? total : 0;
+});
+
+const activeImportProcessedRows = computed(() => {
+  const processed = Number(importJob.value?.current_index || 0);
+  return Number.isFinite(processed) && processed > 0 ? processed : 0;
+});
+
+const activeImportPendingRows = computed(() =>
+  Math.max(0, activeImportTotalRows.value - activeImportProcessedRows.value),
+);
 
 const productOptions = computed(() => {
   if (!movementForm.bodegaId) return [];
