@@ -496,6 +496,7 @@ const users = ref<AnyRow[]>([]);
 const roles = ref<AnyRow[]>([]);
 const equipos = ref<AnyRow[]>([]);
 const planes = ref<AnyRow[]>([]);
+const bodegas = ref<AnyRow[]>([]);
 const alertas = ref<AnyRow[]>([]);
 const workOrders = ref<AnyRow[]>([]);
 const productos = ref<AnyRow[]>([]);
@@ -659,6 +660,7 @@ async function loadDashboard() {
       rolesRows,
       equiposRows,
       planesRows,
+      bodegasRows,
       alertasRows,
       workOrdersRows,
       productosRows,
@@ -671,6 +673,7 @@ async function loadDashboard() {
       listAll("/kpi_security/roles", { includeDeleted: false }),
       listAll("/kpi_maintenance/equipos"),
       listAll("/kpi_maintenance/planes"),
+      listAll("/kpi_inventory/bodegas"),
       listAll("/kpi_maintenance/alertas"),
       listAll("/kpi_maintenance/work-orders"),
       listAll("/kpi_inventory/productos"),
@@ -686,6 +689,7 @@ async function loadDashboard() {
     roles.value = rolesRows;
     equipos.value = equiposRows;
     planes.value = planesRows;
+    bodegas.value = bodegasRows;
     alertas.value = alertasRows;
     workOrders.value = workOrdersRows;
     productos.value = productosRows;
@@ -811,6 +815,35 @@ const productNameMap = computed(() =>
   }, {}),
 );
 
+const warehouseNameMap = computed(() =>
+  bodegas.value.reduce((acc: Record<string, string>, item) => {
+    const id = String(item?.id || "").trim();
+    if (!id) return acc;
+    const code = String(item?.codigo || "").trim();
+    const name = String(item?.nombre || "").trim();
+    acc[id] = [code, name].filter(Boolean).join(" - ") || id;
+    return acc;
+  }, {}),
+);
+
+function resolveWarehouseLabel(item: AnyRow) {
+  const warehouseId = String(item?.bodega_id || "").trim();
+  const warehouseCode = String(item?.bodega_codigo || "").trim();
+  const warehouseName = String(item?.bodega_nombre || "").trim();
+  return (
+    warehouseNameMap.value[warehouseId] ||
+    [warehouseCode, warehouseName].filter(Boolean).join(" - ") ||
+    warehouseCode ||
+    warehouseName ||
+    warehouseId ||
+    "Sin bodega"
+  );
+}
+
+function resolveWarehouseKey(item: AnyRow) {
+  return String(item?.bodega_id || "").trim() || resolveWarehouseLabel(item);
+}
+
 const workOrderStatusChartItems = computed(() => [
   {
     key: "planned",
@@ -892,8 +925,8 @@ const operationCadenceChartItems = computed(() =>
 const lowStockByWarehouse = computed(() => {
   const grouped = new Map<string, { key: string; label: string; value: number }>();
   for (const item of lowStockItems.value) {
-    const key = String(item?.bodega_id || item?.bodega_codigo || item?.bodega_nombre || "Sin bodega");
-    const label = String(item?.bodega_nombre || item?.bodega_codigo || "Sin bodega");
+    const key = resolveWarehouseKey(item);
+    const label = resolveWarehouseLabel(item);
     const current = grouped.get(key) ?? { key, label, value: 0 };
     current.value += 1;
     grouped.set(key, current);
@@ -944,7 +977,7 @@ const criticalInventoryRows = computed(() =>
       return {
         id: item.id,
         producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || "Producto"),
-        bodega: item?.bodega_nombre || item?.bodega_codigo || "Sin bodega",
+        bodega: resolveWarehouseLabel(item),
         stock,
         min,
         deficit: Math.max(0, min - stock),
@@ -1092,7 +1125,7 @@ const dashboardReportDefinition = computed(() =>
     })),
     inventory: lowStockItems.value.map((item) => ({
       producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || ""),
-      bodega: item?.bodega_nombre || item?.bodega_codigo || item?.bodega_id || "",
+      bodega: resolveWarehouseLabel(item),
       stock_actual: item?.stock_actual || 0,
       stock_minimo: item?.stock_min_bodega || 0,
       observacion: "Bajo stock mínimo",
