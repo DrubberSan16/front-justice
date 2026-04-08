@@ -689,6 +689,7 @@ import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
+import { listAllPages } from "@/app/utils/list-all-pages";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
   buildLubricantReport,
@@ -1174,17 +1175,11 @@ async function loadCatalog(search = "") {
 }
 
 async function loadEquipments() {
-  const { data } = await api.get("/kpi_maintenance/equipos", {
-    params: { limit: 500, page: 1 },
-  });
-  equipments.value = unwrap(data, []);
+  equipments.value = await listAllPages("/kpi_maintenance/equipos");
 }
 
 async function loadBrands() {
-  const { data } = await api.get("/kpi_inventory/marcas", {
-    params: { limit: 500, page: 1 },
-  });
-  brands.value = unwrap(data, []);
+  brands.value = await listAllPages("/kpi_inventory/marcas");
 }
 
 async function loadAll() {

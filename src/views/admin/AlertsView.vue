@@ -269,6 +269,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
+import { listAllPages } from "@/app/utils/list-all-pages";
 
 type AlertRow = Record<string, any>;
 type SelectOption = { title: string; value: string };
@@ -394,12 +395,10 @@ async function loadData() {
   error.value = null;
   try {
     const [alertsRes, summaryRes] = await Promise.all([
-      api.get("/kpi_maintenance/alertas", {
-        params: { page: 1, limit: 500 },
-      }),
+      listAllPages("/kpi_maintenance/alertas"),
       api.get("/kpi_maintenance/alertas/summary"),
     ]);
-    alerts.value = asArray(alertsRes.data);
+    alerts.value = asArray(alertsRes);
     summary.value = (summaryRes.data?.data ?? summaryRes.data ?? summary.value) as Record<
       string,
       any
