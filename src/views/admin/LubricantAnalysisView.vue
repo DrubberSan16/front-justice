@@ -16,6 +16,24 @@
             color="secondary"
             variant="tonal"
             prepend-icon="mdi-file-excel"
+            :loading="isExporting('excel')"
+            @click="exportAnalyses('excel')"
+          >
+            Excel reporte
+          </v-btn>
+          <v-btn
+            color="secondary"
+            variant="tonal"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="isExporting('pdf')"
+            @click="exportAnalyses('pdf')"
+          >
+            PDF reporte
+          </v-btn>
+          <v-btn
+            color="secondary"
+            variant="tonal"
+            prepend-icon="mdi-file-excel"
             :loading="importing"
             @click="processWorkbookImport"
           >
@@ -85,6 +103,24 @@
             hint="Selecciona un lubricante por codigo, nombre, equipo o modelo para ver su historial"
             persistent-hint
             @update:model-value="handleDashboardSelection"
+          />
+        </v-col>
+        <v-col cols="12" md="3">
+          <v-text-field
+            v-model="reportFrom"
+            type="date"
+            label="Reporte desde"
+            variant="outlined"
+            density="compact"
+          />
+        </v-col>
+        <v-col cols="12" md="3">
+          <v-text-field
+            v-model="reportTo"
+            type="date"
+            label="Reporte hasta"
+            variant="outlined"
+            density="compact"
           />
         </v-col>
       </v-row>
@@ -655,6 +691,11 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
+  buildLubricantReport,
+  downloadReportExcel,
+  downloadReportPdf,
+} from "@/app/utils/maintenance-intelligence-reports";
+import {
   groupLubricantDetails,
   humidityOptions,
   lubricantCompartments,
@@ -727,6 +768,9 @@ const dashboardPeriod = ref("MENSUAL");
 const dashboardFrom = ref("");
 const dashboardTo = ref("");
 const dashboardCompartimento = ref<string | null>(null);
+const reportFrom = ref("");
+const reportTo = ref("");
+const exportState = reactive<Record<string, boolean>>({});
 const isFormDialogFullscreen = computed(() => mdAndDown.value);
 const isGroupDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
@@ -878,6 +922,27 @@ function compareAnalysisByLatestDate(left: AnyRow, right: AnyRow) {
   return String(right?.codigo || "").localeCompare(String(left?.codigo || ""));
 }
 
+function parseReportDate(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isWithinReportRange(item: AnyRow) {
+  const reportDate = parseReportDate(resolveAnalysisReportDate(item) || item?.fecha_muestra || item?.created_at);
+  if (!reportDate) return false;
+  const from = reportFrom.value ? parseReportDate(reportFrom.value) : null;
+  const to = reportTo.value ? parseReportDate(reportTo.value) : null;
+  if (from && reportDate < from) return false;
+  if (to) {
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
+    if (reportDate > end) return false;
+  }
+  return true;
+}
+
 function analysisMatchesSearch(item: AnyRow, search: string) {
   if (!search) return true;
   return [
@@ -983,6 +1048,43 @@ const filteredLubricantGroups = computed<LubricantGroupRow[]>(() => {
     }),
   );
 });
+
+const reportAnalyses = computed(() =>
+  analyses.value
+    .filter((item) => isWithinReportRange(item))
+    .filter((item) => !statusFilter.value || resolveAnalysisCondition(item) === statusFilter.value),
+);
+
+function exportKey(format: "excel" | "pdf") {
+  return `lubricant:${format}`;
+}
+
+function isExporting(format: "excel" | "pdf") {
+  return Boolean(exportState[exportKey(format)]);
+}
+
+async function exportAnalyses(format: "excel" | "pdf") {
+  const key = exportKey(format);
+  exportState[key] = true;
+  error.value = null;
+  try {
+    const report = buildLubricantReport(reportAnalyses.value);
+    report.subtitle = `Resultados filtrados${
+      reportFrom.value || reportTo.value
+        ? ` del ${reportFrom.value || "..."} al ${reportTo.value || "..."}`
+        : " sin restricción de fechas"
+    }.`;
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (e: any) {
+    error.value = e?.message || "No se pudo generar el reporte de análisis de lubricante.";
+  } finally {
+    exportState[key] = false;
+  }
+}
 
 const selectedGroup = computed<LubricantGroupRow | null>(
   () =>

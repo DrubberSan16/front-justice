@@ -33,6 +33,12 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('mensual', 'excel')" @click="exportMonthly('excel')">
+                Excel
+              </v-btn>
+              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('mensual', 'pdf')" @click="exportMonthly('pdf')">
+                PDF
+              </v-btn>
               <v-btn variant="tonal" prepend-icon="mdi-plus" @click="openMonthlyProgramacionCreate()">
                 Nueva programación
               </v-btn>
@@ -268,6 +274,12 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('semanal', 'excel')" @click="exportWeekly('excel')">
+                Excel
+              </v-btn>
+              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('semanal', 'pdf')" @click="exportWeekly('pdf')">
+                PDF
+              </v-btn>
               <v-btn variant="tonal" prepend-icon="mdi-plus" @click="openWeeklyEditorCreate()">
                 Nuevo semanal
               </v-btn>
@@ -446,6 +458,12 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap agenda-toolbar" style="gap: 8px;">
+              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('agenda', 'excel')" @click="exportAgenda('excel')">
+                Excel
+              </v-btn>
+              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('agenda', 'pdf')" @click="exportAgenda('pdf')">
+                PDF
+              </v-btn>
               <v-btn icon="mdi-chevron-left" variant="text" @click="changeMonth(-1)" />
               <v-select
                 v-model="agendaYear"
@@ -986,6 +1004,13 @@ import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import {
+  buildAgendaProgrammingReport,
+  buildMonthlyProgrammingReport,
+  buildWeeklyProgrammingReport,
+  downloadReportExcel,
+  downloadReportPdf,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 const ui = useUiStore();
 const auth = useAuthStore();
@@ -999,6 +1024,7 @@ const savingWeekly = ref(false);
 const importingMonthly = ref(false);
 const importingWeekly = ref(false);
 const error = ref<string | null>(null);
+const exportState = reactive<Record<string, boolean>>({});
 
 const agendaRows = ref<any[]>([]);
 const monthlyImports = ref<any[]>([]);
@@ -1238,6 +1264,14 @@ function createLocalId() {
 
 async function listAll(endpoint: string) {
   return listAllPages(endpoint);
+}
+
+function exportKey(section: "mensual" | "semanal" | "agenda", format: "excel" | "pdf") {
+  return `${section}:${format}`;
+}
+
+function isExporting(section: "mensual" | "semanal" | "agenda", format: "excel" | "pdf") {
+  return Boolean(exportState[exportKey(section, format)]);
 }
 
 function normalize(item: any) {
@@ -1612,6 +1646,24 @@ const monthlySummary = computed(() => {
   };
 });
 
+const monthlyReportMatrixRows = computed(() =>
+  monthlyMatrixRows.value.map((row) => {
+    const base: Record<string, any> = {
+      equipo_codigo: row.equipo_codigo || "",
+      equipo_nombre: row.equipo_nombre || "",
+      horometro_ultimo: row.horometro_ultimo ?? "",
+      horometro_actual: row.horometro_actual ?? "",
+    };
+    for (const day of monthlyDays.value) {
+      base[`dia_${String(day.day).padStart(2, "0")}`] = (row.cells[day.date] || [])
+        .map((item: any) => item.valor_crudo || item.tipo_mantenimiento || "")
+        .filter(Boolean)
+        .join(" | ");
+    }
+    return base;
+  }),
+);
+
 const weeklyDisplayRange = computed(() => {
   if (selectedWeekly.value?.fecha_inicio && selectedWeekly.value?.fecha_fin) {
     return {
@@ -1691,6 +1743,25 @@ const weeklyEquipmentHours = computed(() =>
   Array.isArray(selectedWeekly.value?.daily_equipment_hours)
     ? selectedWeekly.value.daily_equipment_hours
     : [],
+);
+
+const weeklyReportMatrixRows = computed(() =>
+  weeklyTimeSlots.value.map((slot: any) => {
+    const base: Record<string, any> = {
+      bloque_horario: slot.label,
+    };
+    for (const day of weeklyDays.value) {
+      base[day.date] = getWeeklyItems(slot.key, day.date)
+        .map((item: any) =>
+          [item.actividad || "", item.equipo_codigo || "", item.tipo_proceso || ""]
+            .filter(Boolean)
+            .join(" · "),
+        )
+        .filter(Boolean)
+        .join(" | ");
+    }
+    return base;
+  }),
 );
 
 const weeklyEditorDays = computed(() => {
@@ -1888,6 +1959,31 @@ const agendaMonthSummary = computed(() => {
         : `${monthlyCount} bloque${monthlyCount === 1 ? "" : "s"} mensuales`,
   };
 });
+
+const agendaWeeklyReportRows = computed(() =>
+  agendaWeeklyDetails.value.map((item: any) => ({
+    fecha: item?.fecha_actividad || "",
+    dia: item?.dia_semana || "",
+    hora_inicio: item?.hora_inicio || "",
+    hora_fin: item?.hora_fin || "",
+    actividad: item?.actividad || "",
+    equipo: item?.equipo_codigo || "",
+    tipo_proceso: item?.tipo_proceso || "",
+    cronograma: item?.cronograma_codigo || "",
+  })),
+);
+
+const agendaMonthlyReportRows = computed(() =>
+  agendaMonthlyDetails.value.map((item: any) => ({
+    fecha: item?.fecha_programada || "",
+    equipo: item?.equipo_codigo || item?.equipo_nombre || "",
+    valor: item?.valor_crudo || "",
+    tipo: item?.tipo_mantenimiento || "",
+    horas_agendadas: item?.payload_json?.total_horas_agendadas ?? item?.payload_json?.horometro_programado ?? "",
+    plan: item?.plan_id || "",
+    estado: item?.programacion_id ? "Sincronizado" : "Solo reporte",
+  })),
+);
 
 const agendaSelectedDayLabel = computed(() =>
   agendaSelectedDate.value
@@ -3016,6 +3112,80 @@ watch(
     }
   },
 );
+
+async function runProgramacionExport(
+  section: "mensual" | "semanal" | "agenda",
+  format: "excel" | "pdf",
+  report: any,
+) {
+  const key = exportKey(section, format);
+  exportState[key] = true;
+  try {
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (e: any) {
+    ui.error(e?.message || "No se pudo generar el reporte de programaciones.");
+  } finally {
+    exportState[key] = false;
+  }
+}
+
+async function exportMonthly(format: "excel" | "pdf") {
+  const report = buildMonthlyProgrammingReport({
+    periodLabel: selectedMonthlyPeriod.value || "Sin período",
+    matrixRows: monthlyReportMatrixRows.value,
+    detailRows: monthlyFilteredDetails.value,
+    summary: [
+      { label: "Eventos", value: monthlySummary.value.totalEvents },
+      { label: "Sincronizados", value: monthlySummary.value.syncedEvents },
+      { label: "Equipos", value: monthlySummary.value.totalEquipments },
+    ],
+  });
+  await runProgramacionExport("mensual", format, report);
+}
+
+async function exportWeekly(format: "excel" | "pdf") {
+  const report = buildWeeklyProgrammingReport({
+    rangeLabel: weeklyDisplayRange.value
+      ? `${weeklyDisplayRange.value.start} / ${weeklyDisplayRange.value.end}`
+      : "Sin semana seleccionada",
+    matrixRows: weeklyReportMatrixRows.value,
+    detailRows: Array.isArray(selectedWeekly.value?.detalles) ? selectedWeekly.value.detalles : [],
+    summary: [
+      { label: "Cronograma", value: selectedWeekly.value?.codigo || "Sin cronograma" },
+      {
+        label: "Actividades",
+        value: Array.isArray(selectedWeekly.value?.detalles) ? selectedWeekly.value.detalles.length : 0,
+      },
+      {
+        label: "Horas",
+        value: weeklyDailyHours.value.reduce((acc, item) => acc + Number(item.hours || 0), 0).toFixed(2),
+      },
+    ],
+  });
+  await runProgramacionExport("semanal", format, report);
+}
+
+async function exportAgenda(format: "excel" | "pdf") {
+  const report = buildAgendaProgrammingReport({
+    monthLabel: monthLabel.value,
+    agendaRows: agendaRows.value.filter((item: any) =>
+      String(item?.proxima_fecha || "").startsWith(agendaMonthPeriod.value),
+    ),
+    weeklyRows: agendaWeeklyReportRows.value,
+    monthlyRows: agendaMonthlyReportRows.value,
+    summary: [
+      { label: "Programaciones agenda", value: agendaMonthSummary.value.programaciones },
+      { label: "Actividades semanales", value: agendaMonthSummary.value.weeklyActivities },
+      { label: "Horas mensuales", value: agendaMonthSummary.value.monthlyHours.toFixed(2) },
+      { label: "Bloques mensuales", value: agendaMonthSummary.value.monthlyCount },
+    ],
+  });
+  await runProgramacionExport("agenda", format, report);
+}
 
 onMounted(async () => {
   setWeeklyEditorWeek(weeklyPlannerAnchorDate.value);

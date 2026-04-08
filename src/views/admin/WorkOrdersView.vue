@@ -50,6 +50,26 @@
           {{ currentWorkflowLabel }}
         </v-chip>
         <v-btn
+          v-if="editingId"
+          variant="tonal"
+          class="mr-2"
+          prepend-icon="mdi-file-excel"
+          :loading="isExporting('excel')"
+          @click="exportWorkOrder('excel')"
+        >
+          Excel
+        </v-btn>
+        <v-btn
+          v-if="editingId"
+          variant="tonal"
+          class="mr-2"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="isExporting('pdf')"
+          @click="exportWorkOrder('pdf')"
+        >
+          PDF
+        </v-btn>
+        <v-btn
           v-if="editingId && isCreated"
           variant="tonal"
           class="mr-2"
@@ -587,6 +607,11 @@ import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import {
+  buildWorkOrderReport,
+  downloadReportExcel,
+  downloadReportPdf,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 const ui = useUiStore();
 const { smAndDown } = useDisplay();
@@ -595,6 +620,7 @@ const loading = ref(false);
 const loadingDetails = ref(false);
 const savingHeader = ref(false);
 const issuingMaterials = ref(false);
+const exportState = reactive<Record<string, boolean>>({});
 const error = ref<string | null>(null);
 const search = ref("");
 const records = ref<any[]>([]);
@@ -718,6 +744,14 @@ function workflowLabel(value: unknown) {
   return workflowOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
 }
 
+function exportKey(format: "excel" | "pdf") {
+  return `work-order:${format}`;
+}
+
+function isExporting(format: "excel" | "pdf") {
+  return Boolean(exportState[exportKey(format)]);
+}
+
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
@@ -831,6 +865,85 @@ const issueHeaders = computed(() => {
   base.push({ title: "Observación", key: "observacion" } as any);
   return base;
 });
+
+const workOrderReportDefinition = computed(() =>
+  buildWorkOrderReport({
+    header: {
+      code: headerForm.code,
+      status_workflow: workflowLabel(headerForm.status_workflow),
+      equipment_label: selectedEquipmentLabel.value,
+      equipment_component_label: selectedEquipmentComponentLabel.value,
+      maintenance_kind: headerForm.maintenance_kind,
+      procedimiento: selectedProcedureLabel.value,
+      plan_operativo: resolvedOperationalPlanLabel.value,
+      alerta: selectedAlertLabel.value,
+      blocked_by: selectedBlockingOrderLabel.value,
+      blocked_reason: headerForm.blocked_reason,
+      causa: headerForm.causa,
+      accion: headerForm.accion,
+      prevencion: headerForm.prevencion,
+    },
+    tasks: taskRows.value.map((item: any) => ({
+      plan: getPlanLabelForTask(item),
+      tarea: getTaskLabelForTask(item),
+      tipo_captura: getTaskFieldType(item),
+      valor_boolean: item?.valor_boolean ?? "",
+      valor_numerico: item?.valor_numeric ?? "",
+      valor_texto: item?.valor_text ?? "",
+      observacion: item?.observacion ?? "",
+      requisitos: getTaskRequirementChips(item).join(" | "),
+    })),
+    attachments: attachmentRows.value.map((item: any) => ({
+      tipo: item?.tipo || "",
+      origen: getAttachmentOriginLabel(item),
+      nombre: item?.nombre || "",
+      mime_type: item?.mime_type || "",
+    })),
+    consumos: consumoRows.value.map((item: any) => ({
+      bodega: item?.bodega_label || "",
+      material: item?.producto_label || "",
+      reservado: item?.cantidad_reservada || 0,
+      emitido: item?.cantidad_emitida || 0,
+      pendiente: item?.cantidad_pendiente || 0,
+      costo_unitario: item?.costo_unitario || 0,
+      subtotal: item?.subtotal || 0,
+      observacion: item?.observacion || "",
+    })),
+    issues: issueRows.value.map((item: any) => ({
+      salida: item?.entrega_code || "",
+      fecha: item?.fecha_label || "",
+      bodega: item?.bodega_label || "",
+      material: item?.producto_label || "",
+      cantidad: item?.cantidad || 0,
+      costo_unitario: item?.costo_unitario || 0,
+      subtotal: item?.subtotal || 0,
+      observacion: item?.observacion || "",
+    })),
+    history: localHistory.value.map((item: any) => ({
+      desde: workflowLabel(item?.from_status),
+      hacia: workflowLabel(item?.to_status),
+      nota: item?.note || "",
+      fecha: item?.changed_at || "",
+    })),
+  }),
+);
+
+async function exportWorkOrder(format: "excel" | "pdf") {
+  const key = exportKey(format);
+  exportState[key] = true;
+  error.value = null;
+  try {
+    if (format === "excel") {
+      await downloadReportExcel(workOrderReportDefinition.value);
+    } else {
+      await downloadReportPdf(workOrderReportDefinition.value);
+    }
+  } catch (e: any) {
+    error.value = e?.message || "No se pudo generar el reporte de la orden de trabajo.";
+  } finally {
+    exportState[key] = false;
+  }
+}
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -1658,6 +1771,34 @@ const selectedProcedureLabel = computed(
       ? `${selectedProcedure.value.codigo} - ${selectedProcedure.value.nombre || selectedProcedure.value.codigo}`
       : selectedProcedure.value?.nombre || "Sin plantilla MPG",
 );
+
+const selectedEquipmentLabel = computed(() => {
+  const selected = equipmentOptions.value.find(
+    (item: any) => String(item?.value || "") === String(headerForm.equipment_id || ""),
+  );
+  return selected?.title || String(headerForm.equipment_id || "Sin equipo");
+});
+
+const selectedEquipmentComponentLabel = computed(() => {
+  const selected = equipmentComponentOptions.value.find(
+    (item: any) => String(item?.value || "") === String(headerForm.equipo_componente_id || ""),
+  );
+  return selected?.title || String(headerForm.equipo_componente_id || "Sin compartimiento");
+});
+
+const selectedAlertLabel = computed(() => {
+  const selected = alertOptions.value.find(
+    (item: any) => String(item?.value || "") === String(headerForm.alerta_id || ""),
+  );
+  return selected?.title || String(headerForm.alerta_id || "");
+});
+
+const selectedBlockingOrderLabel = computed(() => {
+  const selected = blockingWorkOrderOptions.value.find(
+    (item: any) => String(item?.value || "") === String(headerForm.blocked_by_work_order_id || ""),
+  );
+  return selected?.title || String(headerForm.blocked_by_work_order_id || "");
+});
 
 const resolvedOperationalPlanLabel = computed(() => {
   if (headerForm.plan_id) return getSelectedPlanLabel(headerForm.plan_id);

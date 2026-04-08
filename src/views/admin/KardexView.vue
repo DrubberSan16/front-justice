@@ -199,9 +199,28 @@
               Historial de movimientos con indicación clara de ingreso o salida.
             </div>
           </div>
-          <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex">
-            Recargar
-          </v-btn>
+          <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <v-select
+              v-model="inventoryGroupBy"
+              :items="inventoryGroupingOptions"
+              item-title="title"
+              item-value="value"
+              label="Agrupar inventario por"
+              variant="outlined"
+              density="compact"
+              hide-details
+              style="min-width: 220px;"
+            />
+            <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('excel')" @click="exportInventoryReport('excel')">
+              Excel
+            </v-btn>
+            <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('pdf')" @click="exportInventoryReport('pdf')">
+              PDF
+            </v-btn>
+            <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex">
+              Recargar
+            </v-btn>
+          </div>
         </div>
 
         <v-data-table
@@ -247,6 +266,11 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import {
+  buildInventoryStockReport,
+  downloadReportExcel,
+  downloadReportPdf,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 type MovementType = "INGRESO" | "SALIDA";
 
@@ -306,9 +330,11 @@ const downloadingTemplate = ref(false);
 const loadingKardex = ref(false);
 const importJob = ref<ImportJob | null>(null);
 const importPollHandle = ref<number | null>(null);
+const exportState = reactive<Record<string, boolean>>({});
 
 const xlsxFile = ref<File | null>(null);
 const lastBulkSummary = ref<ImportSummary | null>(null);
+const inventoryGroupBy = ref("bodega");
 
 const KARDEx_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 
@@ -324,10 +350,21 @@ const products = ref<any[]>([]);
 const bodegas = ref<any[]>([]);
 const stocks = ref<StockRow[]>([]);
 const kardex = ref<KardexRow[]>([]);
+const sucursales = ref<any[]>([]);
+const lineas = ref<any[]>([]);
+const categorias = ref<any[]>([]);
 
 const movementTypes = [
   { value: "INGRESO", title: "Ingreso de material" },
   { value: "SALIDA", title: "Salida de material" },
+];
+
+const inventoryGroupingOptions = [
+  { value: "bodega", title: "Bodega" },
+  { value: "sucursal", title: "Sucursal" },
+  { value: "linea", title: "Línea" },
+  { value: "categoria", title: "Categoría" },
+  { value: "material", title: "Material" },
 ];
 
 const warehouseOptions = computed(() =>
@@ -336,6 +373,12 @@ const warehouseOptions = computed(() =>
     title: `${b.codigo} - ${b.nombre}`,
   }))
 );
+
+const warehouseMap = computed(() => new Map(bodegas.value.map((item) => [String(item.id), item])));
+const productMap = computed(() => new Map(products.value.map((item) => [String(item.id), item])));
+const branchMap = computed(() => new Map(sucursales.value.map((item) => [String(item.id), item])));
+const lineMap = computed(() => new Map(lineas.value.map((item) => [String(item.id), item])));
+const categoryMap = computed(() => new Map(categorias.value.map((item) => [String(item.id), item])));
 
 const stockByWarehouseProduct = computed(() => {
   const map = new Map<string, StockRow>();
@@ -473,15 +516,99 @@ async function loadBaseData() {
     products.value = inventory.productos;
     bodegas.value = inventory.bodegas;
     stocks.value = inventory.stocks as StockRow[];
+    sucursales.value = inventory.sucursales ?? [];
+    lineas.value = inventory.lineas ?? [];
+    categorias.value = inventory.categorias ?? [];
   } catch (error: any) {
     products.value = [];
     bodegas.value = [];
     stocks.value = [];
+    sucursales.value = [];
+    lineas.value = [];
+    categorias.value = [];
     ui.error(
       error?.response?.data?.message ||
         error?.message ||
         "No se pudieron cargar los catálogos de inventario.",
     );
+  }
+}
+
+function exportKey(format: "excel" | "pdf") {
+  return `inventory:${format}`;
+}
+
+function isExporting(format: "excel" | "pdf") {
+  return Boolean(exportState[exportKey(format)]);
+}
+
+const inventoryReportRows = computed(() => {
+  const rows = stocks.value.map((stock) => {
+    const product = productMap.value.get(String(stock.producto_id));
+    const warehouse = warehouseMap.value.get(String(stock.bodega_id));
+    const branch = branchMap.value.get(String(warehouse?.sucursal_id || ""));
+    const line = lineMap.value.get(String(product?.linea_id || ""));
+    const category = categoryMap.value.get(String(product?.categoria_id || ""));
+    return {
+      agrupacion:
+        inventoryGroupBy.value === "sucursal"
+          ? `${branch?.codigo || ""} - ${branch?.nombre || "Sin sucursal"}`
+          : inventoryGroupBy.value === "linea"
+            ? `${line?.codigo || ""} - ${line?.nombre || "Sin línea"}`
+            : inventoryGroupBy.value === "categoria"
+              ? String(category?.nombre || "Sin categoría")
+              : inventoryGroupBy.value === "material"
+                ? `${product?.codigo || ""} - ${product?.nombre || "Sin material"}`
+                : `${warehouse?.codigo || ""} - ${warehouse?.nombre || "Sin bodega"}`,
+      sucursal: `${branch?.codigo || ""} - ${branch?.nombre || "Sin sucursal"}`,
+      bodega: `${warehouse?.codigo || ""} - ${warehouse?.nombre || "Sin bodega"}`,
+      linea: `${line?.codigo || ""} - ${line?.nombre || "Sin línea"}`,
+      categoria: String(category?.nombre || "Sin categoría"),
+      codigo_material: String(product?.codigo || ""),
+      material: String(product?.nombre || stock.producto_id || ""),
+      stock_actual: Number(stock.stock_actual || 0),
+      stock_minimo: Number(stock.stock_min_bodega || 0),
+      stock_maximo: Number(stock.stock_max_bodega || 0),
+      costo_promedio_bodega: Number(stock.costo_promedio_bodega || 0),
+    };
+  });
+
+  return rows.sort((a, b) =>
+    `${a.agrupacion}|${a.codigo_material}|${a.material}`.localeCompare(
+      `${b.agrupacion}|${b.codigo_material}|${b.material}`,
+    ),
+  );
+});
+
+const inventorySummary = computed(() => [
+  { label: "Registros de stock", value: inventoryReportRows.value.length },
+  { label: "Bodegas", value: new Set(inventoryReportRows.value.map((item) => item.bodega)).size },
+  { label: "Sucursales", value: new Set(inventoryReportRows.value.map((item) => item.sucursal)).size },
+  {
+    label: "Stock total",
+    value: inventoryReportRows.value.reduce((acc, item) => acc + Number(item.stock_actual || 0), 0).toFixed(2),
+  },
+]);
+
+async function exportInventoryReport(format: "excel" | "pdf") {
+  const key = exportKey(format);
+  exportState[key] = true;
+  try {
+    const report = buildInventoryStockReport({
+      groupLabel: inventoryGroupingOptions.find((item) => item.value === inventoryGroupBy.value)?.title || "Bodega",
+      summary: inventorySummary.value,
+      rows: inventoryReportRows.value,
+      movementRows: kardexRows.value,
+    });
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo generar el reporte de inventario.");
+  } finally {
+    exportState[key] = false;
   }
 }
 

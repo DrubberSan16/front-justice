@@ -16,6 +16,24 @@
               <v-btn
                 color="secondary"
                 variant="tonal"
+                prepend-icon="mdi-file-excel"
+                :loading="isExporting('excel')"
+                @click="exportDashboard('excel')"
+              >
+                Excel
+              </v-btn>
+              <v-btn
+                color="secondary"
+                variant="tonal"
+                prepend-icon="mdi-file-pdf-box"
+                :loading="isExporting('pdf')"
+                @click="exportDashboard('pdf')"
+              >
+                PDF
+              </v-btn>
+              <v-btn
+                color="secondary"
+                variant="tonal"
                 prepend-icon="mdi-chart-timeline-variant"
                 @click="router.push({ name: 'inteligencia-mantenimiento' })"
               >
@@ -312,6 +330,11 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import {
+  buildExecutiveDashboardReport,
+  downloadReportExcel,
+  downloadReportPdf,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
 
@@ -322,6 +345,7 @@ const router = useRouter();
 const loading = ref(false);
 const error = ref<string | null>(null);
 const lastUpdatedAt = ref<Date | null>(null);
+const exportState = ref<Record<string, boolean>>({});
 
 const users = ref<AnyRow[]>([]);
 const roles = ref<AnyRow[]>([]);
@@ -449,6 +473,14 @@ function resolveWorkOrderDate(row: AnyRow) {
 
 async function listAll(endpoint: string, params: Record<string, any> = {}) {
   return listAllPages(endpoint, params);
+}
+
+function exportKey(format: "excel" | "pdf") {
+  return `dashboard:${format}`;
+}
+
+function isExporting(format: "excel" | "pdf") {
+  return Boolean(exportState.value[exportKey(format)]);
 }
 
 async function loadDashboard() {
@@ -750,6 +782,78 @@ const operationScheduleSummary = computed(() => {
     hoursLabel: `${totalHours.toFixed(1)} h`,
   };
 });
+
+const dashboardReportDefinition = computed(() =>
+  buildExecutiveDashboardReport({
+    periodLabel: selectedPeriodLabel.value,
+    kpis: kpiCards.value.map((card) => ({
+      label: card.label,
+      value: card.value,
+    })),
+    alerts: openAlerts.value.map((item) => ({
+      tipo_alerta: item?.tipo_alerta || "Alerta",
+      estado: item?.estado || "",
+      severidad: item?.severidad || item?.nivel || "",
+      referencia: item?.referencia_codigo || item?.referencia || item?.tabla_referencia || "",
+      detalle: item?.detalle || "",
+      fecha_generada: item?.fecha_generada || item?.created_at || "",
+    })),
+    workOrders: filteredWorkOrders.value.map((item) => ({
+      codigo: item?.code || item?.codigo || "",
+      titulo: item?.title || item?.titulo || "",
+      equipo: item?.equipment_label || item?.equipo_nombre || item?.equipment_id || "",
+      compartimiento: item?.equipment_component_label || item?.equipo_componente_nombre_oficial || "",
+      estado_workflow: workflowLabel(item?.status_workflow),
+      tipo_mantenimiento: item?.maintenance_kind || "",
+      fecha: resolveWorkOrderDate(item) || "",
+    })),
+    inventory: lowStockItems.value.map((item) => ({
+      producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || ""),
+      bodega: item?.bodega_nombre || item?.bodega_codigo || item?.bodega_id || "",
+      stock_actual: item?.stock_actual || 0,
+      stock_minimo: item?.stock_min_bodega || 0,
+      observacion: "Bajo stock mínimo",
+    })),
+    processIndicators: processIndicatorCards.value.map((item) => ({
+      indicador: item.label,
+      valor: item.value,
+      detalle: item.helper,
+    })),
+    operationDays: operationScheduleDays.value.map((item) => ({
+      fecha: item.date,
+      resumen: item.title,
+      detalle: item.subtitle,
+      actividades: item.count,
+      horas: item.totalHours,
+    })),
+    weeklyActivities: latestWeeklyActivities.value.map((item) => ({
+      actividad: item?.actividad || "",
+      dia_semana: normalizeDayLabel(item?.dia_semana),
+      hora_inicio: item?.hora_inicio || "",
+      hora_fin: item?.hora_fin || "",
+      equipo_codigo: item?.equipo_codigo || "",
+      tipo_proceso: item?.tipo_proceso || "",
+      observacion: item?.observacion || "",
+    })),
+  }),
+);
+
+async function exportDashboard(format: "excel" | "pdf") {
+  const key = exportKey(format);
+  exportState.value = { ...exportState.value, [key]: true };
+  error.value = null;
+  try {
+    if (format === "excel") {
+      await downloadReportExcel(dashboardReportDefinition.value);
+    } else {
+      await downloadReportPdf(dashboardReportDefinition.value);
+    }
+  } catch (e: any) {
+    error.value = e?.message || "No se pudo generar el reporte del dashboard.";
+  } finally {
+    exportState.value = { ...exportState.value, [key]: false };
+  }
+}
 
 const lastUpdatedLabel = computed(() => {
   if (!lastUpdatedAt.value) return "Sin datos";

@@ -133,6 +133,28 @@
               @patch-form="applyFormPatch"
             />
             <v-autocomplete
+              v-else-if="isProcedureComponentOfficialField(field)"
+              v-model="form[field.key]"
+              :items="procedureComponentOptions"
+              item-title="title"
+              item-value="value"
+              :label="repairText(field.label)"
+              hint="Selecciona un compartimiento oficial ya registrado."
+              persistent-hint
+              clearable
+              variant="outlined"
+              @update:model-value="handleProcedureComponentSelected"
+            />
+            <v-text-field
+              v-else-if="isProcedureComponentCodeField(field)"
+              v-model="form[field.key]"
+              :label="repairText(field.label)"
+              hint="Se completa automáticamente al seleccionar el compartimiento."
+              persistent-hint
+              variant="outlined"
+              readonly
+            />
+            <v-autocomplete
               v-else-if="field.type === 'select' && isMaterialField(field)"
               v-model="form[field.key]"
               :items="getSelectOptions(field)"
@@ -191,6 +213,29 @@
             />
           </v-col>
         </v-row>
+
+        <div v-if="props.moduleKey === 'equipos'" class="mt-4">
+          <div class="text-subtitle-2 font-weight-bold mb-2">Compartimientos oficiales del equipo</div>
+          <v-alert
+            v-if="!selectedEquipmentComponentRows.length"
+            type="info"
+            variant="tonal"
+            text="Al guardar el equipo se crearán sus compartimientos oficiales base. Luego podrás afinarlos o ampliarlos."
+          />
+          <v-card v-else variant="outlined" rounded="lg" class="pa-3">
+            <div class="d-flex flex-wrap" style="gap: 8px;">
+              <v-chip
+                v-for="component in selectedEquipmentComponentRows"
+                :key="component.id || `${component.codigo}-${component.nombre_oficial}`"
+                size="small"
+                variant="tonal"
+                color="secondary"
+              >
+                {{ component.codigo ? `${repairText(component.codigo)} - ` : "" }}{{ repairText(component.nombre_oficial || component.nombre || "Sin nombre") }}
+              </v-chip>
+            </div>
+          </v-card>
+        </div>
       </v-card-text>
       <v-divider />
       <v-card-actions class="pa-4">
@@ -242,6 +287,9 @@ const search = ref("");
 const expandedAlertGroups = ref<Record<string, boolean>>({});
 
 const relationOptions = ref<Record<string, Array<{ value: any; title: string; bodegaId?: string | null }>>>({});
+const componentCatalogRows = ref<any[]>([]);
+const selectedEquipmentComponentRows = ref<any[]>([]);
+const equipmentReferenceOptions = ref<Array<{ value: any; title: string }>>([]);
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
@@ -264,6 +312,15 @@ function unwrapData<T = any>(payload: T): any {
     return (payload as any).data;
   }
   return payload;
+}
+
+function asArray(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.records)) return data.records;
+  return [];
 }
 
 function buildAuditPayload(isEditing: boolean) {
@@ -315,6 +372,20 @@ function isMaterialField(field: EnhancedMaintenanceField) {
   return (
     field.relation?.endpoint === "/kpi_inventory/productos" ||
     ["producto_id", "materiales"].includes(String(field.key || ""))
+  );
+}
+
+function isProcedureComponentOfficialField(field: EnhancedMaintenanceField) {
+  return (
+    props.moduleKey === "inteligencia-procedimientos" &&
+    field.key === "compartimiento_nombre_oficial"
+  );
+}
+
+function isProcedureComponentCodeField(field: EnhancedMaintenanceField) {
+  return (
+    props.moduleKey === "inteligencia-procedimientos" &&
+    field.key === "compartimiento_codigo_referencia"
   );
 }
 
@@ -505,6 +576,71 @@ async function loadRelations() {
       }));
     }
   }
+
+  if (["equipos", "inteligencia-procedimientos", "componentes-equipo"].includes(moduleConfig.value.key)) {
+    const [componentRows, equipmentRows] = await Promise.all([
+      listAll("/kpi_maintenance/componentes"),
+      listAll("/kpi_maintenance/equipos"),
+    ]);
+    componentCatalogRows.value = componentRows;
+    equipmentReferenceOptions.value = equipmentRows.map((r: any) => ({
+      value: r.id,
+      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+    }));
+  }
+}
+
+const procedureComponentOptions = computed(() => {
+  const equipmentMap = new Map(
+    equipmentReferenceOptions.value.map((item) => [String(item.value), item.title]),
+  );
+  const deduped = new Map<string, { value: string; title: string; codigo?: string | null }>();
+  for (const row of componentCatalogRows.value) {
+    const officialName = String(row?.nombre_oficial || row?.nombre || "").trim();
+    if (!officialName) continue;
+    const equipmentLabel = equipmentMap.get(String(row?.equipo_id || "")) || String(row?.equipo_id || "").trim();
+    const title = [
+      row?.codigo || null,
+      officialName,
+      equipmentLabel || null,
+    ]
+      .filter(Boolean)
+      .map((item) => repairText(item))
+      .join(" · ");
+    const current = deduped.get(officialName);
+    if (!current || !current.codigo) {
+      deduped.set(officialName, {
+        value: officialName,
+        title,
+        codigo: row?.codigo || null,
+      });
+    }
+  }
+  return [...deduped.values()].sort((a, b) => a.title.localeCompare(b.title));
+});
+
+async function loadSelectedEquipmentComponents(equipmentId?: string | null) {
+  const normalized = String(equipmentId || "").trim();
+  if (!normalized) {
+    selectedEquipmentComponentRows.value = [];
+    return;
+  }
+  try {
+    const { data } = await api.get("/kpi_maintenance/componentes", {
+      params: { equipo_id: normalized },
+    });
+    selectedEquipmentComponentRows.value = asArray(data);
+  } catch {
+    selectedEquipmentComponentRows.value = [];
+  }
+}
+
+function handleProcedureComponentSelected(value: any) {
+  const selected = procedureComponentOptions.value.find(
+    (item) => String(item.value || "") === String(value || ""),
+  );
+  form.compartimiento_nombre_oficial = value || "";
+  form.compartimiento_codigo_referencia = selected?.codigo || "";
 }
 
 function normalizeWorkOrderTitle(item: any) {
@@ -676,6 +812,7 @@ async function fetchRecords() {
 function resetForm() {
   Object.keys(form).forEach((k) => delete form[k]);
   Object.keys(jsonTextFields).forEach((k) => delete jsonTextFields[k]);
+  selectedEquipmentComponentRows.value = [];
   for (const field of moduleConfig.value?.fields ?? []) {
     if (field.key === "status") form[field.key] = "ACTIVE";
     else if (field.type === "boolean") form[field.key] = false;
@@ -934,7 +1071,7 @@ async function openCreate() {
   await assignAutoGeneratedCode();
 }
 
-function openEdit(item: any) {  
+async function openEdit(item: any) {  
   editingId.value = item.id;
   resetForm();
   for (const field of moduleConfig.value?.fields ?? []) {
@@ -956,6 +1093,9 @@ function openEdit(item: any) {
     form[field.key] = field.type === "json"
       ? serializeJsonValue(item[field.key], field)
       : item[field.key] ?? form[field.key];
+  }
+  if (props.moduleKey === "equipos") {
+    await loadSelectedEquipmentComponents(item.id);
   }
   dialog.value = true;
 }
@@ -1039,6 +1179,21 @@ watch(
   () => form.bodega_id,
   () => {
     pruneWarehouseDependentSelections();
+  },
+);
+
+watch(
+  () => form.compartimiento_nombre_oficial,
+  (value) => {
+    if (props.moduleKey !== "inteligencia-procedimientos") return;
+    const selected = procedureComponentOptions.value.find(
+      (item) => String(item.value || "") === String(value || ""),
+    );
+    if (selected) {
+      form.compartimiento_codigo_referencia = selected.codigo || "";
+    } else if (!value) {
+      form.compartimiento_codigo_referencia = "";
+    }
   },
 );
 

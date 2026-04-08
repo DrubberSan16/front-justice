@@ -55,10 +55,13 @@ function toText(v: any): string {
 }
 
 export async function fetchProductsWithStock() {
-  const [productos, bodegas, stocks] = await Promise.all([
+  const [productos, bodegas, stocks, sucursales, lineas, categorias] = await Promise.all([
     listAll("/kpi_inventory/productos"),
     listAll("/kpi_inventory/bodegas"),
     listAll("/kpi_inventory/stock-bodega"),
+    listAll("/kpi_inventory/sucursales"),
+    listAll("/kpi_inventory/lineas"),
+    listAll("/kpi_inventory/categorias"),
   ]);
 
   const stockByProduct = new Map<string, number>();
@@ -71,6 +74,9 @@ export async function fetchProductsWithStock() {
     productos: productos as ProductRow[],
     bodegas,
     stocks: stocks as StockRow[],
+    sucursales,
+    lineas,
+    categorias,
     stockByProduct,
   };
 }

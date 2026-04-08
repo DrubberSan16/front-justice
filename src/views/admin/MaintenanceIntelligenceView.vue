@@ -769,7 +769,7 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
   try {
     const report = moduleReport(moduleKey);
     if (format === "excel") {
-      downloadReportExcel(report);
+      await downloadReportExcel(report);
     } else {
       await downloadReportPdf(report);
     }
