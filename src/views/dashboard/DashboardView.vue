@@ -75,12 +75,20 @@
 
           <v-row dense>
             <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="3">
-              <v-card rounded="lg" variant="outlined" class="pa-4 kpi-card h-100">
+              <v-card
+                rounded="lg"
+                variant="outlined"
+                class="pa-4 kpi-card h-100"
+                :style="{ '--kpi-accent': card.accent }"
+              >
                 <div class="d-flex align-center justify-space-between mb-2">
                   <div class="text-subtitle-2 text-medium-emphasis">{{ card.label }}</div>
                   <v-icon :icon="card.icon" size="20" />
                 </div>
-                <div class="text-h4 font-weight-bold">{{ card.value }}</div>
+                <div class="kpi-card__value-row">
+                  <div class="text-h4 font-weight-bold">{{ card.value }}</div>
+                  <div class="kpi-card__orb" />
+                </div>
                 <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
               </v-card>
             </v-col>
@@ -121,6 +129,39 @@
       </v-col>
     </v-row>
 
+    <v-row class="mb-1">
+      <v-col cols="12" md="6" xl="4">
+        <DashboardBarChartCard
+          title="Distribución de órdenes"
+          subtitle="Balance del flujo de trabajo en el período"
+          :chip-label="`${filteredWorkOrders.length} OT`"
+          chip-color="primary"
+          :items="workOrderStatusChartItems"
+        />
+      </v-col>
+
+      <v-col cols="12" md="6" xl="4">
+        <DashboardBarChartCard
+          title="Severidad de alertas"
+          subtitle="Cómo viene la presión operativa del mes"
+          :chip-label="`${openAlertsCount} abiertas`"
+          chip-color="warning"
+          :items="alertSeverityChartItems"
+        />
+      </v-col>
+
+      <v-col cols="12" xl="4">
+        <DashboardBarChartCard
+          title="Cadencia operativa"
+          subtitle="Horas programadas por día desde el cronograma semanal"
+          :chip-label="operationScheduleSummary.hoursLabel"
+          chip-color="success"
+          :items="operationCadenceChartItems"
+          empty-text="No hay programación semanal OPERACION/MPG para graficar en este período."
+        />
+      </v-col>
+    </v-row>
+
     <v-row>
       <v-col cols="12" md="6" xl="4">
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
@@ -129,22 +170,34 @@
             <v-chip label color="warning" variant="tonal">{{ openAlertsCount }} abiertas</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando alertas recientes..." :rows="4" :columns="1" />
-          <v-list v-else density="compact" class="bg-transparent pa-0">
-            <v-list-item
-              v-for="alert in recentAlerts"
-              :key="alert.id"
-              :title="alert.title"
-              :subtitle="alert.subtitle"
-              class="px-0"
-            />
-            <v-list-item
-              v-if="!recentAlerts.length"
-              title="Sin alertas recientes"
-              subtitle="No hay datos disponibles en este momento."
-              class="px-0"
-            />
-          </v-list>
+          <LoadingTableState v-if="loading" message="Cargando alertas recientes..." :rows="5" :columns="4" />
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Equipo</th>
+                  <th>Estado</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="alert in recentAlertsTableRows" :key="alert.id">
+                  <td class="font-weight-medium">{{ alert.tipo }}</td>
+                  <td>{{ alert.equipo }}</td>
+                  <td>
+                    <v-chip size="x-small" label color="warning" variant="tonal">{{ alert.estado }}</v-chip>
+                  </td>
+                  <td class="text-medium-emphasis">{{ alert.detalle }}</td>
+                </tr>
+                <tr v-if="!recentAlertsTableRows.length">
+                  <td colspan="4" class="text-center text-medium-emphasis py-4">
+                    Sin alertas recientes para el período seleccionado.
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
         </v-card>
       </v-col>
 
@@ -155,22 +208,34 @@
             <v-chip label color="primary" variant="tonal">{{ filteredWorkOrders.length }} totales</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando órdenes de trabajo..." :rows="4" :columns="1" />
-          <v-list v-else density="compact" class="bg-transparent pa-0">
-            <v-list-item
-              v-for="order in recentWorkOrders"
-              :key="order.id"
-              :title="order.title"
-              :subtitle="order.subtitle"
-              class="px-0"
-            />
-            <v-list-item
-              v-if="!recentWorkOrders.length"
-              title="Sin órdenes recientes"
-              subtitle="No se encontraron órdenes de trabajo registradas."
-              class="px-0"
-            />
-          </v-list>
+          <LoadingTableState v-if="loading" message="Cargando órdenes de trabajo..." :rows="5" :columns="4" />
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Título</th>
+                  <th>Equipo</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="order in recentWorkOrdersTableRows" :key="order.id">
+                  <td class="font-weight-medium">{{ order.codigo }}</td>
+                  <td>{{ order.titulo }}</td>
+                  <td>{{ order.equipo }}</td>
+                  <td>
+                    <v-chip size="x-small" label color="primary" variant="tonal">{{ order.estado }}</v-chip>
+                  </td>
+                </tr>
+                <tr v-if="!recentWorkOrdersTableRows.length">
+                  <td colspan="4" class="text-center text-medium-emphasis py-4">
+                    Sin órdenes de trabajo registradas para este período.
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
         </v-card>
       </v-col>
 
@@ -181,46 +246,86 @@
             <v-chip label color="error" variant="tonal">{{ lowStockItems.length }} bajo mínimo</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando inventario crítico..." :rows="4" :columns="1" />
-          <v-list v-else density="compact" class="bg-transparent pa-0">
-            <v-list-item
-              v-for="item in lowStockPreview"
-              :key="item.id"
-              :title="item.title"
-              :subtitle="item.subtitle"
-              class="px-0"
-            />
-            <v-list-item
-              v-if="!lowStockPreview.length"
-              title="Sin stock crítico"
-              subtitle="No hay productos por debajo del mínimo configurado."
-              class="px-0"
-            />
-          </v-list>
+          <LoadingTableState v-if="loading" message="Cargando inventario crítico..." :rows="6" :columns="3" />
+          <div v-else class="dashboard-stack">
+            <div class="summary-strip">
+              <v-chip size="small" label color="error" variant="tonal">
+                {{ lowStockByWarehouse.length }} bodegas impactadas
+              </v-chip>
+              <v-chip size="small" label color="secondary" variant="tonal">
+                {{ criticalInventoryRows.length }} materiales visibles
+              </v-chip>
+            </div>
+
+            <div class="dashboard-mini-bars">
+              <div
+                v-for="item in lowStockByWarehouse"
+                :key="item.key"
+                class="dashboard-mini-bars__row"
+              >
+                <div class="dashboard-mini-bars__meta">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.valueLabel }}</strong>
+                </div>
+                <div class="dashboard-mini-bars__track">
+                  <div
+                    class="dashboard-mini-bars__fill dashboard-mini-bars__fill--danger"
+                    :style="{ width: `${Math.max(8, (item.value / Math.max(...lowStockByWarehouse.map((row) => row.value), 1)) * 100)}%` }"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-table-shell">
+              <v-table density="compact" class="dashboard-mini-table">
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Bodega</th>
+                    <th>Stock</th>
+                    <th>Mín.</th>
+                    <th>Déficit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in criticalInventoryRows" :key="item.id">
+                    <td class="font-weight-medium">{{ item.producto }}</td>
+                    <td>{{ item.bodega }}</td>
+                    <td>{{ item.stock }}</td>
+                    <td>{{ item.min }}</td>
+                    <td>
+                      <v-chip size="x-small" label color="error" variant="tonal">{{ item.deficit }}</v-chip>
+                    </td>
+                  </tr>
+                  <tr v-if="!criticalInventoryRows.length">
+                    <td colspan="5" class="text-center text-medium-emphasis py-4">
+                      No hay productos por debajo del mínimo configurado.
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+          </div>
         </v-card>
       </v-col>
     </v-row>
 
     <v-row>
       <v-col cols="12" md="6" xl="4">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">Indicadores de proceso</div>
-              <div class="text-body-2 text-medium-emphasis">Seguimiento documental y operativo.</div>
-            </div>
-            <v-chip label color="secondary" variant="tonal">{{ processIndicatorCards.length }} KPI</v-chip>
-          </div>
-
-          <LoadingTableState v-if="loading" message="Cargando indicadores de proceso..." :rows="4" :columns="2" />
-          <div v-else class="process-indicator-grid">
-            <div v-for="item in processIndicatorCards" :key="item.key" class="process-indicator-item">
-              <div class="text-caption text-medium-emphasis">{{ item.label }}</div>
-              <div class="text-h6 font-weight-bold">{{ item.value }}</div>
-              <div class="text-caption text-medium-emphasis">{{ item.helper }}</div>
-            </div>
-          </div>
-        </v-card>
+        <DashboardBarChartCard
+          title="Indicadores de proceso"
+          subtitle="Seguimiento documental y operativo"
+          :chip-label="`${processIndicatorCards.length} KPI`"
+          chip-color="secondary"
+          :items="processIndicatorCards.map((item) => ({
+            key: item.key,
+            label: item.label,
+            value: Number(item.value || 0),
+            valueLabel: formatCompactNumber(item.value),
+            helper: item.helper,
+            color: 'linear-gradient(90deg, #3f62d8 0%, #9eaefc 100%)',
+          }))"
+        />
       </v-col>
 
       <v-col cols="12" md="6" xl="4">
@@ -230,55 +335,84 @@
             <v-chip label color="success" variant="tonal">{{ operationScheduleSummary.days }} días programados</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando reporte diario de operación..." :rows="4" :columns="1" />
+          <LoadingTableState v-if="loading" message="Cargando reporte diario de operación..." :rows="6" :columns="3" />
           <div v-else-if="operationScheduleDays.length" class="dashboard-stack">
-            <div class="text-body-2 text-medium-emphasis">
-              {{ selectedPeriodLabel }}<span v-if="latestDailyReport?.codigo"> · Último reporte real {{ latestDailyReport.codigo }}</span>
-            </div>
-
             <div class="summary-strip">
               <v-chip size="small" label color="primary" variant="tonal">Actividades: {{ operationScheduleSummary.activities }}</v-chip>
               <v-chip size="small" label color="secondary" variant="tonal">Horas: {{ operationScheduleSummary.hoursLabel }}</v-chip>
               <v-chip size="small" label color="info" variant="tonal">Reportes reales: {{ filteredDailyReports.length }}</v-chip>
             </div>
 
-            <v-list density="compact" class="bg-transparent pa-0">
-              <v-list-item
-                v-for="item in operationScheduleDays.slice(0, 6)"
+            <div class="dashboard-mini-bars">
+              <div
+                v-for="item in operationScheduleDays.slice(0, 7)"
                 :key="item.date"
-                :title="item.title"
-                :subtitle="item.subtitle"
-                class="px-0"
-              />
-            </v-list>
+                class="dashboard-mini-bars__row"
+              >
+                <div class="dashboard-mini-bars__meta">
+                  <span>{{ item.title }}</span>
+                  <strong>{{ Number(item.totalHours || 0).toFixed(1) }} h</strong>
+                </div>
+                <div class="dashboard-mini-bars__track">
+                  <div
+                    class="dashboard-mini-bars__fill dashboard-mini-bars__fill--success"
+                    :style="{ width: `${Math.max(8, (Number(item.totalHours || 0) / Math.max(...operationScheduleDays.map((row) => Number(row.totalHours || 0)), 1)) * 100)}%` }"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-table-shell">
+              <v-table density="compact" class="dashboard-mini-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Actividades</th>
+                    <th>Horas</th>
+                    <th>Resumen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in operationScheduleDays.slice(0, 7)" :key="item.date">
+                    <td class="font-weight-medium">{{ item.title }}</td>
+                    <td>{{ item.count }}</td>
+                    <td>{{ Number(item.totalHours || 0).toFixed(1) }}</td>
+                    <td class="text-medium-emphasis">{{ item.subtitle }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
           </div>
 
           <div v-else-if="latestDailyReport" class="dashboard-stack">
-            <div class="text-body-2 text-medium-emphasis">
-              {{ latestDailyReport.fecha_reporte || "Sin fecha" }}<span v-if="latestDailyReport.turno"> · {{ latestDailyReport.turno }}</span><span v-if="latestDailyReport.locacion"> · {{ latestDailyReport.locacion }}</span>
-            </div>
-
             <div class="summary-strip">
               <v-chip size="small" label color="primary" variant="tonal">Unidades: {{ latestDailyUnits.length }}</v-chip>
               <v-chip size="small" label color="warning" variant="tonal">Combustible: {{ latestDailyFuel.length }}</v-chip>
               <v-chip size="small" label color="error" variant="tonal">Componentes: {{ latestDailyComponents.length }}</v-chip>
             </div>
-
-            <v-list density="compact" class="bg-transparent pa-0">
-              <v-list-item
-                v-for="unit in latestDailyUnits"
-                :key="unit.id"
-                :title="unit.equipo_codigo || 'Sin equipo'"
-                :subtitle="`Horometro ${unit.horometro_actual ?? 'N/A'} · MPG ${unit.mpg_actual ?? 'N/A'}`"
-                class="px-0"
-              />
-              <v-list-item
-                v-if="!latestDailyUnits.length"
-                title="Sin unidades registradas"
-                subtitle="El reporte diario aun no tiene unidades asociadas."
-                class="px-0"
-              />
-            </v-list>
+            <div class="dashboard-table-shell">
+              <v-table density="compact" class="dashboard-mini-table">
+                <thead>
+                  <tr>
+                    <th>Equipo</th>
+                    <th>Horómetro</th>
+                    <th>MPG</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="unit in latestDailyUnits" :key="unit.id">
+                    <td class="font-weight-medium">{{ unit.equipo_codigo || "Sin equipo" }}</td>
+                    <td>{{ unit.horometro_actual ?? "N/A" }}</td>
+                    <td>{{ unit.mpg_actual ?? "N/A" }}</td>
+                  </tr>
+                  <tr v-if="!latestDailyUnits.length">
+                    <td colspan="3" class="text-center text-medium-emphasis py-4">
+                      El reporte diario aún no tiene unidades asociadas.
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
           </div>
 
           <div v-else class="text-body-2 text-medium-emphasis">No hay programación semanal OPERACION/MPG ni reportes diarios para el período seleccionado.</div>
@@ -292,27 +426,37 @@
             <v-chip label color="info" variant="tonal">{{ latestWeeklySchedule?.codigo || "Sin cronograma" }}</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando cronograma semanal..." :rows="4" :columns="1" />
+          <LoadingTableState v-if="loading" message="Cargando cronograma semanal..." :rows="6" :columns="4" />
           <div v-else-if="latestWeeklySchedule" class="dashboard-stack">
             <div class="text-body-2 text-medium-emphasis">
               {{ latestWeeklySchedule.fecha_inicio || "Sin fecha" }} / {{ latestWeeklySchedule.fecha_fin || "Sin fecha" }}<span v-if="latestWeeklySchedule.locacion"> · {{ latestWeeklySchedule.locacion }}</span>
             </div>
 
-            <v-list density="compact" class="bg-transparent pa-0">
-              <v-list-item
-                v-for="activity in latestWeeklyActivities"
-                :key="activity.id"
-                :title="activity.actividad || 'Actividad sin nombre'"
-                :subtitle="`${normalizeDayLabel(activity.dia_semana)}${activity.hora_inicio ? ` · ${activity.hora_inicio}` : ''}${activity.equipo_codigo ? ` · ${activity.equipo_codigo}` : ''}`"
-                class="px-0"
-              />
-              <v-list-item
-                v-if="!latestWeeklyActivities.length"
-                title="Sin actividades programadas"
-                subtitle="El cronograma aun no tiene actividades registradas."
-                class="px-0"
-              />
-            </v-list>
+            <div class="dashboard-table-shell">
+              <v-table density="compact" class="dashboard-mini-table">
+                <thead>
+                  <tr>
+                    <th>Día</th>
+                    <th>Hora</th>
+                    <th>Equipo</th>
+                    <th>Actividad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="activity in latestWeeklyActivities" :key="activity.id">
+                    <td class="font-weight-medium">{{ normalizeDayLabel(activity.dia_semana) }}</td>
+                    <td>{{ activity.hora_inicio || "Sin hora" }}</td>
+                    <td>{{ activity.equipo_codigo || "Sin equipo" }}</td>
+                    <td class="text-medium-emphasis">{{ activity.actividad || "Actividad sin nombre" }}</td>
+                  </tr>
+                  <tr v-if="!latestWeeklyActivities.length">
+                    <td colspan="4" class="text-center text-medium-emphasis py-4">
+                      El cronograma aún no tiene actividades registradas.
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
           </div>
 
           <div v-else class="text-body-2 text-medium-emphasis">Aun no existen cronogramas semanales cargados.</div>
@@ -328,6 +472,7 @@ import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import {
@@ -414,6 +559,27 @@ function normalizeProcessType(value: unknown) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toUpperCase();
+}
+
+function normalizeAlertSeverity(value: unknown) {
+  const raw = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+  if (!raw) return "INFO";
+  if (["CRITICAL", "CRITICA", "CRITICO", "ALTA", "HIGH"].includes(raw)) return "CRITICA";
+  if (["WARNING", "WARN", "MEDIA", "MEDIO", "ALERTA"].includes(raw)) return "ADVERTENCIA";
+  return "INFO";
+}
+
+function formatCompactNumber(value: unknown) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  return new Intl.NumberFormat("es-EC", {
+    notation: numeric >= 1000 ? "compact" : "standard",
+    maximumFractionDigits: numeric >= 1000 ? 1 : 0,
+  }).format(numeric);
 }
 
 function buildMonthRange(year: number, month: number) {
@@ -596,6 +762,7 @@ const kpiCards = computed(() => [
     value: activeEquipmentCount.value,
     helper: `Con actividad en ${selectedPeriodLabel.value}`,
     icon: "mdi-cog-outline",
+    accent: "linear-gradient(135deg, rgba(47,108,171,0.22), rgba(122,184,255,0.08))",
   },
   {
     key: "ots",
@@ -603,6 +770,7 @@ const kpiCards = computed(() => [
     value: filteredWorkOrders.value.length,
     helper: `${workOrdersByStatus.value.IN_PROGRESS} en proceso`,
     icon: "mdi-clipboard-text-outline",
+    accent: "linear-gradient(135deg, rgba(16,143,114,0.22), rgba(109,227,191,0.08))",
   },
   {
     key: "inventario",
@@ -610,6 +778,7 @@ const kpiCards = computed(() => [
     value: productos.value.length,
     helper: `${lowStockItems.value.length} bajo stock`,
     icon: "mdi-package-variant-closed",
+    accent: "linear-gradient(135deg, rgba(225,122,0,0.2), rgba(255,202,106,0.08))",
   },
   {
     key: "seguridad",
@@ -617,6 +786,7 @@ const kpiCards = computed(() => [
     value: users.value.filter((item) => String(item?.status || "ACTIVE").toUpperCase() === "ACTIVE").length,
     helper: `${roles.value.length} roles configurados`,
     icon: "mdi-account-group-outline",
+    accent: "linear-gradient(135deg, rgba(162,69,216,0.2), rgba(221,156,255,0.08))",
   },
 ]);
 
@@ -625,28 +795,6 @@ const workOrderStatusCards = computed(() => [
   { key: "IN_PROGRESS", label: "En proceso", value: workOrdersByStatus.value.IN_PROGRESS },
   { key: "CLOSED", label: "Cerradas", value: workOrdersByStatus.value.CLOSED },
 ]);
-
-const recentAlerts = computed(() =>
-  [...openAlerts.value]
-    .sort((a, b) => new Date(b?.fecha_generada || 0).getTime() - new Date(a?.fecha_generada || 0).getTime())
-    .slice(0, 5)
-    .map((item) => ({
-      id: item.id,
-      title: `${item?.tipo_alerta || "Alerta"} · ${item?.equipo_id || "Sin equipo"}`,
-      subtitle: `${item?.estado || "Sin estado"}${item?.detalle ? ` · ${item.detalle}` : ""}`,
-    })),
-);
-
-const recentWorkOrders = computed(() =>
-  [...filteredWorkOrders.value]
-    .sort((a, b) => String(b?.code || "").localeCompare(String(a?.code || "")))
-    .slice(0, 5)
-    .map((item) => ({
-      id: item.id,
-      title: `${item?.code || "Sin código"} · ${item?.title || "Sin título"}`,
-      subtitle: `${workflowLabel(item?.status_workflow)} · ${item?.maintenance_kind || "Sin tipo"}`,
-    })),
-);
 
 const lowStockItems = computed(() =>
   stockRows.value.filter((item) => {
@@ -663,12 +811,147 @@ const productNameMap = computed(() =>
   }, {}),
 );
 
-const lowStockPreview = computed(() =>
-  lowStockItems.value.slice(0, 5).map((item) => ({
-    id: item.id,
-    title: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || "Producto"),
-    subtitle: `Stock actual: ${item?.stock_actual || 0} · mínimo: ${item?.stock_min_bodega || 0}`,
+const workOrderStatusChartItems = computed(() => [
+  {
+    key: "planned",
+    label: "Planificadas",
+    value: workOrdersByStatus.value.PLANNED,
+    valueLabel: formatCompactNumber(workOrdersByStatus.value.PLANNED),
+    helper: "Pendientes de ejecución",
+    color: "linear-gradient(90deg, #2f6cab 0%, #78b7ff 100%)",
+  },
+  {
+    key: "in_progress",
+    label: "En proceso",
+    value: workOrdersByStatus.value.IN_PROGRESS,
+    valueLabel: formatCompactNumber(workOrdersByStatus.value.IN_PROGRESS),
+    helper: "OT trabajando en campo",
+    color: "linear-gradient(90deg, #e17a00 0%, #ffce73 100%)",
+  },
+  {
+    key: "closed",
+    label: "Cerradas",
+    value: workOrdersByStatus.value.CLOSED,
+    valueLabel: formatCompactNumber(workOrdersByStatus.value.CLOSED),
+    helper: "Órdenes culminadas",
+    color: "linear-gradient(90deg, #0f8f72 0%, #6de3bf 100%)",
+  },
+]);
+
+const alertSeverityChartItems = computed(() => {
+  const summary = {
+    CRITICA: 0,
+    ADVERTENCIA: 0,
+    INFO: 0,
+  };
+
+  for (const item of openAlerts.value) {
+    const severity = normalizeAlertSeverity(item?.nivel || item?.severidad || item?.categoria);
+    summary[severity as keyof typeof summary] += 1;
+  }
+
+  return [
+    {
+      key: "critical",
+      label: "Críticas",
+      value: summary.CRITICA,
+      valueLabel: formatCompactNumber(summary.CRITICA),
+      helper: "Atención inmediata",
+      color: "linear-gradient(90deg, #d53d57 0%, #ff96a6 100%)",
+    },
+    {
+      key: "warning",
+      label: "Advertencia",
+      value: summary.ADVERTENCIA,
+      valueLabel: formatCompactNumber(summary.ADVERTENCIA),
+      helper: "Seguimiento prioritario",
+      color: "linear-gradient(90deg, #e17a00 0%, #ffce73 100%)",
+    },
+    {
+      key: "info",
+      label: "Informativas",
+      value: summary.INFO,
+      valueLabel: formatCompactNumber(summary.INFO),
+      helper: "Contexto operativo",
+      color: "linear-gradient(90deg, #3f62d8 0%, #9eaefc 100%)",
+    },
+  ];
+});
+
+const operationCadenceChartItems = computed(() =>
+  operationScheduleDays.value.slice(0, 7).map((item) => ({
+    key: item.date,
+    label: item.title,
+    value: Number(item.totalHours || 0),
+    valueLabel: `${Number(item.totalHours || 0).toFixed(1)} h`,
+    helper: `${item.count} actividades`,
+    color: "linear-gradient(90deg, #0f8f72 0%, #7be8c4 100%)",
   })),
+);
+
+const lowStockByWarehouse = computed(() => {
+  const grouped = new Map<string, { key: string; label: string; value: number }>();
+  for (const item of lowStockItems.value) {
+    const key = String(item?.bodega_id || item?.bodega_codigo || item?.bodega_nombre || "Sin bodega");
+    const label = String(item?.bodega_nombre || item?.bodega_codigo || "Sin bodega");
+    const current = grouped.get(key) ?? { key, label, value: 0 };
+    current.value += 1;
+    grouped.set(key, current);
+  }
+
+  return [...grouped.values()]
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+    .slice(0, 6)
+    .map((item) => ({
+      ...item,
+      valueLabel: `${item.value} materiales`,
+      helper: "Bodega con stock comprometido",
+      color: "linear-gradient(90deg, #e24f5f 0%, #ff9aa5 100%)",
+    }));
+});
+
+const recentAlertsTableRows = computed(() =>
+  [...openAlerts.value]
+    .sort((a, b) => new Date(b?.fecha_generada || 0).getTime() - new Date(a?.fecha_generada || 0).getTime())
+    .slice(0, 8)
+    .map((item) => ({
+      id: item.id,
+      tipo: item?.tipo_alerta || "Alerta",
+      equipo: item?.equipo_nombre || item?.equipo_id || "Sin equipo",
+      estado: item?.estado || "Sin estado",
+      detalle: item?.detalle || "Sin detalle",
+    })),
+);
+
+const recentWorkOrdersTableRows = computed(() =>
+  [...filteredWorkOrders.value]
+    .sort((a, b) => String(b?.code || "").localeCompare(String(a?.code || "")))
+    .slice(0, 8)
+    .map((item) => ({
+      id: item.id,
+      codigo: item?.code || "Sin código",
+      titulo: item?.title || item?.titulo || "Sin título",
+      equipo: item?.equipment_label || item?.equipo_nombre || item?.equipment_id || "Sin equipo",
+      estado: workflowLabel(item?.status_workflow),
+    })),
+);
+
+const criticalInventoryRows = computed(() =>
+  [...lowStockItems.value]
+    .map((item) => {
+      const stock = Number(item?.stock_actual || 0);
+      const min = Number(item?.stock_min_bodega || 0);
+      return {
+        id: item.id,
+        producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || "Producto"),
+        bodega: item?.bodega_nombre || item?.bodega_codigo || "Sin bodega",
+        stock,
+        min,
+        deficit: Math.max(0, min - stock),
+      };
+    })
+    .sort((a, b) => b.deficit - a.deficit || a.producto.localeCompare(b.producto))
+    .slice(0, 8),
 );
 
 const processIndicatorCards = computed(() => [
@@ -888,6 +1171,26 @@ watch([selectedYear, selectedMonth], () => {
 
 .kpi-card {
   border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
+    var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
+  overflow: hidden;
+  position: relative;
+}
+
+.kpi-card__value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kpi-card__orb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.12);
 }
 
 .status-row {
@@ -914,6 +1217,69 @@ watch([selectedYear, selectedMonth], () => {
 .dashboard-stack {
   display: grid;
   gap: 12px;
+}
+
+.dashboard-table-shell {
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+}
+
+.dashboard-mini-table {
+  background: transparent;
+}
+
+.dashboard-mini-table :deep(th) {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-muted-text);
+  white-space: nowrap;
+}
+
+.dashboard-mini-table :deep(td) {
+  max-width: 280px;
+  vertical-align: top;
+}
+
+.dashboard-mini-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-mini-bars__row {
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-mini-bars__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.86rem;
+}
+
+.dashboard-mini-bars__track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  border: 1px solid var(--surface-border);
+}
+
+.dashboard-mini-bars__fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.dashboard-mini-bars__fill--danger {
+  background: linear-gradient(90deg, #e24f5f 0%, #ff9aa5 100%);
+}
+
+.dashboard-mini-bars__fill--success {
+  background: linear-gradient(90deg, #0f8f72 0%, #6de3bf 100%);
 }
 
 .summary-strip {
