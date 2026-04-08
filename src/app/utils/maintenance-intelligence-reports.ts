@@ -1,5 +1,3 @@
-import { Workbook } from "exceljs";
-
 type AnyRow = Record<string, any>;
 
 export type ReportSummaryItem = {
@@ -232,6 +230,7 @@ function applyCellFormat(cell: any, format: ReportColumn["format"]) {
 }
 
 export async function downloadReportExcel(report: ReportDefinition) {
+  const { Workbook } = await import("exceljs");
   const workbook = new Workbook();
   workbook.creator = "KPI Justice";
   workbook.company = "Justice Company";

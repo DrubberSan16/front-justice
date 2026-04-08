@@ -55,7 +55,8 @@
           <v-card
             rounded="lg"
             variant="outlined"
-            :class="['pa-4', 'intelligence-kpi', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName || card.key === 'lubricantes-dashboard') }]"
+            :class="['pa-4', 'kpi-card', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName || card.key === 'lubricantes-dashboard') }]"
+            :style="{ '--kpi-accent': card.accent }"
             :role="card.routeName || card.key === 'lubricantes-dashboard' ? 'button' : undefined"
             :tabindex="card.routeName || card.key === 'lubricantes-dashboard' ? 0 : undefined"
             @click="openCard(card)"
@@ -66,13 +67,51 @@
               <div class="text-subtitle-2 text-medium-emphasis">{{ card.label }}</div>
               <v-icon :icon="card.icon" size="20" />
             </div>
-            <div class="text-h4 font-weight-bold">{{ card.value }}</div>
+            <div class="kpi-card__value-row">
+              <div class="text-h4 font-weight-bold">{{ card.value }}</div>
+              <div class="kpi-card__orb" />
+            </div>
             <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
             <div v-if="card.routeName || card.key === 'lubricantes-dashboard'" class="text-caption text-primary mt-3">Abrir detalle</div>
           </v-card>
         </v-col>
       </v-row>
     </v-card>
+
+    <v-row class="mb-1">
+      <v-col cols="12" md="6" xl="4">
+        <DashboardBarChartCard
+          title="Distribucion por proceso"
+          subtitle="Peso de cada frente operativo dentro del periodo"
+          :chip-label="`${breakdownItems.length} procesos`"
+          chip-color="primary"
+          :items="breakdownChartItems"
+          empty-text="Sin eventos documentados para graficar."
+        />
+      </v-col>
+
+      <v-col cols="12" md="6" xl="4">
+        <DashboardBarChartCard
+          title="Presion operativa"
+          subtitle="Backlog, eventos y monitoreo critico"
+          :chip-label="`${processIndicatorRows.length} KPI`"
+          chip-color="warning"
+          :items="processPressureChartItems"
+          empty-text="No hay indicadores operativos para comparar."
+        />
+      </v-col>
+
+      <v-col cols="12" xl="4">
+        <DashboardBarChartCard
+          title="Cadencia operativa"
+          subtitle="Horas programadas por dia en OPERACION y MPG"
+          :chip-label="operationScheduleSummary.hoursLabel"
+          chip-color="success"
+          :items="operationCadenceChartItems"
+          empty-text="No hay actividades OPERACION/MPG para el periodo seleccionado."
+        />
+      </v-col>
+    </v-row>
 
     <v-row>
       <v-col cols="12" lg="4">
@@ -120,28 +159,44 @@
             <v-chip label color="secondary" variant="tonal">{{ recentEvents.length }} eventos recientes</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando eventos recientes..." :rows="4" :columns="1" />
-          <v-list v-else density="comfortable" class="bg-transparent pa-0">
-            <v-list-item
-              v-for="item in recentEvents"
-              :key="item.id"
-              :title="item.title"
-              :subtitle="item.subtitle"
-              class="px-0"
-            >
-              <template #prepend>
-                <v-avatar size="34" color="secondary" variant="tonal">
-                  <v-icon icon="mdi-bell-ring-outline" size="18" />
-                </v-avatar>
-              </template>
-            </v-list-item>
-            <v-list-item
-              v-if="!recentEvents.length"
-              title="Sin eventos recientes"
-              subtitle="Las notificaciones de mantenimiento apareceran aqui."
-              class="px-0"
-            />
-          </v-list>
+          <div class="summary-strip mb-3">
+            <v-chip size="small" label color="secondary" variant="tonal">
+              {{ recentEvents.length }} eventos visibles
+            </v-chip>
+            <v-chip size="small" label color="info" variant="tonal">
+              {{ breakdownItems.length }} procesos activos
+            </v-chip>
+            <v-chip size="small" label color="success" variant="tonal">
+              {{ generatedAtLabel }}
+            </v-chip>
+          </div>
+
+          <LoadingTableState v-if="loading" message="Cargando eventos recientes..." :rows="5" :columns="4" />
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+              <thead>
+                <tr>
+                  <th>Proceso</th>
+                  <th>Accion</th>
+                  <th>Referencia</th>
+                  <th>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in recentEventsTableRows" :key="item.id">
+                  <td class="font-weight-medium">{{ item.proceso }}</td>
+                  <td>{{ item.accion }}</td>
+                  <td>{{ item.referencia }}</td>
+                  <td class="text-medium-emphasis">{{ item.fecha }}</td>
+                </tr>
+                <tr v-if="!recentEventsTableRows.length">
+                  <td colspan="4" class="text-center text-medium-emphasis py-4">
+                    Las notificaciones de mantenimiento apareceran aqui.
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
         </v-card>
       </v-col>
     </v-row>
@@ -168,32 +223,34 @@
           </div>
 
           <LoadingTableState v-if="loading" message="Cargando plantillas MPG..." :rows="5" :columns="5" />
-          <v-table v-else density="compact" class="report-table">
-            <thead>
-              <tr>
-                <th>Codigo</th>
-                <th>Plantilla</th>
-                <th>Frecuencia</th>
-                <th>Actividades</th>
-                <th>Documento</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in procedurePreview" :key="item.id">
-                <td>{{ item.codigo }}</td>
-                <td>
-                  <div class="font-weight-medium">{{ item.nombre }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
-                </td>
-                <td>{{ item.frecuencia_horas ? `${item.frecuencia_horas} H` : "N/A" }}</td>
-                <td>{{ item.actividades?.length ?? 0 }}</td>
-                <td>{{ item.documento_referencia || "Sin referencia" }}</td>
-              </tr>
-              <tr v-if="!procedurePreview.length">
-                <td colspan="5" class="text-center text-medium-emphasis py-4">No hay procedimientos cargados.</td>
-              </tr>
-            </tbody>
-          </v-table>
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+              <thead>
+                <tr>
+                  <th>Codigo</th>
+                  <th>Plantilla</th>
+                  <th>Frecuencia</th>
+                  <th>Actividades</th>
+                  <th>Documento</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in procedurePreview" :key="item.id">
+                  <td>{{ item.codigo }}</td>
+                  <td>
+                    <div class="font-weight-medium">{{ item.nombre }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
+                  </td>
+                  <td>{{ item.frecuencia_horas ? `${item.frecuencia_horas} H` : "N/A" }}</td>
+                  <td>{{ item.actividades?.length ?? 0 }}</td>
+                  <td>{{ item.documento_referencia || "Sin referencia" }}</td>
+                </tr>
+                <tr v-if="!procedurePreview.length">
+                  <td colspan="5" class="text-center text-medium-emphasis py-4">No hay procedimientos cargados.</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
         </v-card>
       </v-col>
 
@@ -218,7 +275,8 @@
           </div>
 
           <LoadingTableState v-if="loading" message="Cargando análisis de lubricante..." :rows="5" :columns="5" />
-          <v-table v-else density="compact" class="report-table">
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
             <thead>
               <tr>
                 <th>Codigo</th>
@@ -247,7 +305,8 @@
                 <td colspan="5" class="text-center text-medium-emphasis py-4">No hay analisis cargados.</td>
               </tr>
             </tbody>
-          </v-table>
+            </v-table>
+          </div>
         </v-card>
       </v-col>
     </v-row>
@@ -281,10 +340,26 @@
               <v-chip label color="info" variant="tonal">Horas: {{ operationScheduleSummary.hoursLabel }}</v-chip>
             </div>
 
+            <div class="dashboard-mini-bars mb-4">
+              <div v-for="item in operationCadenceChartItems" :key="item.key" class="dashboard-mini-bars__row">
+                <div class="dashboard-mini-bars__meta">
+                  <span>{{ item.label }}</span>
+                  <span class="font-weight-medium">{{ item.valueLabel }}</span>
+                </div>
+                <div class="dashboard-mini-bars__track">
+                  <div class="dashboard-mini-bars__fill dashboard-mini-bars__fill--success" :style="{ width: `${item.percent}%` }" />
+                </div>
+              </div>
+              <div v-if="!operationCadenceChartItems.length" class="text-body-2 text-medium-emphasis">
+                No hay horas OPERACION/MPG para el periodo seleccionado.
+              </div>
+            </div>
+
             <v-row dense>
               <v-col cols="12" md="7">
                 <div class="text-subtitle-2 font-weight-medium mb-2">Unidades registradas</div>
-                <v-table density="compact" class="report-table">
+                <div class="dashboard-table-shell">
+                  <v-table density="compact" class="dashboard-mini-table">
                   <thead>
                     <tr>
                       <th>Equipo</th>
@@ -304,12 +379,14 @@
                       <td colspan="4" class="text-center text-medium-emphasis py-3">Sin unidades asociadas.</td>
                     </tr>
                   </tbody>
-                </v-table>
+                  </v-table>
+                </div>
               </v-col>
 
               <v-col cols="12" md="5">
                 <div class="text-subtitle-2 font-weight-medium mb-2">Combustible</div>
-                <v-table density="compact" class="report-table mb-4">
+                <div class="dashboard-table-shell mb-4">
+                  <v-table density="compact" class="dashboard-mini-table">
                   <thead>
                     <tr>
                       <th>Tanque</th>
@@ -327,10 +404,12 @@
                       <td colspan="3" class="text-center text-medium-emphasis py-3">Sin lecturas de combustible.</td>
                     </tr>
                   </tbody>
-                </v-table>
+                  </v-table>
+                </div>
 
                 <div class="text-subtitle-2 font-weight-medium mb-2">Componentes asociados</div>
-                <v-table density="compact" class="report-table">
+                <div class="dashboard-table-shell">
+                  <v-table density="compact" class="dashboard-mini-table">
                   <thead>
                     <tr>
                       <th>Equipo</th>
@@ -348,7 +427,8 @@
                       <td colspan="3" class="text-center text-medium-emphasis py-3">Sin cambios de componente.</td>
                     </tr>
                   </tbody>
-                </v-table>
+                  </v-table>
+                </div>
               </v-col>
             </v-row>
           </div>
@@ -489,6 +569,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
+import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
@@ -509,6 +590,7 @@ type IntelligenceCard = {
   value: number;
   helper: string;
   icon: string;
+  accent: string;
   routeName?: string;
 };
 
@@ -688,6 +770,20 @@ function chipColorForStatus(value: unknown) {
   return "secondary";
 }
 
+function formatCompactNumber(value: unknown) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return "0";
+  if (Math.abs(numeric) >= 1000) {
+    return new Intl.NumberFormat("es-EC", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(numeric);
+  }
+  return new Intl.NumberFormat("es-EC", {
+    maximumFractionDigits: numeric % 1 === 0 ? 0 : 1,
+  }).format(numeric);
+}
+
 function dayOrder(value: unknown) {
   const normalized = String(value || "").trim().toUpperCase();
   const order = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO", "DOMINGO"];
@@ -743,6 +839,71 @@ const operationScheduleSummary = computed(() => {
     totalHours,
     hoursLabel: `${totalHours.toFixed(1)} h`,
   };
+});
+
+const breakdownChartItems = computed(() => {
+  const total = Math.max(
+    1,
+    breakdownItems.value.reduce((acc, item) => acc + Number(item?.total || 0), 0),
+  );
+  return breakdownItems.value.map((item, index) => {
+    const rawValue = Number(item?.total || 0);
+    return {
+      key: String(item?.tipo_proceso || index),
+      label: prettifyProcess(item?.tipo_proceso || "Sin tipo"),
+      value: rawValue,
+      valueLabel: formatCompactNumber(rawValue),
+      helper: `${((rawValue / total) * 100).toFixed(1)}% del periodo`,
+    };
+  });
+});
+
+const processPressureChartItems = computed(() => {
+  const source = processIndicatorRows.value;
+  const maxValue = Math.max(...source.map((item) => Number(item?.value || 0)), 1);
+  return source.map((item) => ({
+    key: item.key,
+    label: item.label,
+    value: Number(item.value || 0),
+    valueLabel: formatCompactNumber(item.value),
+    helper: item.helper,
+    percent: Math.max(6, Math.min(100, (Number(item.value || 0) / maxValue) * 100)),
+  }));
+});
+
+const operationCadenceChartItems = computed(() => {
+  const grouped = new Map<string, { label: string; hours: number; activities: number }>();
+  for (const item of operationalScheduleItems.value) {
+    const dateKey = String(item?.fecha_resuelta || "").slice(0, 10);
+    if (!dateKey) continue;
+    const current = grouped.get(dateKey) ?? {
+      label: new Intl.DateTimeFormat("es-EC", { day: "2-digit", month: "short" }).format(
+        parseDateValue(dateKey) ?? new Date(),
+      ),
+      hours: 0,
+      activities: 0,
+    };
+    current.hours += Number(item?.duracion_horas || 0);
+    current.activities += 1;
+    grouped.set(dateKey, current);
+  }
+
+  const items = [...grouped.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-6)
+    .map(([key, value]) => ({
+      key,
+      label: value.label,
+      value: value.hours,
+      valueLabel: `${value.hours.toFixed(1)} h`,
+      helper: `${value.activities} actividad(es)`,
+    }));
+
+  const maxValue = Math.max(...items.map((item) => Number(item.value || 0)), 1);
+  return items.map((item) => ({
+    ...item,
+    percent: Math.max(8, Math.min(100, (Number(item.value || 0) / maxValue) * 100)),
+  }));
 });
 
 function moduleReport(moduleKey: string) {
@@ -843,6 +1004,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: procedures.value.length,
     helper: "Procedimientos y checklist operativos",
     icon: "mdi-file-document-multiple-outline",
+    accent: "linear-gradient(135deg, rgba(47,108,171,0.18), rgba(122,184,255,0.06))",
     routeName: "inteligencia-procedimientos",
   },
   {
@@ -851,6 +1013,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: filteredAnalyses.value.length,
     helper: `${analysesInAlert.value} en alerta`,
     icon: "mdi-flask-outline",
+    accent: "linear-gradient(135deg, rgba(226,79,95,0.18), rgba(255,154,165,0.06))",
     routeName: "inteligencia-analisis-lubricante",
   },
   {
@@ -859,6 +1022,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: analysisLubricantCount.value,
     helper: "Abre el dashboard predictivo por lubricante",
     icon: "mdi-oil",
+    accent: "linear-gradient(135deg, rgba(162,69,216,0.18), rgba(221,156,255,0.06))",
   },
   {
     key: "componentes",
@@ -866,6 +1030,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: summary.kpis?.componentes_monitoreados ?? 0,
     helper: "Indicador dinamico desde reporte diario y KPI",
     icon: "mdi-engine-outline",
+    accent: "linear-gradient(135deg, rgba(225,122,0,0.18), rgba(255,202,106,0.06))",
   },
   {
     key: "reportes",
@@ -873,6 +1038,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: operationScheduleSummary.value.days,
     helper: `${operationScheduleSummary.value.activities} actividades OPERACION/MPG`,
     icon: "mdi-text-box-check-outline",
+    accent: "linear-gradient(135deg, rgba(15,143,114,0.18), rgba(109,227,191,0.06))",
   },
   {
     key: "cronogramas",
@@ -880,6 +1046,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: filteredSchedules.value.length,
     helper: "Planificacion semanal de campo",
     icon: "mdi-calendar-week-outline",
+    accent: "linear-gradient(135deg, rgba(69,88,216,0.18), rgba(157,176,255,0.06))",
   },
   {
     key: "eventos",
@@ -887,6 +1054,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     value: summary.kpis?.eventos_proceso ?? 0,
     helper: "Notificaciones y trazabilidad",
     icon: "mdi-bell-ring-outline",
+    accent: "linear-gradient(135deg, rgba(244,177,131,0.22), rgba(252,228,214,0.08))",
   },
 ]);
 
@@ -922,6 +1090,16 @@ const recentEvents = computed(() =>
     id: item.id,
     title: `${prettifyProcess(item.tipo_proceso)} · ${item.accion}`,
     subtitle: `${item.referencia_codigo || item.referencia_tabla || "Sin referencia"}${item.fecha_evento ? ` · ${new Date(item.fecha_evento).toLocaleString()}` : ""}`,
+  })),
+);
+
+const recentEventsTableRows = computed(() =>
+  (summary.recent_events ?? []).slice(0, 8).map((item: AnyRow) => ({
+    id: item.id,
+    proceso: prettifyProcess(item.tipo_proceso),
+    accion: item.accion || "Sin accion",
+    referencia: item.referencia_codigo || item.referencia_tabla || "Sin referencia",
+    fecha: item.fecha_evento ? new Date(item.fecha_evento).toLocaleString() : "Sin fecha",
   })),
 );
 
@@ -1025,9 +1203,28 @@ watch([selectedYear, selectedMonth], () => {
   overflow: hidden;
 }
 
-.intelligence-kpi {
-  border-color: var(--surface-border);
-  background: var(--surface-soft);
+.kpi-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
+    var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
+  overflow: hidden;
+  position: relative;
+}
+
+.kpi-card__value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kpi-card__orb {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.12);
 }
 
 .intelligence-kpi--clickable {
@@ -1090,6 +1287,65 @@ watch([selectedYear, selectedMonth], () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.dashboard-table-shell {
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+}
+
+.dashboard-mini-table {
+  background: transparent;
+}
+
+.dashboard-mini-table :deep(th) {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--app-muted-text);
+  white-space: nowrap;
+}
+
+.dashboard-mini-table :deep(td) {
+  max-width: 280px;
+  vertical-align: top;
+}
+
+.dashboard-mini-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.dashboard-mini-bars__row {
+  display: grid;
+  gap: 6px;
+}
+
+.dashboard-mini-bars__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.86rem;
+}
+
+.dashboard-mini-bars__track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-soft) 76%, transparent);
+  border: 1px solid var(--surface-border);
+}
+
+.dashboard-mini-bars__fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.dashboard-mini-bars__fill--success {
+  background: linear-gradient(90deg, #0f8f72 0%, #6de3bf 100%);
 }
 
 .report-table {
