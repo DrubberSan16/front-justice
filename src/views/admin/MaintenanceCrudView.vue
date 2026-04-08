@@ -215,25 +215,67 @@
         </v-row>
 
         <div v-if="props.moduleKey === 'equipos'" class="mt-4">
-          <div class="text-subtitle-2 font-weight-bold mb-2">Compartimientos oficiales del equipo</div>
+          <div class="d-flex align-center justify-space-between mb-2" style="gap: 12px; flex-wrap: wrap;">
+            <div class="text-subtitle-2 font-weight-bold">Compartimientos oficiales del equipo</div>
+            <v-btn color="secondary" variant="tonal" prepend-icon="mdi-plus" @click="addEquipmentComponentDraft">
+              Agregar compartimiento
+            </v-btn>
+          </div>
           <v-alert
-            v-if="!selectedEquipmentComponentRows.length"
             type="info"
             variant="tonal"
-            text="Al guardar el equipo se crearán sus compartimientos oficiales base. Luego podrás afinarlos o ampliarlos."
+            class="mb-3"
+            text="Define los nombres oficiales de los compartimientos y el modelo del equipo. Esta información alimenta las órdenes de trabajo y el análisis del gemelo digital."
           />
-          <v-card v-else variant="outlined" rounded="lg" class="pa-3">
-            <div class="d-flex flex-wrap" style="gap: 8px;">
-              <v-chip
-                v-for="component in selectedEquipmentComponentRows"
-                :key="component.id || `${component.codigo}-${component.nombre_oficial}`"
+          <v-card
+            v-for="(component, index) in selectedEquipmentComponentRows"
+            :key="component.id || `${component.codigo}-${index}`"
+            variant="outlined"
+            rounded="lg"
+            class="pa-3 mb-3"
+          >
+            <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px;">
+              <div class="text-subtitle-2 font-weight-medium">Compartimiento {{ index + 1 }}</div>
+              <v-btn
+                icon="mdi-delete"
                 size="small"
-                variant="tonal"
-                color="secondary"
-              >
-                {{ component.codigo ? `${repairText(component.codigo)} - ` : "" }}{{ repairText(component.nombre_oficial || component.nombre || "Sin nombre") }}
-              </v-chip>
+                variant="text"
+                color="error"
+                @click="removeEquipmentComponentDraft(index)"
+              />
             </div>
+            <v-row dense>
+              <v-col cols="12" md="2">
+                <v-text-field v-model="component.codigo" label="Código" variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="12" md="3">
+                <v-text-field v-model="component.nombre" label="Nombre corto" variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="12" md="4">
+                <v-text-field
+                  v-model="component.nombre_oficial"
+                  label="Nombre oficial del compartimiento"
+                  variant="outlined"
+                  density="compact"
+                />
+              </v-col>
+              <v-col cols="12" md="2">
+                <v-text-field v-model="component.categoria" label="Categoría" variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="12" md="1">
+                <v-text-field v-model="component.orden" label="Orden" type="number" variant="outlined" density="compact" />
+              </v-col>
+              <v-col cols="12">
+                <v-textarea
+                  v-model="component.descripcion"
+                  label="Descripción operativa"
+                  variant="outlined"
+                  density="compact"
+                  rows="2"
+                  auto-grow
+                />
+              </v-col>
+            </v-row>
           </v-card>
         </div>
       </v-card-text>
@@ -297,6 +339,132 @@ const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const form = reactive<Record<string, any>>({});
 const jsonTextFields = reactive<Record<string, string>>({});
+
+function defaultEquipmentComponentDrafts() {
+  return [
+    {
+      codigo: "RAD",
+      nombre: "Radiador",
+      nombre_oficial: "Radiador (sistema de enfriamiento)",
+      categoria: "ENFRIAMIENTO",
+      orden: 10,
+      descripcion: "Subsistema de disipacion termica del equipo.",
+    },
+    {
+      codigo: "MCI",
+      nombre: "Motor",
+      nombre_oficial: "Motor de combustion interna",
+      categoria: "MOTOR",
+      orden: 20,
+      descripcion: "Bloque motriz principal de la unidad de generacion.",
+    },
+    {
+      codigo: "ALT",
+      nombre: "Alternador",
+      nombre_oficial: "Alternador",
+      categoria: "GENERACION",
+      orden: 30,
+      descripcion: "Modulo de generacion electrica.",
+    },
+    {
+      codigo: "CTRL",
+      nombre: "Controlador",
+      nombre_oficial: "Controlador / sistema de control",
+      categoria: "CONTROL",
+      orden: 40,
+      descripcion: "Sistema de control y monitoreo.",
+    },
+    {
+      codigo: "BMT",
+      nombre: "Barras MT",
+      nombre_oficial: "Barras de media tension",
+      categoria: "DISTRIBUCION",
+      orden: 50,
+      descripcion: "Barras y acoples de media tension.",
+    },
+    {
+      codigo: "TRF",
+      nombre: "Transformador",
+      nombre_oficial: "Transformador de potencia",
+      categoria: "POTENCIA",
+      orden: 60,
+      descripcion: "Transformador asociado a la unidad.",
+    },
+    {
+      codigo: "ARR",
+      nombre: "Arranque",
+      nombre_oficial: "Sistema de arranque",
+      categoria: "ARRANQUE",
+      orden: 70,
+      descripcion: "Sistema de arranque y baterias.",
+    },
+    {
+      codigo: "COMB",
+      nombre: "Combustible",
+      nombre_oficial: "Sistema de combustible",
+      categoria: "COMBUSTIBLE",
+      orden: 80,
+      descripcion: "Tanque, lineas, filtros y suministro de combustible.",
+    },
+    {
+      codigo: "LUB",
+      nombre: "Lubricacion",
+      nombre_oficial: "Sistema de lubricacion",
+      categoria: "LUBRICACION",
+      orden: 90,
+      descripcion: "Carter, bomba, filtros y enfriador de aceite.",
+    },
+    {
+      codigo: "ADM",
+      nombre: "Admision",
+      nombre_oficial: "Sistema de admision y sobrealimentacion",
+      categoria: "ADMISION",
+      orden: 100,
+      descripcion: "Filtros, ductos, turbo y entrada de aire.",
+    },
+    {
+      codigo: "SENF",
+      nombre: "Enfriamiento",
+      nombre_oficial: "Sistema de enfriamiento",
+      categoria: "ENFRIAMIENTO",
+      orden: 110,
+      descripcion: "Bomba de agua, termostatos y circuito de refrigeracion.",
+    },
+  ].map((item) => ({ ...item }));
+}
+
+function createEmptyEquipmentComponentDraft() {
+  return {
+    id: "",
+    codigo: "",
+    nombre: "",
+    nombre_oficial: "",
+    categoria: "",
+    orden:
+      selectedEquipmentComponentRows.value.reduce(
+        (max, item) => Math.max(max, Number(item?.orden || 0)),
+        0,
+      ) + 10,
+    descripcion: "",
+  };
+}
+
+function resetEquipmentComponentDrafts() {
+  selectedEquipmentComponentRows.value = defaultEquipmentComponentDrafts();
+}
+
+function addEquipmentComponentDraft() {
+  selectedEquipmentComponentRows.value = [
+    ...selectedEquipmentComponentRows.value,
+    createEmptyEquipmentComponentDraft(),
+  ];
+}
+
+function removeEquipmentComponentDraft(index: number) {
+  selectedEquipmentComponentRows.value = selectedEquipmentComponentRows.value.filter(
+    (_item, itemIndex) => itemIndex !== index,
+  );
+}
 
 function repairText(value: unknown) {
   const text = String(value ?? "");
@@ -622,16 +790,17 @@ const procedureComponentOptions = computed(() => {
 async function loadSelectedEquipmentComponents(equipmentId?: string | null) {
   const normalized = String(equipmentId || "").trim();
   if (!normalized) {
-    selectedEquipmentComponentRows.value = [];
+    resetEquipmentComponentDrafts();
     return;
   }
   try {
     const { data } = await api.get("/kpi_maintenance/componentes", {
       params: { equipo_id: normalized },
     });
-    selectedEquipmentComponentRows.value = asArray(data);
+    const rows = asArray(data);
+    selectedEquipmentComponentRows.value = rows.length ? rows : defaultEquipmentComponentDrafts();
   } catch {
-    selectedEquipmentComponentRows.value = [];
+    resetEquipmentComponentDrafts();
   }
 }
 
@@ -824,6 +993,9 @@ function resetForm() {
     }
     else if (field.type === "number") form[field.key] = "0";
     else form[field.key] = "";
+  }
+  if (props.moduleKey === "equipos") {
+    resetEquipmentComponentDrafts();
   }
 }
 
@@ -1031,6 +1203,24 @@ function sanitizePayload() {
     };
   }
 
+  if (props.moduleKey === "equipos") {
+    payload.componentes = selectedEquipmentComponentRows.value
+      .map((component, index) => ({
+        id: String(component?.id || "").trim() || undefined,
+        codigo: String(component?.codigo || "").trim() || undefined,
+        nombre:
+          String(component?.nombre || "").trim() ||
+          String(component?.nombre_oficial || "").trim(),
+        nombre_oficial:
+          String(component?.nombre_oficial || "").trim() ||
+          String(component?.nombre || "").trim(),
+        categoria: String(component?.categoria || "").trim() || undefined,
+        orden: Number(component?.orden || index + 1) || index + 1,
+        descripcion: String(component?.descripcion || "").trim() || undefined,
+      }))
+      .filter((component) => Boolean(component.nombre || component.nombre_oficial));
+  }
+
   return payload;
 }
 
@@ -1061,6 +1251,29 @@ function validateForm() {
       return false;
     }
   }
+
+  if (props.moduleKey === "equipos") {
+    if (!selectedEquipmentComponentRows.value.length) {
+      ui.error("Debes registrar al menos un compartimiento oficial para el equipo.");
+      return false;
+    }
+
+    for (const [index, component] of selectedEquipmentComponentRows.value.entries()) {
+      const shortName = String(component?.nombre || "").trim();
+      const officialName = String(component?.nombre_oficial || "").trim();
+      if (!shortName) {
+        ui.error(`El compartimiento ${index + 1} debe tener nombre corto.`);
+        return false;
+      }
+      if (!officialName) {
+        ui.error(
+          `El compartimiento ${index + 1} debe tener nombre oficial para el análisis del gemelo digital.`,
+        );
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 

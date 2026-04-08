@@ -264,12 +264,19 @@
               :loading="analyzingTwinId === detail?.twin?.id"
               @click="detail && analyzeTwin(detail.snapshot)"
             >
-              Analizar IA
+              {{ analyzingTwinId === detail?.twin?.id ? "Buscando modelos recomendados..." : "Analizar IA" }}
             </v-btn>
           </div>
         </v-card-title>
         <v-divider />
         <v-card-text v-if="detail" class="pt-4">
+          <v-alert
+            v-if="analyzingTwinId === detail?.twin?.id"
+            type="info"
+            variant="tonal"
+            class="mb-4"
+            text="Buscando modelos recomendados..."
+          />
           <div class="summary-strip mb-4">
             <v-chip label color="primary" variant="tonal">{{ detail.period.label }}</v-chip>
             <v-chip label :color="healthColor(detail.snapshot.health_score)" variant="tonal">
@@ -427,33 +434,29 @@
                     </div>
                     <div class="mb-2">{{ insight.summary }}</div>
                     <div class="text-body-2 text-medium-emphasis">{{ insight.recommendation }}</div>
-                    <v-card
-                      v-if="insightSimilarEquipment(insight)"
-                      rounded="lg"
-                      variant="tonal"
-                      color="secondary"
-                      class="pa-3 mt-3"
-                    >
-                      <div class="text-caption text-uppercase mb-1">Equipo comparable</div>
-                      <div class="font-weight-bold">
-                        {{ insightSimilarEquipment(insight)?.equipment_code || "Sin código" }}
-                        <span v-if="insightSimilarEquipment(insight)?.equipment_name">
-                          · {{ insightSimilarEquipment(insight)?.equipment_name }}
-                        </span>
-                      </div>
-                      <div class="text-body-2 mt-1">
-                        {{ insightSimilarEquipment(insight)?.similarity_reason }}
-                      </div>
-                      <div class="text-caption text-medium-emphasis mt-1">
-                        Modelo: {{ insightSimilarEquipment(insight)?.equipment_model || "No registrado" }}
-                        <span v-if="insightSimilarEquipment(insight)?.health_score != null">
-                          · Salud {{ insightSimilarEquipment(insight)?.health_score }}%
-                        </span>
-                        <span v-if="insightSimilarEquipment(insight)?.risk_level">
-                          · Riesgo {{ insightSimilarEquipment(insight)?.risk_level }}
-                        </span>
-                      </div>
-                    </v-card>
+                    <div v-if="insightNationalModels(insight).length" class="mt-3">
+                      <div class="text-caption text-uppercase mb-2">Modelos nacionales recomendados</div>
+                      <v-card
+                        v-for="(model, modelIndex) in insightNationalModels(insight)"
+                        :key="`${insight.id}-national-model-${modelIndex}`"
+                        rounded="lg"
+                        variant="tonal"
+                        color="secondary"
+                        class="pa-3 mb-2"
+                      >
+                        <div class="font-weight-bold">
+                          {{ model.model }}
+                          <span v-if="model.manufacturer"> · {{ model.manufacturer }}</span>
+                        </div>
+                        <div class="text-body-2 mt-1" v-if="model.reason">
+                          {{ model.reason }}
+                        </div>
+                        <div class="text-caption text-medium-emphasis mt-1">
+                          {{ model.country || "Ecuador" }}
+                          <span v-if="model.application"> · {{ model.application }}</span>
+                        </div>
+                      </v-card>
+                    </div>
                     <div v-if="insightImprovementSteps(insight).length" class="mt-3">
                       <div class="text-caption text-uppercase mb-1">Pasos de mejora</div>
                       <ol class="improvement-list">
@@ -666,13 +669,14 @@ function displaySignalValue(signal: any) {
   return `${value}${unit ? ` ${unit}` : ""}`;
 }
 
-function insightSimilarEquipment(insight: any) {
+function insightNationalModels(insight: any) {
   const payload = insight?.payload_json;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-  const similar = (payload as Record<string, any>).similar_equipment;
-  if (!similar || typeof similar !== "object" || Array.isArray(similar)) return null;
-  if (!similar.equipment_code && !similar.equipment_name) return null;
-  return similar;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
+  const models = (payload as Record<string, any>).national_models;
+  if (!Array.isArray(models)) return [];
+  return models.filter(
+    (item) => item && typeof item === "object" && !Array.isArray(item) && String(item.model || "").trim(),
+  );
 }
 
 function insightImprovementSteps(insight: any) {
