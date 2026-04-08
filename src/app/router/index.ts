@@ -118,6 +118,13 @@ export const router = createRouter({
           meta: { title: "Equipos", viewFile: "views/admin/MaintenanceCrudView.vue" },
         },
         {
+          path: "componentes-equipo",
+          name: "componentes-equipo",
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "componentes-equipo" },
+          meta: { title: "Partes de equipos", viewFile: "views/admin/MaintenanceCrudView.vue" },
+        },
+        {
           path: "tipo-equipo",
           name: "tipo-equipo",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),

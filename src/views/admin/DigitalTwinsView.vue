@@ -296,6 +296,23 @@
                 <div class="text-body-2 mt-1"><strong>Marca:</strong> {{ detail.snapshot.equipment?.brand_name || "No registrada" }}</div>
                 <div class="text-body-2 mt-1"><strong>Estado:</strong> {{ detail.snapshot.equipment?.estado_operativo || "No registrado" }}</div>
                 <div class="text-body-2 mt-1"><strong>Criticidad:</strong> {{ detail.snapshot.equipment?.criticidad || "No registrada" }}</div>
+                <div
+                  v-if="Array.isArray(detail.snapshot.equipment?.components) && detail.snapshot.equipment?.components.length"
+                  class="mt-3"
+                >
+                  <div class="text-body-2 font-weight-medium mb-2"><strong>Partes oficiales:</strong></div>
+                  <div class="d-flex flex-wrap" style="gap: 6px;">
+                    <v-chip
+                      v-for="component in detail.snapshot.equipment?.components"
+                      :key="component.id || `${component.codigo}-${component.nombre_oficial}`"
+                      size="small"
+                      variant="tonal"
+                      color="secondary"
+                    >
+                      {{ component.codigo ? `${component.codigo} - ` : "" }}{{ component.nombre_oficial || component.nombre }}
+                    </v-chip>
+                  </div>
+                </div>
               </v-card>
             </v-col>
 
@@ -512,6 +529,15 @@ type TwinRow = {
     criticidad?: string | null;
     estado_operativo?: string | null;
     codigo_lubricante?: string | null;
+    components?: Array<{
+      id?: string | null;
+      codigo?: string | null;
+      nombre?: string | null;
+      nombre_oficial?: string | null;
+      categoria?: string | null;
+      descripcion?: string | null;
+      orden?: number;
+    }>;
   };
   inventory?: {
     total_materials?: number;

@@ -75,6 +75,16 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         relation: { endpoint: "/kpi_inventory/bodegas" },
       },
       {
+        key: "compartimiento_codigo_referencia",
+        label: "Codigo compartimiento",
+        type: "text",
+      },
+      {
+        key: "compartimiento_nombre_oficial",
+        label: "Compartimiento oficial",
+        type: "text",
+      },
+      {
         key: "clase_mantenimiento",
         label: "Clase de mantenimiento",
         type: "select",

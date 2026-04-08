@@ -27,6 +27,18 @@ function resolveSocketOrigin() {
   }
 }
 
+function normalizeRecipientFilter(recipient?: string | string[] | null) {
+  const values = Array.isArray(recipient) ? recipient : [recipient];
+  return [
+    ...new Set(
+      values
+        .flatMap((item) => String(item || "").split(","))
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ].join(",");
+}
+
 export const useNotificationsStore = defineStore("notifications", () => {
   const items = ref<NotificationItem[]>([]);
   const loading = ref(false);
@@ -54,13 +66,14 @@ export const useNotificationsStore = defineStore("notifications", () => {
     sortItems();
   }
 
-  async function load(recipient?: string | null) {
+  async function load(recipient?: string | string[] | null) {
+    const recipientFilter = normalizeRecipientFilter(recipient);
     loading.value = true;
     try {
       const { data } = await api.get("/kpi_notification/notifications/in-app", {
         params: {
           limit: 20,
-          recipient: recipient || undefined,
+          recipient: recipientFilter || undefined,
         },
       });
       items.value = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
@@ -70,14 +83,15 @@ export const useNotificationsStore = defineStore("notifications", () => {
     }
   }
 
-  function connect(recipient?: string | null) {
+  function connect(recipient?: string | string[] | null) {
+    const recipientFilter = normalizeRecipientFilter(recipient);
     disconnect();
     const origin = resolveSocketOrigin();
     socket = io(`${origin}/notifications`, {
       path: "/kpi_notification/socket.io",
       transports: ["websocket", "polling"],
       withCredentials: true,
-      query: recipient ? { recipient } : {},
+      query: recipientFilter ? { recipient: recipientFilter } : {},
     });
     socket.on("connect", () => {
       connected.value = true;
@@ -98,8 +112,8 @@ export const useNotificationsStore = defineStore("notifications", () => {
     connected.value = false;
   }
 
-  async function start(recipient?: string | null) {
-    const normalized = recipient || null;
+  async function start(recipient?: string | string[] | null) {
+    const normalized = normalizeRecipientFilter(recipient) || null;
     if (startedForRecipient.value === normalized && (socket || items.value.length)) {
       return;
     }
@@ -126,10 +140,11 @@ export const useNotificationsStore = defineStore("notifications", () => {
     } as NotificationItem);
   }
 
-  async function markAllAsRead(recipient?: string | null) {
+  async function markAllAsRead(recipient?: string | string[] | null) {
+    const recipientFilter = normalizeRecipientFilter(recipient);
     await api.patch("/kpi_notification/notifications/in-app/read-all", null, {
       params: {
-        recipient: recipient || undefined,
+        recipient: recipientFilter || undefined,
       },
     });
     items.value = items.value.map((item) => ({ ...item, status: "READ" }));

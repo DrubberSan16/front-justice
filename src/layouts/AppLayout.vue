@@ -95,6 +95,15 @@ const isMobile = computed(() => mdAndDown.value);
 const pageTitle = computed(() => String(route.meta.title ?? "Dashboard"));
 const userDisplay = computed(() => auth.user?.nameSurname || auth.user?.email || "Sesion activa");
 const userEmail = computed(() => auth.user?.email || "Sin correo registrado");
+const notificationRecipients = computed(() =>
+  [
+    auth.user?.id,
+    auth.user?.nameUser,
+    auth.user?.email,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean),
+);
 
 const drawer = ref(!isMobile.value);
 
@@ -107,10 +116,10 @@ watch(
 );
 
 watch(
-  () => auth.userId,
-  (userId) => {
-    if (userId) {
-      void notifications.start(userId);
+  notificationRecipients,
+  (recipients) => {
+    if (recipients.length) {
+      void notifications.start(recipients);
     } else {
       notifications.stop();
     }

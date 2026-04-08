@@ -78,6 +78,13 @@
           class="mb-4"
           :text="detailNoticeText"
         />
+        <v-alert
+          v-if="isBlocked"
+          type="info"
+          variant="tonal"
+          class="mb-4"
+          :text="blockingAlertText"
+        />
 
         <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
 
@@ -90,7 +97,44 @@
             <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isReadOnlyWorkflow || isEditingLockedFields" />
           </v-col>
           <v-col cols="12" md="4">
+            <v-autocomplete
+              v-model="headerForm.equipo_componente_id"
+              :items="equipmentComponentOptions"
+              item-title="title"
+              item-value="value"
+              label="Compartimiento / parte"
+              variant="outlined"
+              clearable
+              :loading="loadingEquipmentComponents"
+              :disabled="isReadOnlyWorkflow || !headerForm.equipment_id"
+              hint="Parte real u oficial del equipo vinculada a la OT."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
             <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptions" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-autocomplete
+              v-model="headerForm.blocked_by_work_order_id"
+              :items="blockingWorkOrderOptions"
+              item-title="title"
+              item-value="value"
+              label="OT anexada / bloqueante"
+              variant="outlined"
+              clearable
+              :disabled="isReadOnlyWorkflow"
+              hint="Si esta OT depende de otra, se bloquea hasta que la anexada culmine."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="headerForm.blocked_reason"
+              label="Motivo de bloqueo"
+              variant="outlined"
+              :disabled="isReadOnlyWorkflow"
+            />
           </v-col>
           <v-col cols="12" md="4">
             <v-select
@@ -565,6 +609,7 @@ const closingFlow = ref(false);
 const unsupportedDetailMessages = ref<string[]>([]);
 
 const equipmentOptions = ref<any[]>([]);
+const equipmentComponentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
 const alertOptions = ref<any[]>([]);
@@ -572,8 +617,10 @@ const warehouseOptions = ref<any[]>([]);
 const stockByWarehouseRows = ref<any[]>([]);
 const productCatalogRows = ref<any[]>([]);
 const warehouseCatalogRows = ref<any[]>([]);
+const workOrderCatalogRows = ref<any[]>([]);
 const taskOptions = ref<any[]>([]);
 const loadingTaskOptions = ref(false);
+const loadingEquipmentComponents = ref(false);
 
 const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
 const planTaskCatalogByPlan = ref<Record<string, any[]>>({});
@@ -591,11 +638,14 @@ const headerForm = reactive<any>({
   type: "MANTENIMIENTO",
   title: "",
   equipment_id: "",
+  equipo_componente_id: "",
   maintenance_kind: "CORRECTIVO",
   status_workflow: "PLANNED",
   procedimiento_id: "",
   plan_id: "",
   alerta_id: "",
+  blocked_by_work_order_id: "",
+  blocked_reason: "",
   causa: "",
   accion: "",
   prevencion: "",
@@ -643,6 +693,7 @@ const materialItems = ref<MaterialItemForm[]>([newMaterialItem()]);
 const workflowOptions = [
   { title: "Planificada", value: "PLANNED" },
   { title: "En proceso", value: "IN_PROGRESS" },
+  { title: "Bloqueada", value: "BLOCKED" },
   { title: "Cerrada", value: "CLOSED" },
 ];
 
@@ -657,6 +708,7 @@ function normalizeWorkflowStatus(value: unknown) {
   const raw = String(value || "").trim().toUpperCase();
   if (["PLANNED", "PLANIFICADA", "PLANIFICADO", "CREADA", "CREADO"].includes(raw)) return "PLANNED";
   if (["IN_PROGRESS", "IN PROGRESS", "EN PROCESO", "EN_PROCESO", "PROCESSING"].includes(raw)) return "IN_PROGRESS";
+  if (["BLOCKED", "BLOQUEADA", "BLOQUEADO", "DETENIDA", "DETENIDO", "ON_HOLD"].includes(raw)) return "BLOCKED";
   if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
   return raw || "PLANNED";
 }
@@ -669,6 +721,7 @@ function workflowLabel(value: unknown) {
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
+const isBlocked = computed(() => normalizedWorkflow.value === "BLOCKED");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
 const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
 const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
@@ -676,6 +729,28 @@ const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value 
 const isEditingLockedFields = computed(() => !!editingId.value);
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
+const blockingWorkOrderOptions = computed(() =>
+  workOrderCatalogRows.value
+    .filter((item: any) => String(item?.id || "") !== String(editingId.value || ""))
+    .map((item: any) => ({
+      value: item.id,
+      title: [
+        item?.code || item?.codigo || item?.id,
+        item?.title || item?.titulo || item?.nombre || null,
+        workflowLabel(item?.status_workflow),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    })),
+);
+const blockingAlertText = computed(() => {
+  if (!isBlocked.value) return "";
+  const selected = blockingWorkOrderOptions.value.find(
+    (item: any) => String(item?.value || "") === String(headerForm.blocked_by_work_order_id || ""),
+  );
+  const blockerLabel = selected?.title || "la OT anexada seleccionada";
+  return `${headerForm.code || "Esta OT"} esta bloqueada hasta culminar ${blockerLabel}${headerForm.blocked_reason ? ` · Motivo: ${headerForm.blocked_reason}` : ""}.`;
+});
 const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
 
@@ -685,6 +760,7 @@ const headers = [
   { title: "Title", key: "title" },
   { title: "ID", key: "id" },
   { title: "Equipo", key: "equipment_label" },
+  { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Tipo", key: "maintenance_kind" },
   { title: "Acciones", key: "actions", sortable: false },
@@ -772,6 +848,18 @@ async function listAll(endpoint: string) {
 function normalize(item: any) {
   const label = item?.nombre ?? item?.title ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
+}
+
+function normalizeEquipmentComponent(item: any) {
+  const officialName = String(item?.nombre_oficial || item?.nombre || "").trim();
+  const shortName = String(item?.nombre || "").trim();
+  const category = String(item?.categoria || "").trim();
+  return {
+    value: item.id,
+    title: [item?.codigo || null, officialName || shortName || item?.id, category || null]
+      .filter(Boolean)
+      .join(" - "),
+  };
 }
 
 const productNameMap = computed(() => productCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
@@ -907,7 +995,7 @@ function getEquipmentLabel(item: any) {
 
 
 async function loadCatalogs() {
-  const [equipos, planes, procedimientos, alertas, productos, bodegas, stockRows] = await Promise.all([
+  const [equipos, planes, procedimientos, alertas, productos, bodegas, stockRows, workOrders] = await Promise.all([
     listAll("/kpi_maintenance/equipos"),
     listAll("/kpi_maintenance/planes"),
     listAll("/kpi_maintenance/inteligencia/procedimientos"),
@@ -915,11 +1003,13 @@ async function loadCatalogs() {
     listAll("/kpi_inventory/productos"),
     listAll("/kpi_inventory/bodegas"),
     listAll("/kpi_inventory/stock-bodega"),
+    listAll("/kpi_maintenance/work-orders"),
   ]);
   equipmentOptions.value = equipos.map(normalize);
   planOptions.value = planes.map(normalize);
   procedureCatalog.value = procedimientos;
   procedureOptions.value = procedimientos.map(normalize);
+  workOrderCatalogRows.value = workOrders;
   alertOptions.value = alertas.map((item: any) => ({
     value: item.id,
     title: [
@@ -936,6 +1026,56 @@ async function loadCatalogs() {
   warehouseCatalogRows.value = bodegas;
   stockByWarehouseRows.value = stockRows;
   warehouseOptions.value = bodegas.map(normalize);
+}
+
+async function loadEquipmentComponents(equipmentId: string) {
+  const normalized = String(equipmentId || "").trim();
+  if (!normalized) {
+    equipmentComponentOptions.value = [];
+    return;
+  }
+  loadingEquipmentComponents.value = true;
+  try {
+    const { data } = await api.get("/kpi_maintenance/componentes", {
+      params: { equipo_id: normalized },
+    });
+    equipmentComponentOptions.value = asArray(data).map(normalizeEquipmentComponent);
+  } catch (e: any) {
+    equipmentComponentOptions.value = [];
+    ui.error(e?.response?.data?.message || "No se pudieron cargar los compartimientos del equipo.");
+  } finally {
+    loadingEquipmentComponents.value = false;
+  }
+}
+
+function getSuggestedProcedureComponentId(procedure: any) {
+  const referenceCode = String(procedure?.compartimiento_codigo_referencia || "")
+    .trim()
+    .toUpperCase();
+  const officialName = String(procedure?.compartimiento_nombre_oficial || "")
+    .trim()
+    .toUpperCase();
+  if (!referenceCode && !officialName) return "";
+  const match = equipmentComponentOptions.value.find((option: any) => {
+    const title = String(option?.title || "").toUpperCase();
+    return (
+      (referenceCode && title.includes(referenceCode)) ||
+      (officialName && title.includes(officialName))
+    );
+  });
+  return String(match?.value || "");
+}
+
+function getEquipmentComponentLabel(item: any) {
+  const selected = equipmentComponentOptions.value.find(
+    (option: any) => String(option?.value || "") === String(item?.equipo_componente_id || ""),
+  );
+  return (
+    item?.equipo_componente_nombre_oficial
+    || item?.equipo_componente_nombre
+    || selected?.title
+    || ""
+  );
 }
 
 function getSelectedPlanLabel(planId: string) {
@@ -1573,6 +1713,7 @@ function normalizeTask(item: any) {
 async function loadTaskOptionsByPlan(planId: string) {
   if (!planId) {
     taskOptions.value = [];
+  equipmentComponentOptions.value = [];
     return;
   }
 
@@ -1605,6 +1746,7 @@ async function fetchWorkOrders() {
   error.value = null;
   try {
     records.value = await listAll("/kpi_maintenance/work-orders");
+    workOrderCatalogRows.value = records.value;
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar las órdenes de trabajo.";
   } finally {
@@ -1648,7 +1790,13 @@ async function loadDetailData() {
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase();
   return records.value
-    .map((r) => ({ ...r, equipment_label: getEquipmentLabel(r), _raw: r, _search: JSON.stringify({ ...r, equipment_label: getEquipmentLabel(r) }).toLowerCase() }))
+    .map((r) => ({
+      ...r,
+      equipment_label: getEquipmentLabel(r),
+      equipment_component_label: getEquipmentComponentLabel(r),
+      _raw: r,
+      _search: JSON.stringify({ ...r, equipment_label: getEquipmentLabel(r), equipment_component_label: getEquipmentComponentLabel(r) }).toLowerCase(),
+    }))
     .filter((r) => !q || r._search.includes(q));
 });
 
@@ -1657,11 +1805,14 @@ function resetAllForms() {
   headerForm.type = "MANTENIMIENTO";
   headerForm.title = "";
   headerForm.equipment_id = "";
+  headerForm.equipo_componente_id = "";
   headerForm.maintenance_kind = "CORRECTIVO";
   headerForm.status_workflow = "PLANNED";
   headerForm.procedimiento_id = "";
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
+  headerForm.blocked_by_work_order_id = "";
+  headerForm.blocked_reason = "";
   headerForm.causa = "";
   headerForm.accion = "";
   headerForm.prevencion = "";
@@ -1711,6 +1862,7 @@ async function openEdit(item: any) {
   headerForm.type = item.type ?? item.tipo ?? "";
   headerForm.title = item.title ?? item.titulo ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
+  headerForm.equipo_componente_id = item.equipo_componente_id ?? "";
   headerForm.maintenance_kind = item.maintenance_kind ?? "CORRECTIVO";
   const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
   headerForm.status_workflow = initialWorkflow;
@@ -1718,11 +1870,14 @@ async function openEdit(item: any) {
   headerForm.plan_id = item.plan_id ?? "";
   taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
+  headerForm.blocked_by_work_order_id = item.blocked_by_work_order_id ?? "";
+  headerForm.blocked_reason = item.blocked_reason ?? "";
   const headerValorJson = parseValorJson(item?.valor_json);
   headerForm.causa = headerValorJson?.causa ?? "";
   headerForm.accion = headerValorJson?.accion ?? "";
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
   dialog.value = true;
+  await loadEquipmentComponents(String(headerForm.equipment_id || ""));
   await loadDetailData();
   if (!isReadOnlyWorkflow.value) {
     await syncChecklistFromTemplate(false);
@@ -1844,11 +1999,14 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     type: generatedType,
     title: generatedTitle,
     equipment_id: headerForm.equipment_id,
+    equipo_componente_id: headerForm.equipo_componente_id || null,
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     plan_id: headerForm.plan_id || null,
     procedimiento_id: headerForm.procedimiento_id || null,
     alerta_id: headerForm.alerta_id || null,
+    blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
+    blocked_reason: headerForm.blocked_reason || null,
     valor_json: {
       causa: headerForm.causa || "",
       accion: headerForm.accion || "",
@@ -1860,6 +2018,9 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
+    equipo_componente_id: headerForm.equipo_componente_id || null,
+    blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
+    blocked_reason: headerForm.blocked_reason || null,
     valor_json: createPayload.valor_json,
   };
 
@@ -1892,6 +2053,9 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     if (savedHeader) {
       headerForm.plan_id = savedHeader.plan_id ?? headerForm.plan_id;
       headerForm.procedimiento_id = savedHeader.procedimiento_id ?? headerForm.procedimiento_id;
+      headerForm.equipo_componente_id = savedHeader.equipo_componente_id ?? headerForm.equipo_componente_id;
+      headerForm.blocked_by_work_order_id = savedHeader.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
+      headerForm.blocked_reason = savedHeader.blocked_reason ?? headerForm.blocked_reason;
       taskForm.plan_id = headerForm.plan_id || "";
       if (headerForm.plan_id) {
         await loadTaskOptionsByPlan(String(headerForm.plan_id));
@@ -2315,11 +2479,15 @@ watch(
 watch(
   () => headerForm.procedimiento_id,
   async (procedimientoId, previousProcedimientoId) => {
-    if (editingId.value) return;
     if (String(procedimientoId || "") === String(previousProcedimientoId || "")) return;
     const selected = procedureCatalog.value.find(
       (item: any) => String(item?.id || "") === String(procedimientoId || ""),
     );
+    const suggestedComponentId = getSuggestedProcedureComponentId(selected);
+    if (suggestedComponentId && !headerForm.equipo_componente_id) {
+      headerForm.equipo_componente_id = suggestedComponentId;
+    }
+    if (editingId.value) return;
     headerForm.plan_id = selected?.plan_id ? String(selected.plan_id) : "";
     taskForm.plan_id = headerForm.plan_id || "";
     taskForm.tarea_id = "";
@@ -2327,6 +2495,33 @@ watch(
     if (headerForm.plan_id) {
       await loadTaskOptionsByPlan(headerForm.plan_id);
       await syncChecklistFromTemplate(false);
+    }
+  },
+);
+
+watch(
+  () => headerForm.equipment_id,
+  async (equipmentId, previousEquipmentId) => {
+    const nextEquipmentId = String(equipmentId || "");
+    const previous = String(previousEquipmentId || "");
+    if (nextEquipmentId === previous) return;
+    await loadEquipmentComponents(nextEquipmentId);
+    if (
+      headerForm.equipo_componente_id &&
+      !equipmentComponentOptions.value.some(
+        (item: any) => String(item?.value || "") === String(headerForm.equipo_componente_id || ""),
+      )
+    ) {
+      headerForm.equipo_componente_id = "";
+    }
+    if (!headerForm.equipo_componente_id) {
+      const selected = procedureCatalog.value.find(
+        (item: any) => String(item?.id || "") === String(headerForm.procedimiento_id || ""),
+      );
+      const suggestedComponentId = getSuggestedProcedureComponentId(selected);
+      if (suggestedComponentId) {
+        headerForm.equipo_componente_id = suggestedComponentId;
+      }
     }
   },
 );

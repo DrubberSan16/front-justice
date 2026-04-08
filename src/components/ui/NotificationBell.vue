@@ -71,6 +71,10 @@ function markRead(id: string) {
 }
 
 function markAll() {
-  void store.markAllAsRead(auth.userId);
+  void store.markAllAsRead(
+    [auth.user?.id, auth.user?.nameUser, auth.user?.email].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    ),
+  );
 }
 </script>
