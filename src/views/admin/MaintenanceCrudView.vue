@@ -112,7 +112,7 @@
     </v-data-table>
   </v-card>
 
-  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 900">
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : dialogMaxWidth">
     <v-card rounded="xl" class="enterprise-dialog maintenance-dialog-card">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ displayModuleTitle }}</v-card-title>
       <v-divider />
@@ -508,6 +508,7 @@ function buildAuditPayload(isEditing: boolean) {
 const displayModuleTitle = computed(() => repairText(moduleConfig.value?.title ?? ""));
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
+const dialogMaxWidth = computed(() => (props.moduleKey === "equipos" ? 1280 : 900));
 
 function defaultJsonValue(field: EnhancedMaintenanceField) {
   return field.jsonMode === "array" ? [] : {};

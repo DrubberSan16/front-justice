@@ -426,7 +426,7 @@
             <v-chip label color="info" variant="tonal">{{ latestWeeklySchedule?.codigo || "Sin cronograma" }}</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando cronograma semanal..." :rows="6" :columns="4" />
+          <LoadingTableState v-if="loading" message="Cargando cronograma semanal..." :rows="6" :columns="5" />
           <div v-else-if="latestWeeklySchedule" class="dashboard-stack">
             <div class="text-body-2 text-medium-emphasis">
               {{ latestWeeklySchedule.fecha_inicio || "Sin fecha" }} / {{ latestWeeklySchedule.fecha_fin || "Sin fecha" }}<span v-if="latestWeeklySchedule.locacion"> · {{ latestWeeklySchedule.locacion }}</span>
@@ -436,6 +436,7 @@
               <v-table density="compact" class="dashboard-mini-table">
                 <thead>
                   <tr>
+                    <th>Fecha</th>
                     <th>Día</th>
                     <th>Hora</th>
                     <th>Equipo</th>
@@ -444,13 +445,20 @@
                 </thead>
                 <tbody>
                   <tr v-for="activity in latestWeeklyActivities" :key="activity.id">
+                    <td>{{ activity.fecha_label || activity.fecha_actividad || "Sin fecha" }}</td>
                     <td class="font-weight-medium">{{ normalizeDayLabel(activity.dia_semana) }}</td>
-                    <td>{{ activity.hora_inicio || "Sin hora" }}</td>
+                    <td>
+                      {{
+                        activity.hora_inicio && activity.hora_fin
+                          ? `${activity.hora_inicio} - ${activity.hora_fin}`
+                          : activity.hora_inicio || activity.hora_fin || "Sin hora"
+                      }}
+                    </td>
                     <td>{{ activity.equipo_codigo || "Sin equipo" }}</td>
                     <td class="text-medium-emphasis">{{ activity.actividad || "Actividad sin nombre" }}</td>
                   </tr>
                   <tr v-if="!latestWeeklyActivities.length">
-                    <td colspan="4" class="text-center text-medium-emphasis py-4">
+                    <td colspan="5" class="text-center text-medium-emphasis py-4">
                       El cronograma aún no tiene actividades registradas.
                     </td>
                   </tr>
@@ -600,15 +608,33 @@ function parseDateValue(value: unknown) {
 }
 
 function parseDurationHours(startValue: unknown, endValue: unknown) {
-  const start = String(startValue || "").trim();
-  const end = String(endValue || "").trim();
-  const startMatch = /^(\d{1,2}):(\d{2})$/.exec(start);
-  const endMatch = /^(\d{1,2}):(\d{2})$/.exec(end);
-  if (!startMatch || !endMatch) return 0;
-  const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
-  const endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+  const startMinutes = parseTimeToMinutes(startValue);
+  const endMinutes = parseTimeToMinutes(endValue);
+  if (startMinutes == null || endMinutes == null) return 0;
   if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes) || endMinutes <= startMinutes) return 0;
   return (endMinutes - startMinutes) / 60;
+}
+
+function parseTimeToMinutes(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const rawSegments = raw.split("T");
+  const timeToken = raw.includes("T") ? rawSegments[rawSegments.length - 1] || "" : raw;
+  const normalized = timeToken.split(".")[0]?.trim() || "";
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(normalized);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return hours * 60 + minutes;
+}
+
+function formatTimeLabel(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const rawSegments = raw.split("T");
+  const normalized = raw.includes("T") ? rawSegments[rawSegments.length - 1] || "" : raw;
+  return normalized.split(".")[0]?.slice(0, 5) || normalized;
 }
 
 const selectedPeriodRange = computed(() => buildMonthRange(selectedYear.value, selectedMonth.value));
@@ -1024,10 +1050,20 @@ const latestWeeklyActivities = computed(() =>
   [...(latestWeeklySchedule.value?.detalles ?? [])]
     .sort(
       (a, b) =>
-        String(a?.dia_semana || "").localeCompare(String(b?.dia_semana || "")) ||
+        (parseDateValue(a?.fecha_actividad)?.getTime() ?? 0) -
+          (parseDateValue(b?.fecha_actividad)?.getTime() ?? 0) ||
         String(a?.hora_inicio || "").localeCompare(String(b?.hora_inicio || "")),
     )
-    .slice(0, 6),
+    .map((item) => ({
+      ...item,
+      hora_inicio: formatTimeLabel(item?.hora_inicio),
+      hora_fin: formatTimeLabel(item?.hora_fin),
+      fecha_label: item?.fecha_actividad
+        ? new Intl.DateTimeFormat("es-EC", { day: "2-digit", month: "2-digit", year: "numeric" }).format(
+            parseDateValue(item.fecha_actividad) ?? new Date(),
+          )
+        : "",
+    })),
 );
 
 const operationScheduleItems = computed(() =>
@@ -1056,21 +1092,49 @@ const operationScheduleItems = computed(() =>
 const operationScheduleDays = computed(() => {
   const grouped = new Map<
     string,
-    { date: string; count: number; totalHours: number; activities: string[]; equipments: string[] }
+    {
+      date: string;
+      count: number;
+      totalHours: number;
+      taskHours: number;
+      startMinutes: number | null;
+      endMinutes: number | null;
+      startLabel: string;
+      endLabel: string;
+      activities: string[];
+      equipments: string[];
+    }
   >();
 
   for (const item of operationScheduleItems.value) {
     const date = String(item?.fecha_resuelta || "").slice(0, 10);
     if (!date) continue;
+    const startMinutes = parseTimeToMinutes(item?.hora_inicio);
+    const endMinutes = parseTimeToMinutes(item?.hora_fin);
+    const startLabel = formatTimeLabel(item?.hora_inicio);
+    const endLabel = formatTimeLabel(item?.hora_fin);
     const current = grouped.get(date) ?? {
       date,
       count: 0,
       totalHours: 0,
+      taskHours: 0,
+      startMinutes: null,
+      endMinutes: null,
+      startLabel: "",
+      endLabel: "",
       activities: [],
       equipments: [],
     };
     current.count += 1;
-    current.totalHours += Number(item?.duracion_horas || 0);
+    current.taskHours += Number(item?.duracion_horas || 0);
+    if (startMinutes != null && (current.startMinutes == null || startMinutes < current.startMinutes)) {
+      current.startMinutes = startMinutes;
+      current.startLabel = startLabel;
+    }
+    if (endMinutes != null && (current.endMinutes == null || endMinutes > current.endMinutes)) {
+      current.endMinutes = endMinutes;
+      current.endLabel = endLabel;
+    }
     if (item?.actividad) current.activities.push(String(item.actividad));
     if (item?.equipo_codigo) current.equipments.push(String(item.equipo_codigo));
     grouped.set(date, current);
@@ -1080,17 +1144,31 @@ const operationScheduleDays = computed(() => {
     .sort((a, b) => (parseDateValue(a.date)?.getTime() ?? 0) - (parseDateValue(b.date)?.getTime() ?? 0))
     .map((item) => ({
       ...item,
+      totalHours:
+        item.startMinutes != null && item.endMinutes != null && item.endMinutes > item.startMinutes
+          ? Number(((item.endMinutes - item.startMinutes) / 60).toFixed(2))
+          : Number(item.taskHours.toFixed(2)),
       title: new Intl.DateTimeFormat("es-EC", { day: "2-digit", month: "long", year: "numeric" }).format(
         parseDateValue(item.date) ?? new Date(),
       ),
-      subtitle: `${item.count} actividades · ${item.totalHours.toFixed(1)} h${
+      subtitle: `${item.count} actividades${
+        item.startLabel && item.endLabel ? ` · ${item.startLabel} - ${item.endLabel}` : ""
+      } · ${
+        (
+          item.startMinutes != null &&
+          item.endMinutes != null &&
+          item.endMinutes > item.startMinutes
+            ? Number(((item.endMinutes - item.startMinutes) / 60).toFixed(2))
+            : Number(item.taskHours.toFixed(2))
+        ).toFixed(1)
+      } h${
         item.equipments.length ? ` · ${[...new Set(item.equipments)].slice(0, 3).join(", ")}` : ""
       }`,
     }));
 });
 
 const operationScheduleSummary = computed(() => {
-  const totalHours = operationScheduleItems.value.reduce((acc, item) => acc + Number(item?.duracion_horas || 0), 0);
+  const totalHours = operationScheduleDays.value.reduce((acc, item) => acc + Number(item?.totalHours || 0), 0);
   return {
     days: operationScheduleDays.value.length,
     activities: operationScheduleItems.value.length,
