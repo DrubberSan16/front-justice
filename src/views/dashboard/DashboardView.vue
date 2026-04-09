@@ -4,7 +4,7 @@
       No tienes permisos para acceder a este reporte.
     </v-alert>
 
-    <template v-else>
+    <div v-else class="dashboard-content">
     <v-row class="mb-4" align="stretch">
       <v-col cols="12" lg="8">
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
@@ -478,7 +478,7 @@
         </v-card>
       </v-col>
     </v-row>
-    </template>
+    </div>
   </v-container>
 </template>
 

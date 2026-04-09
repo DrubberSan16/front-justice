@@ -4,7 +4,7 @@
       No tienes permisos para visualizar este módulo.
     </v-alert>
 
-    <template v-else>
+    <div v-else class="programaciones-page__content">
     <v-card rounded="xl" class="pa-4 enterprise-surface">
       <div class="d-flex align-center justify-space-between page-wrap" style="gap: 12px;">
         <div>
@@ -1005,7 +1005,7 @@
         </v-card-text>
       </v-card>
     </v-dialog>
-    </template>
+    </div>
   </div>
 </template>
 

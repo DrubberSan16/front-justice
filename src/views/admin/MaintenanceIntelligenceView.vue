@@ -8,7 +8,7 @@
       No tienes permisos para acceder a este reporte.
     </v-alert>
 
-    <template v-else>
+    <div v-else class="intelligence-page__content">
     <v-card rounded="xl" class="pa-5 enterprise-surface intelligence-hero">
       <div class="d-flex align-center justify-space-between intelligence-wrap">
         <div>
@@ -494,7 +494,12 @@
     </v-row>
   </div>
 
-  <v-dialog v-model="dashboardDialog" :fullscreen="isDashboardDialogFullscreen" :max-width="isDashboardDialogFullscreen ? undefined : 1400">
+  <v-dialog
+    v-if="canRead && canAccessIntelligenceReports"
+    v-model="dashboardDialog"
+    :fullscreen="isDashboardDialogFullscreen"
+    :max-width="isDashboardDialogFullscreen ? undefined : 1400"
+  >
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Dashboard de lubricantes</v-card-title>
       <v-divider />
@@ -571,7 +576,7 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
-    </template>
+    </div>
 </template>
 
 <script setup lang="ts">
