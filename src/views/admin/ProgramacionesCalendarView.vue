@@ -37,7 +37,7 @@
                 Carga el Excel mensual MPG, calcula la hora objetivo y crea o ajusta programaciones desde la matriz.
               </div>
             </div>
-            <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <div class="programaciones-toolbar">
               <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('mensual', 'excel')" @click="exportMonthly('excel')">
                 Excel
               </v-btn>
@@ -84,7 +84,7 @@
           </div>
 
           <v-row dense>
-            <v-col cols="12" md="6">
+            <v-col cols="12" md="6" lg="6">
               <v-file-input
                 v-model="monthlyImportFile"
                 accept=".xlsx,.xls"
@@ -96,7 +96,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="12" md="2" lg="2">
               <v-select
                 v-model="selectedMonthlyYear"
                 :items="monthlyYearOptions"
@@ -108,7 +108,7 @@
                 clearable
               />
             </v-col>
-            <v-col cols="12" md="3">
+            <v-col cols="12" md="2" lg="2">
               <v-select
                 v-model="selectedMonthlyMonth"
                 :items="monthlyMonthOptions"
@@ -121,7 +121,7 @@
                 :disabled="!selectedMonthlyYear"
               />
             </v-col>
-            <v-col cols="12" md="2">
+            <v-col cols="12" md="2" lg="2">
               <v-text-field
                 :model-value="selectedMonthlyPeriod || ''"
                 label="Periodo"
@@ -283,7 +283,7 @@
                 Carga el Excel semanal o arma la programación en una parrilla editable por día y bloque horario.
               </div>
             </div>
-            <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <div class="programaciones-toolbar">
               <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('semanal', 'excel')" @click="exportWeekly('excel')">
                 Excel
               </v-btn>
@@ -575,8 +575,19 @@
             </template>
             <template #item.actions="{ item }">
               <div class="d-flex" style="gap: 4px;">
-                <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item as any)" />
-                <v-btn icon="mdi-delete" variant="text" color="error" @click="remove(item as any)" />
+                <v-btn
+                  v-if="canEdit"
+                  icon="mdi-pencil"
+                  variant="text"
+                  @click="openEdit(item as any)"
+                />
+                <v-btn
+                  v-if="canDelete"
+                  icon="mdi-delete"
+                  variant="text"
+                  color="error"
+                  @click="openDeleteProgramacion(item as any)"
+                />
               </div>
             </template>
           </v-data-table>
@@ -921,6 +932,22 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="deleteDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 520">
+      <v-card rounded="xl" class="enterprise-dialog">
+        <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar programación</v-card-title>
+        <v-card-text>
+          ¿Deseas eliminar la programación
+          <strong>{{ deleteTargetLabel || "seleccionada" }}</strong>?
+          Esta acción no se puede deshacer.
+        </v-card-text>
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="closeDeleteProgramacionDialog">Cancelar</v-btn>
+          <v-btn color="error" :loading="removingProgramacion" @click="confirmDeleteProgramacion">Eliminar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="agendaDayDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 920">
       <v-card rounded="xl" class="enterprise-dialog">
         <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
@@ -1042,6 +1069,7 @@ const perms = computed(() =>
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
+const canDelete = computed(() => perms.value.permitDeleted);
 const canAccessProgrammingReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "programaciones"),
 );
@@ -1055,6 +1083,9 @@ const importingMonthly = ref(false);
 const importingWeekly = ref(false);
 const error = ref<string | null>(null);
 const exportState = reactive<Record<string, boolean>>({});
+const deleteDialog = ref(false);
+const removingProgramacion = ref(false);
+const deletingProgramacion = ref<any | null>(null);
 
 const agendaRows = ref<any[]>([]);
 const monthlyImports = ref<any[]>([]);
@@ -1234,6 +1265,11 @@ const canPersistMonthlyCell = computed(() => (monthlyCell.id ? canEdit.value : c
 const canPersistWeeklyEditor = computed(() => (weeklyEditor.id ? canEdit.value : canCreate.value));
 const canPersistWeeklyCell = computed(() => (weeklyCell.local_id ? canEdit.value : canCreate.value));
 const canEditMonthlyColors = computed(() => currentRoleName.value.includes("ADMIN") && canEdit.value);
+const deleteTargetLabel = computed(() => {
+  const item = deletingProgramacion.value;
+  if (!item) return "";
+  return displayProgramacionName(item);
+});
 const defaultMonthlyPalette: Record<string, string> = {
   MPG: "#F4DD6B",
   HORAS_PROGRAMADAS: "#F4DD6B",
@@ -2593,13 +2629,30 @@ async function save() {
   }
 }
 
-async function remove(item: any) {
+function openDeleteProgramacion(item: any) {
+  if (!canDelete.value || !item?.id) return;
+  deletingProgramacion.value = item;
+  deleteDialog.value = true;
+}
+
+function closeDeleteProgramacionDialog() {
+  deleteDialog.value = false;
+  deletingProgramacion.value = null;
+}
+
+async function confirmDeleteProgramacion() {
+  const item = deletingProgramacion.value;
+  if (!canDelete.value || !item?.id) return;
+  removingProgramacion.value = true;
   try {
     await api.delete(`/kpi_maintenance/programaciones/${item.id}`);
     ui.success("Programación eliminada.");
     await Promise.all([loadAgendaRows(), selectedMonthlyId.value ? loadSelectedMonthly(selectedMonthlyId.value) : Promise.resolve()]);
+    closeDeleteProgramacionDialog();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo eliminar la programación.");
+  } finally {
+    removingProgramacion.value = false;
   }
 }
 
@@ -3268,6 +3321,15 @@ onMounted(async () => {
 <style scoped>
 .programaciones-page { display: grid; gap: 20px; }
 .page-wrap { flex-wrap: wrap; }
+.programaciones-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+  max-width: 100%;
+}
 .summary-strip { display: flex; flex-wrap: wrap; gap: 8px; }
 .empty-state {
   min-height: 180px; border-radius: 22px; border: 1px dashed var(--surface-border);
@@ -3412,6 +3474,7 @@ onMounted(async () => {
   .matrix-table__sticky { min-width: 96px; }
   .matrix-table__sticky-2 { left: 96px; min-width: 156px; }
   .matrix-cell--weekly { min-width: 190px; }
+  .programaciones-toolbar { width: 100%; justify-content: stretch; margin-left: 0; }
   .agenda-toolbar { justify-content: stretch; }
   .agenda-toolbar__select,
   .agenda-toolbar__select--month { min-width: 100%; }

@@ -61,6 +61,20 @@ const estadoOperativoEquipoOptions = [
   { value: "BLOQUEADA", title: "Bloqueada" },
 ];
 
+export const equipoComponenteCategoriaOptions = [
+  { value: "MOTOR", title: "Motor" },
+  { value: "GENERACION", title: "Generacion" },
+  { value: "CONTROL", title: "Control" },
+  { value: "DISTRIBUCION", title: "Distribucion" },
+  { value: "POTENCIA", title: "Potencia" },
+  { value: "ARRANQUE", title: "Arranque" },
+  { value: "COMBUSTIBLE", title: "Combustible" },
+  { value: "LUBRICACION", title: "Lubricacion" },
+  { value: "ADMISION", title: "Admision" },
+  { value: "ENFRIAMIENTO", title: "Enfriamiento" },
+  { value: "OTROS", title: "Otros" },
+];
+
 export const inventoryModules: MaintenanceModuleConfig[] = [
   {
     key: "sucursales",
@@ -194,7 +208,12 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "codigo", label: "Codigo", type: "text", required: true },
       { key: "nombre", label: "Nombre corto", type: "text", required: true },
       { key: "nombre_oficial", label: "Nombre oficial", type: "text", required: true },
-      { key: "categoria", label: "Categoria", type: "text" },
+      {
+        key: "categoria",
+        label: "Categoria",
+        type: "select",
+        options: equipoComponenteCategoriaOptions,
+      },
       { key: "orden", label: "Orden", type: "number" },
       { key: "descripcion", label: "Descripcion", type: "text" },
     ],

@@ -41,7 +41,7 @@
     <v-data-table
       :headers="headers"
       :items="rows"
-      :loading="loading"
+      :loading="tableLoading"
       loading-text="Obteniendo información del módulo..."
       :items-per-page="20"
       :item-props="getRowProps"
@@ -264,7 +264,16 @@
                 />
               </v-col>
               <v-col cols="12" md="2">
-                <v-text-field v-model="component.categoria" label="Categoría" variant="outlined" density="compact" />
+                <v-select
+                  v-model="component.categoria"
+                  :items="equipmentComponentCategorySelectOptions(component?.categoria)"
+                  item-title="title"
+                  item-value="value"
+                  label="Categoría"
+                  variant="outlined"
+                  density="compact"
+                  clearable
+                />
               </v-col>
               <v-col cols="12" md="1">
                 <v-text-field v-model="component.orden" label="Orden" type="number" variant="outlined" density="compact" />
@@ -310,6 +319,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import MaintenanceStructuredField from "@/components/maintenance/MaintenanceStructuredField.vue";
+import { equipoComponenteCategoriaOptions } from "@/app/config/maintenance-modules";
 import { getEnhancedMaintenanceModule, type EnhancedMaintenanceField } from "@/app/config/maintenance-module-overrides";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -343,6 +353,7 @@ const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && perms.
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && perms.value.permitDeleted);
 const records = ref<any[]>([]);
 const loading = ref(false);
+const initialLoading = ref(false);
 const saving = ref(false);
 const autoCodeLoading = ref(false);
 const error = ref<string | null>(null);
@@ -360,6 +371,7 @@ const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const form = reactive<Record<string, any>>({});
 const jsonTextFields = reactive<Record<string, string>>({});
+const tableLoading = computed(() => loading.value || initialLoading.value);
 
 function defaultEquipmentComponentDrafts() {
   return [
@@ -468,6 +480,22 @@ function createEmptyEquipmentComponentDraft() {
       ) + 10,
     descripcion: "",
   };
+}
+
+function equipmentComponentCategorySelectOptions(currentValue?: string | null) {
+  const normalized = String(currentValue ?? "").trim().toUpperCase();
+  if (!normalized) return equipoComponenteCategoriaOptions;
+  const alreadyExists = equipoComponenteCategoriaOptions.some(
+    (option) => option.value === normalized,
+  );
+  if (alreadyExists) return equipoComponenteCategoriaOptions;
+  return [
+    ...equipoComponenteCategoriaOptions,
+    {
+      value: normalized,
+      title: `${normalized} (actual)`,
+    },
+  ];
 }
 
 function resetEquipmentComponentDrafts() {
@@ -978,14 +1006,15 @@ async function enrichAlertsWithRelations(alertRows: any[]) {
   });
 }
 
-async function fetchRecords() {
+async function fetchRecords(skipLoading = false) {
   const endpoint = getCollectionEndpoint();
   if (!endpoint) {
     records.value = [];
     expandedAlertGroups.value = {};
     return;
   }
-  loading.value = true;
+  const useManagedLoading = !skipLoading;
+  if (useManagedLoading) loading.value = true;
   error.value = null;
   try {
     const rows = await listAll(endpoint);
@@ -996,7 +1025,22 @@ async function fetchRecords() {
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
-    loading.value = false;
+    if (useManagedLoading) loading.value = false;
+  }
+}
+
+async function hydrateModuleData() {
+  if (!moduleConfig.value) return;
+  if (!canRead.value) return;
+  initialLoading.value = true;
+  error.value = null;
+  try {
+    await loadRelations();
+    await fetchRecords(true);
+  } catch (e: any) {
+    error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
+  } finally {
+    initialLoading.value = false;
   }
 }
 
@@ -1025,16 +1069,43 @@ function isWarehouseDependentProductField(field: EnhancedMaintenanceField) {
   return field.relation?.endpoint === "/kpi_inventory/productos";
 }
 
+function includeCurrentSelectValue(
+  field: EnhancedMaintenanceField,
+  options: Array<{ value: any; title: string; bodegaId?: string | null }>,
+) {
+  const currentValue = form[field.key];
+  const normalizedCurrent = String(currentValue ?? "").trim();
+  if (!normalizedCurrent) return options;
+  const alreadyExists = options.some(
+    (option) => String(option.value ?? "").trim() === normalizedCurrent,
+  );
+  if (alreadyExists) return options;
+  return [
+    ...options,
+    {
+      value: currentValue,
+      title: `${normalizedCurrent} (actual)`,
+    },
+  ];
+}
+
 function getSelectOptions(field: EnhancedMaintenanceField) {
-  if (field.options) return field.options;
+  if (field.options) return includeCurrentSelectValue(field, field.options);
   const options = relationOptions.value[field.key] ?? [];
-  if (!isWarehouseDependentProductField(field)) return options;
-  if (!options.some((option) => String(option.bodegaId || "").trim())) return options;
+  if (!isWarehouseDependentProductField(field)) {
+    return includeCurrentSelectValue(field, options);
+  }
+  if (!options.some((option) => String(option.bodegaId || "").trim())) {
+    return includeCurrentSelectValue(field, options);
+  }
 
   const warehouseId = String(form.bodega_id || "").trim();
   if (!warehouseId) return [];
 
-  return options.filter((option) => String(option.bodegaId || "") === warehouseId);
+  return includeCurrentSelectValue(
+    field,
+    options.filter((option) => String(option.bodegaId || "") === warehouseId),
+  );
 }
 
 function applyFormPatch(patch: Record<string, any>) {
@@ -1396,8 +1467,7 @@ watch(
   async () => {
     if (!moduleConfig.value) return;
     resetForm();
-    await loadRelations();
-    await fetchRecords();
+    await hydrateModuleData();
   },
   { immediate: true }
 );
@@ -1433,8 +1503,8 @@ watch(
 );
 
 onMounted(async () => {
-  if (!moduleConfig.value) return;
-  await loadRelations();
+  if (!moduleConfig.value || !canRead.value || records.value.length || initialLoading.value) return;
+  await hydrateModuleData();
 });
 </script>
 

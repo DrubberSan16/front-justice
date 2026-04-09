@@ -41,7 +41,7 @@
     <v-data-table
       :headers="headers"
       :items="rows"
-      :loading="loading"
+      :loading="tableLoading"
       loading-text="Obteniendo información del módulo..."
       :items-per-page="20"
       class="elevation-0 enterprise-table inventory-table"
@@ -271,6 +271,7 @@ const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && me
 const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
 const records = ref<any[]>([]);
 const loading = ref(false);
+const initialLoading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
@@ -294,6 +295,7 @@ const reservationContext = reactive({
 const form = reactive<Record<string, any>>({});
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
+const tableLoading = computed(() => loading.value || initialLoading.value);
 const reservationHeaders = [
   { title: "Reserva", key: "estado" },
   { title: "Cantidad", key: "cantidad" },
@@ -345,17 +347,32 @@ function isMaterialField(field: MaintenanceField) {
   );
 }
 
-async function fetchRecords() {
+async function fetchRecords(skipLoading = false) {
   if (!moduleConfig.value) return;
   if (!canRead.value) return;
-  loading.value = true;
+  if (!skipLoading) loading.value = true;
   error.value = null;
   try {
     records.value = await listAll(moduleConfig.value.endpoint);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
-    loading.value = false;
+    if (!skipLoading) loading.value = false;
+  }
+}
+
+async function hydrateModuleData() {
+  if (!moduleConfig.value) return;
+  if (!canRead.value) return;
+  initialLoading.value = true;
+  error.value = null;
+  try {
+    await loadRelations();
+    await fetchRecords(true);
+  } catch (e: any) {
+    error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
+  } finally {
+    initialLoading.value = false;
   }
 }
 
@@ -600,8 +617,7 @@ watch(
   async () => {
     if (!moduleConfig.value) return;
     resetForm();
-    await loadRelations();
-    await fetchRecords();
+    await hydrateModuleData();
   },
   { immediate: true }
 );
@@ -623,8 +639,8 @@ watch(
 );
 
 onMounted(async () => {
-  if (!moduleConfig.value) return;
-  await loadRelations();
+  if (!moduleConfig.value || !canRead.value || records.value.length || initialLoading.value) return;
+  await hydrateModuleData();
 });
 </script>
 
