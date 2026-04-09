@@ -5,7 +5,7 @@
         <div class="text-h6 font-weight-bold">Órdenes de trabajo</div>
         <div class="text-body-2 text-medium-emphasis">Cabeceras creadas y gestión de todo el detalle en una sola pantalla.</div>
       </div>
-      <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">Nueva OT</v-btn>
+      <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">Nueva OT</v-btn>
     </div>
 
     <v-row dense class="mb-2">
@@ -33,8 +33,8 @@
     >
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
-          <v-btn icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
-          <v-btn icon="mdi-delete" variant="text" color="error" @click="openDelete(item._raw ?? item)" />
+          <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
+          <v-btn v-if="canDelete" icon="mdi-delete" variant="text" color="error" @click="openDelete(item._raw ?? item)" />
         </div>
       </template>
     </v-data-table>
@@ -50,7 +50,7 @@
           {{ currentWorkflowLabel }}
         </v-chip>
         <v-btn
-          v-if="editingId"
+          v-if="editingId && canAccessWorkOrderReports"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-file-excel"
@@ -60,7 +60,7 @@
           Excel
         </v-btn>
         <v-btn
-          v-if="editingId"
+          v-if="editingId && canAccessWorkOrderReports"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-file-pdf-box"
@@ -70,7 +70,7 @@
           PDF
         </v-btn>
         <v-btn
-          v-if="editingId && isCreated"
+          v-if="editingId && isCreated && canEdit"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-play-circle-outline"
@@ -79,7 +79,7 @@
           Completar información
         </v-btn>
         <v-btn
-          v-if="editingId && isInProcess"
+          v-if="editingId && isInProcess && canEdit"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-lock-check-outline"
@@ -87,7 +87,7 @@
         >
           Cerrar OT
         </v-btn>
-        <v-btn variant="tonal" :loading="savingHeader" :disabled="savingHeader" @click="saveAll">Guardar</v-btn>
+        <v-btn v-if="canPersistHeader" variant="tonal" :loading="savingHeader" :disabled="savingHeader" @click="saveAll">Guardar</v-btn>
       </v-toolbar>
 
       <v-card-text class="pt-4 ot-dialog-content">
@@ -606,7 +606,10 @@ import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { hasReportAccess } from "@/app/config/report-access";
 import {
   buildWorkOrderReport,
   downloadReportExcel,
@@ -616,6 +619,7 @@ import {
 const ui = useUiStore();
 const { smAndDown } = useDisplay();
 const auth = useAuthStore();
+const menuStore = useMenuStore();
 const loading = ref(false);
 const loadingDetails = ref(false);
 const savingHeader = ref(false);
@@ -722,6 +726,17 @@ const workflowOptions = [
   { title: "Bloqueada", value: "BLOCKED" },
   { title: "Cerrada", value: "CLOSED" },
 ];
+
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, ["Work Orders", "Ordenes de trabajo", "Órdenes de trabajo", "OT"]),
+);
+const canCreate = computed(() => perms.value.isCreated);
+const canEdit = computed(() => perms.value.isEdited);
+const canDelete = computed(() => perms.value.permitDeleted);
+const canPersistHeader = computed(() => (editingId.value ? canEdit.value : canCreate.value));
+const canAccessWorkOrderReports = computed(() =>
+  hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "ordenes_trabajo"),
+);
 
 const maintenanceKindOptions = [
   { title: "Correctivo", value: "CORRECTIVO" },
@@ -929,6 +944,10 @@ const workOrderReportDefinition = computed(() =>
 );
 
 async function exportWorkOrder(format: "excel" | "pdf") {
+  if (!canAccessWorkOrderReports.value) {
+    ui.error("No tienes permisos para generar reportes de órdenes de trabajo.");
+    return;
+  }
   const key = exportKey(format);
   exportState[key] = true;
   error.value = null;
@@ -1988,6 +2007,7 @@ function resetAllForms() {
 }
 
 async function openCreate() {
+  if (!canCreate.value) return;
   editingId.value = null;
   closingFlow.value = false;
   resetAllForms();
@@ -1996,6 +2016,7 @@ async function openCreate() {
 }
 
 async function openEdit(item: any) {
+  if (!canEdit.value) return;
   editingId.value = item.id;
   closingFlow.value = false;
   resetAllForms();
@@ -2088,6 +2109,7 @@ async function handleAttachmentFileChange(value: File | File[] | null) {
 }
 
 function openDelete(item: any) {
+  if (!canDelete.value) return;
   deletingId.value = item.id;
   deleteDialog.value = true;
 }
@@ -2116,6 +2138,7 @@ async function prepareClose() {
 }
 
 async function saveHeader(manageLoading = true, refreshAfterSave = true) {
+  if (!canPersistHeader.value) return false;
   if (!headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
     return false;

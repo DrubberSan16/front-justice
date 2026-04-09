@@ -10,6 +10,7 @@ export type User = {
   role?: Role | null;
   email: string;
   status: "ACTIVE" | "INACTIVE" | string;
+  reportes?: string[];
 
   createdAt?: string;
   updatedAt?: string;
@@ -30,6 +31,7 @@ export type CreateUserRequest = {
   status: "ACTIVE" | "INACTIVE" | string;
   dateBirthday: string; // "YYYY-MM-DD"
   createdBy: string;
+  reportes?: string[];
 };
 
 export type UpdateUserRequest = Partial<CreateUserRequest>;

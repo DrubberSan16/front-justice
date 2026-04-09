@@ -13,7 +13,9 @@ export type LoginResponse = {
     nameSurname: string;
     email: string;
     roleId: string;
-    role: { id: string; nombre: string };
+    reportes?: string[];
+    effectiveReportes?: string[];
+    role: { id: string; nombre: string; reportes?: string[] };
   };
 };
 

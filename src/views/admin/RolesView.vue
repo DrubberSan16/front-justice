@@ -223,6 +223,7 @@ async function onSubmitRole(payload: any) {
         nombre: payload.nombre,
         descripcion: payload.descripcion,
         status: payload.status,
+        reportes: payload.reportes,
       });
 
       roleId = created.id;
@@ -233,6 +234,7 @@ async function onSubmitRole(payload: any) {
         nombre: payload.nombre,
         descripcion: payload.descripcion,
         status: payload.status,
+        reportes: payload.reportes,
         createdBy: currentUserName(),
       });
     }

@@ -9,10 +9,11 @@
           </div>
         </div>
         <div class="responsive-actions page-wrap">
-          <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">
+          <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
             Nuevo analisis
           </v-btn>
           <v-btn
+            v-if="canAccessLubricantReports"
             color="secondary"
             variant="tonal"
             prepend-icon="mdi-file-excel"
@@ -22,6 +23,7 @@
             Excel reporte
           </v-btn>
           <v-btn
+            v-if="canAccessLubricantReports"
             color="secondary"
             variant="tonal"
             prepend-icon="mdi-file-pdf-box"
@@ -537,7 +539,7 @@
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="saving" @click="save">
+          <v-btn v-if="canPersistForm" color="primary" :loading="saving" @click="save">
             Guardar
           </v-btn>
         </v-card-actions>
@@ -624,8 +626,8 @@
                 <td>{{ item.sample_info?.horas_lubricante ?? "N/A" }}</td>
                 <td>
                   <div class="d-flex justify-end flex-wrap" style="gap: 4px;">
-                    <v-btn icon="mdi-pencil" variant="text" @click="openEditFromGroup(item)" />
-                    <v-btn icon="mdi-delete" variant="text" color="error" @click="openDeleteFromGroup(item)" />
+                    <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEditFromGroup(item)" />
+                    <v-btn v-if="canDelete" icon="mdi-delete" variant="text" color="error" @click="openDeleteFromGroup(item)" />
                   </div>
                 </td>
               </tr>
@@ -688,8 +690,11 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { hasReportAccess } from "@/app/config/report-access";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
   buildLubricantReport,
@@ -731,6 +736,7 @@ const ACTIVE_IMPORT_STORAGE_KEY = "kpi-justice:lubricant-import:active-job";
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
 
 const loading = ref(false);
@@ -743,6 +749,17 @@ const purging = ref(false);
 const dialog = ref(false);
 const deleteDialog = ref(false);
 const groupDetailDialog = ref(false);
+
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, ["Analisis de lubricante", "Análisis de lubricante"]),
+);
+const canCreate = computed(() => perms.value.isCreated);
+const canEdit = computed(() => perms.value.isEdited);
+const canDelete = computed(() => perms.value.permitDeleted);
+const canPersistForm = computed(() => (editingId.value ? canEdit.value : canCreate.value));
+const canAccessLubricantReports = computed(() =>
+  hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "analisis_lubricante"),
+);
 const purgeDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
@@ -1065,6 +1082,10 @@ function isExporting(format: "excel" | "pdf") {
 }
 
 async function exportAnalyses(format: "excel" | "pdf") {
+  if (!canAccessLubricantReports.value) {
+    ui.error("No tienes permisos para generar reportes de análisis de lubricante.");
+    return;
+  }
   const key = exportKey(format);
   exportState[key] = true;
   error.value = null;
@@ -1504,6 +1525,7 @@ function handleCompartmentChange() {
 }
 
 async function openCreate() {
+  if (!canCreate.value) return;
   resetForm();
   dialog.value = true;
   await assignCode();
@@ -1536,6 +1558,7 @@ function fillFormFromAnalysis(item: AnyRow) {
 }
 
 function openEdit(item: AnyRow) {
+  if (!canEdit.value) return;
   editingId.value = item.id;
   fillFormFromAnalysis(item);
   lubricantSelection.value = item.lubricante
@@ -1550,6 +1573,7 @@ function openEdit(item: AnyRow) {
 }
 
 function openDelete(item: AnyRow) {
+  if (!canDelete.value) return;
   deletingId.value = item.id;
   deleteDialog.value = true;
 }
@@ -1608,6 +1632,7 @@ function buildDetailPayload(detail: AnyRow) {
 }
 
 async function save() {
+  if (!canPersistForm.value) return;
   saving.value = true;
   try {
     const payload = {

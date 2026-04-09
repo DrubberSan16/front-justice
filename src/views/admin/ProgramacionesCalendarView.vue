@@ -1,5 +1,10 @@
 <template>
   <div class="programaciones-page">
+    <v-alert v-if="!canRead" type="warning" variant="tonal">
+      No tienes permisos para visualizar este módulo.
+    </v-alert>
+
+    <template v-else>
     <v-card rounded="xl" class="pa-4 enterprise-surface">
       <div class="d-flex align-center justify-space-between page-wrap" style="gap: 12px;">
         <div>
@@ -33,16 +38,17 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('mensual', 'excel')" @click="exportMonthly('excel')">
+              <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('mensual', 'excel')" @click="exportMonthly('excel')">
                 Excel
               </v-btn>
-              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('mensual', 'pdf')" @click="exportMonthly('pdf')">
+              <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('mensual', 'pdf')" @click="exportMonthly('pdf')">
                 PDF
               </v-btn>
-              <v-btn variant="tonal" prepend-icon="mdi-plus" @click="openMonthlyProgramacionCreate()">
+              <v-btn v-if="canCreate" variant="tonal" prepend-icon="mdi-plus" @click="openMonthlyProgramacionCreate()">
                 Nueva programación
               </v-btn>
               <v-btn
+                v-if="canCreate"
                 variant="tonal"
                 color="secondary"
                 prepend-icon="mdi-calendar-plus"
@@ -52,6 +58,7 @@
                 Crear desde selección
               </v-btn>
               <v-btn
+                v-if="canEdit"
                 variant="tonal"
                 color="secondary"
                 prepend-icon="mdi-pencil"
@@ -70,7 +77,7 @@
               >
                 Colores
               </v-btn>
-              <v-btn color="primary" prepend-icon="mdi-file-excel" :loading="importingMonthly" @click="importMonthlyWorkbook">
+              <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-file-excel" :loading="importingMonthly" @click="importMonthlyWorkbook">
                 Cargar mensual
               </v-btn>
             </div>
@@ -174,6 +181,7 @@
                     <td v-for="day in monthlyDays" :key="`${row.key}-${day.key}`" class="monthly-day-cell">
                       <div class="matrix-cell">
                         <button
+                          v-if="canEdit"
                           v-for="item in row.cells[day.date] || []"
                           :key="item.id"
                           type="button"
@@ -190,6 +198,7 @@
                           </v-chip>
                         </button>
                         <button
+                          v-if="canCreate"
                           type="button"
                           class="weekly-add-button weekly-add-button--mini"
                           @click="openMonthlyCellCreate(day.date, row)"
@@ -253,6 +262,7 @@
               <template #item.actions="{ item }">
                 <div class="d-flex" style="gap: 4px;">
                   <v-btn
+                    v-if="canEdit"
                     icon="mdi-pencil"
                     variant="text"
                     color="primary"
@@ -274,16 +284,17 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('semanal', 'excel')" @click="exportWeekly('excel')">
+              <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('semanal', 'excel')" @click="exportWeekly('excel')">
                 Excel
               </v-btn>
-              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('semanal', 'pdf')" @click="exportWeekly('pdf')">
+              <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('semanal', 'pdf')" @click="exportWeekly('pdf')">
                 PDF
               </v-btn>
-              <v-btn variant="tonal" prepend-icon="mdi-plus" @click="openWeeklyEditorCreate()">
+              <v-btn v-if="canCreate" variant="tonal" prepend-icon="mdi-plus" @click="openWeeklyEditorCreate()">
                 Nuevo semanal
               </v-btn>
               <v-btn
+                v-if="canEdit"
                 variant="tonal"
                 color="secondary"
                 prepend-icon="mdi-pencil"
@@ -292,7 +303,7 @@
               >
                 Editar semanal
               </v-btn>
-              <v-btn color="primary" prepend-icon="mdi-file-excel" :loading="importingWeekly" @click="importWeeklyWorkbook">
+              <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-file-excel" :loading="importingWeekly" @click="importWeeklyWorkbook">
                 Cargar semanal
               </v-btn>
             </div>
@@ -458,10 +469,10 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap agenda-toolbar" style="gap: 8px;">
-              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('agenda', 'excel')" @click="exportAgenda('excel')">
+              <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('agenda', 'excel')" @click="exportAgenda('excel')">
                 Excel
               </v-btn>
-              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('agenda', 'pdf')" @click="exportAgenda('pdf')">
+              <v-btn v-if="canAccessProgrammingReports" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('agenda', 'pdf')" @click="exportAgenda('pdf')">
                 PDF
               </v-btn>
               <v-btn icon="mdi-chevron-left" variant="text" @click="changeMonth(-1)" />
@@ -627,7 +638,7 @@
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="saving" @click="save">Guardar</v-btn>
+          <v-btn v-if="canPersistProgramacion" color="primary" :loading="saving" @click="save">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -682,7 +693,7 @@
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="monthlyCellDialog = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="savingMonthlyCell" @click="saveMonthlyCell">Guardar</v-btn>
+          <v-btn v-if="canPersistMonthlyCell" color="primary" :loading="savingMonthlyCell" @click="saveMonthlyCell">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -711,7 +722,7 @@
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="monthlyPaletteDialog = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="savingMonthlyPalette" @click="saveMonthlyPalette">Guardar colores</v-btn>
+          <v-btn v-if="canEditMonthlyColors" color="primary" :loading="savingMonthlyPalette" @click="saveMonthlyPalette">Guardar colores</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -723,7 +734,7 @@
             {{ weeklyEditor.id ? "Editar cronograma semanal" : "Nuevo cronograma semanal" }}
           </span>
           <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-            <v-btn color="primary" :loading="savingWeekly" @click="saveWeeklyEditor">
+            <v-btn v-if="canPersistWeeklyEditor" color="primary" :loading="savingWeekly" @click="saveWeeklyEditor">
               Guardar cronograma
             </v-btn>
           </div>
@@ -793,8 +804,9 @@
                         label="Fin"
                         @update:model-value="updateWeeklySlot(slot.key, 'hora_fin', String($event || ''))"
                       />
-                      <v-btn icon="mdi-delete" variant="text" color="error" @click="removeWeeklySlot(slot.key)" />
+                      <v-btn v-if="canEdit" icon="mdi-delete" variant="text" color="error" @click="removeWeeklySlot(slot.key)" />
                       <button
+                        v-if="canCreate"
                         type="button"
                         class="weekly-slot-inline-add"
                         @click="addWeeklySlotAfter(slot.key)"
@@ -806,7 +818,7 @@
                   </td>
                   <td v-for="day in weeklyEditorDays" :key="`${slot.key}-${day.date}`">
                     <div class="matrix-cell matrix-cell--weekly">
-                      <button type="button" class="weekly-add-button" @click="openWeeklyCell(slot.key, day.date)">
+                      <button v-if="canCreate" type="button" class="weekly-add-button" @click="openWeeklyCell(slot.key, day.date)">
                         <v-icon icon="mdi-plus" size="16" />
                         <span>Agregar</span>
                       </button>
@@ -824,8 +836,8 @@
                             </div>
                           </div>
                           <div class="d-flex" style="gap: 2px;">
-                            <v-btn icon="mdi-pencil" size="x-small" variant="text" @click="openWeeklyCell(slot.key, day.date, item)" />
-                            <v-btn icon="mdi-delete" size="x-small" variant="text" color="error" @click="removeWeeklyItem(item.local_id)" />
+                            <v-btn v-if="canEdit" icon="mdi-pencil" size="x-small" variant="text" @click="openWeeklyCell(slot.key, day.date, item)" />
+                            <v-btn v-if="canEdit" icon="mdi-delete" size="x-small" variant="text" color="error" @click="removeWeeklyItem(item.local_id)" />
                           </div>
                         </div>
                       </div>
@@ -834,7 +846,7 @@
                 </tr>
                 <tr>
                   <td class="matrix-table__sticky">
-                    <button type="button" class="weekly-slot-inline-add weekly-slot-inline-add--footer" @click="addWeeklySlot()">
+                    <button v-if="canCreate" type="button" class="weekly-slot-inline-add weekly-slot-inline-add--footer" @click="addWeeklySlot()">
                       <v-icon icon="mdi-plus" size="16" />
                       <span>Agregar hora</span>
                     </button>
@@ -849,7 +861,7 @@
             </table>
           </div>
           <div class="weekly-slot-footer mt-4">
-            <button type="button" class="weekly-slot-add-button" @click="addWeeklySlot()">
+            <button v-if="canCreate" type="button" class="weekly-slot-add-button" @click="addWeeklySlot()">
               <v-icon icon="mdi-plus" size="18" />
             </button>
             <span class="text-body-2 text-medium-emphasis">Agregar bloque horario</span>
@@ -904,7 +916,7 @@
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="weeklyCellDialog = false">Cancelar</v-btn>
-          <v-btn color="primary" @click="saveWeeklyCell">Guardar</v-btn>
+          <v-btn v-if="canPersistWeeklyCell" color="primary" @click="saveWeeklyCell">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -919,7 +931,7 @@
             </div>
           </div>
           <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-            <v-btn variant="tonal" prepend-icon="mdi-plus" @click="agendaSelectedDate && openCreateFromAgendaDialog()">
+            <v-btn v-if="canCreate" variant="tonal" prepend-icon="mdi-plus" @click="agendaSelectedDate && openCreateFromAgendaDialog()">
               Nueva programación
             </v-btn>
             <v-btn icon="mdi-close" variant="text" @click="agendaDayDialog = false" />
@@ -993,6 +1005,7 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+    </template>
   </div>
 </template>
 
@@ -1000,10 +1013,13 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
+import { hasReportAccess } from "@/app/config/report-access";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import {
   buildAgendaProgrammingReport,
   buildMonthlyProgrammingReport,
@@ -1014,7 +1030,21 @@ import {
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, [
+    "Programaciones",
+    "Programacion",
+    "Programación",
+  ]),
+);
+const canRead = computed(() => perms.value.isReaded);
+const canCreate = computed(() => perms.value.isCreated);
+const canEdit = computed(() => perms.value.isEdited);
+const canAccessProgrammingReports = computed(() =>
+  hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "programaciones"),
+);
 
 const activeTab = ref("mensual");
 const loadingAll = ref(false);
@@ -1199,7 +1229,11 @@ function buildAuditPayload(isEditing = false) {
   };
 }
 
-const canEditMonthlyColors = computed(() => currentRoleName.value.includes("ADMIN"));
+const canPersistProgramacion = computed(() => (editingId.value ? canEdit.value : canCreate.value));
+const canPersistMonthlyCell = computed(() => (monthlyCell.id ? canEdit.value : canCreate.value));
+const canPersistWeeklyEditor = computed(() => (weeklyEditor.id ? canEdit.value : canCreate.value));
+const canPersistWeeklyCell = computed(() => (weeklyCell.local_id ? canEdit.value : canCreate.value));
+const canEditMonthlyColors = computed(() => currentRoleName.value.includes("ADMIN") && canEdit.value);
 const defaultMonthlyPalette: Record<string, string> = {
   MPG: "#F4DD6B",
   HORAS_PROGRAMADAS: "#F4DD6B",
@@ -1311,6 +1345,7 @@ async function loadWeeklySchedules() {
 }
 
 async function loadAll() {
+  if (!canRead.value) return;
   loadingAll.value = true;
   error.value = null;
   try {
@@ -2144,6 +2179,7 @@ async function ensureWeeklyScheduleDetail(scheduleId: string) {
 }
 
 async function loadAgendaMonthContext() {
+  if (!canRead.value) return;
   const range = getMonthRange(currentMonth.value);
   const targetPeriod = getMonthPeriod(currentMonth.value);
   const monthlyMatches = monthlyImports.value.filter((item) => {
@@ -2215,6 +2251,7 @@ function resetForm() {
 }
 
 function openCreateForDate(date: string) {
+  if (!canCreate.value) return;
   resetForm();
   form.proxima_fecha = date;
   programacionSourceMode.value = "DINAMICA";
@@ -2223,12 +2260,14 @@ function openCreateForDate(date: string) {
 }
 
 function openCreateFromAgendaDialog() {
+  if (!canCreate.value) return;
   if (!agendaSelectedDate.value) return;
   agendaDayDialog.value = false;
   openCreateForDate(agendaSelectedDate.value);
 }
 
 function openMonthlyProgramacionCreate() {
+  if (!canCreate.value) return;
   openMonthlyCellCreate(selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date()));
 }
 
@@ -2249,6 +2288,7 @@ function resetMonthlyCell() {
 }
 
 function openMonthlyCellCreate(date: string, row?: any) {
+  if (!canCreate.value) return;
   if (!selectedMonthly.value?.id) {
     resetForm();
     form.proxima_fecha = date;
@@ -2272,6 +2312,7 @@ function openMonthlyCellCreate(date: string, row?: any) {
 }
 
 function openMonthlyCellEdit(item: any) {
+  if (!canEdit.value) return;
   resetMonthlyCell();
   monthlyCell.id = item.id;
   monthlyCell.programacion_mensual_id = item.programacion_mensual_id || selectedMonthly.value?.id || "";
@@ -2285,6 +2326,7 @@ function openMonthlyCellEdit(item: any) {
 }
 
 async function openWeeklyEditorEditById(id: string) {
+  if (!canEdit.value) return;
   try {
     const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${id}`);
     const payload = data?.data ?? null;
@@ -2299,6 +2341,7 @@ async function openWeeklyEditorEditById(id: string) {
 }
 
 async function openWeeklyAggregateFromMonthly(item: any) {
+  if (!canEdit.value) return;
   const cronogramaIds = Array.isArray(item?.payload_json?.cronograma_ids) ? item.payload_json.cronograma_ids : [];
   const targetId = cronogramaIds[0];
   if (!targetId) {
@@ -2321,6 +2364,7 @@ function handleMonthlyItemClick(item: any) {
 }
 
 async function saveMonthlyCell() {
+  if (!canPersistMonthlyCell.value) return;
   if (!selectedMonthly.value?.id && !monthlyCell.programacion_mensual_id) {
     ui.error("Selecciona un calendario mensual antes de guardar.");
     return;
@@ -2372,11 +2416,13 @@ async function saveMonthlyCell() {
 }
 
 function openMonthlyPaletteDialog() {
+  if (!canEditMonthlyColors.value) return;
   fillMonthlyPaletteForm();
   monthlyPaletteDialog.value = true;
 }
 
 async function saveMonthlyPalette() {
+  if (!canEditMonthlyColors.value) return;
   if (!selectedMonthly.value?.id) {
     ui.error("Selecciona un calendario mensual antes de editar colores.");
     return;
@@ -2400,6 +2446,7 @@ async function saveMonthlyPalette() {
 }
 
 function openCreateFromMonthlyDetail(item: any) {
+  if (!canCreate.value) return;
   if (!item) return;
   resetForm();
   form.equipo_id = item.equipo_id || "";
@@ -2426,6 +2473,7 @@ function openCreateFromMonthlyDetail(item: any) {
 }
 
 function openEdit(item: any) {
+  if (!canEdit.value) return;
   editingId.value = item.id;
   programacionSourceMode.value = String(item.modo_programacion || "DINAMICA").toUpperCase() === "CALENDARIO" ? "CALENDARIO" : "DINAMICA";
   programacionSourceOrigin.value = String(item.origen_programacion || "MANUAL");
@@ -2478,6 +2526,7 @@ async function handleAgendaItemClick(item: AgendaCalendarItem) {
 }
 
 async function openEditProgramacionById(id: string) {
+  if (!canEdit.value) return;
   try {
     const { data } = await api.get(`/kpi_maintenance/programaciones/${id}`);
     openEdit(data?.data ?? data);
@@ -2516,6 +2565,7 @@ function resolveSingleFile(value: File | File[] | null) {
 }
 
 async function save() {
+  if (!canPersistProgramacion.value) return;
   if (!form.equipo_id || (!form.procedimiento_id && !form.plan_id)) {
     ui.error("Debes seleccionar equipo y plantilla MPG o plan operativo.");
     return;
@@ -2554,6 +2604,7 @@ async function remove(item: any) {
 }
 
 async function importMonthlyWorkbook() {
+  if (!canCreate.value) return;
   const file = resolveSingleFile(monthlyImportFile.value as File | File[] | null);
   if (!file) {
     ui.error("Selecciona el archivo Excel mensual.");
@@ -2587,6 +2638,7 @@ async function importMonthlyWorkbook() {
 }
 
 async function importWeeklyWorkbook() {
+  if (!canCreate.value) return;
   const file = resolveSingleFile(weeklyImportFile.value as File | File[] | null);
   if (!file) {
     ui.error("Selecciona el archivo Excel semanal.");
@@ -2774,6 +2826,7 @@ function getWeeklyEditorItems(slotKey: string, date: string) {
 }
 
 function openWeeklyCell(slotKey: string, date: string, item?: any) {
+  if (item ? !canEdit.value : !canCreate.value) return;
   weeklyCell.local_id = item?.local_id || "";
   weeklyCell.slot_key = slotKey;
   weeklyCell.fecha_actividad = date;
@@ -2787,6 +2840,7 @@ function openWeeklyCell(slotKey: string, date: string, item?: any) {
 }
 
 async function openSelectedWeeklyCell(slotKey: string, date: string, item?: any) {
+  if (item ? !canEdit.value : !canCreate.value) return;
   if (!selectedWeekly.value?.id) {
     weeklyPlannerAnchorDate.value = date;
     await openWeeklyEditorCreate(date);
@@ -2813,6 +2867,7 @@ async function openSelectedWeeklyCell(slotKey: string, date: string, item?: any)
 }
 
 async function saveWeeklyCell() {
+  if (!canPersistWeeklyCell.value) return;
   if (!weeklyCell.actividad.trim()) {
     ui.error("Debes ingresar la actividad del bloque semanal.");
     return;
@@ -2863,6 +2918,7 @@ function computeWeeklyDailyHours(details: any[]) {
 }
 
 async function openWeeklyEditorCreate(anchorDate?: string) {
+  if (!canCreate.value) return;
   resetWeeklyEditor();
   weeklyCellPersistDirect.value = false;
   setWeeklyEditorWeek(anchorDate || weeklyPlannerAnchorDate.value || formatDate(new Date()));
@@ -2904,6 +2960,7 @@ function loadWeeklyEditorFromSchedule(schedule: any) {
 }
 
 async function openWeeklyEditorEdit(schedule: any) {
+  if (!canEdit.value) return;
   try {
     weeklyCellPersistDirect.value = false;
     const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${schedule.id}`);
@@ -2915,6 +2972,7 @@ async function openWeeklyEditorEdit(schedule: any) {
 }
 
 async function saveWeeklyEditor() {
+  if (!canPersistWeeklyEditor.value) return;
   if (!weeklyEditor.codigo || !weeklyEditor.fecha_inicio || !weeklyEditor.fecha_fin) {
     ui.error("Debes definir código y rango semanal.");
     return;
@@ -3134,6 +3192,10 @@ async function runProgramacionExport(
 }
 
 async function exportMonthly(format: "excel" | "pdf") {
+  if (!canAccessProgrammingReports.value) {
+    ui.error("No tienes permisos para exportar este reporte.");
+    return;
+  }
   const report = buildMonthlyProgrammingReport({
     periodLabel: selectedMonthlyPeriod.value || "Sin período",
     matrixRows: monthlyReportMatrixRows.value,
@@ -3148,6 +3210,10 @@ async function exportMonthly(format: "excel" | "pdf") {
 }
 
 async function exportWeekly(format: "excel" | "pdf") {
+  if (!canAccessProgrammingReports.value) {
+    ui.error("No tienes permisos para exportar este reporte.");
+    return;
+  }
   const report = buildWeeklyProgrammingReport({
     rangeLabel: weeklyDisplayRange.value
       ? `${weeklyDisplayRange.value.start} / ${weeklyDisplayRange.value.end}`
@@ -3170,6 +3236,10 @@ async function exportWeekly(format: "excel" | "pdf") {
 }
 
 async function exportAgenda(format: "excel" | "pdf") {
+  if (!canAccessProgrammingReports.value) {
+    ui.error("No tienes permisos para exportar este reporte.");
+    return;
+  }
   const report = buildAgendaProgrammingReport({
     monthLabel: monthLabel.value,
     agendaRows: agendaRows.value.filter((item: any) =>
@@ -3188,6 +3258,7 @@ async function exportAgenda(format: "excel" | "pdf") {
 }
 
 onMounted(async () => {
+  if (!canRead.value) return;
   setWeeklyEditorWeek(weeklyPlannerAnchorDate.value);
   await loadAll();
   await loadAgendaMonthContext();

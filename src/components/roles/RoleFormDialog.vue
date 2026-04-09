@@ -30,6 +30,27 @@
                 label="Descripción"
               />
             </v-col>
+
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="form.reportes"
+                :items="reportAccessOptions"
+                item-title="title"
+                item-value="value"
+                label="Reportes habilitados"
+                variant="outlined"
+                multiple
+                chips
+                closable-chips
+                clearable
+                hint="Si lo dejas vacío, el rol tendrá acceso a todos los reportes."
+                persistent-hint
+              >
+                <template #item="{ props: itemProps, item }">
+                  <v-list-item v-bind="itemProps" :subtitle="item.raw.description" />
+                </template>
+              </v-autocomplete>
+            </v-col>
           </v-row>
 
           <MenuPermissionsCascade
@@ -64,6 +85,7 @@ import { ref, watch, computed } from "vue";
 import { useDisplay } from "vuetify";
 import { useMenuRolesStore } from "@/app/stores/menu-roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
+import { REPORT_ACCESS_OPTIONS, normalizeReportAccess } from "@/app/config/report-access";
 
 import MenuPermissionsCascade from "@/components/roles/MenuPermissionsCascade.vue";
 
@@ -91,7 +113,10 @@ const form = ref({
   nombre: "",
   descripcion: "",
   status: "ACTIVE",
+  reportes: [] as string[],
 });
+
+const reportAccessOptions = REPORT_ACCESS_OPTIONS;
 
 watch(
   () => props.modelValue,
@@ -105,6 +130,7 @@ watch(
         nombre: props.role.nombre,
         descripcion: props.role.descripcion,
         status: props.role.status,
+        reportes: normalizeReportAccess(props.role.reportes),
       };
 
       await menuRoles.loadByRole(props.role.id);
@@ -114,6 +140,7 @@ watch(
         nombre: "",
         descripcion: "",
         status: "ACTIVE",
+        reportes: [],
       };
     }
   }

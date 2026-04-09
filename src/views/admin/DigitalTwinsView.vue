@@ -9,7 +9,7 @@
           </div>
         </div>
         <div class="responsive-actions page-wrap">
-          <v-btn color="primary" prepend-icon="mdi-plus" @click="openCreate">
+          <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
             Nuevo gemelo
           </v-btn>
           <v-btn
@@ -171,8 +171,8 @@
               :loading="refreshingTwinId === rowData(item).twin?.id"
               @click="refreshTwin(rowData(item))"
             />
-            <v-btn icon="mdi-pencil" variant="text" @click="openEdit(rowData(item).twin?.id)" />
-            <v-btn icon="mdi-delete-outline" variant="text" color="error" @click="removeTwin(rowData(item))" />
+            <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEdit(rowData(item).twin?.id)" />
+            <v-btn v-if="canDelete" icon="mdi-delete-outline" variant="text" color="error" @click="removeTwin(rowData(item))" />
           </div>
         </template>
       </v-data-table>
@@ -240,7 +240,7 @@
         <v-card-actions class="pa-4">
           <v-spacer />
           <v-btn variant="text" @click="formDialog = false">Cancelar</v-btn>
-          <v-btn color="primary" :loading="saving" @click="saveTwin">Guardar</v-btn>
+          <v-btn v-if="canPersistForm" color="primary" :loading="saving" @click="saveTwin">Guardar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -499,6 +499,8 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
 type TwinRow = {
   twin?: {
@@ -552,6 +554,7 @@ type TwinRow = {
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const menuStore = useMenuStore();
 const now = new Date();
 
 const loading = ref(false);
@@ -571,6 +574,14 @@ const formDialog = ref(false);
 const detailDialog = ref(false);
 const editingId = ref<string | null>(null);
 const detail = ref<any | null>(null);
+
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, ["Gemelos digitales", "Gemelos Digitales"]),
+);
+const canCreate = computed(() => perms.value.isCreated);
+const canEdit = computed(() => perms.value.isEdited);
+const canDelete = computed(() => perms.value.permitDeleted);
+const canPersistForm = computed(() => (editingId.value ? canEdit.value : canCreate.value));
 
 const form = reactive({
   code: "",
@@ -741,6 +752,7 @@ async function loadEquipmentOptions() {
 }
 
 async function openCreate() {
+  if (!canCreate.value) return;
   editingId.value = null;
   Object.assign(form, {
     code: "",
@@ -767,6 +779,7 @@ async function openCreate() {
 }
 
 async function openEdit(id?: string) {
+  if (!canEdit.value) return;
   if (!id) return;
   loading.value = true;
   try {
@@ -804,6 +817,7 @@ function handleEquipmentSelected(value: string | null) {
 }
 
 async function saveTwin() {
+  if (!canPersistForm.value) return;
   saving.value = true;
   try {
     const payload = {
@@ -916,6 +930,7 @@ async function refreshAll() {
 }
 
 async function removeTwin(row: TwinRow) {
+  if (!canDelete.value) return;
   const id = row?.twin?.id;
   const label = row?.twin?.name || row?.twin?.code || "este gemelo digital";
   if (!id) return;

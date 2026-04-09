@@ -9,6 +9,7 @@ export type CreateRoleBody = {
   descripcion: string;
   status: "ACTIVE" | "INACTIVE" | string;
   createdBy: string;
+  reportes?: string[];
 };
 
 export type UpdateRoleBody = Partial<CreateRoleBody>;

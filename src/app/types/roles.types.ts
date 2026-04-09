@@ -3,6 +3,7 @@ export type Role = {
   nombre: string;
   descripcion: string | null;
   status: "ACTIVE" | "INACTIVE" | string;
+  reportes?: string[];
   createdAt?: string;
   updatedAt?: string;
   createdBy?: string | null;

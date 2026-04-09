@@ -1,5 +1,12 @@
 <template>
   <v-row dense>
+    <v-col v-if="!canRead" cols="12">
+      <v-alert type="warning" variant="tonal">
+        No tienes permisos para visualizar este módulo.
+      </v-alert>
+    </v-col>
+
+    <template v-else>
     <v-col cols="12" lg="4">
       <v-card rounded="xl" class="pa-4 h-100 enterprise-surface">
         <div class="text-h6 font-weight-bold mb-2">Movimiento manual</div>
@@ -81,7 +88,13 @@
           class="mb-2"
         />
 
-        <v-btn color="primary" block :loading="savingMovement" @click="saveMovement">
+        <v-btn
+          v-if="canCreate"
+          color="primary"
+          block
+          :loading="savingMovement"
+          @click="saveMovement"
+        >
           Registrar movimiento
         </v-btn>
       </v-card>
@@ -105,7 +118,13 @@
         />
 
         <div class="d-flex flex-wrap" style="gap: 8px;">
-          <v-btn color="primary" prepend-icon="mdi-upload" :loading="uploading" @click="processXlsx">
+          <v-btn
+            v-if="canCreate"
+            color="primary"
+            prepend-icon="mdi-upload"
+            :loading="uploading"
+            @click="processXlsx"
+          >
             Procesar carga masiva
           </v-btn>
           <v-btn variant="outlined" prepend-icon="mdi-download" :loading="downloadingTemplate" @click="downloadTemplate">
@@ -211,10 +230,22 @@
               hide-details
               style="min-width: 220px;"
             />
-            <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('excel')" @click="exportInventoryReport('excel')">
+            <v-btn
+              v-if="canAccessInventoryReports"
+              variant="tonal"
+              prepend-icon="mdi-file-excel"
+              :loading="isExporting('excel')"
+              @click="exportInventoryReport('excel')"
+            >
               Excel
             </v-btn>
-            <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('pdf')" @click="exportInventoryReport('pdf')">
+            <v-btn
+              v-if="canAccessInventoryReports"
+              variant="tonal"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="isExporting('pdf')"
+              @click="exportInventoryReport('pdf')"
+            >
               PDF
             </v-btn>
             <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex">
@@ -255,6 +286,7 @@
         </v-data-table>
       </v-card>
     </v-col>
+    </template>
   </v-row>
 </template>
 
@@ -262,8 +294,11 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { fetchProductsWithStock } from "@/app/services/products-inventory.service";
+import { hasReportAccess } from "@/app/config/report-access";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import {
@@ -323,6 +358,7 @@ type ImportJob = {
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const menuStore = useMenuStore();
 
 const savingMovement = ref(false);
 const uploading = ref(false);
@@ -335,6 +371,18 @@ const exportState = reactive<Record<string, boolean>>({});
 const xlsxFile = ref<File | null>(null);
 const lastBulkSummary = ref<ImportSummary | null>(null);
 const inventoryGroupBy = ref("bodega");
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, [
+    "Kardex",
+    "Movimientos de kardex",
+    "Movimiento de kardex",
+  ]),
+);
+const canRead = computed(() => perms.value.isReaded);
+const canCreate = computed(() => perms.value.isCreated);
+const canAccessInventoryReports = computed(() =>
+  hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"),
+);
 
 const KARDEx_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 
@@ -511,6 +559,7 @@ async function listAll(endpoint: string) {
 }
 
 async function loadBaseData() {
+  if (!canRead.value) return;
   try {
     const inventory = await fetchProductsWithStock();
     products.value = inventory.productos;
@@ -591,6 +640,10 @@ const inventorySummary = computed(() => [
 ]);
 
 async function exportInventoryReport(format: "excel" | "pdf") {
+  if (!canAccessInventoryReports.value) {
+    ui.error("No tienes permisos para exportar este reporte.");
+    return;
+  }
   const key = exportKey(format);
   exportState[key] = true;
   try {
@@ -613,6 +666,7 @@ async function exportInventoryReport(format: "excel" | "pdf") {
 }
 
 async function loadKardex() {
+  if (!canRead.value) return;
   loadingKardex.value = true;
   try {
     kardex.value = (await listAll("/kpi_inventory/kardex")) as KardexRow[];
@@ -624,6 +678,10 @@ async function loadKardex() {
 }
 
 async function saveMovement() {
+  if (!canCreate.value) {
+    ui.error("No tienes permisos para registrar movimientos.");
+    return;
+  }
   const cantidad = parsePositiveNumber(movementForm.cantidad);
 
   if (!movementForm.bodegaId) {
@@ -800,6 +858,10 @@ async function restoreImportJob() {
 }
 
 async function processXlsx() {
+  if (!canCreate.value) {
+    ui.error("No tienes permisos para procesar cargas masivas.");
+    return;
+  }
   if (!xlsxFile.value) {
     ui.error("Debes seleccionar un archivo CSV o XLSX.");
     return;
@@ -893,6 +955,7 @@ watch(
 );
 
 onMounted(async () => {
+  if (!canRead.value) return;
   await Promise.allSettled([loadBaseData(), loadKardex()]);
   await restoreImportJob();
 });

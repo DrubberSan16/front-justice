@@ -1,5 +1,9 @@
 <template>
-  <v-alert v-if="!moduleConfig" type="error" variant="tonal">
+  <v-alert v-if="!canRead" type="warning" variant="tonal">
+    No tienes permisos para visualizar este módulo.
+  </v-alert>
+
+  <v-alert v-else-if="!moduleConfig" type="error" variant="tonal">
     Módulo no configurado.
   </v-alert>
 
@@ -309,17 +313,34 @@ import MaintenanceStructuredField from "@/components/maintenance/MaintenanceStru
 import { getEnhancedMaintenanceModule, type EnhancedMaintenanceField } from "@/app/config/maintenance-module-overrides";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
 const auth = useAuthStore();
+const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
 
 const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
-const canCreate = computed(() => moduleConfig.value?.allowCreate !== false);
-const canEdit = computed(() => moduleConfig.value?.allowEdit !== false);
-const canDelete = computed(() => moduleConfig.value?.allowDelete !== false);
+const modulePermissionAliases = computed(() => {
+  const title = repairText(moduleConfig.value?.title ?? "");
+  const aliases = [title, props.moduleKey].filter(Boolean);
+  const aliasMap: Record<string, string[]> = {
+    "inteligencia-procedimientos": ["Plantillas MPG", "Procedimientos", "Inteligencia Procedimientos"],
+    "componentes-equipo": ["Partes oficiales de equipos", "Partes de equipos", "Componentes equipo"],
+    bitacora: ["Bitacora", "Bitácora de equipos"],
+    "estados-equipo": ["Estados de equipos", "Estados equipo"],
+    "eventos-equipo": ["Eventos de equipos", "Eventos equipo"],
+  };
+  return [...new Set([...(aliasMap[props.moduleKey] ?? []), ...aliases])];
+});
+const perms = computed(() => getPermissionsForAnyComponent(menuStore.tree, modulePermissionAliases.value));
+const canRead = computed(() => perms.value.isReaded);
+const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && perms.value.isCreated);
+const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && perms.value.isEdited);
+const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && perms.value.permitDeleted);
 const records = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);

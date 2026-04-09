@@ -69,6 +69,27 @@
               </div>
             </v-col>
 
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="form.reportes"
+                :items="reportAccessOptions"
+                item-title="title"
+                item-value="value"
+                label="Reportes habilitados"
+                variant="outlined"
+                multiple
+                chips
+                closable-chips
+                clearable
+                hint="Si lo dejas vacío, el usuario tendrá acceso a todos los reportes."
+                persistent-hint
+              >
+                <template #item="{ props: itemProps, item }">
+                  <v-list-item v-bind="itemProps" :subtitle="item.raw.description" />
+                </template>
+              </v-autocomplete>
+            </v-col>
+
             <v-col cols="12" v-if="!isEdit">
               <v-text-field
                 v-model="form.passUser"
@@ -139,6 +160,7 @@ import type { User } from "@/app/types/users.types";
 import { useRolesStore } from "@/app/stores/roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
 import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store";
+import { REPORT_ACCESS_OPTIONS, normalizeReportAccess } from "@/app/config/report-access";
 
 import { fetchMenuRolesByRole } from "@/app/services/menu-roles.service";
 import MenuPermissionsCascade from "@/components/roles/MenuPermissionsCascade.vue";
@@ -151,6 +173,7 @@ type FormModel = {
   email: string;
   status: "ACTIVE" | "INACTIVE";
   dateBirthday: string;
+  reportes: string[];
 };
 
 const props = defineProps<{
@@ -192,6 +215,7 @@ const rolesError = computed(() => rolesStore.error);
 
 const loading = computed(() => props.loading ?? false);
 const error = computed(() => props.error ?? null);
+const reportAccessOptions = REPORT_ACCESS_OPTIONS;
 
 const roleProfileLoading = ref(false);
 const roleProfileError = ref<string | null>(null);
@@ -204,7 +228,13 @@ const form = reactive<FormModel>({
   email: "",
   status: "ACTIVE",
   dateBirthday: "",
+  reportes: [],
 });
+
+function roleDefaultReportes(roleId: string) {
+  const role = rolesStore.items.find((item) => item.id === roleId);
+  return normalizeReportAccess(role?.reportes);
+}
 
 /** Precarga menú/permiso desde rol (solo CREATE) */
 async function preloadFromRole(roleId: string) {
@@ -251,6 +281,7 @@ watch(
       form.email = props.user.email ?? "";
       form.status = (props.user.status as any) || "ACTIVE";
       form.dateBirthday = props.user.dateBirthday ?? "";
+      form.reportes = normalizeReportAccess(props.user.reportes);
 
       // cargar perfilería del usuario (para mostrar permisos)
       try {
@@ -267,6 +298,7 @@ watch(
       form.email = "";
       form.status = "ACTIVE";
       form.dateBirthday = "";
+      form.reportes = roleDefaultReportes(form.roleId);
 
       // IMPORTANT: precarga por rol al abrir (no esperes a que cambie el select)
       await preloadFromRole(form.roleId);
@@ -281,6 +313,7 @@ watch(
   async (roleId, prev) => {
     if (isEdit.value) return;
     if (!roleId || roleId === prev) return;
+    form.reportes = roleDefaultReportes(roleId);
     await preloadFromRole(roleId);
   }
 );

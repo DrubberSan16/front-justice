@@ -1,6 +1,12 @@
 <template>
   <v-row dense>
-    <v-col cols="12">
+    <v-col v-if="!canRead" cols="12">
+      <v-alert type="warning" variant="tonal">
+        No tienes permisos para visualizar este módulo.
+      </v-alert>
+    </v-col>
+
+    <v-col v-else cols="12">
       <v-card rounded="xl" class="pa-4 fill-height enterprise-surface">
         <div class="responsive-header mb-3">
           <div>
@@ -38,8 +44,8 @@
         >
           <template #item.actions="{ item }">
             <div class="responsive-actions">
-              <v-btn icon="mdi-pencil" variant="text" @click.stop="openPlanEdit(item._raw ?? item)" />
-              <v-btn icon="mdi-delete" variant="text" color="error" @click.stop="openDeletePlan(item._raw ?? item)" />
+              <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click.stop="openPlanEdit(item._raw ?? item)" />
+              <v-btn v-if="canDelete" icon="mdi-delete" variant="text" color="error" @click.stop="openDeletePlan(item._raw ?? item)" />
             </div>
           </template>
         </v-data-table>
@@ -76,7 +82,7 @@
               {{ currentPlanId ? `Plan seleccionado: ${selectedPlanLabel}` : "Completa cabecera y tareas; el guardado se hace en conjunto." }}
             </div>
           </div>
-          <v-btn color="primary" prepend-icon="mdi-plus" @click="addTaskRow">Agregar tarea</v-btn>
+          <v-btn v-if="canEdit" color="primary" prepend-icon="mdi-plus" @click="addTaskRow">Agregar tarea</v-btn>
         </div>
 
         <v-data-table
@@ -108,7 +114,7 @@
           </template>
           <template #item.actions="{ item }">
             <div class="responsive-actions">
-              <v-btn icon="mdi-delete" variant="text" color="error" @click="removeTaskRow(resolveTask(item))" />
+              <v-btn v-if="canEdit" icon="mdi-delete" variant="text" color="error" @click="removeTaskRow(resolveTask(item))" />
             </div>
           </template>
         </v-data-table>
@@ -117,7 +123,7 @@
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="planDialog = false">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="savePlan">Guardar</v-btn>
+        <v-btn v-if="canEdit" color="primary" :loading="saving" @click="savePlan">Guardar</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -129,7 +135,7 @@
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="deleteDialog = false">Cancelar</v-btn>
-        <v-btn color="error" :loading="saving" @click="confirmDelete">Eliminar</v-btn>
+        <v-btn v-if="canDelete" color="error" :loading="saving" @click="confirmDelete">Eliminar</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -139,11 +145,20 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
+import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
 const ui = useUiStore();
+const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, ["Planes", "Plan", "Planes internos"]),
+);
+const canRead = computed(() => perms.value.isReaded);
+const canEdit = computed(() => perms.value.isEdited);
+const canDelete = computed(() => perms.value.permitDeleted);
 
 const plans = ref<any[]>([]);
 const tasks = ref<any[]>([]);
@@ -256,6 +271,7 @@ async function fetchTasks() {
 }
 
 async function openPlanEdit(item: any) {
+  if (!canEdit.value) return;
   editingPlanId.value = item.id;
   selectedPlanId.value = item.id;
   planForm.codigo = item.codigo ?? "";
@@ -268,6 +284,7 @@ async function openPlanEdit(item: any) {
 }
 
 async function savePlan() {
+  if (!canEdit.value) return;
   if (!planForm.codigo || !planForm.nombre) {
     ui.error("Código y nombre son obligatorios.");
     return;
@@ -339,11 +356,13 @@ async function savePlan() {
 }
 
 function addTaskRow() {
+  if (!canEdit.value) return;
   tasks.value.push(makeTaskRow({ actividad: "" }));
   syncTaskOrder();
 }
 
 function removeTaskRow(item: any) {
+  if (!canEdit.value) return;
   if (item?.id) {
     deletedTaskIds.value.push(item.id);
   }
@@ -352,12 +371,14 @@ function removeTaskRow(item: any) {
 }
 
 function openDeletePlan(item: any) {
+  if (!canDelete.value) return;
   deletingId.value = item.id;
   deleteDialog.value = true;
 }
 
 
 async function confirmDelete() {
+  if (!canDelete.value) return;
   if (!deletingId.value) return;
   saving.value = true;
   try {
@@ -377,6 +398,7 @@ async function confirmDelete() {
 }
 
 onMounted(async () => {
+  if (!canRead.value) return;
   await fetchPlans();
 });
 </script>

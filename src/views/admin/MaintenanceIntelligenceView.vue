@@ -1,5 +1,14 @@
 <template>
   <div class="intelligence-page">
+    <v-alert v-if="!canRead" type="warning" variant="tonal">
+      No tienes permisos para visualizar este módulo.
+    </v-alert>
+
+    <v-alert v-else-if="!canAccessIntelligenceReports" type="warning" variant="tonal">
+      No tienes permisos para acceder a este reporte.
+    </v-alert>
+
+    <template v-else>
     <v-card rounded="xl" class="pa-5 enterprise-surface intelligence-hero">
       <div class="d-flex align-center justify-space-between intelligence-wrap">
         <div>
@@ -562,6 +571,7 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+    </template>
 </template>
 
 <script setup lang="ts">
@@ -569,10 +579,14 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
+import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
+import { hasReportAccess } from "@/app/config/report-access";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import {
   buildDailyReportsReport,
   buildIndicatorsReport,
@@ -615,6 +629,8 @@ const selectedMonth = ref(now.getMonth() + 1);
 const exportState = reactive<Record<string, boolean>>({});
 const router = useRouter();
 const { mdAndDown } = useDisplay();
+const auth = useAuthStore();
+const menuStore = useMenuStore();
 const dashboardDialog = ref(false);
 const isDashboardDialogFullscreen = computed(() => mdAndDown.value);
 const dashboardSelection = ref<AnyRow | null>(null);
@@ -625,6 +641,20 @@ const dashboardCompartimento = ref<string | null>(null);
 const lubricantDashboard = ref<AnyRow | null>(null);
 const lubricantDashboardLoading = ref(false);
 const lubricantDashboardError = ref<string | null>(null);
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, [
+    "Inteligencia operativa",
+    "Inteligencia operativa de mantenimiento",
+    "Inteligencia mantenimiento",
+  ]),
+);
+const canRead = computed(() => perms.value.isReaded);
+const canAccessIntelligenceReports = computed(() =>
+  hasReportAccess(
+    auth.user?.effectiveReportes ?? auth.user?.reportes,
+    "inteligencia_operativa",
+  ),
+);
 
 const dashboardPeriodOptions = [
   { value: "SEMANAL", title: "Semanal" },
@@ -728,6 +758,10 @@ function resetState() {
 }
 
 async function loadIntelligence() {
+  if (!canRead.value || !canAccessIntelligenceReports.value) {
+    resetState();
+    return;
+  }
   loading.value = true;
   error.value = null;
 
@@ -923,6 +957,10 @@ function isExporting(moduleKey: string, format: "excel" | "pdf") {
 }
 
 async function exportModule(moduleKey: string, format: "excel" | "pdf") {
+  if (!canAccessIntelligenceReports.value) {
+    error.value = "No tienes permisos para exportar este reporte.";
+    return;
+  }
   const key = exportKey(moduleKey, format);
   exportState[key] = true;
   error.value = null;

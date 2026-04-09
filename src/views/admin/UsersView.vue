@@ -285,6 +285,7 @@ async function onSubmitForm(payload: any) {
         email: payload.email,
         status: payload.status,
         dateBirthday: payload.dateBirthday,
+        reportes: payload.reportes,
       });
 
       // 🔥 IMPORTANTE:
@@ -306,6 +307,7 @@ async function onSubmitForm(payload: any) {
         email: payload.email,
         status: payload.status,
         dateBirthday: payload.dateBirthday,
+        reportes: payload.reportes,
       };
 
       if (payload.passUser?.trim()) {

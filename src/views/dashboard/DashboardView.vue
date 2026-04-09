@@ -1,5 +1,10 @@
 <template>
   <v-container fluid class="dashboard-page">
+    <v-alert v-if="!canAccessDashboardReports" type="warning" variant="tonal">
+      No tienes permisos para acceder a este reporte.
+    </v-alert>
+
+    <template v-else>
     <v-row class="mb-4" align="stretch">
       <v-col cols="12" lg="8">
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
@@ -14,6 +19,7 @@
               <v-chip label prepend-icon="mdi-account-circle-outline">{{ auth.user?.nameUser || "Usuario" }}</v-chip>
               <v-chip label prepend-icon="mdi-shield-account-outline">{{ auth.user?.role?.nombre || "Sin rol" }}</v-chip>
               <v-btn
+                v-if="canAccessDashboardReports"
                 color="secondary"
                 variant="tonal"
                 prepend-icon="mdi-file-excel"
@@ -23,6 +29,7 @@
                 Excel
               </v-btn>
               <v-btn
+                v-if="canAccessDashboardReports"
                 color="secondary"
                 variant="tonal"
                 prepend-icon="mdi-file-pdf-box"
@@ -471,6 +478,7 @@
         </v-card>
       </v-col>
     </v-row>
+    </template>
   </v-container>
 </template>
 
@@ -480,6 +488,7 @@ import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { hasReportAccess } from "@/app/config/report-access";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
@@ -499,6 +508,9 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const lastUpdatedAt = ref<Date | null>(null);
 const exportState = ref<Record<string, boolean>>({});
+const canAccessDashboardReports = computed(() =>
+  hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "dashboard_ejecutivo"),
+);
 
 const users = ref<AnyRow[]>([]);
 const roles = ref<AnyRow[]>([]);
@@ -677,6 +689,7 @@ function isExporting(format: "excel" | "pdf") {
 }
 
 async function loadDashboard() {
+  if (!canAccessDashboardReports.value) return;
   loading.value = true;
   error.value = null;
 
@@ -1233,6 +1246,10 @@ const dashboardReportDefinition = computed(() =>
 );
 
 async function exportDashboard(format: "excel" | "pdf") {
+  if (!canAccessDashboardReports.value) {
+    error.value = "No tienes permisos para generar reportes del dashboard.";
+    return;
+  }
   const key = exportKey(format);
   exportState.value = { ...exportState.value, [key]: true };
   error.value = null;
