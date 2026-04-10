@@ -648,6 +648,7 @@ const stockByWarehouseRows = ref<any[]>([]);
 const productCatalogRows = ref<any[]>([]);
 const warehouseCatalogRows = ref<any[]>([]);
 const workOrderCatalogRows = ref<any[]>([]);
+const catalogsLoaded = ref(false);
 const taskOptions = ref<any[]>([]);
 const loadingTaskOptions = ref(false);
 const loadingEquipmentComponents = ref(false);
@@ -1158,6 +1159,12 @@ async function loadCatalogs() {
   warehouseCatalogRows.value = bodegas;
   stockByWarehouseRows.value = stockRows;
   warehouseOptions.value = bodegas.map(normalize);
+  catalogsLoaded.value = true;
+}
+
+async function ensureCatalogsLoaded(force = false) {
+  if (catalogsLoaded.value && !force) return;
+  await loadCatalogs();
 }
 
 async function loadEquipmentComponents(equipmentId: string) {
@@ -1905,7 +1912,8 @@ async function fetchWorkOrders() {
   loading.value = true;
   error.value = null;
   try {
-    records.value = await listAll("/kpi_maintenance/work-orders");
+    const { data } = await api.get("/kpi_maintenance/work-orders");
+    records.value = asArray(data);
     workOrderCatalogRows.value = records.value;
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar las órdenes de trabajo.";
@@ -2008,6 +2016,7 @@ function resetAllForms() {
 
 async function openCreate() {
   if (!canCreate.value) return;
+  await ensureCatalogsLoaded();
   editingId.value = null;
   closingFlow.value = false;
   resetAllForms();
@@ -2017,6 +2026,7 @@ async function openCreate() {
 
 async function openEdit(item: any) {
   if (!canEdit.value) return;
+  await ensureCatalogsLoaded();
   editingId.value = item.id;
   closingFlow.value = false;
   resetAllForms();
@@ -2568,7 +2578,7 @@ async function confirmDelete() {
 
 onMounted(async () => {
   try {
-    await Promise.all([fetchWorkOrders(), loadCatalogs()]);
+    await fetchWorkOrders();
   } catch {
     // errores específicos ya manejados en cada método
   }

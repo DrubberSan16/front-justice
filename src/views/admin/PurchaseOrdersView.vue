@@ -47,13 +47,16 @@
       </v-col>
     </v-row>
 
-    <v-data-table
+    <v-data-table-server
       :headers="headers"
       :items="tableRows"
+      :items-length="serverTotalItems"
       :loading="loading"
       loading-text="Obteniendo órdenes de compra..."
-      :items-per-page="15"
+      :items-per-page="serverItemsPerPage"
+      :page="serverPage"
       class="elevation-0 enterprise-table"
+      @update:options="handleServerOptionsUpdate"
     >
       <template #item.estado="{ item }">
         <v-chip size="small" variant="tonal" :color="orderStateColor(item.estado)">
@@ -101,7 +104,7 @@
           />
         </div>
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </v-card>
 
   <v-dialog
@@ -375,7 +378,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -384,6 +387,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
 
 type CatalogOption = { value: string; title: string };
@@ -440,6 +444,11 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const editingId = ref<string | null>(null);
 const search = ref("");
+const serverPage = ref(1);
+const serverItemsPerPage = ref(15);
+const serverTotalItems = ref(0);
+let serverFetchTimer: ReturnType<typeof setTimeout> | null = null;
+let serverRequestId = 0;
 const orders = ref<PurchaseOrderRow[]>([]);
 const suppliers = ref<any[]>([]);
 const products = ref<any[]>([]);
@@ -511,16 +520,11 @@ const productOptions = computed<CatalogOption[]>(() =>
 );
 
 const tableRows = computed(() => {
-  const q = repairText(search.value).toLowerCase();
   return orders.value
     .map((item) => ({
       ...item,
       fecha_emision_label: formatDate(item.fecha_emision),
-    }))
-    .filter((item) => {
-      if (!q) return true;
-      return JSON.stringify(item).toLowerCase().includes(q);
-    });
+    }));
 });
 
 const orderTotals = computed(() => {
@@ -721,7 +725,20 @@ async function loadCatalogs() {
 }
 
 async function loadOrders() {
-  orders.value = (await listAllPages("/kpi_inventory/ordenes-compra")) as PurchaseOrderRow[];
+  const requestId = ++serverRequestId;
+  const response = await fetchPaginatedResource(
+    "/kpi_inventory/ordenes-compra",
+    {
+      search: repairText(search.value).trim() || undefined,
+    },
+    {
+      page: serverPage.value,
+      limit: serverItemsPerPage.value,
+    },
+  );
+  if (requestId !== serverRequestId) return;
+  orders.value = response.data as PurchaseOrderRow[];
+  serverTotalItems.value = Number(response.pagination.total || 0);
 }
 
 async function ensureSuppliersLoaded(force = false) {
@@ -756,6 +773,35 @@ async function hydrateView() {
   } finally {
     loading.value = false;
   }
+}
+
+function handleServerOptionsUpdate(options: {
+  page?: number;
+  itemsPerPage?: number;
+}) {
+  const nextPage = Number(options?.page || serverPage.value || 1);
+  const nextItemsPerPage = Number(
+    options?.itemsPerPage || serverItemsPerPage.value || 15,
+  );
+  const pageChanged = nextPage !== serverPage.value;
+  const limitChanged = nextItemsPerPage !== serverItemsPerPage.value;
+  if (!pageChanged && !limitChanged) return;
+
+  serverPage.value = nextPage;
+  serverItemsPerPage.value = nextItemsPerPage;
+  void hydrateView();
+}
+
+function scheduleServerFetch() {
+  if (serverFetchTimer) {
+    clearTimeout(serverFetchTimer);
+  }
+  loading.value = true;
+  serverFetchTimer = setTimeout(() => {
+    serverFetchTimer = null;
+    serverPage.value = 1;
+    void hydrateView();
+  }, 350);
 }
 
 async function openCreate() {
@@ -941,6 +987,13 @@ onMounted(async () => {
   await hydrateView();
   resetForm();
 });
+
+watch(
+  () => search.value,
+  () => {
+    scheduleServerFetch();
+  },
+);
 </script>
 
 <style scoped>

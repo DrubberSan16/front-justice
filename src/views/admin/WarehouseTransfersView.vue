@@ -29,13 +29,16 @@
       </div>
     </div>
 
-    <v-data-table
+    <v-data-table-server
       :headers="headers"
       :items="tableRows"
+      :items-length="serverTotalItems"
       :loading="loading"
       loading-text="Obteniendo transferencias de bodega..."
-      :items-per-page="15"
+      :items-per-page="serverItemsPerPage"
+      :page="serverPage"
       class="elevation-0 enterprise-table"
+      @update:options="handleServerOptionsUpdate"
     >
       <template #item.fecha_transferencia="{ item }">
         {{ formatDate(item.fecha_transferencia) }}
@@ -56,7 +59,7 @@
       <template #item.total_cantidad="{ item }">
         {{ formatNumber(item.total_cantidad) }}
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </v-card>
 
   <v-dialog
@@ -299,6 +302,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 
 type CatalogOption = { value: string; title: string };
 
@@ -383,6 +387,9 @@ const loading = ref(false);
 const saving = ref(false);
 const orderLoading = ref(false);
 const dialog = ref(false);
+const serverPage = ref(1);
+const serverItemsPerPage = ref(15);
+const serverTotalItems = ref(0);
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
@@ -634,7 +641,16 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
 }
 
 async function loadTransfers() {
-  transfers.value = (await listAllPages("/kpi_inventory/transferencias-bodega")) as TransferRow[];
+  const response = await fetchPaginatedResource(
+    "/kpi_inventory/transferencias-bodega",
+    {},
+    {
+      page: serverPage.value,
+      limit: serverItemsPerPage.value,
+    },
+  );
+  transfers.value = response.data as TransferRow[];
+  serverTotalItems.value = Number(response.pagination.total || 0);
 }
 
 async function loadPendingOrders() {
@@ -692,6 +708,23 @@ async function hydrateView() {
   } finally {
     loading.value = false;
   }
+}
+
+function handleServerOptionsUpdate(options: {
+  page?: number;
+  itemsPerPage?: number;
+}) {
+  const nextPage = Number(options?.page || serverPage.value || 1);
+  const nextItemsPerPage = Number(
+    options?.itemsPerPage || serverItemsPerPage.value || 15,
+  );
+  const pageChanged = nextPage !== serverPage.value;
+  const limitChanged = nextItemsPerPage !== serverItemsPerPage.value;
+  if (!pageChanged && !limitChanged) return;
+
+  serverPage.value = nextPage;
+  serverItemsPerPage.value = nextItemsPerPage;
+  void hydrateView();
 }
 
 async function openCreate() {

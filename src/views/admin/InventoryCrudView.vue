@@ -51,14 +51,14 @@
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
     <component
-      :is="isStockBodegaModule ? 'v-data-table-server' : 'v-data-table'"
+      :is="'v-data-table-server'"
       :headers="headers"
       :items="rows"
-      :items-length="isStockBodegaModule ? serverTotalItems : undefined"
+      :items-length="serverTotalItems"
       :loading="tableLoading"
       loading-text="Obteniendo información del módulo..."
-      :items-per-page="isStockBodegaModule ? serverItemsPerPage : 20"
-      :page="isStockBodegaModule ? serverPage : undefined"
+      :items-per-page="serverItemsPerPage"
+      :page="serverPage"
       class="elevation-0 enterprise-table inventory-table"
       @update:options="handleServerOptionsUpdate"
     >
@@ -266,6 +266,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
+import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
 
 const props = defineProps<{ moduleKey: string }>();
@@ -348,9 +349,17 @@ function isStockBodegaLabelField(fieldKey: string) {
   return fieldKey === "producto_id" || fieldKey === "bodega_id";
 }
 
-async function loadRelations() {
-  relationOptions.value = {};
+function getRelationFields(mode: "table" | "form" = "table") {
+  const cfg = moduleConfig.value;
+  if (!cfg) return [];
+  const sourceFields = mode === "form" ? cfg.fields : cfg.fields.slice(0, 6);
+  return sourceFields.filter((field) => field.relation);
+}
+
+async function loadRelations(mode: "table" | "form" = "table") {
   if (!moduleConfig.value) return;
+  const nextRelationOptions =
+    mode === "form" ? { ...relationOptions.value } : {};
 
   if (moduleConfig.value.key === "stock-bodega") {
     const warehouseField = moduleConfig.value.fields.find(
@@ -358,16 +367,30 @@ async function loadRelations() {
     );
     if (warehouseField?.relation?.endpoint) {
       const rows = await listAll(warehouseField.relation.endpoint);
-      relationOptions.value.bodega_id = rows.map((r: any) => ({
+      nextRelationOptions.bodega_id = rows.map((r: any) => ({
         value: r.id,
         title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
         bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
       }));
     }
+    if (mode === "form") {
+      const productField = moduleConfig.value.fields.find(
+        (field) => field.key === "producto_id" && field.relation,
+      );
+      if (productField?.relation?.endpoint) {
+        const rows = await listAll(productField.relation.endpoint);
+        nextRelationOptions.producto_id = rows.map((r: any) => ({
+          value: r.id,
+          title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+          bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
+        }));
+      }
+    }
+    relationOptions.value = nextRelationOptions;
     return;
   }
 
-  const relationFields = moduleConfig.value.fields.filter((field) => field.relation);
+  const relationFields = getRelationFields(mode);
   const uniqueEndpoints = [...new Set(relationFields.map((field) => String(field.relation?.endpoint || "")))];
   const endpointRows = new Map<string, any[]>();
 
@@ -379,12 +402,13 @@ async function loadRelations() {
 
   for (const field of relationFields) {
     const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
-    relationOptions.value[field.key] = rows.map((r: any) => ({
+    nextRelationOptions[field.key] = rows.map((r: any) => ({
       value: r.id,
       title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
       bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
+  relationOptions.value = nextRelationOptions;
 }
 
 function isWarehouseDependentProductField(field: MaintenanceField) {
@@ -404,23 +428,23 @@ async function fetchRecords(skipLoading = false) {
   if (!skipLoading) loading.value = true;
   error.value = null;
   try {
-    if (moduleConfig.value.key === "stock-bodega") {
-      const requestId = ++stockBodegaRequestId;
-      const { data } = await api.get(moduleConfig.value.endpoint, {
-        params: {
-          page: serverPage.value,
-          limit: serverItemsPerPage.value,
-          search: search.value.trim() || undefined,
-          bodega_id: stockWarehouseFilter.value || undefined,
-        },
-      });
-      if (requestId !== stockBodegaRequestId) return;
-      records.value = asArray(data);
-      serverTotalItems.value = Number(data?.pagination?.total || 0);
-      return;
-    }
-
-    records.value = await listAll(moduleConfig.value.endpoint);
+    const requestId = ++stockBodegaRequestId;
+    const response = await fetchPaginatedResource(
+      moduleConfig.value.endpoint,
+      {
+        search: search.value.trim() || undefined,
+        bodega_id: isStockBodegaModule.value
+          ? stockWarehouseFilter.value || undefined
+          : undefined,
+      },
+      {
+        page: serverPage.value,
+        limit: serverItemsPerPage.value,
+      },
+    );
+    if (requestId !== stockBodegaRequestId) return;
+    records.value = response.data;
+    serverTotalItems.value = Number(response.pagination.total || 0);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -434,11 +458,7 @@ async function hydrateModuleData() {
   initialLoading.value = true;
   error.value = null;
   try {
-    if (moduleConfig.value.key === "stock-bodega") {
-      await Promise.all([loadRelations(), fetchRecords(true)]);
-    } else {
-      await Promise.all([loadRelations(), fetchRecords(true)]);
-    }
+    await Promise.all([loadRelations("table"), fetchRecords(true)]);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -468,22 +488,8 @@ function getSelectOptions(field: MaintenanceField) {
   return options.filter((option) => String(option.bodegaId || "") === warehouseId);
 }
 
-async function ensureStockBodegaFormRelationsLoaded() {
-  if (!moduleConfig.value || moduleConfig.value.key !== "stock-bodega") return;
-  const productField = moduleConfig.value.fields.find(
-    (field) => field.key === "producto_id" && field.relation,
-  );
-  if (
-    productField?.relation?.endpoint &&
-    !(relationOptions.value.producto_id?.length)
-  ) {
-    const rows = await listAll(productField.relation.endpoint);
-    relationOptions.value.producto_id = rows.map((r: any) => ({
-      value: r.id,
-      title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
-      bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
-    }));
-  }
+async function ensureFormRelationsLoaded() {
+  await loadRelations("form");
 }
 
 function reservationStateColor(value: string) {
@@ -514,8 +520,6 @@ const headers = computed(() => {
 const rows = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const q = search.value.trim().toLowerCase();
-  const warehouseFilter = String(stockWarehouseFilter.value || "").trim();
 
   return records.value
     .map((r) => {
@@ -537,15 +541,6 @@ const rows = computed(() => {
       }
       out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
-    })
-    .filter((r) => {
-      if (moduleConfig.value?.key === "stock-bodega") {
-        return true;
-      }
-      if (warehouseFilter && String(r._raw?.bodega_id || r.bodega_id || "") !== warehouseFilter) {
-        return false;
-      }
-      return !q || r._search.includes(q);
     });
 });
 
@@ -597,14 +592,14 @@ function validateForm() {
 function openCreate() {
   editingId.value = null;
   resetForm();
-  void ensureStockBodegaFormRelationsLoaded();
+  void ensureFormRelationsLoaded();
   dialog.value = true;
 }
 
 function openEdit(item: any) {  
   editingId.value = item.id;
   resetForm();
-  void ensureStockBodegaFormRelationsLoaded();
+  void ensureFormRelationsLoaded();
   for (const field of moduleConfig.value?.fields ?? []) {
     form[field.key] = item[field.key] ?? form[field.key];
   }
@@ -719,7 +714,6 @@ function handleServerOptionsUpdate(options: {
   page?: number;
   itemsPerPage?: number;
 }) {
-  if (!isStockBodegaModule.value) return;
   const nextPage = Number(options?.page || serverPage.value || 1);
   const nextItemsPerPage = Number(
     options?.itemsPerPage || serverItemsPerPage.value || 20,
@@ -733,8 +727,7 @@ function handleServerOptionsUpdate(options: {
   void fetchRecords();
 }
 
-function scheduleStockBodegaFetch() {
-  if (!isStockBodegaModule.value) return;
+function scheduleServerFetch() {
   if (stockBodegaFetchTimer) {
     clearTimeout(stockBodegaFetchTimer);
   }
@@ -786,9 +779,8 @@ watch(
 watch(
   () => [search.value, stockWarehouseFilter.value],
   () => {
-    if (!isStockBodegaModule.value) return;
     serverPage.value = 1;
-    scheduleStockBodegaFetch();
+    scheduleServerFetch();
   },
 );
 

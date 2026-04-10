@@ -38,14 +38,17 @@
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <v-data-table
+    <v-data-table-server
       :headers="headers"
       :items="rows"
+      :items-length="serverTotalItems"
       :loading="tableLoading"
       loading-text="Obteniendo información del módulo..."
-      :items-per-page="20"
+      :items-per-page="serverItemsPerPage"
+      :page="serverPage"
       :item-props="getRowProps"
       class="elevation-0 enterprise-table maintenance-crud-table"
+      @update:options="handleServerOptionsUpdate"
     >
       <template #item.estado="{ item }">
         <template v-if="moduleConfig?.key === 'alertas'">
@@ -113,7 +116,7 @@
           />
         </div>
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </v-card>
 
   <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : dialogMaxWidth">
@@ -326,6 +329,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -355,6 +359,11 @@ const records = ref<any[]>([]);
 const loading = ref(false);
 const initialLoading = ref(false);
 const saving = ref(false);
+const serverPage = ref(1);
+const serverItemsPerPage = ref(20);
+const serverTotalItems = ref(0);
+let serverFetchTimer: ReturnType<typeof setTimeout> | null = null;
+let serverRequestId = 0;
 const autoCodeLoading = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
@@ -723,6 +732,13 @@ function normalizeLabel(item: any) {
   return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 
+function getRelationFields(mode: "table" | "form" = "table") {
+  const cfg = moduleConfig.value;
+  if (!cfg) return [];
+  const sourceFields = mode === "form" ? cfg.fields : cfg.fields.slice(0, 6);
+  return sourceFields.filter((field) => field.relation);
+}
+
 function buildStockScopedMaterialOptions(productos: any[], stockRows: any[]) {
   const productMap = new Map(
     productos.map((item: any) => [String(item?.id || ""), item]),
@@ -750,11 +766,12 @@ function buildStockScopedMaterialOptions(productos: any[], stockRows: any[]) {
     .filter((item): item is { value: string; title: string; bodegaId: string } => Boolean(item));
 }
 
-async function loadRelations() {
-  relationOptions.value = {};
+async function loadRelations(mode: "table" | "form" = "table") {
   if (!moduleConfig.value) return;
+  const nextRelationOptions =
+    mode === "form" ? { ...relationOptions.value } : {};
 
-  const relationFields = moduleConfig.value.fields.filter((field) => field.relation);
+  const relationFields = getRelationFields(mode);
   const uniqueEndpoints = [...new Set(relationFields.map((field) => String(field.relation?.endpoint || "")))];
   const endpointRows = new Map<string, any[]>();
 
@@ -766,20 +783,22 @@ async function loadRelations() {
 
   for (const field of relationFields) {
     const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
-    relationOptions.value[field.key] = rows.map((r: any) => ({
+    nextRelationOptions[field.key] = rows.map((r: any) => ({
       value: r.id,
       title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
       bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
+  relationOptions.value = nextRelationOptions;
 
   const needsStockScopedMaterials =
-    moduleConfig.value.key === "work-order-issue-materials" ||
+    mode === "form" &&
+    (moduleConfig.value.key === "work-order-issue-materials" ||
     moduleConfig.value.fields.some(
       (field) =>
         field.relation?.endpoint === "/kpi_inventory/productos" ||
         field.key === "materiales",
-    );
+    ));
 
   if (needsStockScopedMaterials) {
     const [productos, bodegas, stockRows] = await Promise.all([
@@ -804,7 +823,10 @@ async function loadRelations() {
     }
   }
 
-  if (["equipos", "inteligencia-procedimientos", "componentes-equipo"].includes(moduleConfig.value.key)) {
+  if (
+    mode === "form" &&
+    ["equipos", "inteligencia-procedimientos", "componentes-equipo"].includes(moduleConfig.value.key)
+  ) {
     const [componentRows, equipmentRows] = await Promise.all([
       listAll("/kpi_maintenance/componentes"),
       listAll("/kpi_maintenance/equipos"),
@@ -815,6 +837,10 @@ async function loadRelations() {
       title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
     }));
   }
+}
+
+async function ensureFormRelationsLoaded() {
+  await loadRelations("form");
 }
 
 const procedureComponentOptions = computed(() => {
@@ -1019,6 +1045,7 @@ async function fetchRecords(skipLoading = false) {
   const endpoint = getCollectionEndpoint();
   if (!endpoint) {
     records.value = [];
+    serverTotalItems.value = 0;
     expandedAlertGroups.value = {};
     return;
   }
@@ -1026,7 +1053,20 @@ async function fetchRecords(skipLoading = false) {
   if (useManagedLoading) loading.value = true;
   error.value = null;
   try {
-    const rows = await listAll(endpoint);
+    const requestId = ++serverRequestId;
+    const response = await fetchPaginatedResource(
+      endpoint,
+      {
+        search: search.value.trim() || undefined,
+      },
+      {
+        page: serverPage.value,
+        limit: serverItemsPerPage.value,
+      },
+    );
+    if (requestId !== serverRequestId) return;
+    const rows = response.data;
+    serverTotalItems.value = Number(response.pagination.total || 0);
     records.value = moduleConfig.value?.key === "alertas" ? await enrichAlertsWithRelations(rows) : rows;
     if (moduleConfig.value?.key === "alertas") {
       expandedAlertGroups.value = {};
@@ -1044,7 +1084,7 @@ async function hydrateModuleData() {
   initialLoading.value = true;
   error.value = null;
   try {
-    await Promise.all([loadRelations(), fetchRecords(true)]);
+    await Promise.all([loadRelations("table"), fetchRecords(true)]);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -1157,7 +1197,6 @@ const headers = computed(() => {
 const rows = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const q = search.value.trim().toLowerCase();
 
   const normalizedRows = records.value
     .map((r) => {
@@ -1171,8 +1210,7 @@ const rows = computed(() => {
       }
       out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
-    })
-    .filter((r) => !q || r._search.includes(q));
+    });
 
   if (cfg.key !== "alertas") {
     return normalizedRows;
@@ -1381,6 +1419,7 @@ function validateForm() {
 async function openCreate() {
   editingId.value = null;
   resetForm();
+  void ensureFormRelationsLoaded();
   dialog.value = true;
   await assignAutoGeneratedCode();
 }
@@ -1388,6 +1427,7 @@ async function openCreate() {
 async function openEdit(item: any) {  
   editingId.value = item.id;
   resetForm();
+  void ensureFormRelationsLoaded();
   for (const field of moduleConfig.value?.fields ?? []) {
     if (field.editor === "file-upload") {
       form[field.key] = {
@@ -1470,10 +1510,45 @@ async function confirmDelete() {
   }
 }
 
+function handleServerOptionsUpdate(options: {
+  page?: number;
+  itemsPerPage?: number;
+}) {
+  const nextPage = Number(options?.page || serverPage.value || 1);
+  const nextItemsPerPage = Number(
+    options?.itemsPerPage || serverItemsPerPage.value || 20,
+  );
+  const pageChanged = nextPage !== serverPage.value;
+  const limitChanged = nextItemsPerPage !== serverItemsPerPage.value;
+  if (!pageChanged && !limitChanged) return;
+
+  serverPage.value = nextPage;
+  serverItemsPerPage.value = nextItemsPerPage;
+  void fetchRecords();
+}
+
+function scheduleServerFetch() {
+  if (serverFetchTimer) {
+    clearTimeout(serverFetchTimer);
+  }
+  loading.value = true;
+  serverFetchTimer = setTimeout(() => {
+    serverFetchTimer = null;
+    void fetchRecords();
+  }, 350);
+}
+
 watch(
   () => props.moduleKey,
   async () => {
     if (!moduleConfig.value) return;
+    if (serverFetchTimer) {
+      clearTimeout(serverFetchTimer);
+      serverFetchTimer = null;
+    }
+    serverPage.value = 1;
+    serverItemsPerPage.value = 20;
+    serverTotalItems.value = 0;
     resetForm();
     await hydrateModuleData();
   },
@@ -1484,8 +1559,17 @@ watch(
   () => (moduleConfig.value?.pathParam?.key ? form[moduleConfig.value.pathParam.key] : null),
   async () => {
     if (!moduleConfig.value?.pathParam) return;
+    serverPage.value = 1;
     await fetchRecords();
   }
+);
+
+watch(
+  () => search.value,
+  () => {
+    serverPage.value = 1;
+    scheduleServerFetch();
+  },
 );
 
 watch(
