@@ -13,14 +13,24 @@
         <div class="text-h6 font-weight-bold">{{ moduleConfig.title }}</div>
         <div class="text-body-2 text-medium-emphasis">Inventario de {{ moduleConfig.title.toLowerCase() }}.</div>
       </div>
-      <v-btn
-        v-if="canCreate"
-        color="primary"
-        prepend-icon="mdi-plus"
-        @click="openCreate"
-      >
-        Nuevo
-      </v-btn>
+      <div class="d-flex flex-wrap" style="gap: 8px;">
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-refresh"
+          :loading="tableLoading"
+          @click="refreshRecords"
+        >
+          Recargar
+        </v-btn>
+        <v-btn
+          v-if="canCreate"
+          color="primary"
+          prepend-icon="mdi-plus"
+          @click="openCreate"
+        >
+          Nuevo
+        </v-btn>
+      </div>
     </div>
 
     <v-row dense class="mb-2">
@@ -46,12 +56,29 @@
           clearable
         />
       </v-col>
+      <v-col cols="12" md="5" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
+        <v-btn
+          variant="tonal"
+          prepend-icon="mdi-filter-check"
+          :loading="tableLoading"
+          @click="applyFilters"
+        >
+          Aplicar filtros
+        </v-btn>
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-filter-off"
+          :disabled="!search && !stockWarehouseFilter"
+          @click="clearFilters"
+        >
+          Limpiar
+        </v-btn>
+      </v-col>
     </v-row>
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
-    <component
-      :is="'v-data-table-server'"
+    <v-data-table-server
       :headers="headers"
       :items="rows"
       :items-length="serverTotalItems"
@@ -86,7 +113,15 @@
           />
         </div>
       </template>
-    </component>
+      <template #bottom>
+        <div
+          v-if="!tableLoading && !rows.length && !error"
+          class="pa-4 text-medium-emphasis"
+        >
+          No hay registros para los filtros seleccionados.
+        </div>
+      </template>
+    </v-data-table-server>
   </v-card>
 
   <v-dialog
@@ -734,12 +769,23 @@ function scheduleServerFetch() {
   loading.value = true;
   stockBodegaFetchTimer = setTimeout(() => {
     stockBodegaFetchTimer = null;
-    if (!isStockBodegaModule.value) {
-      loading.value = false;
-      return;
-    }
     void fetchRecords();
   }, 350);
+}
+
+function applyFilters() {
+  serverPage.value = 1;
+  void fetchRecords();
+}
+
+function clearFilters() {
+  search.value = "";
+  stockWarehouseFilter.value = "";
+  serverPage.value = 1;
+}
+
+function refreshRecords() {
+  void fetchRecords();
 }
 
 watch(
