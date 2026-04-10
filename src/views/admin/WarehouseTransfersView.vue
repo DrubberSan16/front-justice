@@ -62,7 +62,7 @@
   <v-dialog
     v-model="dialog"
     :fullscreen="isDialogFullscreen"
-    :max-width="isDialogFullscreen ? undefined : 1240"
+    :max-width="isDialogFullscreen ? undefined : 1440"
   >
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
@@ -172,6 +172,7 @@
                 <th>Código</th>
                 <th>Material</th>
                 <th>Cantidad</th>
+                <th>Stock actual</th>
                 <th>Costo ref.</th>
                 <th>Subtotal ref.</th>
                 <th>Obs.</th>
@@ -195,12 +196,31 @@
                   />
                 </td>
                 <td>
+                  <div class="quantity-cell">
+                    <v-text-field
+                      v-model="detail.cantidad"
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      variant="outlined"
+                      :error="detailExceedsStock(detail)"
+                      hide-details
+                    />
+                    <div
+                      v-if="detailExceedsStock(detail)"
+                      class="text-caption text-error mt-1"
+                    >
+                      Solicitado: {{ formatNumber(getRequestedQuantityForProduct(detail.producto_id)) }}
+                      · Disponible: {{ formatNumber(getCurrentStock(detail)) }}
+                    </div>
+                  </div>
+                </td>
+                <td>
                   <v-text-field
-                    v-model="detail.cantidad"
-                    type="number"
-                    min="0"
-                    step="0.0001"
+                    :model-value="formatNumber(getCurrentStock(detail))"
+                    label="Stock actual"
                     variant="outlined"
+                    readonly
                     hide-details
                   />
                 </td>
@@ -227,7 +247,7 @@
                 </td>
               </tr>
               <tr v-if="!form.detalles.length">
-                <td colspan="7" class="text-center text-medium-emphasis py-4">
+                <td colspan="8" class="text-center text-medium-emphasis py-4">
                   {{ selectedOrder ? "La orden seleccionada no tiene materiales disponibles." : "Agrega materiales para continuar." }}
                 </td>
               </tr>
@@ -274,6 +294,13 @@ type ProductRow = {
   nombre?: string | null;
   costo_promedio?: string | number | null;
   ultimo_costo?: string | number | null;
+};
+
+type StockRow = {
+  id: string;
+  bodega_id: string;
+  producto_id: string;
+  stock_actual?: string | number | null;
 };
 
 type PurchaseOrderDetailRow = {
@@ -342,6 +369,7 @@ const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
 const products = ref<ProductRow[]>([]);
+const stockRows = ref<StockRow[]>([]);
 
 const form = reactive({
   orden_compra_id: "",
@@ -413,6 +441,17 @@ const productOptions = computed<CatalogOption[]>(() =>
   })),
 );
 
+const currentStockByProduct = computed(() => {
+  const map = new Map<string, number>();
+  const sourceWarehouseId = effectiveSourceWarehouseId.value;
+  if (!sourceWarehouseId) return map;
+  for (const row of stockRows.value) {
+    if (String(row.bodega_id || "") !== sourceWarehouseId) continue;
+    map.set(String(row.producto_id || ""), toNumber(row.stock_actual));
+  }
+  return map;
+});
+
 const tableRows = computed(() => transfers.value);
 
 const totalQuantity = computed(() =>
@@ -475,6 +514,22 @@ function detailSubtotal(detail: TransferDetailForm) {
   return toNumber(detail.cantidad) * toNumber(detail.costo_unitario);
 }
 
+function getCurrentStock(detail: TransferDetailForm) {
+  if (!detail.producto_id) return 0;
+  return currentStockByProduct.value.get(String(detail.producto_id || "")) ?? 0;
+}
+
+function getRequestedQuantityForProduct(productId: string) {
+  return form.detalles
+    .filter((detail) => String(detail.producto_id || "") === String(productId || ""))
+    .reduce((sum, detail) => sum + toNumber(detail.cantidad), 0);
+}
+
+function detailExceedsStock(detail: TransferDetailForm) {
+  if (!detail.producto_id) return false;
+  return getRequestedQuantityForProduct(detail.producto_id) > getCurrentStock(detail);
+}
+
 function resetForm() {
   form.orden_compra_id = "";
   form.bodega_origen_id = "";
@@ -519,12 +574,14 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
 }
 
 async function loadCatalogs() {
-  const [warehouseRows, productRows] = await Promise.all([
+  const [warehouseRows, productRows, stockRowsPayload] = await Promise.all([
     listAllPages("/kpi_inventory/bodegas"),
     listAllPages("/kpi_inventory/productos"),
+    listAllPages("/kpi_inventory/stock-bodega"),
   ]);
   warehouses.value = warehouseRows;
   products.value = productRows as ProductRow[];
+  stockRows.value = stockRowsPayload as StockRow[];
 }
 
 async function loadTransfers() {
@@ -582,6 +639,14 @@ function validateForm() {
     }
     if (!(toNumber(detail.cantidad) > 0)) {
       ui.error("La cantidad de cada material debe ser mayor a cero.");
+      return false;
+    }
+    if (detailExceedsStock(detail)) {
+      const materialLabel =
+        detail.codigo_producto || detail.nombre_producto || "el material seleccionado";
+      ui.error(
+        `La cantidad ingresada para ${materialLabel} es mayor a la que hay en la bodega.`,
+      );
       return false;
     }
   }
@@ -677,5 +742,9 @@ onMounted(async () => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.quantity-cell {
+  min-width: 180px;
 }
 </style>

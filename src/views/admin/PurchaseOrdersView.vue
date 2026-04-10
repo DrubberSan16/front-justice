@@ -107,7 +107,7 @@
   <v-dialog
     v-model="dialog"
     :fullscreen="isDialogFullscreen"
-    :max-width="isDialogFullscreen ? undefined : 1280"
+    :max-width="isDialogFullscreen ? undefined : 1440"
   >
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
@@ -119,6 +119,7 @@
           <v-col cols="12" md="3">
             <v-text-field
               v-model="form.codigo"
+              readonly
               label="Código"
               variant="outlined"
               hint="Si lo dejas vacío, el sistema lo genera automáticamente."
@@ -179,8 +180,11 @@
           <v-col cols="12" md="4">
             <v-text-field
               v-model="form.referencia"
+              readonly
               label="Referencia"
               variant="outlined"
+              hint="Referencia autogenerada tipo IB-00000001."
+              persistent-hint
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -576,6 +580,59 @@ function createLocalId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function incrementAlphaPrefix(letter: string) {
+  const nextCharCode = letter.toUpperCase().charCodeAt(0) + 1;
+  if (nextCharCode > 90) return "A";
+  return String.fromCharCode(nextCharCode);
+}
+
+function nextPurchaseOrderCode(lastCode: string | null) {
+  if (!lastCode) return "OC-A00001";
+  const match = /^OC-([A-Z])(\d{5})$/i.exec(String(lastCode || "").trim());
+  if (!match) return "OC-A00001";
+  const currentLetter = (match[1] ?? "A").toUpperCase();
+  const currentNumber = Number(match[2] ?? "0");
+  if (currentNumber >= 99999) {
+    return `OC-${incrementAlphaPrefix(currentLetter)}00001`;
+  }
+  return `OC-${currentLetter}${String(currentNumber + 1).padStart(5, "0")}`;
+}
+
+function getPurchaseOrderCodeRank(code: string) {
+  const match = /^OC-([A-Z])(\d{5})$/i.exec(String(code || "").trim());
+  if (!match) return -1;
+  const letter = (match[1] ?? "A").toUpperCase();
+  const number = Number(match[2] ?? "0");
+  return (letter.charCodeAt(0) - 64) * 100000 + number;
+}
+
+function getHighestPurchaseOrderCode(codes: string[]) {
+  const normalized = codes
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => getPurchaseOrderCodeRank(b) - getPurchaseOrderCodeRank(a));
+  return normalized[0] ?? null;
+}
+
+function nextPurchaseOrderReference(lastReference: string | null) {
+  const match = /^IB-(\d{8})$/i.exec(String(lastReference || "").trim());
+  if (!match) return "IB-00000001";
+  const currentNumber = Number(match[1] ?? "0");
+  return `IB-${String(currentNumber + 1).padStart(8, "0")}`;
+}
+
+function getHighestPurchaseOrderReference(references: string[]) {
+  const normalized = references
+    .map((item) => String(item || "").trim())
+    .filter((item) => /^IB-\d{8}$/i.test(item))
+    .sort((a, b) => {
+      const aNumber = Number(/^IB-(\d{8})$/i.exec(a)?.[1] ?? "0");
+      const bNumber = Number(/^IB-(\d{8})$/i.exec(b)?.[1] ?? "0");
+      return bNumber - aNumber;
+    });
+  return normalized[0] ?? null;
+}
+
 function createEmptyDetail(): OrderDetailForm {
   return {
     local_id: createLocalId(),
@@ -614,14 +671,18 @@ function detailGrandTotal(detail: OrderDetailForm) {
 }
 
 function resetForm() {
-  form.codigo = "";
+  const lastCode = getHighestPurchaseOrderCode(orders.value.map((item) => item?.codigo || ""));
+  const lastReference = getHighestPurchaseOrderReference(
+    orders.value.map((item) => item?.referencia || ""),
+  );
+  form.codigo = nextPurchaseOrderCode(lastCode);
   form.fecha_emision = new Date().toISOString().slice(0, 10);
   form.fecha_requerida = "";
   form.proveedor_id = "";
   form.bodega_destino_id = String(defaultWarehouse.value?.id || "");
   form.vendedor = String(defaultWarehouse.value?.nombre || "MATRIZ");
   form.condicion_pago = "CREDITO 90 DIAS";
-  form.referencia = "";
+  form.referencia = nextPurchaseOrderReference(lastReference);
   form.observacion = "";
   form.moneda = "USD";
   form.tipo_cambio = "1";
