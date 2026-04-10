@@ -8,12 +8,12 @@
       <div>
         <div class="text-h6 font-weight-bold">Transferencias de bodega</div>
         <div class="text-body-2 text-medium-emphasis">
-          Toma órdenes de compra emitidas, precarga sus materiales y genera la salida e ingreso en kardex.
+          Registra transferencias manuales entre bodegas o precarga materiales desde una orden de compra pendiente.
         </div>
       </div>
       <div class="d-flex flex-wrap" style="gap: 8px;">
         <v-chip color="info" variant="tonal">
-          {{ pendingOrders.length }} órdenes pendientes por transferir
+          {{ pendingOrders.length }} órdenes disponibles para precarga
         </v-chip>
         <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loading" @click="hydrateView">
           Recargar
@@ -22,7 +22,6 @@
           v-if="canCreate"
           color="primary"
           prepend-icon="mdi-swap-horizontal"
-          :disabled="!pendingOrders.length"
           @click="openCreate"
         >
           Nueva transferencia
@@ -38,14 +37,22 @@
       :items-per-page="15"
       class="elevation-0 enterprise-table"
     >
+      <template #item.fecha_transferencia="{ item }">
+        {{ formatDate(item.fecha_transferencia) }}
+      </template>
+
+      <template #item.orden_compra_codigo="{ item }">
+        <v-chip size="small" variant="tonal" :color="item.orden_compra_codigo ? 'info' : 'secondary'">
+          {{ item.orden_compra_codigo || "Manual" }}
+        </v-chip>
+      </template>
+
       <template #item.estado="{ item }">
         <v-chip size="small" variant="tonal" color="success">
           {{ item.estado || "COMPLETADA" }}
         </v-chip>
       </template>
-      <template #item.fecha_transferencia="{ item }">
-        {{ formatDate(item.fecha_transferencia) }}
-      </template>
+
       <template #item.total_cantidad="{ item }">
         {{ formatNumber(item.total_cantidad) }}
       </template>
@@ -55,7 +62,7 @@
   <v-dialog
     v-model="dialog"
     :fullscreen="isDialogFullscreen"
-    :max-width="isDialogFullscreen ? undefined : 1180"
+    :max-width="isDialogFullscreen ? undefined : 1240"
   >
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
@@ -64,18 +71,18 @@
       <v-divider />
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="5">
             <v-autocomplete
               v-model="form.orden_compra_id"
               :items="pendingOrderOptions"
               item-title="title"
               item-value="value"
-              label="Orden de compra pendiente"
+              label="Orden de compra para precarga (opcional)"
               variant="outlined"
               clearable
             />
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" md="2">
             <v-text-field
               v-model="form.fecha_transferencia"
               type="date"
@@ -83,22 +90,34 @@
               variant="outlined"
             />
           </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" md="5">
             <v-text-field
-              :model-value="selectedOrder?.proveedor_nombre || ''"
-              label="Proveedor"
+              :model-value="selectedOrder?.proveedor_nombre || 'Transferencia manual'"
+              label="Proveedor / origen de la solicitud"
               variant="outlined"
               readonly
             />
           </v-col>
+
           <v-col cols="12" md="6">
             <v-text-field
-              :model-value="selectedOrder?.bodega_label || ''"
+              v-if="selectedOrder"
+              :model-value="sourceWarehouseLabel"
               label="Bodega origen"
               variant="outlined"
               readonly
             />
+            <v-select
+              v-else
+              v-model="form.bodega_origen_id"
+              :items="sourceWarehouseOptions"
+              item-title="title"
+              item-value="value"
+              label="Bodega origen"
+              variant="outlined"
+            />
           </v-col>
+
           <v-col cols="12" md="6">
             <v-select
               v-model="form.bodega_destino_id"
@@ -109,6 +128,7 @@
               variant="outlined"
             />
           </v-col>
+
           <v-col cols="12">
             <v-textarea
               v-model="form.observacion"
@@ -121,13 +141,30 @@
         </v-row>
 
         <v-alert v-if="selectedOrder" type="info" variant="tonal" class="mb-4">
-          Esta transferencia tomará los materiales de la orden
-          <strong>{{ selectedOrder.codigo }}</strong>, hará la salida de la
-          bodega origen y el ingreso en la bodega destino, registrando ambos
-          movimientos en kardex.
+          La orden <strong>{{ selectedOrder.codigo }}</strong> fue precargada. Al guardar la transferencia esta orden quedará marcada como usada y ya no volverá a salir disponible.
+        </v-alert>
+        <v-alert v-else type="info" variant="tonal" class="mb-4">
+          Estás registrando una transferencia manual. Selecciona la bodega origen, la bodega destino y los materiales a mover.
         </v-alert>
 
-        <div class="text-subtitle-1 font-weight-bold mb-2">Materiales precargados</div>
+        <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">Materiales de la transferencia</div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ selectedOrder ? 'Puedes ajustar cantidades o retirar materiales precargados.' : 'Agrega los materiales que se moverán entre bodegas.' }}
+            </div>
+          </div>
+          <v-btn
+            v-if="!selectedOrder"
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-plus"
+            @click="addDetail"
+          >
+            Agregar material
+          </v-btn>
+        </div>
+
         <div class="transfer-details-table">
           <table class="details-table">
             <thead>
@@ -135,21 +172,63 @@
                 <th>Código</th>
                 <th>Material</th>
                 <th>Cantidad</th>
-                <th>Costo unitario</th>
-                <th>Subtotal</th>
+                <th>Costo ref.</th>
+                <th>Subtotal ref.</th>
+                <th>Obs.</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="detail in selectedOrderDetails" :key="detail.id || detail.producto_id">
+              <tr v-for="detail in form.detalles" :key="detail.local_id">
                 <td>{{ detail.codigo_producto || "-" }}</td>
-                <td>{{ detail.nombre_producto || "-" }}</td>
-                <td class="text-right">{{ formatNumber(detail.cantidad) }}</td>
-                <td class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
-                <td class="text-right">{{ formatCurrency(detail.subtotal) }}</td>
+                <td>
+                  <v-autocomplete
+                    v-model="detail.producto_id"
+                    :items="productOptions"
+                    item-title="title"
+                    item-value="value"
+                    label="Material"
+                    variant="outlined"
+                    hide-details
+                    :disabled="Boolean(selectedOrder)"
+                    @update:model-value="handleDetailProductChange(detail)"
+                  />
+                </td>
+                <td>
+                  <v-text-field
+                    v-model="detail.cantidad"
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    variant="outlined"
+                    hide-details
+                  />
+                </td>
+                <td class="text-right font-weight-medium">
+                  {{ formatCurrency(detail.costo_unitario) }}
+                </td>
+                <td class="text-right font-weight-bold">
+                  {{ formatCurrency(detailSubtotal(detail)) }}
+                </td>
+                <td>
+                  <v-text-field
+                    v-model="detail.observacion"
+                    variant="outlined"
+                    hide-details
+                  />
+                </td>
+                <td class="text-center">
+                  <v-btn
+                    icon="mdi-delete"
+                    variant="text"
+                    color="error"
+                    @click="removeDetail(detail.local_id)"
+                  />
+                </td>
               </tr>
-              <tr v-if="!selectedOrderDetails.length">
-                <td colspan="5" class="text-center text-medium-emphasis py-4">
-                  Selecciona una orden de compra pendiente para precargar sus materiales.
+              <tr v-if="!form.detalles.length">
+                <td colspan="7" class="text-center text-medium-emphasis py-4">
+                  {{ selectedOrder ? "La orden seleccionada no tiene materiales disponibles." : "Agrega materiales para continuar." }}
                 </td>
               </tr>
             </tbody>
@@ -158,10 +237,10 @@
 
         <div class="d-flex flex-wrap justify-end mt-4" style="gap: 12px;">
           <v-chip color="info" variant="tonal">
-            Ítems: {{ selectedOrderDetails.length }}
+            Ítems: {{ form.detalles.length }}
           </v-chip>
           <v-chip color="success" variant="tonal">
-            Cantidad total: {{ formatNumber(selectedOrderTotalQuantity) }}
+            Cantidad total: {{ formatNumber(totalQuantity) }}
           </v-chip>
         </div>
       </v-card-text>
@@ -189,6 +268,14 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 
 type CatalogOption = { value: string; title: string };
 
+type ProductRow = {
+  id: string;
+  codigo?: string | null;
+  nombre?: string | null;
+  costo_promedio?: string | number | null;
+  ultimo_costo?: string | number | null;
+};
+
 type PurchaseOrderDetailRow = {
   id?: string;
   producto_id: string;
@@ -197,6 +284,7 @@ type PurchaseOrderDetailRow = {
   cantidad?: string | number | null;
   costo_unitario?: string | number | null;
   subtotal?: string | number | null;
+  observacion?: string | null;
 };
 
 type PurchaseOrderRow = {
@@ -221,6 +309,17 @@ type TransferRow = {
   total_cantidad?: string | number | null;
 };
 
+type TransferDetailForm = {
+  local_id: string;
+  orden_compra_det_id: string;
+  producto_id: string;
+  codigo_producto: string;
+  nombre_producto: string;
+  cantidad: string;
+  costo_unitario: string;
+  observacion: string;
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
@@ -242,12 +341,15 @@ const dialog = ref(false);
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
+const products = ref<ProductRow[]>([]);
 
 const form = reactive({
   orden_compra_id: "",
+  bodega_origen_id: "",
   bodega_destino_id: "",
   fecha_transferencia: new Date().toISOString().slice(0, 10),
   observacion: "",
+  detalles: [] as TransferDetailForm[],
 });
 
 const headers = [
@@ -270,10 +372,31 @@ const selectedOrder = computed(
     null,
 );
 
-const selectedOrderDetails = computed(() => selectedOrder.value?.detalles ?? []);
+const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
+  warehouses.value.map((item) => ({
+    value: String(item.id),
+    title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
+  })),
+);
 
-const selectedOrderTotalQuantity = computed(() =>
-  selectedOrderDetails.value.reduce((sum, detail) => sum + toNumber(detail.cantidad), 0),
+const effectiveSourceWarehouseId = computed(
+  () => String(selectedOrder.value?.bodega_destino_id || form.bodega_origen_id || ""),
+);
+
+const sourceWarehouseLabel = computed(() => {
+  const source = warehouses.value.find(
+    (item) => String(item.id) === effectiveSourceWarehouseId.value,
+  );
+  return source ? `${source.codigo || ""} - ${source.nombre || source.id}`.trim() : "";
+});
+
+const destinationWarehouseOptions = computed<CatalogOption[]>(() =>
+  warehouses.value
+    .filter((item) => String(item.id) !== effectiveSourceWarehouseId.value)
+    .map((item) => ({
+      value: String(item.id),
+      title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
+    })),
 );
 
 const pendingOrderOptions = computed<CatalogOption[]>(() =>
@@ -283,17 +406,18 @@ const pendingOrderOptions = computed<CatalogOption[]>(() =>
   })),
 );
 
-const destinationWarehouseOptions = computed<CatalogOption[]>(() => {
-  const sourceId = String(selectedOrder.value?.bodega_destino_id || "");
-  return warehouses.value
-    .filter((item) => String(item.id) !== sourceId)
-    .map((item) => ({
-      value: String(item.id),
-      title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
-    }));
-});
+const productOptions = computed<CatalogOption[]>(() =>
+  products.value.map((item) => ({
+    value: String(item.id),
+    title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
+  })),
+);
 
 const tableRows = computed(() => transfers.value);
+
+const totalQuantity = computed(() =>
+  form.detalles.reduce((sum, detail) => sum + toNumber(detail.cantidad), 0),
+);
 
 function toNumber(value: unknown) {
   const parsed = Number(String(value ?? "").replace(/,/g, "."));
@@ -323,19 +447,84 @@ function formatDate(value: unknown) {
   return date.toLocaleString("es-EC");
 }
 
+function createLocalId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createEmptyDetail(): TransferDetailForm {
+  return {
+    local_id: createLocalId(),
+    orden_compra_det_id: "",
+    producto_id: "",
+    codigo_producto: "",
+    nombre_producto: "",
+    cantidad: "1",
+    costo_unitario: "0",
+    observacion: "",
+  };
+}
+
 function getUserName() {
   return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM";
 }
 
+function detailSubtotal(detail: TransferDetailForm) {
+  return toNumber(detail.cantidad) * toNumber(detail.costo_unitario);
+}
+
 function resetForm() {
   form.orden_compra_id = "";
+  form.bodega_origen_id = "";
   form.bodega_destino_id = "";
   form.fecha_transferencia = new Date().toISOString().slice(0, 10);
   form.observacion = "";
+  form.detalles = [createEmptyDetail()];
+}
+
+function addDetail() {
+  form.detalles.push(createEmptyDetail());
+}
+
+function removeDetail(localId: string) {
+  form.detalles = form.detalles.filter((detail) => detail.local_id !== localId);
+  if (!form.detalles.length) {
+    form.detalles = selectedOrder.value ? [] : [createEmptyDetail()];
+  }
+}
+
+function handleDetailProductChange(detail: TransferDetailForm) {
+  const product = products.value.find((item) => String(item.id) === String(detail.producto_id));
+  if (!product) return;
+  detail.codigo_producto = String(product.codigo || "");
+  detail.nombre_producto = String(product.nombre || "");
+  detail.costo_unitario = String(product.costo_promedio || product.ultimo_costo || 0);
+}
+
+function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
+  return Array.isArray(details)
+    ? details.map((detail) => ({
+        local_id: createLocalId(),
+        orden_compra_det_id: String(detail.id || ""),
+        producto_id: String(detail.producto_id || ""),
+        codigo_producto: String(detail.codigo_producto || ""),
+        nombre_producto: String(detail.nombre_producto || ""),
+        cantidad: String(detail.cantidad || "0"),
+        costo_unitario: String(detail.costo_unitario || "0"),
+        observacion: String(detail.observacion || ""),
+      }))
+    : [];
 }
 
 async function loadCatalogs() {
-  warehouses.value = await listAllPages("/kpi_inventory/bodegas");
+  const [warehouseRows, productRows] = await Promise.all([
+    listAllPages("/kpi_inventory/bodegas"),
+    listAllPages("/kpi_inventory/productos"),
+  ]);
+  warehouses.value = warehouseRows;
+  products.value = productRows as ProductRow[];
 }
 
 async function loadTransfers() {
@@ -370,17 +559,31 @@ function openCreate() {
 }
 
 function validateForm() {
-  if (!form.orden_compra_id) {
-    ui.error("Debes seleccionar una orden de compra pendiente.");
+  if (!effectiveSourceWarehouseId.value) {
+    ui.error("Debes seleccionar la bodega origen.");
     return false;
   }
   if (!form.bodega_destino_id) {
     ui.error("Debes seleccionar la bodega destino.");
     return false;
   }
-  if (!selectedOrderDetails.value.length) {
-    ui.error("La orden seleccionada no tiene materiales para transferir.");
+  if (effectiveSourceWarehouseId.value === String(form.bodega_destino_id || "")) {
+    ui.error("La bodega destino debe ser distinta a la bodega origen.");
     return false;
+  }
+  if (!form.detalles.length) {
+    ui.error("Debes agregar al menos un material para transferir.");
+    return false;
+  }
+  for (const detail of form.detalles) {
+    if (!detail.producto_id) {
+      ui.error("Todos los materiales de la transferencia deben estar seleccionados.");
+      return false;
+    }
+    if (!(toNumber(detail.cantidad) > 0)) {
+      ui.error("La cantidad de cada material debe ser mayor a cero.");
+      return false;
+    }
   }
   return true;
 }
@@ -394,16 +597,18 @@ async function saveTransfer() {
   saving.value = true;
   try {
     await api.post("/kpi_inventory/transferencias-bodega", {
-      orden_compra_id: form.orden_compra_id,
+      orden_compra_id: form.orden_compra_id || undefined,
+      bodega_origen_id: effectiveSourceWarehouseId.value,
       bodega_destino_id: form.bodega_destino_id,
       fecha_transferencia: form.fecha_transferencia || undefined,
       observacion: form.observacion || undefined,
       created_by: getUserName(),
       updated_by: getUserName(),
-      detalles: selectedOrderDetails.value.map((detail) => ({
-        orden_compra_det_id: detail.id,
+      detalles: form.detalles.map((detail) => ({
+        orden_compra_det_id: detail.orden_compra_det_id || undefined,
         producto_id: detail.producto_id,
         cantidad: toNumber(detail.cantidad),
+        observacion: detail.observacion || undefined,
       })),
     });
     ui.success("Transferencia registrada correctamente.");
@@ -421,18 +626,25 @@ async function saveTransfer() {
 }
 
 watch(selectedOrder, (order) => {
-  if (!order) {
-    form.bodega_destino_id = "";
-    return;
+  if (order) {
+    form.bodega_origen_id = String(order.bodega_destino_id || "");
+    form.detalles = mapOrderDetails(order.detalles);
+  } else {
+    form.detalles = [createEmptyDetail()];
   }
-  const options = destinationWarehouseOptions.value;
-  const currentStillValid = options.some(
-    (item) => String(item.value) === String(form.bodega_destino_id || ""),
-  );
-  form.bodega_destino_id = currentStillValid
-    ? String(form.bodega_destino_id)
-    : String(options[0]?.value || "");
 });
+
+watch(
+  () => effectiveSourceWarehouseId.value,
+  () => {
+    const valid = destinationWarehouseOptions.value.some(
+      (item) => String(item.value) === String(form.bodega_destino_id || ""),
+    );
+    form.bodega_destino_id = valid
+      ? String(form.bodega_destino_id)
+      : String(destinationWarehouseOptions.value[0]?.value || "");
+  },
+);
 
 onMounted(async () => {
   if (!canRead.value) return;
@@ -449,7 +661,7 @@ onMounted(async () => {
 
 .details-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 980px;
   border-collapse: collapse;
 }
 
@@ -457,6 +669,7 @@ onMounted(async () => {
 .details-table td {
   padding: 10px;
   border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  vertical-align: top;
 }
 
 .details-table th {
