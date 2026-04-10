@@ -34,6 +34,18 @@
           clearable
         />
       </v-col>
+      <v-col v-if="isStockBodegaModule" cols="12" md="3">
+        <v-select
+          v-model="stockWarehouseFilter"
+          :items="stockWarehouseOptions"
+          item-title="title"
+          item-value="value"
+          label="Filtrar por bodega"
+          variant="outlined"
+          density="compact"
+          clearable
+        />
+      </v-col>
     </v-row>
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
@@ -275,6 +287,7 @@ const initialLoading = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
+const stockWarehouseFilter = ref("");
 
 const relationOptions = ref<Record<string, Array<{ value: any; title: string; bodegaId?: string | null }>>>({});
 
@@ -296,6 +309,7 @@ const form = reactive<Record<string, any>>({});
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const tableLoading = computed(() => loading.value || initialLoading.value);
+const stockWarehouseOptions = computed(() => relationOptions.value.bodega_id ?? []);
 const reservationHeaders = [
   { title: "Reserva", key: "estado" },
   { title: "Cantidad", key: "cantidad" },
@@ -325,9 +339,18 @@ async function loadRelations() {
   relationOptions.value = {};
   if (!moduleConfig.value) return;
 
-  for (const field of moduleConfig.value.fields) {
-    if (!field.relation) continue;
-    const rows = await listAll(field.relation.endpoint);
+  const relationFields = moduleConfig.value.fields.filter((field) => field.relation);
+  const uniqueEndpoints = [...new Set(relationFields.map((field) => String(field.relation?.endpoint || "")))];
+  const endpointRows = new Map<string, any[]>();
+
+  await Promise.all(
+    uniqueEndpoints.map(async (endpoint) => {
+      endpointRows.set(endpoint, await listAll(endpoint));
+    }),
+  );
+
+  for (const field of relationFields) {
+    const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
     relationOptions.value[field.key] = rows.map((r: any) => ({
       value: r.id,
       title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
@@ -367,8 +390,7 @@ async function hydrateModuleData() {
   initialLoading.value = true;
   error.value = null;
   try {
-    await loadRelations();
-    await fetchRecords(true);
+    await Promise.all([loadRelations(), fetchRecords(true)]);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {
@@ -427,6 +449,7 @@ const rows = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
   const q = search.value.trim().toLowerCase();
+  const warehouseFilter = String(stockWarehouseFilter.value || "").trim();
 
   return records.value
     .map((r) => {
@@ -442,10 +465,15 @@ const rows = computed(() => {
           out[field.key] = formatNumberForDisplay(r[field.key]);
         }
       }
-      out._search = JSON.stringify(r).toLowerCase();
+      out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
     })
-    .filter((r) => !q || r._search.includes(q));
+    .filter((r) => {
+      if (warehouseFilter && String(r._raw?.bodega_id || r.bodega_id || "") !== warehouseFilter) {
+        return false;
+      }
+      return !q || r._search.includes(q);
+    });
 });
 
 function sanitizePayload() {
@@ -616,6 +644,7 @@ watch(
   () => props.moduleKey,
   async () => {
     if (!moduleConfig.value) return;
+    stockWarehouseFilter.value = "";
     resetForm();
     await hydrateModuleData();
   },

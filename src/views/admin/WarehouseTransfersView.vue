@@ -141,7 +141,7 @@
         </v-row>
 
         <v-alert v-if="selectedOrder" type="info" variant="tonal" class="mb-4">
-          La orden <strong>{{ selectedOrder.codigo }}</strong> fue precargada. Al guardar la transferencia esta orden quedará marcada como usada y ya no volverá a salir disponible.
+          La orden <strong>{{ selectedOrder.codigo }}</strong> fue precargada con saldo preaprobado. Al guardar la transferencia se registrará el ingreso de compra, la salida desde la bodega origen y el ingreso en la bodega destino; luego la orden quedará marcada como usada.
         </v-alert>
         <v-alert v-else type="info" variant="tonal" class="mb-4">
           Estás registrando una transferencia manual. Selecciona la bodega origen, la bodega destino y los materiales a mover.
@@ -172,7 +172,7 @@
                 <th>Código</th>
                 <th>Material</th>
                 <th>Cantidad</th>
-                <th>Stock actual</th>
+                <th>Disponible</th>
                 <th>Costo ref.</th>
                 <th>Subtotal ref.</th>
                 <th>Obs.</th>
@@ -210,7 +210,7 @@
                       v-if="detailExceedsStock(detail)"
                       class="text-caption text-error mt-1"
                     >
-                      Solicitado: {{ formatNumber(getRequestedQuantityForProduct(detail.producto_id)) }}
+                      Solicitado: {{ formatNumber(getRequestedQuantity(detail)) }}
                       · Disponible: {{ formatNumber(getCurrentStock(detail)) }}
                     </div>
                   </div>
@@ -218,7 +218,7 @@
                 <td>
                   <v-text-field
                     :model-value="formatNumber(getCurrentStock(detail))"
-                    label="Stock actual"
+                    :label="selectedOrder ? 'Saldo preaprobado' : 'Stock actual'"
                     variant="outlined"
                     readonly
                     hide-details
@@ -309,6 +309,9 @@ type PurchaseOrderDetailRow = {
   codigo_producto?: string | null;
   nombre_producto?: string | null;
   cantidad?: string | number | null;
+  cantidad_preaprobada?: string | number | null;
+  cantidad_transferida?: string | number | null;
+  cantidad_preaprobada_disponible?: string | number | null;
   costo_unitario?: string | number | null;
   subtotal?: string | number | null;
   observacion?: string | null;
@@ -370,6 +373,11 @@ const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
 const products = ref<ProductRow[]>([]);
 const stockRows = ref<StockRow[]>([]);
+const warehousesLoaded = ref(false);
+const productsLoaded = ref(false);
+const pendingOrdersLoaded = ref(false);
+const stockRowsLoaded = ref(false);
+const stockRowsLoading = ref(false);
 
 const form = reactive({
   orden_compra_id: "",
@@ -452,6 +460,22 @@ const currentStockByProduct = computed(() => {
   return map;
 });
 
+const orderDetailAvailabilityMap = computed(() => {
+  const map = new Map<string, number>();
+  for (const detail of selectedOrder.value?.detalles ?? []) {
+    const detailId = String(detail?.id || "").trim();
+    if (!detailId) continue;
+    map.set(
+      detailId,
+      toNumber(
+        detail?.cantidad_preaprobada_disponible ??
+          (toNumber(detail?.cantidad_preaprobada) - toNumber(detail?.cantidad_transferida)),
+      ),
+    );
+  }
+  return map;
+});
+
 const tableRows = computed(() => transfers.value);
 
 const totalQuantity = computed(() =>
@@ -514,20 +538,39 @@ function detailSubtotal(detail: TransferDetailForm) {
   return toNumber(detail.cantidad) * toNumber(detail.costo_unitario);
 }
 
+function getOrderDetailAvailable(detail: TransferDetailForm) {
+  const detailId = String(detail.orden_compra_det_id || "").trim();
+  if (!detailId) return 0;
+  return orderDetailAvailabilityMap.value.get(detailId) ?? 0;
+}
+
 function getCurrentStock(detail: TransferDetailForm) {
+  if (selectedOrder.value) {
+    return getOrderDetailAvailable(detail);
+  }
   if (!detail.producto_id) return 0;
   return currentStockByProduct.value.get(String(detail.producto_id || "")) ?? 0;
 }
 
-function getRequestedQuantityForProduct(productId: string) {
+function getRequestedQuantity(detail: TransferDetailForm) {
+  if (selectedOrder.value && detail.orden_compra_det_id) {
+    return form.detalles
+      .filter(
+        (row) =>
+          String(row.orden_compra_det_id || "") ===
+          String(detail.orden_compra_det_id || ""),
+      )
+      .reduce((sum, row) => sum + toNumber(row.cantidad), 0);
+  }
+
   return form.detalles
-    .filter((detail) => String(detail.producto_id || "") === String(productId || ""))
-    .reduce((sum, detail) => sum + toNumber(detail.cantidad), 0);
+    .filter((row) => String(row.producto_id || "") === String(detail.producto_id || ""))
+    .reduce((sum, row) => sum + toNumber(row.cantidad), 0);
 }
 
 function detailExceedsStock(detail: TransferDetailForm) {
   if (!detail.producto_id) return false;
-  return getRequestedQuantityForProduct(detail.producto_id) > getCurrentStock(detail);
+  return getRequestedQuantity(detail) > getCurrentStock(detail);
 }
 
 function resetForm() {
@@ -573,17 +616,6 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
     : [];
 }
 
-async function loadCatalogs() {
-  const [warehouseRows, productRows, stockRowsPayload] = await Promise.all([
-    listAllPages("/kpi_inventory/bodegas"),
-    listAllPages("/kpi_inventory/productos"),
-    listAllPages("/kpi_inventory/stock-bodega"),
-  ]);
-  warehouses.value = warehouseRows;
-  products.value = productRows as ProductRow[];
-  stockRows.value = stockRowsPayload as StockRow[];
-}
-
 async function loadTransfers() {
   transfers.value = (await listAllPages("/kpi_inventory/transferencias-bodega")) as TransferRow[];
 }
@@ -594,11 +626,46 @@ async function loadPendingOrders() {
   pendingOrders.value = Array.isArray(payload) ? payload : [];
 }
 
+async function ensureWarehousesLoaded(force = false) {
+  if (warehousesLoaded.value && !force) return;
+  warehouses.value = await listAllPages("/kpi_inventory/bodegas");
+  warehousesLoaded.value = true;
+}
+
+async function ensurePendingOrdersLoaded(force = false) {
+  if (pendingOrdersLoaded.value && !force) return;
+  await loadPendingOrders();
+  pendingOrdersLoaded.value = true;
+}
+
+async function ensureProductsLoaded(force = false) {
+  if (productsLoaded.value && !force) return;
+  products.value = (await listAllPages("/kpi_inventory/productos")) as ProductRow[];
+  productsLoaded.value = true;
+}
+
+async function ensureStockRowsLoaded(force = false) {
+  if (selectedOrder.value) return;
+  if (stockRowsLoaded.value && !force) return;
+  if (stockRowsLoading.value) return;
+  stockRowsLoading.value = true;
+  try {
+    stockRows.value = (await listAllPages("/kpi_inventory/stock-bodega")) as StockRow[];
+    stockRowsLoaded.value = true;
+  } finally {
+    stockRowsLoading.value = false;
+  }
+}
+
 async function hydrateView() {
   if (!canRead.value) return;
   loading.value = true;
   try {
-    await Promise.all([loadCatalogs(), loadTransfers(), loadPendingOrders()]);
+    await Promise.all([
+      loadTransfers(),
+      ensureWarehousesLoaded(true),
+      ensurePendingOrdersLoaded(true),
+    ]);
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
@@ -610,9 +677,14 @@ async function hydrateView() {
   }
 }
 
-function openCreate() {
+async function openCreate() {
   resetForm();
   dialog.value = true;
+  await Promise.all([
+    ensureWarehousesLoaded(),
+    ensurePendingOrdersLoaded(),
+    ensureProductsLoaded(),
+  ]);
 }
 
 function validateForm() {
@@ -696,12 +768,21 @@ watch(selectedOrder, (order) => {
     form.detalles = mapOrderDetails(order.detalles);
   } else {
     form.detalles = [createEmptyDetail()];
+    if (dialog.value) {
+      void ensureProductsLoaded();
+      if (form.bodega_origen_id) {
+        void ensureStockRowsLoaded();
+      }
+    }
   }
 });
 
 watch(
   () => effectiveSourceWarehouseId.value,
   () => {
+    if (dialog.value && !selectedOrder.value && effectiveSourceWarehouseId.value) {
+      void ensureStockRowsLoaded();
+    }
     const valid = destinationWarehouseOptions.value.some(
       (item) => String(item.value) === String(form.bodega_destino_id || ""),
     );

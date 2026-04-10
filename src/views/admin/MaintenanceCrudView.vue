@@ -754,9 +754,18 @@ async function loadRelations() {
   relationOptions.value = {};
   if (!moduleConfig.value) return;
 
-  for (const field of moduleConfig.value.fields) {
-    if (!field.relation) continue;
-    const rows = await listAll(field.relation.endpoint);
+  const relationFields = moduleConfig.value.fields.filter((field) => field.relation);
+  const uniqueEndpoints = [...new Set(relationFields.map((field) => String(field.relation?.endpoint || "")))];
+  const endpointRows = new Map<string, any[]>();
+
+  await Promise.all(
+    uniqueEndpoints.map(async (endpoint) => {
+      endpointRows.set(endpoint, await listAll(endpoint));
+    }),
+  );
+
+  for (const field of relationFields) {
+    const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
     relationOptions.value[field.key] = rows.map((r: any) => ({
       value: r.id,
       title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
@@ -1035,8 +1044,7 @@ async function hydrateModuleData() {
   initialLoading.value = true;
   error.value = null;
   try {
-    await loadRelations();
-    await fetchRecords(true);
+    await Promise.all([loadRelations(), fetchRecords(true)]);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar registros.";
   } finally {

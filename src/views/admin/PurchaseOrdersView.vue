@@ -445,6 +445,9 @@ const suppliers = ref<any[]>([]);
 const products = ref<any[]>([]);
 const warehouses = ref<any[]>([]);
 const deletingOrder = ref<PurchaseOrderRow | null>(null);
+const suppliersLoaded = ref(false);
+const productsLoaded = ref(false);
+const warehousesLoaded = ref(false);
 
 const form = reactive({
   codigo: "",
@@ -710,25 +713,40 @@ function handleDetailProductChange(detail: OrderDetailForm) {
 }
 
 async function loadCatalogs() {
-  const [supplierRows, productRows, warehouseRows] = await Promise.all([
-    listAllPages("/kpi_inventory/terceros"),
-    listAllPages("/kpi_inventory/productos"),
-    listAllPages("/kpi_inventory/bodegas"),
+  await Promise.all([
+    ensureSuppliersLoaded(),
+    ensureProductsLoaded(),
+    ensureWarehousesLoaded(),
   ]);
-  suppliers.value = supplierRows;
-  products.value = productRows;
-  warehouses.value = warehouseRows;
 }
 
 async function loadOrders() {
   orders.value = (await listAllPages("/kpi_inventory/ordenes-compra")) as PurchaseOrderRow[];
 }
 
+async function ensureSuppliersLoaded(force = false) {
+  if (suppliersLoaded.value && !force) return;
+  suppliers.value = await listAllPages("/kpi_inventory/terceros");
+  suppliersLoaded.value = true;
+}
+
+async function ensureProductsLoaded(force = false) {
+  if (productsLoaded.value && !force) return;
+  products.value = await listAllPages("/kpi_inventory/productos");
+  productsLoaded.value = true;
+}
+
+async function ensureWarehousesLoaded(force = false) {
+  if (warehousesLoaded.value && !force) return;
+  warehouses.value = await listAllPages("/kpi_inventory/bodegas");
+  warehousesLoaded.value = true;
+}
+
 async function hydrateView() {
   if (!canRead.value) return;
   loading.value = true;
   try {
-    await Promise.all([loadCatalogs(), loadOrders()]);
+    await Promise.all([loadOrders(), ensureWarehousesLoaded(true)]);
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
@@ -740,16 +758,18 @@ async function hydrateView() {
   }
 }
 
-function openCreate() {
+async function openCreate() {
   editingId.value = null;
   resetForm();
   dialog.value = true;
+  await loadCatalogs();
 }
 
 async function openEdit(item: PurchaseOrderRow) {
   editingId.value = item.id;
   loading.value = true;
   try {
+    await loadCatalogs();
     const { data } = await api.get(`/kpi_inventory/ordenes-compra/${item.id}`);
     const order = (data?.data ?? data) as any;
     form.codigo = String(order.codigo || "");
