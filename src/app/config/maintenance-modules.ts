@@ -93,6 +93,12 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "direccion", label: "Dirección", type: "text" },
       { key: "es_principal", label: "Es principal", type: "boolean", required: true },
+      {
+        key: "es_default_compra",
+        label: "Bodega default para compras",
+        type: "boolean",
+        required: true,
+      },
     ],
   },
   {

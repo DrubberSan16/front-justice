@@ -55,6 +55,24 @@ export const router = createRouter({
           meta: { title: "Kardex", viewFile: "views/admin/KardexView.vue" },
         },
         {
+          path: "ordenes-compra",
+          name: "ordenes-compra",
+          component: () => import("@/views/admin/PurchaseOrdersView.vue"),
+          meta: {
+            title: "Ordenes de compra",
+            viewFile: "views/admin/PurchaseOrdersView.vue",
+          },
+        },
+        {
+          path: "transferencias-bodega",
+          name: "transferencias-bodega",
+          component: () => import("@/views/admin/WarehouseTransfersView.vue"),
+          meta: {
+            title: "Transferencias de bodega",
+            viewFile: "views/admin/WarehouseTransfersView.vue",
+          },
+        },
+        {
           path: "sucursales",
           name: "sucursales",
           component: () => import("@/views/admin/InventoryCrudView.vue"),
