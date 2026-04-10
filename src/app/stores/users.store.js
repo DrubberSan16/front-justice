@@ -1,0 +1,120 @@
+import { defineStore } from "pinia";
+import { computed, ref } from "vue";
+import { api } from "@/app/http/api";
+import { useAuthStore } from "@/app/stores/auth.store";
+export const useUsersStore = defineStore("users", () => {
+    const auth = useAuthStore();
+    const items = ref([]);
+    const loading = ref(false);
+    const error = ref(null);
+    // filtros frontend
+    const search = ref("");
+    const statusFilter = ref("ALL");
+    const roleFilter = ref("ALL");
+    const includeDeleted = ref(true);
+    const filtered = computed(() => {
+        const q = search.value.trim().toLowerCase();
+        return items.value.filter((u) => {
+            if (!includeDeleted.value && u.isDeleted)
+                return false;
+            if (statusFilter.value !== "ALL" && u.status !== statusFilter.value)
+                return false;
+            if (roleFilter.value !== "ALL" && u.roleId !== roleFilter.value)
+                return false;
+            if (!q)
+                return true;
+            const hay = [
+                u.nameUser,
+                u.nameSurname,
+                u.email,
+                u.role?.nombre ?? "",
+                u.status ?? "",
+            ]
+                .join(" ")
+                .toLowerCase();
+            return hay.includes(q);
+        });
+    });
+    async function fetchAll() {
+        loading.value = true;
+        error.value = null;
+        try {
+            const { data } = await api.get("/kpi_security/users?includeDeleted=true");
+            items.value = data ?? [];
+        }
+        catch (e) {
+            error.value = e?.response?.data?.message || "No se pudieron cargar los usuarios.";
+            throw e;
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    async function createUser(payload) {
+        loading.value = true;
+        error.value = null;
+        try {
+            const createdBy = auth.user?.nameUser || "admin";
+            const { data } = await api.post("/kpi_security/users", { ...payload, createdBy });
+            items.value = [data, ...items.value];
+            return data;
+        }
+        catch (e) {
+            error.value = e?.response?.data?.message || "No se pudo crear el usuario.";
+            throw e;
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    async function updateUser(id, payload) {
+        loading.value = true;
+        error.value = null;
+        try {
+            const { data } = await api.patch(`/kpi_security/users/${id}`, payload);
+            items.value = items.value.map((u) => (u.id === id ? { ...u, ...data } : u));
+            return data;
+        }
+        catch (e) {
+            error.value = e?.response?.data?.message || "No se pudo actualizar el usuario.";
+            throw e;
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    async function deleteUser(id) {
+        loading.value = true;
+        error.value = null;
+        try {
+            const deletedBy = auth.user?.nameUser || "admin";
+            const { data } = await api.delete(`/kpi_security/users/${id}?deletedBy=${encodeURIComponent(deletedBy)}`);
+            items.value = items.value.map((u) => (u.id === id ? { ...u, ...data } : u));
+            return data;
+        }
+        catch (e) {
+            error.value = e?.response?.data?.message || "No se pudo eliminar el usuario.";
+            throw e;
+        }
+        finally {
+            loading.value = false;
+        }
+    }
+    return {
+        items,
+        loading,
+        error,
+        // filtros
+        search,
+        statusFilter,
+        roleFilter,
+        includeDeleted,
+        // computed
+        filtered,
+        // actions
+        fetchAll,
+        createUser,
+        updateUser,
+        deleteUser,
+    };
+});

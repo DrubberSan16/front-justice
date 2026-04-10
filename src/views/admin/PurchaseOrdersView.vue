@@ -231,20 +231,20 @@
           <table class="details-table">
             <thead>
               <tr>
-                <th>Material</th>
-                <th>Cant.</th>
-                <th>Costo unitario</th>
-                <th>Desc.</th>
-                <th>% Desc.</th>
-                <th>IVA %</th>
-                <th>Total</th>
-                <th>Obs.</th>
+                <th class="material-column">Material</th>
+                <th class="compact-column">Cant.</th>
+                <th class="compact-column">Costo unitario</th>
+                <th class="compact-column">Desc.</th>
+                <th class="compact-column">% Desc.</th>
+                <th class="compact-column">IVA %</th>
+                <th class="total-column">Total</th>
+                <th class="observation-column">Obs.</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="detail in form.detalles" :key="detail.local_id">
-                <td>
+                <td class="material-column">
                   <v-autocomplete
                     v-model="detail.producto_id"
                     :items="productOptions"
@@ -257,7 +257,7 @@
                     @update:model-value="handleDetailProductChange(detail)"
                   />
                 </td>
-                <td>
+                <td class="compact-column">
                   <v-text-field
                     v-model="detail.cantidad"
                     type="number"
@@ -267,7 +267,7 @@
                     hide-details
                   />
                 </td>
-                <td>
+                <td class="compact-column">
                   <v-text-field
                     v-model="detail.costo_unitario"
                     type="number"
@@ -277,7 +277,7 @@
                     hide-details
                   />
                 </td>
-                <td>
+                <td class="compact-column">
                   <v-text-field
                     v-model="detail.descuento"
                     type="number"
@@ -287,7 +287,7 @@
                     hide-details
                   />
                 </td>
-                <td>
+                <td class="compact-column">
                   <v-text-field
                     v-model="detail.porcentaje_descuento"
                     type="number"
@@ -297,7 +297,7 @@
                     hide-details
                   />
                 </td>
-                <td>
+                <td class="compact-column">
                   <v-text-field
                     v-model="detail.iva_porcentaje"
                     type="number"
@@ -307,10 +307,10 @@
                     hide-details
                   />
                 </td>
-                <td class="text-right font-weight-bold">
+                <td class="text-right font-weight-bold total-column">
                   {{ formatCurrency(detailGrandTotal(detail)) }}
                 </td>
-                <td>
+                <td class="observation-column">
                   <v-text-field
                     v-model="detail.observacion"
                     variant="outlined"
@@ -932,7 +932,7 @@ onMounted(async () => {
 
 .details-table {
   width: 100%;
-  min-width: 1060px;
+  min-width: 1380px;
   border-collapse: collapse;
 }
 
@@ -948,6 +948,30 @@ onMounted(async () => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.details-table :deep(.v-field) {
+  min-width: 100%;
+}
+
+.material-column {
+  min-width: 420px;
+  width: 420px;
+}
+
+.compact-column {
+  min-width: 120px;
+  width: 120px;
+}
+
+.total-column {
+  min-width: 140px;
+  width: 140px;
+}
+
+.observation-column {
+  min-width: 220px;
+  width: 220px;
 }
 
 .purchase-summary :deep(.v-chip__content) {
