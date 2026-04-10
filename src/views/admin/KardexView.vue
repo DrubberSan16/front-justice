@@ -63,14 +63,6 @@
         </v-alert>
 
         <v-text-field
-          :model-value="selectedUnitCostLabel"
-          label="Costo unitario del material"
-          variant="outlined"
-          class="mb-2"
-          readonly
-        />
-
-        <v-text-field
           v-model="movementForm.cantidad"
           type="number"
           min="0"
@@ -445,25 +437,6 @@ const selectedStockRow = computed(() => {
   );
 });
 
-const selectedProduct = computed(() => {
-  if (!movementForm.productoId) return null;
-  return (
-    products.value.find((product) => product.id === movementForm.productoId) ?? null
-  );
-});
-
-const selectedUnitCost = computed(() => {
-  const productCost = Number(selectedProduct.value?.costo_promedio || 0);
-  if (Number.isFinite(productCost) && productCost > 0) return productCost;
-
-  const stockCost = Number(selectedStockRow.value?.costo_promedio_bodega || 0);
-  return Number.isFinite(stockCost) ? stockCost : 0;
-});
-
-const selectedUnitCostLabel = computed(() =>
-  formatNumberForDisplay(String(selectedUnitCost.value || 0)),
-);
-
 const activeImportJob = computed(() => {
   if (!importJob.value) return null;
   const status = String(importJob.value.status || "").toUpperCase();
@@ -552,6 +525,14 @@ function getUserName() {
 function parsePositiveNumber(value: string): number {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function resetMovementForm() {
+  movementForm.tipo = "INGRESO";
+  movementForm.bodegaId = "";
+  movementForm.productoId = "";
+  movementForm.cantidad = "";
+  movementForm.observacion = "";
 }
 
 async function listAll(endpoint: string) {
@@ -714,8 +695,7 @@ async function saveMovement() {
     ui.success(
       `${movementForm.tipo === "INGRESO" ? "Ingreso" : "Salida"} registrado correctamente.`,
     );
-    movementForm.observacion = "";
-    movementForm.cantidad = "1";
+    resetMovementForm();
     await Promise.allSettled([loadKardex(), loadBaseData()]);
   } catch (error: any) {
     ui.error(
