@@ -80,6 +80,8 @@
               label="Orden de compra para precarga (opcional)"
               variant="outlined"
               clearable
+              :loading="orderLoading"
+              :disabled="saving"
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -139,6 +141,14 @@
             />
           </v-col>
         </v-row>
+
+        <v-progress-linear
+          v-if="orderLoading"
+          indeterminate
+          color="primary"
+          rounded
+          class="mb-4"
+        />
 
         <v-alert v-if="selectedOrder" type="info" variant="tonal" class="mb-4">
           La orden <strong>{{ selectedOrder.codigo }}</strong> fue precargada con saldo preaprobado. Al guardar la transferencia se registrará el ingreso de compra, la salida desde la bodega origen y el ingreso en la bodega destino; luego la orden quedará marcada como usada.
@@ -203,6 +213,8 @@
                       min="0"
                       step="0.0001"
                       variant="outlined"
+                      :readonly="Boolean(selectedOrder)"
+                      :disabled="Boolean(selectedOrder) || orderLoading"
                       :error="detailExceedsStock(detail)"
                       hide-details
                     />
@@ -221,6 +233,8 @@
                     :label="selectedOrder ? 'Saldo preaprobado' : 'Stock actual'"
                     variant="outlined"
                     readonly
+                    :disabled="Boolean(selectedOrder) || orderLoading"
+                    class="available-stock-field"
                     hide-details
                   />
                 </td>
@@ -268,7 +282,7 @@
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="saveTransfer">
+        <v-btn color="primary" :loading="saving" :disabled="orderLoading" @click="saveTransfer">
           Guardar transferencia
         </v-btn>
       </v-card-actions>
@@ -367,6 +381,7 @@ const canCreate = computed(() => perms.value.isCreated);
 
 const loading = ref(false);
 const saving = ref(false);
+const orderLoading = ref(false);
 const dialog = ref(false);
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
@@ -402,11 +417,7 @@ const headers = [
 
 const isDialogFullscreen = computed(() => mdAndDown.value);
 
-const selectedOrder = computed(
-  () =>
-    pendingOrders.value.find((item) => String(item.id) === String(form.orden_compra_id)) ||
-    null,
-);
+const selectedOrder = ref<PurchaseOrderRow | null>(null);
 
 const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
   warehouses.value.map((item) => ({
@@ -574,6 +585,7 @@ function detailExceedsStock(detail: TransferDetailForm) {
 }
 
 function resetForm() {
+  selectedOrder.value = null;
   form.orden_compra_id = "";
   form.bodega_origen_id = "";
   form.bodega_destino_id = "";
@@ -609,7 +621,12 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
         producto_id: String(detail.producto_id || ""),
         codigo_producto: String(detail.codigo_producto || ""),
         nombre_producto: String(detail.nombre_producto || ""),
-        cantidad: String(detail.cantidad || "0"),
+        cantidad: String(
+          detail.cantidad_preaprobada_disponible ??
+            detail.cantidad_preaprobada ??
+            detail.cantidad ??
+            "0",
+        ),
         costo_unitario: String(detail.costo_unitario || "0"),
         observacion: String(detail.observacion || ""),
       }))
@@ -687,6 +704,51 @@ async function openCreate() {
   ]);
 }
 
+async function loadSelectedOrder(orderId: string) {
+  const normalizedId = String(orderId || "").trim();
+  if (!normalizedId) {
+    selectedOrder.value = null;
+    form.bodega_origen_id = "";
+    form.detalles = [createEmptyDetail()];
+    if (dialog.value) {
+      void ensureProductsLoaded();
+      if (form.bodega_origen_id) {
+        void ensureStockRowsLoaded();
+      }
+    }
+    return;
+  }
+
+  orderLoading.value = true;
+  try {
+    await ensurePendingOrdersLoaded();
+    const fallback =
+      pendingOrders.value.find((item) => String(item.id) === normalizedId) || null;
+    if (fallback) {
+      selectedOrder.value = fallback;
+      form.bodega_origen_id = String(fallback.bodega_destino_id || "");
+      form.detalles = mapOrderDetails(fallback.detalles);
+    }
+
+    const { data } = await api.get(`/kpi_inventory/ordenes-compra/${normalizedId}`);
+    const order = (data?.data ?? data) as PurchaseOrderRow;
+    selectedOrder.value = order;
+    form.bodega_origen_id = String(order?.bodega_destino_id || "");
+    form.detalles = mapOrderDetails(order?.detalles);
+  } catch (error: any) {
+    selectedOrder.value = null;
+    form.bodega_origen_id = "";
+    form.detalles = [createEmptyDetail()];
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo cargar la orden de compra seleccionada.",
+    );
+  } finally {
+    orderLoading.value = false;
+  }
+}
+
 function validateForm() {
   if (!effectiveSourceWarehouseId.value) {
     ui.error("Debes seleccionar la bodega origen.");
@@ -726,6 +788,7 @@ function validateForm() {
 }
 
 async function saveTransfer() {
+  if (orderLoading.value) return;
   if (!validateForm()) return;
   if (!canCreate.value) {
     ui.error("No tienes permisos para registrar transferencias.");
@@ -762,20 +825,12 @@ async function saveTransfer() {
   }
 }
 
-watch(selectedOrder, (order) => {
-  if (order) {
-    form.bodega_origen_id = String(order.bodega_destino_id || "");
-    form.detalles = mapOrderDetails(order.detalles);
-  } else {
-    form.detalles = [createEmptyDetail()];
-    if (dialog.value) {
-      void ensureProductsLoaded();
-      if (form.bodega_origen_id) {
-        void ensureStockRowsLoaded();
-      }
-    }
-  }
-});
+watch(
+  () => form.orden_compra_id,
+  (orderId) => {
+    void loadSelectedOrder(String(orderId || ""));
+  },
+);
 
 watch(
   () => effectiveSourceWarehouseId.value,
@@ -827,5 +882,9 @@ onMounted(async () => {
 
 .quantity-cell {
   min-width: 180px;
+}
+
+.available-stock-field {
+  min-width: 260px;
 }
 </style>

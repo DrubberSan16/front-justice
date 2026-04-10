@@ -40,7 +40,29 @@ export const useMenuStore = defineStore("menu", {
             .sort((a, b) => Number(a.menuPosition) - Number(b.menuPosition))
             .map((n) => ({ ...n, children: n.children ? sortTree(n.children) : [] }));
 
-        this.tree = sortTree((data ?? []).map((node) => normalizeNode(node)));
+        const filterTreeByPermissions = (nodes: MenuNode[]): MenuNode[] =>
+          (nodes ?? [])
+            .map((node) => {
+              const children = filterTreeByPermissions(node.children ?? []);
+              const canRead = Boolean(node.permissions?.isReaded);
+              const isActive =
+                !String(node.status ?? "")
+                  .trim()
+                  .length ||
+                String(node.status).toUpperCase() === "ACTIVE";
+
+              if (!isActive) return null;
+              if (!canRead && !children.length) return null;
+
+              return {
+                ...node,
+                children,
+              };
+            })
+            .filter((node): node is MenuNode => Boolean(node));
+
+        const normalizedTree = sortTree((data ?? []).map((node) => normalizeNode(node)));
+        this.tree = filterTreeByPermissions(normalizedTree);
         this.loadedForUserId = userId;
       } finally {
         this.loading = false;
