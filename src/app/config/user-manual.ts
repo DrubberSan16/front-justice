@@ -81,7 +81,60 @@ const routeCategoryMap = new Map<string, string>([
   ["terceros", "Inventario"],
 ]);
 
+const mojibakeReplacements: Array<[string, string]> = [
+  ["ÃƒÂ¡", "á"],
+  ["ÃƒÂ©", "é"],
+  ["ÃƒÂ­", "í"],
+  ["ÃƒÂ³", "ó"],
+  ["ÃƒÂº", "ú"],
+  ["ÃƒÂ", "Á"],
+  ["ÃƒÂ‰", "É"],
+  ["ÃƒÂ", "Í"],
+  ["Ãƒâ€œ", "Ó"],
+  ["ÃƒÅ¡", "Ú"],
+  ["Ã¡", "á"],
+  ["Ã©", "é"],
+  ["Ã­", "í"],
+  ["Ã³", "ó"],
+  ["Ãº", "ú"],
+  ["Ã", "Á"],
+  ["Ã‰", "É"],
+  ["Ã", "Í"],
+  ["Ã“", "Ó"],
+  ["Ãš", "Ú"],
+  ["Ã±", "ñ"],
+  ["Ã‘", "Ñ"],
+  ["Â¿", "¿"],
+  ["Â¡", "¡"],
+  ["Â·", "·"],
+  ["Âº", "º"],
+];
+
+function normalizeManualText(value: unknown): string {
+  let text = String(value ?? "");
+  for (const [from, to] of mojibakeReplacements) {
+    text = text.split(from).join(to);
+  }
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function isStructuredUiField(field: MaintenanceField): boolean {
+  return (
+    field.type === "json" ||
+    /json/i.test(String(field.label || "")) ||
+    ["payload_json", "detalles", "items", "precauciones", "herramientas", "materiales", "responsabilidades", "actividades"].includes(field.key)
+  );
+}
+
+function formatManualFieldLabel(field: MaintenanceField): string {
+  const normalized = normalizeManualText(field.label);
+  return normalized.replace(/\s*\(\s*json\s*\)\s*/gi, "").replace(/\s+json$/i, "").trim();
+}
+
 function fieldTypeLabel(field: MaintenanceField): string {
+  if (isStructuredUiField(field)) {
+    return "Carga asistida";
+  }
   switch (field.type) {
     case "select":
       return "Seleccion";
@@ -92,21 +145,21 @@ function fieldTypeLabel(field: MaintenanceField): string {
     case "date":
       return "Fecha";
     case "json":
-      return "JSON";
+      return "Carga asistida";
     default:
       return "Texto";
   }
 }
 
 function fieldNote(field: MaintenanceField): string {
+  if (isStructuredUiField(field)) {
+    return "El usuario carga la informacion mediante inputs guiados del modulo; el sistema la convierte a JSON internamente.";
+  }
   if (field.relation?.endpoint) {
     return "Se selecciona desde un catalogo relacionado.";
   }
   if (field.options?.length) {
     return "Se recomienda escoger una opcion valida del listado.";
-  }
-  if (field.type === "json") {
-    return "Debe respetar la estructura esperada por el modulo.";
   }
   if (field.type === "boolean") {
     return "Activa la opcion solo cuando aplique al flujo.";
@@ -127,7 +180,7 @@ function buildFieldGuides(config?: MaintenanceModuleConfig | null): UserManualFi
     .filter((field) => !field.hidden && field.sendInPayload !== false)
     .map((field) => ({
       key: field.key,
-      label: field.label,
+      label: formatManualFieldLabel(field),
       type: fieldTypeLabel(field),
       required: Boolean(field.required),
       note: fieldNote(field),
@@ -137,10 +190,10 @@ function buildFieldGuides(config?: MaintenanceModuleConfig | null): UserManualFi
 function buildGenericFlow(config: MaintenanceModuleConfig): UserManualStep[] {
   const relationFields = config.fields
     .filter((field) => field.type === "select")
-    .map((field) => field.label);
+    .map((field) => formatManualFieldLabel(field));
   const requiredFields = config.fields
     .filter((field) => field.required && !field.hidden && field.sendInPayload !== false)
-    .map((field) => field.label);
+    .map((field) => formatManualFieldLabel(field));
 
   return [
     {
@@ -184,7 +237,7 @@ function buildGenericFlow(config: MaintenanceModuleConfig): UserManualStep[] {
 function buildGenericChecklist(config: MaintenanceModuleConfig): string[] {
   const requiredFields = config.fields
     .filter((field) => field.required && !field.hidden && field.sendInPayload !== false)
-    .map((field) => field.label);
+    .map((field) => formatManualFieldLabel(field));
 
   return [
     "Revise permisos y catalogos base antes de crear el registro.",
