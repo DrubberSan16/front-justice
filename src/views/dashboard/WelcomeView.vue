@@ -15,10 +15,7 @@
               <div class="text-h4 font-weight-bold mt-4">
                 Bienvenido, {{ displayName }}
               </div>
-              <div class="text-body-1 text-medium-emphasis mt-3">
-                Esta vista te deja entrar directo a una agenda visual de tus programaciones
-                semanales, sin pasar por el dashboard principal.
-              </div>
+             
 
               <div class="welcome-hero__actions">
                 <v-btn
@@ -121,7 +118,7 @@
 
           <v-divider class="my-4" />
 
-          <div class="text-subtitle-2 font-weight-bold mb-3">Proximas actividades</div>
+          <div class="text-subtitle-2 font-weight-bold mb-3" v-if="false">Proximas actividades</div>
 
           <LoadingTableState
             v-if="loading"
