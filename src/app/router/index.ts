@@ -25,6 +25,12 @@ export const router = createRouter({
           component: () => import("@/views/dashboard/DashboardView.vue"),
         },
         {
+          path: "manual-usuario",
+          name: "manual-usuario",
+          component: () => import("@/views/admin/UserManualView.vue"),
+          meta: { title: "Manual de usuario", viewFile: "views/admin/UserManualView.vue" },
+        },
+        {
           path: "usuarios",
           name: "usuarios",
           component: () => import("@/views/admin/UsersView.vue"),

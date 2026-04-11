@@ -85,6 +85,7 @@
       :loading="tableLoading"
       loading-text="Obteniendo información del módulo..."
       :items-per-page="serverItemsPerPage"
+      :items-per-page-options="[10, 20, 50, 100]"
       :page="serverPage"
       class="elevation-0 enterprise-table inventory-table"
       @update:options="handleServerOptionsUpdate"
@@ -113,7 +114,7 @@
           />
         </div>
       </template>
-      <template #bottom>
+      <template #no-data>
         <div
           v-if="!tableLoading && !rows.length && !error"
           class="pa-4 text-medium-emphasis"
