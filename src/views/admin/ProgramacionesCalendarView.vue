@@ -6,7 +6,7 @@
 
     <div v-else class="programaciones-page__content">
     <v-card rounded="xl" class="pa-4 enterprise-surface">
-      <div class="d-flex align-center justify-space-between page-wrap" style="gap: 12px;">
+      <div class="d-flex align-start justify-space-between page-wrap programaciones-section-header" style="gap: 12px;">
         <div>
           <div class="text-h6 font-weight-bold">Programaciones</div>
           <div class="text-body-2 text-medium-emphasis">
@@ -30,7 +30,7 @@
     <v-window v-model="activeTab" class="mt-4" touchless>
       <v-window-item value="mensual">
         <v-card rounded="xl" class="pa-4 enterprise-surface">
-          <div class="d-flex align-center justify-space-between page-wrap mb-4" style="gap: 12px;">
+          <div class="d-flex align-start justify-space-between page-wrap programaciones-section-header mb-4" style="gap: 12px;">
             <div>
               <div class="text-subtitle-1 font-weight-bold">Calendario mensual importado</div>
               <div class="text-body-2 text-medium-emphasis">
@@ -84,7 +84,7 @@
           </div>
 
           <v-row dense>
-            <v-col cols="12" md="6" lg="6">
+            <v-col cols="12" md="12" lg="12" xl="5">
               <v-file-input
                 v-model="monthlyImportFile"
                 accept=".xlsx,.xls"
@@ -96,7 +96,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col v-if="requiresExplicitSucursalSelection" cols="12" md="3" lg="3">
+            <v-col v-if="requiresExplicitSucursalSelection" cols="12" sm="6" md="4" lg="4" xl="2">
               <v-select
                 v-model="monthlyImportSucursalId"
                 :items="sucursalSelectItems"
@@ -108,7 +108,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col cols="12" md="2" lg="2">
+            <v-col cols="12" sm="6" md="2" lg="2" xl="1">
               <v-select
                 v-model="selectedMonthlyYear"
                 :items="monthlyYearOptions"
@@ -120,7 +120,7 @@
                 clearable
               />
             </v-col>
-            <v-col cols="12" md="2" lg="2">
+            <v-col cols="12" sm="6" md="3" lg="3" xl="2">
               <v-select
                 v-model="selectedMonthlyMonth"
                 :items="monthlyMonthOptions"
@@ -133,7 +133,7 @@
                 :disabled="!selectedMonthlyYear"
               />
             </v-col>
-            <v-col cols="12" md="2" lg="2">
+            <v-col cols="12" sm="6" md="3" lg="3" xl="2">
               <v-text-field
                 :model-value="selectedMonthlyPeriod || ''"
                 label="Periodo"
@@ -288,7 +288,7 @@
 
       <v-window-item value="semanal">
         <v-card rounded="xl" class="pa-4 enterprise-surface">
-          <div class="d-flex align-center justify-space-between page-wrap mb-4" style="gap: 12px;">
+          <div class="d-flex align-start justify-space-between page-wrap programaciones-section-header mb-4" style="gap: 12px;">
             <div>
               <div class="text-subtitle-1 font-weight-bold">Cronograma semanal</div>
               <div class="text-body-2 text-medium-emphasis">
@@ -322,7 +322,7 @@
           </div>
 
           <v-row dense>
-            <v-col cols="12" md="4">
+            <v-col cols="12" md="12" lg="12" xl="4">
               <v-file-input
                 v-model="weeklyImportFile"
                 accept=".xlsx,.xls"
@@ -334,7 +334,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col v-if="requiresExplicitSucursalSelection" cols="12" md="4">
+            <v-col v-if="requiresExplicitSucursalSelection" cols="12" sm="6" md="4" lg="4" xl="2">
               <v-select
                 v-model="weeklyImportSucursalId"
                 :items="sucursalSelectItems"
@@ -346,7 +346,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col cols="12" md="2">
+            <v-col cols="12" sm="6" md="2" lg="2" xl="1">
               <v-select
                 v-model="selectedWeeklyYear"
                 :items="weeklyYearOptions"
@@ -358,7 +358,7 @@
                 clearable
               />
             </v-col>
-            <v-col cols="12" md="2">
+            <v-col cols="12" sm="6" md="3" lg="3" xl="2">
               <v-select
                 v-model="selectedWeeklyMonth"
                 :items="weeklyMonthOptions"
@@ -371,7 +371,7 @@
                 :disabled="!selectedWeeklyYear"
               />
             </v-col>
-            <v-col cols="12" md="4">
+            <v-col cols="12" sm="6" md="3" lg="3" xl="3">
               <v-select
                 v-model="selectedWeeklyPeriod"
                 :items="weeklyPeriodOptions"
@@ -1109,6 +1109,8 @@ const perms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, [
     "Programaciones",
     "Programacion",
+    "programaciones",
+    "Planificacion",
     "Programación",
   ]),
 );
@@ -3492,13 +3494,21 @@ onMounted(async () => {
 
 <style scoped>
 .programaciones-page { display: grid; gap: 20px; }
+.programaciones-page__content { display: grid; gap: 16px; min-width: 0; }
 .page-wrap { flex-wrap: wrap; }
+.programaciones-section-header {
+  width: 100%;
+}
+.programaciones-section-header > * {
+  min-width: 0;
+}
 .programaciones-toolbar {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+  flex: 1 1 420px;
   margin-left: auto;
   max-width: 100%;
 }
@@ -3646,7 +3656,7 @@ onMounted(async () => {
   .matrix-table__sticky { min-width: 96px; }
   .matrix-table__sticky-2 { left: 96px; min-width: 156px; }
   .matrix-cell--weekly { min-width: 190px; }
-  .programaciones-toolbar { width: 100%; justify-content: stretch; margin-left: 0; }
+  .programaciones-toolbar { width: 100%; justify-content: flex-start; margin-left: 0; flex: 1 1 100%; }
   .agenda-toolbar { justify-content: stretch; }
   .agenda-toolbar__select,
   .agenda-toolbar__select--month { min-width: 100%; }
