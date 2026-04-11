@@ -2,6 +2,7 @@ import type { Router } from "vue-router";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { canReadComponent, resolveAuthenticatedHomeRoute } from "@/app/utils/menu-permissions";
+import { canAccessDigitalTwins } from "@/app/utils/role-access";
 
 export function applyGuards(router: Router) {
   router.beforeEach(async (to) => {
@@ -40,6 +41,10 @@ export function applyGuards(router: Router) {
 
     if (auth.isAuthenticated && to.name === "dashboard" && !canReadComponent(menu.tree, "dashboard")) {
       return { name: "bienvenida" };
+    }
+
+    if (auth.isAuthenticated && to.name === "gemelos-digitales" && !canAccessDigitalTwins(auth.user)) {
+      return { name: homeRoute };
     }
 
     if (to.name === "login" && auth.isAuthenticated) {

@@ -13,6 +13,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useTheme } from "vuetify";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 
@@ -23,6 +24,7 @@ import AppLayout from "@/layouts/AppLayout.vue";
 
 const route = useRoute();
 const auth = useAuthStore();
+const branchScope = useBranchScopeStore();
 const menu = useMenuStore();
 const ui = useUiStore();
 const theme = useTheme();
@@ -39,13 +41,22 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => auth.user,
+  async (user) => {
+    if (user?.id && auth.isAuthenticated) {
+      branchScope.syncFromUser(user);
+      await menu.loadMenuTree(user.id);
+      return;
+    }
+    branchScope.clear();
+    menu.clear();
+  },
+  { deep: true },
+);
+
 onMounted(async () => {
   auth.bootstrapFromStorage();
-
-  if (auth.isAuthenticated && auth.userId) {
-    await menu.loadMenuTree(auth.userId);
-  }
-
   setTimeout(() => (booting.value = false), 250);
 });
 </script>

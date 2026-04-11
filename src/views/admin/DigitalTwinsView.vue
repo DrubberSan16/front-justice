@@ -1,5 +1,9 @@
 <template>
-  <div class="digital-twins-page">
+  <v-alert v-if="!canRead" type="warning" variant="tonal">
+    No tienes permisos para visualizar el modulo de Gemelos digitales.
+  </v-alert>
+
+  <div v-else class="digital-twins-page">
     <v-card rounded="xl" class="pa-5 enterprise-surface">
       <div class="responsive-header page-wrap">
         <div>
@@ -501,6 +505,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { canAccessDigitalTwins } from "@/app/utils/role-access";
 
 type TwinRow = {
   twin?: {
@@ -578,6 +583,7 @@ const detail = ref<any | null>(null);
 const perms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, ["Gemelos digitales", "Gemelos Digitales"]),
 );
+const canRead = computed(() => canAccessDigitalTwins(auth.user) && perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
 const canDelete = computed(() => perms.value.permitDeleted);
@@ -714,6 +720,10 @@ function lubricantMatchColor(value?: string | null) {
 }
 
 async function loadDashboard() {
+  if (!canRead.value) {
+    dashboard.value = { kpis: [], risk_breakdown: [], rows: [] };
+    return;
+  }
   loading.value = true;
   error.value = null;
   try {
@@ -961,6 +971,7 @@ watch(search, () => {
 });
 
 onMounted(() => {
+  if (!canRead.value) return;
   loadDashboard();
 });
 </script>

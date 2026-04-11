@@ -22,7 +22,7 @@ export const useMenusStore = defineStore("menusAdmin", () => {
   const error = ref<string | null>(null);
 
   const search = ref("");
-  const includeDeleted = ref(true);
+  const includeDeleted = ref(false);
 
   const filteredTree = computed(() => {
     const q = search.value.trim().toLowerCase();
@@ -46,7 +46,9 @@ export const useMenusStore = defineStore("menusAdmin", () => {
     loading.value = true;
     error.value = null;
     try {
-      const { data } = await api.get<MenuNodeFull[]>(`/kpi_security/menus?includeDeleted=true`);
+      const { data } = await api.get<MenuNodeFull[]>(
+        `/kpi_security/menus?includeDeleted=${includeDeleted.value ? "true" : "false"}`
+      );
       tree.value = data ?? [];
     } catch (e: any) {
       error.value = e?.response?.data?.message || "No se pudo cargar el módulo de menú.";

@@ -1,3 +1,6 @@
+import type { LoginResponse } from "@/app/types/auth.types";
+import { canAccessDigitalTwins } from "@/app/utils/role-access";
+
 export type ReportAccessKey =
   | "dashboard_ejecutivo"
   | "inteligencia_operativa"
@@ -50,6 +53,12 @@ export const REPORT_ACCESS_OPTIONS: Array<{
 ];
 
 const REPORT_ACCESS_KEY_SET = new Set<string>(REPORT_ACCESS_OPTIONS.map((item) => item.value));
+
+export function getReportAccessOptionsForUser(user?: LoginResponse["user"] | null) {
+  return canAccessDigitalTwins(user)
+    ? REPORT_ACCESS_OPTIONS
+    : REPORT_ACCESS_OPTIONS.filter((item) => item.value !== "gemelos_digitales");
+}
 
 export function normalizeReportAccess(value: unknown): ReportAccessKey[] {
   if (!Array.isArray(value)) return [];

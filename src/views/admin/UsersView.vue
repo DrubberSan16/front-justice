@@ -1,6 +1,6 @@
 <template>
   <v-alert v-if="!canRead" type="warning" variant="tonal">
-    No tienes permisos para visualizar el módulo de Usuarios.
+    No tienes permisos para visualizar el modulo de Usuarios.
   </v-alert>
 
   <v-card v-else rounded="xl" class="pa-4 enterprise-surface">
@@ -8,11 +8,10 @@
       <div>
         <div class="text-h6 font-weight-bold">Usuarios</div>
         <div class="text-body-2 text-medium-emphasis">
-          Lista de usuarios (filtros y paginación en el front).
+          Lista de usuarios con sus roles, reportes y sucursales habilitadas.
         </div>
       </div>
 
-      <!-- OCULTAR si no puede crear -->
       <v-btn
         v-if="canCreate"
         color="primary"
@@ -23,7 +22,6 @@
       </v-btn>
     </div>
 
-    <!-- FILTROS -->
     <v-row class="mb-2" dense>
       <v-col cols="12" md="5">
         <v-text-field
@@ -61,7 +59,7 @@
         />
       </v-col>
 
-      <v-col cols="12" md="1" class="d-flex align-center">
+      <v-col v-if="canManageDeleted" cols="12" md="1" class="d-flex align-center">
         <v-checkbox
           v-model="users.includeDeleted"
           label="Eliminados"
@@ -94,7 +92,7 @@
 
       <template #item.isDeleted="{ item }">
         <v-chip size="small" :color="item.isDeleted ? 'red' : 'green'" variant="tonal">
-          {{ item.isDeleted ? "Sí" : "No" }}
+          {{ item.isDeleted ? "Si" : "No" }}
         </v-chip>
       </template>
 
@@ -102,7 +100,14 @@
         {{ roles.getRoleName(item.roleId) }}
       </template>
 
-      <!-- ACCIONES: OCULTAR según permisos + si está eliminado -->
+      <template #item.sucursales="{ item }">
+        {{
+          item.allSucursales
+            ? "Todas"
+            : formatSucursales(item.effectiveSucursales)
+        }}
+      </template>
+
       <template #item.actions="{ item }">
         <div class="responsive-actions">
           <v-btn
@@ -130,8 +135,8 @@
           <div class="responsive-actions">
             <v-select
               v-model="itemsPerPage"
-              :items="[5,10,20,50]"
-              label="Por página"
+              :items="[5, 10, 20, 50]"
+              label="Por pagina"
               variant="outlined"
               density="compact"
               style="max-width: 140px;"
@@ -142,7 +147,6 @@
     </v-data-table>
   </v-card>
 
-  <!-- MODALES -->
   <UserFormDialog
     v-model="formDialog"
     :user="selectedUser"
@@ -161,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 
 import { useUsersStore } from "@/app/stores/users.store";
 import { useRolesStore } from "@/app/stores/roles.store";
@@ -171,6 +175,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store";
 
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { canManageDeletedRecords } from "@/app/utils/role-access";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 
 import type { User } from "@/app/types/users.types";
@@ -191,8 +196,9 @@ const headers = computed(() => [
   { title: "Nombre", key: "nameSurname" },
   { title: "Email", key: "email" },
   { title: "Rol", key: "role" },
+  { title: "Sucursales", key: "sucursales" },
   { title: "Estado", key: "status" },
-  { title: "Eliminado", key: "isDeleted" },
+  ...(canManageDeleted.value ? [{ title: "Eliminado", key: "isDeleted" }] : []),
   ...(canEdit.value || canDelete.value
     ? [{ title: "Acciones", key: "actions", sortable: false }]
     : []),
@@ -210,14 +216,14 @@ const roleItems = computed(() => {
   return base.concat(list);
 });
 
-// PERMISOS según menú (acepta alias de urlComponent)
 const perms = computed(() =>
-  getPermissionsForAnyComponent(menuStore.tree, ["Usuarios", "Usuario"])
+  getPermissionsForAnyComponent(menuStore.tree, ["Usuarios", "Usuario"]),
 );
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
 const canDelete = computed(() => perms.value.permitDeleted);
+const canManageDeleted = computed(() => canManageDeletedRecords(auth.user));
 
 const formDialog = ref(false);
 const deleteDialog = ref(false);
@@ -226,25 +232,54 @@ const busy = ref(false);
 
 onMounted(async () => {
   if (!canRead.value) return;
+  if (!canManageDeleted.value) {
+    users.includeDeleted = false;
+  }
 
   if (!roles.items.length) {
-    try { await roles.fetchAll(false); } catch {}
+    try {
+      await roles.fetchAll(false);
+    } catch {}
   }
   if (!users.items.length) {
     await users.fetchAll();
   }
 });
 
+watch(
+  () => users.includeDeleted,
+  async (value, previous) => {
+    if (!canManageDeleted.value) {
+      if (value) users.includeDeleted = false;
+      return;
+    }
+    if (value === previous || !canRead.value) return;
+    await users.fetchAll();
+  },
+);
+
+function formatSucursales(
+  rows?: Array<{ id: string; codigo: string; nombre: string }>,
+) {
+  const text = (rows ?? [])
+    .map((branch) => `${branch.codigo || ""} - ${branch.nombre || ""}`.replace(/^\s*-\s*/, "").trim())
+    .filter(Boolean)
+    .join(", ");
+  return text || "Sin asignar";
+}
+
 function openCreate() {
   selectedUser.value = null;
   formDialog.value = true;
 }
-function openEdit(u: User) {
-  selectedUser.value = u;
+
+function openEdit(user: User) {
+  selectedUser.value = user;
   formDialog.value = true;
 }
-function openDelete(u: User) {
-  selectedUser.value = u;
+
+function openDelete(user: User) {
+  selectedUser.value = user;
   deleteDialog.value = true;
 }
 
@@ -263,8 +298,8 @@ async function logAndShowTechnicalError(typeLog: string, description: string) {
 
   ui.error(
     ticket
-      ? `Error técnico, información enviada al equipo de soporte TICKET: ${ticket}`
-      : "Error técnico, enviar detalles al equipo de soporte"
+      ? `Error tecnico, informacion enviada al equipo de soporte TICKET: ${ticket}`
+      : "Error tecnico, enviar detalles al equipo de soporte",
   );
 }
 
@@ -274,9 +309,6 @@ async function onSubmitForm(payload: any) {
 
   try {
     if (!selectedUser.value) {
-      // =========================
-      // CREATE USER
-      // =========================
       const created = await users.createUser({
         nameUser: payload.nameUser,
         passUser: payload.passUser,
@@ -286,20 +318,12 @@ async function onSubmitForm(payload: any) {
         status: payload.status,
         dateBirthday: payload.dateBirthday,
         reportes: payload.reportes,
+        sucursales: payload.sucursales,
       });
 
-      // 🔥 IMPORTANTE:
-      // Crear perfil menu-users desde los drafts precargados (rol)
-      await menuUsersProfile.createProfileForUser(
-        created.id,
-        currentUserName()
-      );
-
-      ui.success("Guardado con éxito");
+      await menuUsersProfile.createProfileForUser(created.id, currentUserName());
+      ui.success("Guardado con exito");
     } else {
-      // =========================
-      // UPDATE USER
-      // =========================
       const updatePayload: any = {
         nameUser: payload.nameUser,
         nameSurname: payload.nameSurname,
@@ -308,6 +332,7 @@ async function onSubmitForm(payload: any) {
         status: payload.status,
         dateBirthday: payload.dateBirthday,
         reportes: payload.reportes,
+        sucursales: payload.sucursales,
       };
 
       if (payload.passUser?.trim()) {
@@ -315,20 +340,11 @@ async function onSubmitForm(payload: any) {
       }
 
       await users.updateUser(selectedUser.value.id, updatePayload);
-
-      // 🔥🔥🔥 AQUI ESTABA EL PROBLEMA
-      // Sincronizar menu-users (POST/PATCH/INACTIVE según cambios)
-      await menuUsersProfile.sync(
-        selectedUser.value.id,
-        currentUserName()
-      );
-
-      ui.success("Guardado con éxito");
+      await menuUsersProfile.sync(selectedUser.value.id, currentUserName());
+      ui.success("Guardado con exito");
     }
 
     formDialog.value = false;
-
-    // refrescar lista
     await users.fetchAll();
   } catch (e: any) {
     const details =
@@ -343,7 +359,7 @@ async function onSubmitForm(payload: any) {
 
     await logAndShowTechnicalError(
       selectedUser.value ? "USER_UPDATE" : "USER_CREATE",
-      details
+      details,
     );
   } finally {
     busy.value = false;
@@ -351,14 +367,13 @@ async function onSubmitForm(payload: any) {
 }
 
 async function onConfirmDelete() {
-  if (!selectedUser.value) return;
-  if (busy.value) return;
+  if (!selectedUser.value || busy.value) return;
   busy.value = true;
 
   try {
     await users.deleteUser(selectedUser.value.id);
     deleteDialog.value = false;
-    ui.success("Eliminado con éxito");
+    ui.success("Eliminado con exito");
   } catch (e: any) {
     const details =
       `Users module error\n` +

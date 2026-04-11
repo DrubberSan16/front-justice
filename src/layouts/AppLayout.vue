@@ -46,6 +46,19 @@
         <v-app-bar-title>{{ pageTitle }}</v-app-bar-title>
       </div>
 
+      <div v-if="branchScope.visible" class="app-topbar__branch">
+        <v-select
+          :model-value="branchScope.selectedSucursalId"
+          :items="branchScope.selectItems"
+          label="Sucursal activa"
+          variant="outlined"
+          density="compact"
+          hide-details
+          class="app-topbar__branch-select"
+          @update:model-value="handleSucursalChange"
+        />
+      </div>
+
       <v-spacer />
 
       <div class="app-topbar__actions">
@@ -77,6 +90,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import logo from "@/assets/logo-justice.png";
 import SidebarMenu from "@/components/menu/SidebarMenu.vue";
@@ -87,6 +101,7 @@ import { useNotificationsStore } from "@/app/stores/notifications.store";
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const branchScope = useBranchScopeStore();
 const menu = useMenuStore();
 const notifications = useNotificationsStore();
 
@@ -96,11 +111,7 @@ const pageTitle = computed(() => String(route.meta.title ?? "Dashboard"));
 const userDisplay = computed(() => auth.user?.nameSurname || auth.user?.email || "Sesion activa");
 const userEmail = computed(() => auth.user?.email || "Sin correo registrado");
 const notificationRecipients = computed(() =>
-  [
-    auth.user?.id,
-    auth.user?.nameUser,
-    auth.user?.email,
-  ]
+  [auth.user?.id, auth.user?.nameUser, auth.user?.email]
     .map((item) => String(item || "").trim())
     .filter(Boolean),
 );
@@ -131,9 +142,15 @@ onBeforeUnmount(() => {
   notifications.stop();
 });
 
+function handleSucursalChange(value: string | null) {
+  branchScope.setSelectedSucursal(value);
+  window.location.reload();
+}
+
 function onLogout() {
   notifications.stop();
   auth.logout();
+  branchScope.clear();
   menu.clear();
   router.push({ name: "login" });
 }
@@ -217,6 +234,17 @@ function onLogout() {
   color: var(--app-muted-text);
 }
 
+.app-topbar__branch {
+  width: min(340px, 32vw);
+  min-width: 220px;
+  padding-inline: 16px 8px;
+}
+
+.app-topbar__branch-select :deep(.v-field) {
+  border-radius: 16px;
+  background: var(--surface-soft);
+}
+
 .app-topbar__actions {
   display: flex;
   align-items: center;
@@ -253,44 +281,15 @@ function onLogout() {
     padding-inline-end: 6px;
   }
 
+  .app-topbar__branch {
+    min-width: 0;
+    width: min(220px, 34vw);
+    padding-inline: 8px 4px;
+  }
+
   .app-topbar__heading :deep(.v-toolbar-title__placeholder) {
     white-space: normal;
     line-height: 1.2;
-  }
-
-  .app-topbar__actions {
-    gap: 6px;
-    padding-right: 8px;
-  }
-
-  .app-container {
-    padding: 16px;
-  }
-}
-
-@media (max-width: 600px) {
-  .app-drawer__header {
-    padding: 16px 14px 14px;
-  }
-
-  .app-drawer__brand {
-    align-items: flex-start;
-  }
-
-  .app-topbar__heading {
-    max-width: 48vw;
-  }
-
-  .app-topbar__eyebrow {
-    font-size: 0.72rem;
-  }
-
-  .app-topbar__actions {
-    max-width: 42vw;
-  }
-
-  .app-container {
-    padding: 12px;
   }
 }
 </style>

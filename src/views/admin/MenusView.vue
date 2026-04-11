@@ -74,7 +74,7 @@
             clearable
           />
         </v-col>
-        <v-col cols="12" md="3" class="d-flex align-center">
+        <v-col v-if="canManageDeleted" cols="12" md="3" class="d-flex align-center">
           <v-checkbox
             v-model="menus.includeDeleted"
             label="Incluir eliminados"
@@ -256,7 +256,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { useMenusStore } from "@/app/stores/menus.store";
@@ -264,6 +264,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { canAccessDigitalTwins, canManageDeletedRecords } from "@/app/utils/role-access";
 import {
   coerceMenuComponentValue,
   getMenuRouteCatalog,
@@ -290,8 +291,13 @@ const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
 const canDelete = computed(() => perms.value.permitDeleted);
+const canManageDeleted = computed(() => canManageDeletedRecords(auth.user));
 
-const routeCatalog = computed(() => getMenuRouteCatalog(router));
+const routeCatalog = computed(() =>
+  getMenuRouteCatalog(router).filter((item) =>
+    canAccessDigitalTwins(auth.user) ? true : item.value !== "gemelos-digitales"
+  )
+);
 
 const headers = computed(() => [
   { title: "Nombre", key: "nombre" },
@@ -300,7 +306,7 @@ const headers = computed(() => [
   { title: "Ruta", key: "urlComponent" },
   { title: "Posicion", key: "menuPosition" },
   { title: "Estado", key: "status" },
-  { title: "Eliminado", key: "isDeleted" },
+  ...(canManageDeleted.value ? [{ title: "Eliminado", key: "isDeleted" }] : []),
   ...(canCreate.value || canEdit.value || canDelete.value
     ? [{ title: "Acciones", key: "actions", sortable: false }]
     : []),
@@ -322,8 +328,26 @@ function flattenNodes(nodes: MenuNodeFull[], depth = 0): MenuRow[] {
   return out;
 }
 
-const rows = computed(() => flattenNodes(menus.filteredTree));
-const allRows = computed(() => flattenNodes(menus.tree));
+function normalizeMenuValue(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/^app\//, "")
+    .replace(/[\s_]+/g, "-");
+}
+
+function isRestrictedMenuNode(item: MenuNodeFull | MenuRow) {
+  if (canAccessDigitalTwins(auth.user)) return false;
+  const component = normalizeMenuValue(coerceMenuComponentValue(router, item.urlComponent ?? ""));
+  const name = normalizeMenuValue(item.nombre);
+  return component === "gemelos-digitales" || name === "gemelos-digitales";
+}
+
+const rows = computed(() => flattenNodes(menus.filteredTree).filter((item) => !isRestrictedMenuNode(item)));
+const allRows = computed(() => flattenNodes(menus.tree).filter((item) => !isRestrictedMenuNode(item)));
 
 const assignedRoutes = computed(() => {
   const used = new Set<string>();
@@ -401,8 +425,23 @@ const parentName = computed(() => {
 
 onMounted(async () => {
   if (!canRead.value) return;
+  if (!canManageDeleted.value) {
+    menus.includeDeleted = false;
+  }
   await menus.fetchAll();
 });
+
+watch(
+  () => menus.includeDeleted,
+  async (value, previous) => {
+    if (!canManageDeleted.value) {
+      if (value) menus.includeDeleted = false;
+      return;
+    }
+    if (value === previous || !canRead.value) return;
+    await menus.fetchAll();
+  },
+);
 
 function nextRootPosition(): string {
   const roots = menus.tree ?? [];

@@ -5,8 +5,8 @@ export type LoginRequest = {
 
 export type LoginResponse = {
   accessToken: string;
-  tokenType: string; // "Bearer"
-  expiresIn: string; // "1d" (pero lo más confiable será JWT exp)
+  tokenType: string;
+  expiresIn: string;
   user: {
     id: string;
     nameUser: string;
@@ -15,6 +15,13 @@ export type LoginResponse = {
     roleId: string;
     reportes?: string[];
     effectiveReportes?: string[];
+    sucursales?: string[];
+    effectiveSucursales?: Array<{
+      id: string;
+      codigo: string;
+      nombre: string;
+    }>;
+    allSucursales?: boolean;
     role: { id: string; nombre: string; reportes?: string[] };
   };
 };
@@ -24,5 +31,5 @@ export type JwtPayload = {
   nameUser?: string;
   roleId?: string;
   iat?: number;
-  exp?: number; // unix seconds
+  exp?: number;
 };

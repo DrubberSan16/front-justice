@@ -83,9 +83,10 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import { useDisplay } from "vuetify";
+import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuRolesStore } from "@/app/stores/menu-roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
-import { REPORT_ACCESS_OPTIONS, normalizeReportAccess } from "@/app/config/report-access";
+import { getReportAccessOptionsForUser, normalizeReportAccess } from "@/app/config/report-access";
 
 import MenuPermissionsCascade from "@/components/roles/MenuPermissionsCascade.vue";
 
@@ -106,6 +107,7 @@ const isEdit = computed(() => !!props.role);
 
 const menus = useMenusFullStore();
 const menuRoles = useMenuRolesStore();
+const auth = useAuthStore();
 const { mdAndDown } = useDisplay();
 const isDialogFullscreen = computed(() => mdAndDown.value);
 
@@ -116,7 +118,12 @@ const form = ref({
   reportes: [] as string[],
 });
 
-const reportAccessOptions = REPORT_ACCESS_OPTIONS;
+const reportAccessOptions = computed(() => getReportAccessOptionsForUser(auth.user));
+const allowedReportKeys = computed(() => new Set(reportAccessOptions.value.map((item) => item.value)));
+
+function collectVisibleMenuIds(nodes: Array<{ id: string; children?: any[] }> = []): string[] {
+  return nodes.flatMap((node) => [node.id, ...collectVisibleMenuIds(node.children ?? [])]);
+}
 
 watch(
   () => props.modelValue,
@@ -124,18 +131,23 @@ watch(
     if (!v) return;
 
     await menus.fetchAll(true);
+    const visibleMenuIds = collectVisibleMenuIds(menus.tree);
 
     if (props.role) {
       form.value = {
         nombre: props.role.nombre,
         descripcion: props.role.descripcion,
         status: props.role.status,
-        reportes: normalizeReportAccess(props.role.reportes),
+        reportes: normalizeReportAccess(props.role.reportes).filter((item) =>
+          allowedReportKeys.value.has(item),
+        ),
       };
 
       await menuRoles.loadByRole(props.role.id);
+      menuRoles.restrictToMenuIds(visibleMenuIds);
     } else {
       menuRoles.reset();
+      menuRoles.restrictToMenuIds(visibleMenuIds);
       form.value = {
         nombre: "",
         descripcion: "",

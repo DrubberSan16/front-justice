@@ -60,6 +60,16 @@ export const useMenuUsersProfileStore = defineStore("menuUsersProfile", {
       this.error = null;
     },
 
+    restrictToMenuIds(menuIds: string[]) {
+      const allowed = new Set(menuIds.map((item) => String(item)));
+      this.drafts = Object.fromEntries(
+        Object.entries(this.drafts).filter(([menuId]) => allowed.has(String(menuId))),
+      );
+      this.original = Object.fromEntries(
+        Object.entries(this.original).filter(([menuId]) => allowed.has(String(menuId))),
+      );
+    },
+
     getDraft(menuId: string) {
       if (!this.drafts[menuId]) this.drafts[menuId] = defaultDraft(menuId);
       return this.drafts[menuId];

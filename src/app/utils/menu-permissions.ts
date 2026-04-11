@@ -1,4 +1,6 @@
 import type { MenuNode } from "@/app/types/menu.types";
+import { useAuthStore } from "@/app/stores/auth.store";
+import { canAccessDigitalTwins, isSuperAdministrator } from "@/app/utils/role-access";
 
 export type MenuPermissions = {
   isReaded: boolean;
@@ -18,6 +20,15 @@ const defaultPerms: MenuPermissions = {
   reportsPermit: "{}",
 };
 
+const fullPerms: MenuPermissions = {
+  isReaded: true,
+  isCreated: true,
+  isEdited: true,
+  permitDeleted: true,
+  isReports: true,
+  reportsPermit: "{\"all\":true}",
+};
+
 function normalize(value: string): string {
   return value
     .normalize("NFD")
@@ -29,7 +40,17 @@ function normalize(value: string): string {
     .replace(/[\s_]+/g, "-");
 }
 
+function isRoleBlockedComponent(urlComponent: string): boolean {
+  const auth = useAuthStore();
+  const component = normalize(urlComponent);
+  if (!canAccessDigitalTwins(auth.user) && component === "gemelos-digitales") {
+    return true;
+  }
+  return false;
+}
+
 export function findMenuNodeByComponent(tree: MenuNode[], urlComponent: string): MenuNode | null {
+  if (isRoleBlockedComponent(urlComponent)) return null;
   const target = normalize(urlComponent);
   for (const node of tree) {
     if (normalize(node.urlComponent) === target) return node;
@@ -42,6 +63,9 @@ export function findMenuNodeByComponent(tree: MenuNode[], urlComponent: string):
 }
 
 export function getPermissionsForComponent(tree: MenuNode[], urlComponent: string): MenuPermissions {
+  const auth = useAuthStore();
+  if (isSuperAdministrator(auth.user)) return fullPerms;
+  if (isRoleBlockedComponent(urlComponent)) return defaultPerms;
   const node = findMenuNodeByComponent(tree, urlComponent);
   return (node?.permissions as MenuPermissions) ?? defaultPerms;
 }
@@ -50,7 +74,10 @@ export function getPermissionsForAnyComponent(
   tree: MenuNode[],
   urlComponents: string[]
 ): MenuPermissions {
+  const auth = useAuthStore();
+  if (isSuperAdministrator(auth.user)) return fullPerms;
   for (const name of urlComponents) {
+    if (isRoleBlockedComponent(name)) continue;
     const node = findMenuNodeByComponent(tree, name);
     if (node?.permissions) return node.permissions as MenuPermissions;
   }
@@ -59,6 +86,9 @@ export function getPermissionsForAnyComponent(
 }
 
 export function canReadComponent(tree: MenuNode[], urlComponent: string): boolean {
+  const auth = useAuthStore();
+  if (isSuperAdministrator(auth.user)) return true;
+  if (isRoleBlockedComponent(urlComponent)) return false;
   return Boolean(findMenuNodeByComponent(tree, urlComponent)?.permissions?.isReaded);
 }
 

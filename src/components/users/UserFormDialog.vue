@@ -90,6 +90,31 @@
               </v-autocomplete>
             </v-col>
 
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="form.sucursales"
+                :items="branchOptions"
+                item-title="title"
+                item-value="value"
+                label="Sucursales habilitadas"
+                variant="outlined"
+                multiple
+                chips
+                closable-chips
+                clearable
+                :loading="branchLoading"
+                hint="Si lo dejas vacío, el usuario podrá trabajar con todas las sucursales activas."
+                persistent-hint
+              >
+                <template #item="{ props: itemProps, item }">
+                  <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle" />
+                </template>
+              </v-autocomplete>
+              <div class="text-caption text-medium-emphasis mt-1" v-if="branchError">
+                {{ branchError }}
+              </div>
+            </v-col>
+
             <v-col cols="12" v-if="!isEdit">
               <v-text-field
                 v-model="form.passUser"
@@ -155,12 +180,14 @@
 <script setup lang="ts">
 import { computed, reactive, watch, ref } from "vue";
 import { useDisplay } from "vuetify";
+import { api } from "@/app/http/api";
 import type { User } from "@/app/types/users.types";
 
+import { useAuthStore } from "@/app/stores/auth.store";
 import { useRolesStore } from "@/app/stores/roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
 import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store";
-import { REPORT_ACCESS_OPTIONS, normalizeReportAccess } from "@/app/config/report-access";
+import { getReportAccessOptionsForUser, normalizeReportAccess } from "@/app/config/report-access";
 
 import { fetchMenuRolesByRole } from "@/app/services/menu-roles.service";
 import MenuPermissionsCascade from "@/components/roles/MenuPermissionsCascade.vue";
@@ -174,6 +201,7 @@ type FormModel = {
   status: "ACTIVE" | "INACTIVE";
   dateBirthday: string;
   reportes: string[];
+  sucursales: string[];
 };
 
 const props = defineProps<{
@@ -191,6 +219,7 @@ const emit = defineEmits<{
 const rolesStore = useRolesStore();
 const menusFull = useMenusFullStore();
 const menuUsersProfile = useMenuUsersProfileStore();
+const auth = useAuthStore();
 const { mdAndDown } = useDisplay();
 
 const model = computed({
@@ -215,10 +244,14 @@ const rolesError = computed(() => rolesStore.error);
 
 const loading = computed(() => props.loading ?? false);
 const error = computed(() => props.error ?? null);
-const reportAccessOptions = REPORT_ACCESS_OPTIONS;
+const reportAccessOptions = computed(() => getReportAccessOptionsForUser(auth.user));
+const allowedReportKeys = computed(() => new Set(reportAccessOptions.value.map((item) => item.value)));
 
 const roleProfileLoading = ref(false);
 const roleProfileError = ref<string | null>(null);
+const branchOptions = ref<Array<{ title: string; value: string; subtitle: string }>>([]);
+const branchLoading = ref(false);
+const branchError = ref<string | null>(null);
 
 const form = reactive<FormModel>({
   nameUser: "",
@@ -229,11 +262,16 @@ const form = reactive<FormModel>({
   status: "ACTIVE",
   dateBirthday: "",
   reportes: [],
+  sucursales: [],
 });
+
+function collectVisibleMenuIds(nodes: Array<{ id: string; children?: any[] }> = []): string[] {
+  return nodes.flatMap((node) => [node.id, ...collectVisibleMenuIds(node.children ?? [])]);
+}
 
 function roleDefaultReportes(roleId: string) {
   const role = rolesStore.items.find((item) => item.id === roleId);
-  return normalizeReportAccess(role?.reportes);
+  return normalizeReportAccess(role?.reportes).filter((item) => allowedReportKeys.value.has(item));
 }
 
 /** Precarga menú/permiso desde rol (solo CREATE) */
@@ -254,6 +292,27 @@ async function preloadFromRole(roleId: string) {
   }
 }
 
+async function loadBranches() {
+  branchLoading.value = true;
+  branchError.value = null;
+  try {
+    const { data } = await api.get<Array<{ id: string; codigo: string; nombre: string }>>(
+      "/kpi_security/users/sucursales/catalogo",
+    );
+    branchOptions.value = (data ?? []).map((item) => ({
+      title: `${item.codigo || ""} - ${item.nombre || ""}`.replace(/^\s*-\s*/, "").trim(),
+      value: item.id,
+      subtitle: item.codigo || "",
+    }));
+  } catch (e: any) {
+    branchOptions.value = [];
+    branchError.value =
+      e?.response?.data?.message || "No se pudo cargar el catálogo de sucursales.";
+  } finally {
+    branchLoading.value = false;
+  }
+}
+
 /** Al abrir modal */
 watch(
   () => props.modelValue,
@@ -265,8 +324,13 @@ watch(
       try { await rolesStore.fetchAll(false); } catch {}
     }
 
+    if (!branchOptions.value.length && !branchLoading.value) {
+      await loadBranches();
+    }
+
     // 2) Menú completo (se usa para el cascade)
     try { await menusFull.fetchAll(true); } catch {}
+    const visibleMenuIds = collectVisibleMenuIds(menusFull.tree);
 
     // 3) Reset drafts
     menuUsersProfile.reset();
@@ -281,11 +345,15 @@ watch(
       form.email = props.user.email ?? "";
       form.status = (props.user.status as any) || "ACTIVE";
       form.dateBirthday = props.user.dateBirthday ?? "";
-      form.reportes = normalizeReportAccess(props.user.reportes);
+      form.reportes = normalizeReportAccess(props.user.reportes).filter((item) =>
+        allowedReportKeys.value.has(item),
+      );
+      form.sucursales = [...(props.user.sucursales ?? [])];
 
       // cargar perfilería del usuario (para mostrar permisos)
       try {
         await menuUsersProfile.loadByUser(props.user.id);
+        menuUsersProfile.restrictToMenuIds(visibleMenuIds);
       } catch {
         // error queda en store, se muestra arriba
       }
@@ -299,9 +367,11 @@ watch(
       form.status = "ACTIVE";
       form.dateBirthday = "";
       form.reportes = roleDefaultReportes(form.roleId);
+      form.sucursales = [];
 
       // IMPORTANT: precarga por rol al abrir (no esperes a que cambie el select)
       await preloadFromRole(form.roleId);
+      menuUsersProfile.restrictToMenuIds(visibleMenuIds);
     }
   },
   { immediate: true }
@@ -315,6 +385,7 @@ watch(
     if (!roleId || roleId === prev) return;
     form.reportes = roleDefaultReportes(roleId);
     await preloadFromRole(roleId);
+    menuUsersProfile.restrictToMenuIds(collectVisibleMenuIds(menusFull.tree));
   }
 );
 

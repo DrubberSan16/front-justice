@@ -15,7 +15,7 @@ export const useUsersStore = defineStore("users", () => {
   const search = ref("");
   const statusFilter = ref<"ALL" | "ACTIVE" | "INACTIVE">("ALL");
   const roleFilter = ref<string>("ALL");
-  const includeDeleted = ref(true);
+  const includeDeleted = ref(false);
 
   const filtered = computed(() => {
     const q = search.value.trim().toLowerCase();
@@ -47,7 +47,9 @@ export const useUsersStore = defineStore("users", () => {
     loading.value = true;
     error.value = null;
     try {
-      const { data } = await api.get<User[]>("/kpi_security/users?includeDeleted=true");
+      const { data } = await api.get<User[]>(
+        `/kpi_security/users?includeDeleted=${includeDeleted.value ? "true" : "false"}`
+      );
       items.value = data ?? [];
     } catch (e: any) {
       error.value = e?.response?.data?.message || "No se pudieron cargar los usuarios.";

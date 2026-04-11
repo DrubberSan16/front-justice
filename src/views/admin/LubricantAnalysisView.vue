@@ -694,6 +694,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { canPurgeLubricantAnalyses } from "@/app/utils/role-access";
 import { hasReportAccess } from "@/app/config/report-access";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
@@ -1126,8 +1127,7 @@ const alertCount = computed(
 const groupedFormDetails = computed(() => groupLubricantDetails(form.detalles));
 const importProgress = computed(() => Number(importJob.value?.progress ?? 0));
 const importLogs = computed(() => (Array.isArray(importJob.value?.logs) ? importJob.value.logs : []));
-const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
-const canPurgeAnalyses = computed(() => currentRoleName.value.includes("ADMIN"));
+const canPurgeAnalyses = computed(() => canPurgeLubricantAnalyses(auth.user));
 const canConfirmPurge = computed(
   () => purgeConfirmation.value.trim().toUpperCase() === "ELIMINAR TODO",
 );
@@ -1712,7 +1712,7 @@ async function confirmDelete() {
 
 async function confirmPurge() {
   if (!canPurgeAnalyses.value) {
-    ui.error("Solo los administradores pueden eliminar toda la informacion de lubricantes.");
+    ui.error("Solo el Super Administrador puede eliminar toda la informacion de lubricantes.");
     return;
   }
   if (!canConfirmPurge.value) {

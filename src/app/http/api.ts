@@ -1,6 +1,7 @@
 import axios from "axios";
 import { env } from "@/app/config/env";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 
 export const api = axios.create({
   baseURL: env.baseUrl,
@@ -9,21 +10,28 @@ export const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const auth = useAuthStore();
+  const branchScope = useBranchScopeStore();
+
   if (auth.accessToken) {
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${auth.accessToken}`;
   }
+
+  const method = String(config.method || "get").toUpperCase();
+  if (method === "GET" && branchScope.effectiveSelectedSucursalId) {
+    config.headers = config.headers ?? {};
+    config.headers["X-Sucursal-Id"] = branchScope.effectiveSelectedSucursalId;
+  }
+
   return config;
 });
 
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    // Si expira/invalid token
     if (err?.response?.status === 401) {
       const auth = useAuthStore();
       auth.logout();
-      // no import router aquí para evitar ciclos: redirige por guard
     }
     return Promise.reject(err);
   }
