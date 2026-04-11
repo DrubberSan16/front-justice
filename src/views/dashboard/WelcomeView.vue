@@ -49,6 +49,28 @@
                   Ir al dashboard
                 </v-btn>
               </div>
+
+              <div class="welcome-hero__preview">
+                <div class="welcome-hero__preview-label">Resumen inmediato</div>
+
+                <div v-if="heroPreviewDays.length" class="welcome-preview-grid">
+                  <button
+                    v-for="item in heroPreviewDays"
+                    :key="item.date"
+                    type="button"
+                    class="welcome-preview-card"
+                    @click="openDay(item.date)"
+                  >
+                    <span class="welcome-preview-card__date">{{ item.shortLabel }}</span>
+                    <strong class="welcome-preview-card__value">{{ item.count }} actividades</strong>
+                    <span class="welcome-preview-card__meta">{{ item.hoursLabel }}</span>
+                  </button>
+                </div>
+
+                <div v-else class="welcome-hero__empty">
+                  No hay dias activos en el periodo seleccionado.
+                </div>
+              </div>
             </div>
 
             <div class="welcome-hero__stats">
@@ -623,6 +645,29 @@ const upcomingActivities = computed(() => {
     .slice(0, 6);
 });
 
+const heroPreviewDays = computed(() => {
+  const currentMonthDate = `${String(selectedYear.value).padStart(4, "0")}-${String(selectedMonth.value).padStart(2, "0")}`;
+  const reference =
+    currentMonthDate === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      : new Date(selectedYear.value, selectedMonth.value - 1, 1, 0, 0, 0, 0);
+
+  const ordered = [...daySummaries.value.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const futureOrCurrent = ordered.filter((item) => {
+    const parsed = parseDateValue(item.date);
+    if (!parsed) return false;
+    return parsed >= reference;
+  });
+
+  return (futureOrCurrent.length ? futureOrCurrent : ordered).slice(0, 3).map((item) => ({
+    ...item,
+    shortLabel: new Intl.DateTimeFormat("es-EC", {
+      day: "2-digit",
+      month: "short",
+    }).format(parseDateValue(item.date) ?? new Date()),
+  }));
+});
+
 const calendarCells = computed(() => {
   const start = new Date(selectedYear.value, selectedMonth.value - 1, 1);
   const end = new Date(selectedYear.value, selectedMonth.value, 0);
@@ -728,12 +773,11 @@ onMounted(() => {
   position: relative;
   overflow: hidden;
   padding: 28px;
-  min-height: 100%;
   background:
-    radial-gradient(circle at top left, rgba(83, 172, 255, 0.2), transparent 36%),
-    radial-gradient(circle at bottom right, rgba(33, 208, 165, 0.18), transparent 34%),
-    linear-gradient(160deg, rgba(12, 33, 58, 0.98), rgba(18, 54, 88, 0.92));
-  color: #f3f8ff;
+    radial-gradient(circle at top left, rgba(83, 172, 255, 0.12), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(33, 208, 165, 0.1), transparent 30%),
+    linear-gradient(160deg, rgba(26, 48, 74, 0.94), rgba(39, 64, 92, 0.88));
+  color: #eef5fb;
 }
 
 .welcome-hero__aurora {
@@ -742,8 +786,8 @@ onMounted(() => {
   width: 260px;
   height: 260px;
   border-radius: 999px;
-  filter: blur(18px);
-  opacity: 0.26;
+  filter: blur(22px);
+  opacity: 0.16;
   pointer-events: none;
 }
 
@@ -765,12 +809,13 @@ onMounted(() => {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
   gap: 22px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .welcome-hero__copy {
   display: grid;
   align-content: start;
+  gap: 0;
 }
 
 .welcome-hero__actions {
@@ -778,6 +823,72 @@ onMounted(() => {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 22px;
+}
+
+.welcome-hero__preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.welcome-hero__preview-label {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(238, 245, 251, 0.68);
+}
+
+.welcome-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.welcome-preview-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.welcome-preview-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(135, 205, 255, 0.28);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.welcome-preview-card__date {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.74;
+}
+
+.welcome-preview-card__value {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+.welcome-preview-card__meta {
+  font-size: 0.8rem;
+  opacity: 0.82;
+}
+
+.welcome-hero__empty {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(238, 245, 251, 0.76);
+  font-size: 0.86rem;
 }
 
 .welcome-hero__stats {
@@ -789,8 +900,8 @@ onMounted(() => {
 .welcome-stat {
   padding: 16px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(10px);
 }
 
@@ -1083,7 +1194,8 @@ onMounted(() => {
   }
 
   .welcome-toolbar,
-  .welcome-hero__stats {
+  .welcome-hero__stats,
+  .welcome-preview-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
