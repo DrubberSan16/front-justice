@@ -239,6 +239,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     title: "Ubicaciones",
     endpoint: "/kpi_maintenance/locaciones",
     fields: [
+      { key: "sucursal_id", label: "Sucursal", type: "select", required: true, relation: { endpoint: "/kpi_inventory/sucursales" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "descripcion", label: "Descripción", type: "text" },
