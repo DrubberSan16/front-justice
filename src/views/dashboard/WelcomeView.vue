@@ -127,7 +127,7 @@
             :columns="2"
           />
 
-          <div v-else-if="upcomingActivities.length" class="timeline-list">
+          <div v-if="false" class="timeline-list">
             <button
               v-for="item in upcomingActivities"
               :key="item.id"
@@ -149,7 +149,7 @@
             </button>
           </div>
 
-          <div v-else class="welcome-empty welcome-empty--tight">
+          <div v-if="false" class="welcome-empty welcome-empty--tight">
             <v-icon icon="mdi-calendar-remove-outline" size="26" />
             <div>No hay actividades semanales registradas para este periodo.</div>
           </div>
