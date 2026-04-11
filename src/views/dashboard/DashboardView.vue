@@ -42,6 +42,7 @@
                 color="secondary"
                 variant="tonal"
                 prepend-icon="mdi-chart-timeline-variant"
+                :disabled="!canAccessIntelligenceView"
                 @click="router.push({ name: 'inteligencia-mantenimiento' })"
               >
                 Inteligencia
@@ -489,6 +490,7 @@ import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { hasReportAccess } from "@/app/config/report-access";
+import { canReadComponent } from "@/app/utils/menu-permissions";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
@@ -510,6 +512,9 @@ const lastUpdatedAt = ref<Date | null>(null);
 const exportState = ref<Record<string, boolean>>({});
 const canAccessDashboardReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "dashboard_ejecutivo"),
+);
+const canAccessIntelligenceView = computed(() =>
+  canReadComponent(menu.tree, "inteligencia-mantenimiento"),
 );
 
 const users = ref<AnyRow[]>([]);

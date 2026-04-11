@@ -96,6 +96,18 @@
                 hide-details="auto"
               />
             </v-col>
+            <v-col v-if="requiresExplicitSucursalSelection" cols="12" md="3" lg="3">
+              <v-select
+                v-model="monthlyImportSucursalId"
+                :items="sucursalSelectItems"
+                item-title="title"
+                item-value="value"
+                label="Sucursal"
+                variant="outlined"
+                density="compact"
+                hide-details="auto"
+              />
+            </v-col>
             <v-col cols="12" md="2" lg="2">
               <v-select
                 v-model="selectedMonthlyYear"
@@ -319,6 +331,18 @@
                 density="compact"
                 prepend-icon="mdi-calendar-week"
                 show-size
+                hide-details="auto"
+              />
+            </v-col>
+            <v-col v-if="requiresExplicitSucursalSelection" cols="12" md="4">
+              <v-select
+                v-model="weeklyImportSucursalId"
+                :items="sucursalSelectItems"
+                item-title="title"
+                item-value="value"
+                label="Sucursal"
+                variant="outlined"
+                density="compact"
                 hide-details="auto"
               />
             </v-col>
@@ -603,6 +627,16 @@
         <v-divider />
         <v-card-text class="pt-4">
           <v-row dense>
+            <v-col v-if="requiresExplicitSucursalSelection || (!scopedSucursalId && form.sucursal_id)" cols="12" md="6">
+              <v-select
+                v-model="form.sucursal_id"
+                :items="sucursalSelectItems"
+                item-title="title"
+                item-value="value"
+                label="Sucursal"
+                variant="outlined"
+              />
+            </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.proxima_fecha" type="date" label="Fecha programada" variant="outlined" />
             </v-col>
@@ -770,6 +804,16 @@
             </v-col>
             <v-col cols="12" md="3">
               <v-text-field v-model="weeklyEditor.fecha_fin" label="Fin de semana" variant="outlined" readonly />
+            </v-col>
+            <v-col v-if="requiresExplicitSucursalSelection || (!scopedSucursalId && weeklyEditor.sucursal_id)" cols="12" md="4">
+              <v-select
+                v-model="weeklyEditor.sucursal_id"
+                :items="sucursalSelectItems"
+                item-title="title"
+                item-value="value"
+                label="Sucursal"
+                variant="outlined"
+              />
             </v-col>
             <v-col cols="12" md="4">
               <v-text-field v-model="weeklyEditor.locacion" label="Locaci?n" variant="outlined" />
@@ -1044,6 +1088,7 @@ import { hasReportAccess } from "@/app/config/report-access";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
@@ -1057,6 +1102,7 @@ import {
 
 const ui = useUiStore();
 const auth = useAuthStore();
+const branchScope = useBranchScopeStore();
 const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
 const perms = computed(() =>
@@ -1103,6 +1149,8 @@ const selectedWeeklyPeriod = ref<string | null>(null);
 const selectedMonthlyDetail = ref<any | null>(null);
 const monthlyImportFile = ref<File | null>(null);
 const weeklyImportFile = ref<File | null>(null);
+const monthlyImportSucursalId = ref<string | null>(null);
+const weeklyImportSucursalId = ref<string | null>(null);
 const monthlyWarnings = ref<string[]>([]);
 const weeklyWarnings = ref<string[]>([]);
 const weeklyPlannerAnchorDate = ref(formatDate(new Date()));
@@ -1140,6 +1188,7 @@ const weeklyEditor = reactive<any>({
   codigo: "",
   fecha_inicio: "",
   fecha_fin: "",
+  sucursal_id: "",
   locacion: "TPTA",
   referencia_orden: "",
   resumen: "",
@@ -1181,6 +1230,7 @@ const monthlyPaletteForm = reactive<Record<string, string>>({
 });
 
 const form = reactive<any>({
+  sucursal_id: "",
   equipo_id: "",
   procedimiento_id: "",
   plan_id: "",
@@ -1196,6 +1246,20 @@ const agendaMonthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
   title: new Date(2026, index, 1).toLocaleDateString("es-EC", { month: "long" }),
 }));
+const sucursalSelectItems = computed(() =>
+  branchScope.options.map((item) => ({
+    title: `${item.codigo} - ${item.nombre}`.replace(/^\s*-\s*/, "").trim(),
+    value: item.id,
+  })),
+);
+const scopedSucursalId = computed(
+  () =>
+    branchScope.effectiveSelectedSucursalId ||
+    (branchScope.options.length === 1 ? branchScope.options[0]?.id ?? null : null),
+);
+const requiresExplicitSucursalSelection = computed(
+  () => !scopedSucursalId.value && branchScope.options.length > 1,
+);
 
 const agendaHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
@@ -1234,6 +1298,30 @@ const monthlyPaletteFields = [
 const currentRoleName = computed(() =>
   String(auth.user?.role?.nombre || "").trim().toUpperCase(),
 );
+
+function resolveSucursalId(explicitSucursalId?: string | null) {
+  const explicit = String(explicitSucursalId || "").trim();
+  return scopedSucursalId.value || explicit || null;
+}
+
+function resolveSucursalRecord(explicitSucursalId?: string | null) {
+  const sucursalId = resolveSucursalId(explicitSucursalId);
+  if (!sucursalId) return null;
+  return branchScope.options.find((item) => item.id === sucursalId) ?? null;
+}
+
+function resolveSucursalLabel(explicitSucursalId?: string | null) {
+  const sucursal = resolveSucursalRecord(explicitSucursalId);
+  if (!sucursal) return "";
+  return `${sucursal.codigo} - ${sucursal.nombre}`.replace(/^\s*-\s*/, "").trim();
+}
+
+function ensureSucursalId(explicitSucursalId?: string | null, context = "esta operación") {
+  const sucursalId = resolveSucursalId(explicitSucursalId);
+  if (sucursalId) return sucursalId;
+  ui.error(`Debes seleccionar la sucursal para ${context}.`);
+  return null;
+}
 function currentUserName() {
   return auth.user?.nameUser || "admin";
 }
@@ -1401,6 +1489,9 @@ async function loadSelectedMonthly(id: string | null) {
   try {
     const { data } = await api.get(`/kpi_maintenance/programaciones/mensuales/${id}`);
     selectedMonthly.value = data?.data ?? null;
+    if (selectedMonthly.value?.sucursal_id) {
+      monthlyImportSucursalId.value = selectedMonthly.value.sucursal_id;
+    }
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo cargar el calendario mensual.");
   }
@@ -1413,6 +1504,9 @@ async function loadSelectedWeekly(id: string | null) {
   try {
     const { data } = await api.get(`/kpi_maintenance/inteligencia/cronogramas-semanales/${id}`);
     selectedWeekly.value = data?.data ?? null;
+    if (selectedWeekly.value?.sucursal_id) {
+      weeklyImportSucursalId.value = selectedWeekly.value.sucursal_id;
+    }
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo cargar el cronograma semanal.");
   }
@@ -2276,6 +2370,7 @@ function resetForm() {
   programacionSourceOrigin.value = "MANUAL";
   programacionSourcePayload.value = {};
   programacionSourceDocument.value = null;
+  form.sucursal_id = resolveSucursalId() || "";
   form.equipo_id = "";
   form.procedimiento_id = "";
   form.plan_id = "";
@@ -2289,6 +2384,7 @@ function resetForm() {
 function openCreateForDate(date: string) {
   if (!canCreate.value) return;
   resetForm();
+  form.sucursal_id = resolveSucursalId() || "";
   form.proxima_fecha = date;
   programacionSourceMode.value = "DINAMICA";
   programacionSourceOrigin.value = "MANUAL";
@@ -2327,6 +2423,7 @@ function openMonthlyCellCreate(date: string, row?: any) {
   if (!canCreate.value) return;
   if (!selectedMonthly.value?.id) {
     resetForm();
+    form.sucursal_id = selectedMonthly.value?.sucursal_id || resolveSucursalId() || "";
     form.proxima_fecha = date;
     form.equipo_id = row?.equipo_id || "";
     programacionSourceMode.value = "DINAMICA";
@@ -2485,6 +2582,11 @@ function openCreateFromMonthlyDetail(item: any) {
   if (!canCreate.value) return;
   if (!item) return;
   resetForm();
+  form.sucursal_id =
+    selectedMonthly.value?.sucursal_id ||
+    item?.payload_json?.sucursal_id ||
+    resolveSucursalId() ||
+    "";
   form.equipo_id = item.equipo_id || "";
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
@@ -2515,6 +2617,11 @@ function openEdit(item: any) {
   programacionSourceOrigin.value = String(item.origen_programacion || "MANUAL");
   programacionSourcePayload.value = item.payload_json || {};
   programacionSourceDocument.value = item.documento_origen || null;
+  form.sucursal_id =
+    item?.payload_json?.sucursal_id ||
+    item?.sucursal_id ||
+    resolveSucursalId() ||
+    "";
   form.equipo_id = item.equipo_id || "";
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
@@ -2572,6 +2679,9 @@ async function openEditProgramacionById(id: string) {
 }
 
 function buildPayload() {
+  const sucursalId = ensureSucursalId(form.sucursal_id, "guardar la programación");
+  if (!sucursalId) return null;
+  const sucursal = resolveSucursalRecord(sucursalId);
   const sourcePayload =
     Object.keys(programacionSourcePayload.value || {}).length
       ? programacionSourcePayload.value
@@ -2589,6 +2699,9 @@ function buildPayload() {
     documento_origen: programacionSourceDocument.value || undefined,
     payload_json: {
       ...sourcePayload,
+      sucursal_id: sucursalId,
+      sucursal_codigo: sucursal?.codigo || null,
+      sucursal_nombre: sucursal?.nombre || null,
       ...buildAuditPayload(Boolean(editingId.value)),
     },
     activo: !!form.activo,
@@ -2606,15 +2719,17 @@ async function save() {
     ui.error("Debes seleccionar equipo y plantilla MPG o plan operativo.");
     return;
   }
+  const payload = buildPayload();
+  if (!payload) return;
   saving.value = true;
   try {
     let saved: any = null;
     if (editingId.value) {
-      const { data } = await api.patch(`/kpi_maintenance/programaciones/${editingId.value}`, buildPayload());
+      const { data } = await api.patch(`/kpi_maintenance/programaciones/${editingId.value}`, payload);
       saved = data?.data ?? data;
       ui.success("Programación actualizada.");
     } else {
-      const { data } = await api.post("/kpi_maintenance/programaciones", buildPayload());
+      const { data } = await api.post("/kpi_maintenance/programaciones", payload);
       saved = data?.data ?? data;
       ui.success("Programación creada.");
     }
@@ -2663,6 +2778,8 @@ async function importMonthlyWorkbook() {
     ui.error("Selecciona el archivo Excel mensual.");
     return;
   }
+  const sucursalId = ensureSucursalId(monthlyImportSucursalId.value, "importar el calendario mensual");
+  if (!sucursalId) return;
   importingMonthly.value = true;
   try {
     const formData = new FormData();
@@ -2670,6 +2787,7 @@ async function importMonthlyWorkbook() {
     formData.append("requested_by", currentUserName());
     if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
     if (currentUserId()) formData.append("requested_user_id", currentUserId());
+    formData.append("sucursal_id", sucursalId);
     const { data } = await api.post("/kpi_maintenance/programaciones/import/mensual/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -2697,6 +2815,8 @@ async function importWeeklyWorkbook() {
     ui.error("Selecciona el archivo Excel semanal.");
     return;
   }
+  const sucursalId = ensureSucursalId(weeklyImportSucursalId.value, "importar el cronograma semanal");
+  if (!sucursalId) return;
   importingWeekly.value = true;
   try {
     const formData = new FormData();
@@ -2704,6 +2824,7 @@ async function importWeeklyWorkbook() {
     formData.append("requested_by", currentUserName());
     if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
     if (currentUserId()) formData.append("requested_user_id", currentUserId());
+    formData.append("sucursal_id", sucursalId);
     const { data } = await api.post("/kpi_maintenance/inteligencia/cronogramas-semanales/import/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
@@ -2741,7 +2862,8 @@ function resetWeeklyEditor() {
   weeklyEditor.codigo = "";
   weeklyEditor.fecha_inicio = "";
   weeklyEditor.fecha_fin = "";
-  weeklyEditor.locacion = "TPTA";
+  weeklyEditor.sucursal_id = resolveSucursalId() || "";
+  weeklyEditor.locacion = resolveSucursalLabel(weeklyEditor.sucursal_id) || "TPTA";
   weeklyEditor.referencia_orden = "";
   weeklyEditor.resumen = "";
   weeklyEditor.documento_origen = "MANUAL";
@@ -2975,6 +3097,8 @@ async function openWeeklyEditorCreate(anchorDate?: string) {
   resetWeeklyEditor();
   weeklyCellPersistDirect.value = false;
   setWeeklyEditorWeek(anchorDate || weeklyPlannerAnchorDate.value || formatDate(new Date()));
+  weeklyEditor.sucursal_id = resolveSucursalId() || "";
+  weeklyEditor.locacion = resolveSucursalLabel(weeklyEditor.sucursal_id) || "TPTA";
   try {
     weeklyEditor.codigo = await fetchNextWeeklyCode();
   } catch {
@@ -2990,7 +3114,11 @@ function loadWeeklyEditorFromSchedule(schedule: any) {
   weeklyEditor.codigo = schedule.codigo || "";
   weeklyEditor.fecha_inicio = schedule.fecha_inicio || "";
   weeklyEditor.fecha_fin = schedule.fecha_fin || "";
-  weeklyEditor.locacion = schedule.locacion || "TPTA";
+  weeklyEditor.sucursal_id = schedule.sucursal_id || resolveSucursalId() || "";
+  weeklyEditor.locacion =
+    schedule.locacion ||
+    resolveSucursalLabel(weeklyEditor.sucursal_id) ||
+    "TPTA";
   weeklyEditor.referencia_orden = schedule.referencia_orden || "";
   weeklyEditor.resumen = schedule.resumen || "";
   weeklyEditor.documento_origen = schedule.documento_origen || "MANUAL";
@@ -3030,6 +3158,9 @@ async function saveWeeklyEditor() {
     ui.error("Debes definir código y rango semanal.");
     return;
   }
+  const sucursalId = ensureSucursalId(weeklyEditor.sucursal_id, "guardar el cronograma semanal");
+  if (!sucursalId) return;
+  const sucursal = resolveSucursalRecord(sucursalId);
   const slotMap = new Map(weeklyEditorSlots.value.map((slot) => [slot.key, slot]));
   const detalles = weeklyEditorItems.value.map((item, index) => {
     const slot = slotMap.get(item.slot_key);
@@ -3056,13 +3187,17 @@ async function saveWeeklyEditor() {
       codigo: weeklyEditor.codigo,
       fecha_inicio: weeklyEditor.fecha_inicio,
       fecha_fin: weeklyEditor.fecha_fin,
-      locacion: weeklyEditor.locacion || undefined,
+      sucursal_id: sucursalId,
+      locacion: weeklyEditor.locacion || resolveSucursalLabel(sucursalId) || undefined,
       referencia_orden: weeklyEditor.referencia_orden || undefined,
       documento_origen: weeklyEditor.documento_origen || "MANUAL",
       resumen: weeklyEditor.resumen || undefined,
       payload_json: {
         editor_source: "MANUAL",
         daily_hours: computeWeeklyDailyHours(detalles),
+        sucursal_id: sucursalId,
+        sucursal_codigo: sucursal?.codigo || null,
+        sucursal_nombre: sucursal?.nombre || null,
         ...buildAuditPayload(Boolean(weeklyEditor.id)),
       },
       detalles,
@@ -3100,6 +3235,9 @@ async function persistWeeklyEditor(options?: { showToast?: boolean }) {
     ui.error("Debes definir código y rango semanal.");
     return false;
   }
+  const sucursalId = ensureSucursalId(weeklyEditor.sucursal_id, "guardar el cronograma semanal");
+  if (!sucursalId) return false;
+  const sucursal = resolveSucursalRecord(sucursalId);
   const slotMap = new Map(weeklyEditorSlots.value.map((slot) => [slot.key, slot]));
   const detalles = weeklyEditorItems.value.map((item, index) => {
     const slot = slotMap.get(item.slot_key);
@@ -3126,13 +3264,17 @@ async function persistWeeklyEditor(options?: { showToast?: boolean }) {
       codigo: weeklyEditor.codigo,
       fecha_inicio: weeklyEditor.fecha_inicio,
       fecha_fin: weeklyEditor.fecha_fin,
-      locacion: weeklyEditor.locacion || undefined,
+      sucursal_id: sucursalId,
+      locacion: weeklyEditor.locacion || resolveSucursalLabel(sucursalId) || undefined,
       referencia_orden: weeklyEditor.referencia_orden || undefined,
       documento_origen: weeklyEditor.documento_origen || "MANUAL",
       resumen: weeklyEditor.resumen || undefined,
       payload_json: {
         editor_source: "MANUAL",
         daily_hours: computeWeeklyDailyHours(detalles),
+        sucursal_id: sucursalId,
+        sucursal_codigo: sucursal?.codigo || null,
+        sucursal_nombre: sucursal?.nombre || null,
         ...buildAuditPayload(Boolean(weeklyEditor.id)),
       },
       detalles,
@@ -3220,6 +3362,36 @@ watch(
       next.getMonth() !== currentMonth.value.getMonth()
     ) {
       currentMonth.value = next;
+    }
+  },
+);
+
+watch(
+  () => branchScope.selectedSucursalId,
+  () => {
+    const resolvedSucursalId = resolveSucursalId();
+    monthlyImportSucursalId.value = resolvedSucursalId;
+    weeklyImportSucursalId.value = resolvedSucursalId;
+    if (!editingId.value) {
+      form.sucursal_id = resolvedSucursalId || "";
+    }
+    if (!weeklyEditor.id) {
+      weeklyEditor.sucursal_id = resolvedSucursalId || "";
+      if (!String(weeklyEditor.locacion || "").trim() || weeklyEditor.locacion === "TPTA") {
+        weeklyEditor.locacion = resolveSucursalLabel(resolvedSucursalId) || "TPTA";
+      }
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  () => weeklyEditor.sucursal_id,
+  (value, previous) => {
+    const currentLocacion = String(weeklyEditor.locacion || "").trim();
+    const previousLabel = resolveSucursalLabel(previous);
+    if (!currentLocacion || currentLocacion === previousLabel || currentLocacion === "TPTA") {
+      weeklyEditor.locacion = resolveSucursalLabel(value) || "TPTA";
     }
   },
 );

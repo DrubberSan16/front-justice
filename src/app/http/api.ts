@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   }
 
   const method = String(config.method || "get").toUpperCase();
-  if (method === "GET" && branchScope.effectiveSelectedSucursalId) {
+  if (method && branchScope.effectiveSelectedSucursalId) {
     config.headers = config.headers ?? {};
     config.headers["X-Sucursal-Id"] = branchScope.effectiveSelectedSucursalId;
   }
