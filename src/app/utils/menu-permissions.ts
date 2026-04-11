@@ -57,3 +57,11 @@ export function getPermissionsForAnyComponent(
 
   return defaultPerms;
 }
+
+export function canReadComponent(tree: MenuNode[], urlComponent: string): boolean {
+  return Boolean(findMenuNodeByComponent(tree, urlComponent)?.permissions?.isReaded);
+}
+
+export function resolveAuthenticatedHomeRoute(tree: MenuNode[]): "dashboard" | "bienvenida" {
+  return canReadComponent(tree, "dashboard") ? "dashboard" : "bienvenida";
+}

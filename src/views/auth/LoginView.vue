@@ -85,6 +85,7 @@ import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import type { LoginRequest, LoginResponse } from "@/app/types/auth.types";
+import { resolveAuthenticatedHomeRoute } from "@/app/utils/menu-permissions";
 
 const router = useRouter();
 const route = useRoute();
@@ -113,7 +114,14 @@ async function onSubmit() {
 
     if (auth.userId) await menu.loadMenuTree(auth.userId);
 
-    const redirect = (route.query.redirect as string) || "/app/dashboard";
+    const homeRoute = resolveAuthenticatedHomeRoute(menu.tree);
+    const fallbackRedirect = homeRoute === "dashboard" ? "/app/dashboard" : "/app/bienvenida";
+    const requestedRedirect = String(route.query.redirect || "").trim();
+    const redirect =
+      requestedRedirect && !(requestedRedirect === "/app/dashboard" && homeRoute !== "dashboard")
+        ? requestedRedirect
+        : fallbackRedirect;
+
     router.replace(redirect);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "Credenciales invalidas o error de conexion.";

@@ -1,34 +1,49 @@
 import type { Router } from "vue-router";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { canReadComponent, resolveAuthenticatedHomeRoute } from "@/app/utils/menu-permissions";
 
 export function applyGuards(router: Router) {
   router.beforeEach(async (to) => {
     const auth = useAuthStore();
     const menu = useMenuStore();
 
-    // Asegura bootstrap antes de navegar
     if (!auth.bootstrapped) auth.bootstrapFromStorage();
 
     const isPublic = to.meta.public === true;
 
     if (!isPublic) {
-      // Protegidas: requiere sesión válida
       if (!auth.isAuthenticated) {
         menu.clear();
         return { name: "login", query: { redirect: to.fullPath } };
       }
 
-      // Carga menú para ese usuario (dinámico)
       const uid = auth.userId;
       if (uid) {
         await menu.loadMenuTree(uid);
       }
     }
 
-    // Si ya estás logueado y entras a login, manda a dashboard
+    if (
+      auth.isAuthenticated &&
+      auth.userId &&
+      (!menu.tree.length || menu.loadedForUserId !== auth.userId)
+    ) {
+      await menu.loadMenuTree(auth.userId);
+    }
+
+    const homeRoute = resolveAuthenticatedHomeRoute(menu.tree);
+
+    if (auth.isAuthenticated && (to.path === "/app" || to.fullPath === "/app")) {
+      return { name: homeRoute };
+    }
+
+    if (auth.isAuthenticated && to.name === "dashboard" && !canReadComponent(menu.tree, "dashboard")) {
+      return { name: "bienvenida" };
+    }
+
     if (to.name === "login" && auth.isAuthenticated) {
-      return { name: "dashboard" };
+      return { name: homeRoute };
     }
   });
 }
