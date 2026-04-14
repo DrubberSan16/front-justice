@@ -487,6 +487,21 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.alerts-table {
+  max-width: 100%;
+}
+
+.alerts-table :deep(.v-table__wrapper) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.alerts-table :deep(table) {
+  min-width: 1080px;
+}
+
 .alerts-table :deep(.v-data-table-footer) {
   flex-wrap: wrap;
   gap: 12px;
@@ -494,14 +509,16 @@ onMounted(async () => {
 
 .inventory-alert-table {
   max-width: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid rgba(120, 144, 156, 0.24);
   border-radius: 12px;
 }
 
 .inventory-alert-table table {
-  width: 100%;
-  min-width: 560px;
+  width: max-content;
+  min-width: 720px;
   border-collapse: collapse;
   font-size: 12px;
 }
