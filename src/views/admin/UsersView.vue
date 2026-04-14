@@ -236,14 +236,10 @@ onMounted(async () => {
     users.includeDeleted = false;
   }
 
-  if (!roles.items.length) {
-    try {
-      await roles.fetchAll(false);
-    } catch {}
-  }
-  if (!users.items.length) {
-    await users.fetchAll();
-  }
+  try {
+    await roles.fetchAll(false);
+  } catch {}
+  await users.fetchAll();
 });
 
 watch(

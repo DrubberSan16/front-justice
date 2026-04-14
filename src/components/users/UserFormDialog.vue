@@ -320,11 +320,9 @@ watch(
     if (!open) return;
 
     // 1) Roles
-    if (rolesStore.items.length === 0) {
-      try { await rolesStore.fetchAll(false); } catch {}
-    }
+    try { await rolesStore.fetchAll(false); } catch {}
 
-    if (!branchOptions.value.length && !branchLoading.value) {
+    if (!branchLoading.value) {
       await loadBranches();
     }
 
