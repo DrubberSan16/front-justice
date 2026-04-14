@@ -6,6 +6,8 @@ type PurchaseOrderDetailLike = {
   descuento?: string | number | null;
   porcentaje_descuento?: string | number | null;
   iva_porcentaje?: string | number | null;
+  iva_total?: string | number | null;
+  subtotal?: string | number | null;
   total?: string | number | null;
 };
 
@@ -25,13 +27,23 @@ type PurchaseOrderLike = {
   iva_total?: string | number | null;
   total?: string | number | null;
   bodega_label?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
   detalles?: PurchaseOrderDetailLike[] | null;
+};
+
+const PURCHASE_ORDER_TEMPLATE = {
+  companyName: "Justicecompany Técnica Industrial S.A.",
+  addressLine: "edificio torres del norte, torre b piso 8, of 804., Telef:",
+  cityCountry: "GUAYAQUIL - Ecuador",
+  cityEmission: "GUAYAQUIL",
+  ruc: "1791355512001",
 };
 
 function repairText(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
-  if (!/[ÃƒÃ‚Ã¢]/.test(raw)) return raw;
+  if (!/[ÃƒÆ’Ãƒâ€šÃƒÂ¢]/.test(raw)) return raw;
   try {
     return decodeURIComponent(escape(raw));
   } catch {
@@ -40,17 +52,13 @@ function repairText(value: unknown) {
 }
 
 function toNumber(value: unknown) {
-  const parsed = Number(String(value ?? "").replace(/,/g, "."));
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/,(?=\d{3}(?:\D|$))/g, "")
+    .replace(",", ".");
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatCurrency(value: unknown, currency = "USD") {
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(toNumber(value));
 }
 
 function formatNumber(value: unknown, decimals = 2) {
@@ -58,6 +66,14 @@ function formatNumber(value: unknown, decimals = 2) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(toNumber(value));
+}
+
+function formatMoney(value: unknown) {
+  return formatNumber(value, 2);
+}
+
+function formatMoneyWithSymbol(value: unknown) {
+  return `$${formatMoney(value)}`;
 }
 
 function formatDate(value: unknown) {
@@ -71,8 +87,26 @@ function formatDate(value: unknown) {
   });
 }
 
-function splitCurrency(value: unknown, currency = "USD") {
-  return formatCurrency(value, currency).replace(/\$/g, "").trim();
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatDateTime(value: unknown) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(
+    date.getHours(),
+  )}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function sumBy<T>(rows: T[], getter: (row: T) => unknown) {
+  return rows.reduce((acc, row) => acc + toNumber(getter(row)), 0);
+}
+
+function safeText(value: unknown, fallback = "-") {
+  const text = repairText(value);
+  return text || fallback;
 }
 
 export async function downloadPurchaseOrderPdf(
@@ -91,115 +125,138 @@ export async function downloadPurchaseOrderPdf(
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
-  const marginX = 36;
-  const rightX = pageWidth - marginX;
-  const currency = repairText(order.moneda || "USD") || "USD";
-  const emissionDate = formatDate(order.fecha_emision);
-  const todayLabel = new Date().toLocaleString("es-EC");
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginLeft = 38;
+  const marginRight = 38;
+  const usableWidth = pageWidth - marginLeft - marginRight;
+  const rightX = pageWidth - marginRight;
+  const details = Array.isArray(order.detalles) ? order.detalles : [];
+  const observation = safeText(order.observacion || order.condicion_pago, "Sin observación");
+  const totalQuantity = sumBy(details, (item) => item.cantidad);
+  const totalUnitCost = sumBy(details, (item) => item.costo_unitario);
+  const totalDiscount = sumBy(details, (item) => item.descuento);
+  const totalIva = details.length
+    ? sumBy(details, (item) => item.iva_total)
+    : toNumber(order.iva_total);
+  const totalAmount = details.length
+    ? sumBy(details, (item) => item.total)
+    : toNumber(order.total);
+  const emissionDateLabel =
+    formatDateTime(order.fecha_emision) || formatDateTime(new Date());
+  const preparedBy = safeText(order.created_by || userName, userName);
+  const approvedBy = safeText(order.updated_by || order.created_by || userName, userName);
+  const generatedAt = formatDateTime(new Date());
 
-  doc.setDrawColor(90, 110, 138);
-  doc.setLineWidth(0.8);
-  doc.roundedRect(marginX, 24, pageWidth - marginX * 2, 112, 10, 10);
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.6);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("Justicecompany Técnica Industrial S.A.", marginX + 14, 46);
+  doc.setFontSize(11);
+  doc.text(PURCHASE_ORDER_TEMPLATE.companyName, marginLeft, 40);
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(
-    "GUAYAS / GUAYAQUIL / AV. DE LAS AMÉRICAS / JUSTICE COMPANY",
-    marginX + 14,
-    62,
-  );
-  doc.text(`Guayaquil, ${emissionDate || formatDate(new Date())}`, marginX + 14, 78);
-  doc.text("RUC: 0990018685001", marginX + 14, 94);
+  doc.setFontSize(8.5);
+  doc.text(PURCHASE_ORDER_TEMPLATE.addressLine, marginLeft, 55);
+  doc.text(PURCHASE_ORDER_TEMPLATE.cityCountry, marginLeft, 70);
+  doc.text(`RUC: ${PURCHASE_ORDER_TEMPLATE.ruc}`, marginLeft, 85);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text(repairText(order.codigo || "OC-SIN-CODIGO"), rightX, 52, {
-    align: "right",
-  });
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("ORDEN DE COMPRA", rightX, 80, { align: "right" });
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
   doc.text(
-    `Bodega destino: ${repairText(order.bodega_label || "Bodega matriz")}`,
+    `${PURCHASE_ORDER_TEMPLATE.cityEmission}, ${emissionDateLabel}`,
     rightX,
-    98,
+    70,
     { align: "right" },
   );
-  if (order.fecha_requerida) {
-    doc.text(`Fecha requerida: ${formatDate(order.fecha_requerida)}`, rightX, 112, {
-      align: "right",
-    });
-  }
-
-  let cursorY = 156;
-
-  doc.setFillColor(221, 234, 247);
-  doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 72, 8, 8, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text("Observación", marginX + 12, cursorY + 16);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  const obsLines = doc.splitTextToSize(
-    repairText(order.observacion || order.condicion_pago || "Sin observación"),
-    pageWidth - marginX * 2 - 24,
-  );
-  doc.text(obsLines, marginX + 12, cursorY + 32);
+  doc.text(`No. ${safeText(order.codigo, "OC-SIN-CODIGO")}`, rightX, 85, {
+    align: "right",
+  });
 
-  cursorY += 88;
-
-  doc.setFillColor(244, 244, 244);
-  doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, 66, 8, 8, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("Proveedor:", marginX + 12, cursorY + 18);
-  doc.text("Ced/RUC:", marginX + 12, cursorY + 34);
-  doc.text("REF:", marginX + 250, cursorY + 18);
-  doc.text("Vendedor:", marginX + 250, cursorY + 34);
+  doc.setFontSize(14);
+  doc.text("ORDEN DE COMPRA", pageWidth / 2, 112, { align: "center" });
+
   doc.setFont("helvetica", "normal");
-  doc.text(repairText(order.proveedor_nombre || "Sin proveedor"), marginX + 82, cursorY + 18);
-  doc.text(repairText(order.proveedor_identificacion || "-"), marginX + 82, cursorY + 34);
-  doc.text(repairText(order.referencia || "-"), marginX + 284, cursorY + 18);
-  doc.text(repairText(order.vendedor || "MATRIZ"), marginX + 304, cursorY + 34);
+  doc.setFontSize(9);
+  const observationLines = doc.splitTextToSize(
+    `Observación: ${observation}`,
+    usableWidth,
+  );
+  doc.text(observationLines, marginLeft, 136);
+  let cursorY = 136 + observationLines.length * 12 + 10;
 
-  cursorY += 84;
+  doc.setFont("helvetica", "bold");
+  doc.text("Proveedor:", marginLeft, cursorY);
+  doc.text("Ced/RUC:", marginLeft + 270, cursorY);
+  doc.text("REF:", rightX - 120, cursorY);
 
-  const details = Array.isArray(order.detalles) ? order.detalles : [];
+  doc.setFont("helvetica", "normal");
+  doc.text(safeText(order.proveedor_nombre, "Sin proveedor"), marginLeft + 56, cursorY);
+  doc.text(
+    safeText(order.proveedor_identificacion, "-"),
+    marginLeft + 320,
+    cursorY,
+  );
+  doc.text(safeText(order.referencia, "-"), rightX, cursorY, { align: "right" });
+
+  cursorY += 18;
+  doc.setFont("helvetica", "bold");
+  doc.text("Vendedor:", marginLeft, cursorY);
+  if (order.bodega_label) {
+    doc.text("Bodega:", marginLeft + 270, cursorY);
+  }
+  doc.setFont("helvetica", "normal");
+  doc.text(safeText(order.vendedor, "MATRIZ"), marginLeft + 54, cursorY);
+  if (order.bodega_label) {
+    doc.text(safeText(order.bodega_label), marginLeft + 314, cursorY);
+  }
+
+  cursorY += 18;
+  doc.line(marginLeft, cursorY, rightX, cursorY);
+  cursorY += 8;
+
   autoTable(doc, {
     startY: cursorY,
-    margin: { left: marginX, right: marginX },
+    margin: { left: marginLeft, right: marginRight },
     theme: "grid",
-    headStyles: {
-      fillColor: [31, 78, 120],
-      textColor: [255, 255, 255],
+    tableLineColor: [0, 0, 0],
+    tableLineWidth: 0.5,
+    styles: {
+      font: "helvetica",
       fontSize: 8,
-      halign: "center",
+      cellPadding: { top: 4, right: 4, bottom: 4, left: 4 },
+      lineColor: [0, 0, 0],
+      lineWidth: 0.4,
+      textColor: [0, 0, 0],
       valign: "middle",
+    },
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.5,
+      halign: "center",
       fontStyle: "bold",
     },
     bodyStyles: {
-      fontSize: 8,
-      textColor: [31, 41, 55],
-      cellPadding: 4,
-      overflow: "linebreak",
-      valign: "middle",
+      halign: "left",
     },
-    alternateRowStyles: {
-      fillColor: [247, 250, 252],
+    footStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      lineColor: [0, 0, 0],
+      lineWidth: 0.5,
+      fontStyle: "bold",
     },
     columnStyles: {
-      0: { cellWidth: 70 },
-      1: { cellWidth: 180 },
-      2: { cellWidth: 42, halign: "right" },
-      3: { cellWidth: 60, halign: "right" },
-      4: { cellWidth: 50, halign: "right" },
+      0: { cellWidth: 68 },
+      1: { cellWidth: 196 },
+      2: { cellWidth: 44, halign: "right" },
+      3: { cellWidth: 56, halign: "right" },
+      4: { cellWidth: 46, halign: "right" },
       5: { cellWidth: 50, halign: "right" },
-      6: { cellWidth: 36, halign: "right" },
+      6: { cellWidth: 56, halign: "right" },
       7: { cellWidth: 72, halign: "right" },
     },
     head: [[
@@ -214,63 +271,73 @@ export async function downloadPurchaseOrderPdf(
     ]],
     body: details.length
       ? details.map((detail) => [
-          repairText(detail.codigo_producto || "-"),
-          repairText(detail.nombre_producto || "-"),
+          safeText(detail.codigo_producto),
+          safeText(detail.nombre_producto),
           formatNumber(detail.cantidad, 2),
-          splitCurrency(detail.costo_unitario, currency),
-          splitCurrency(detail.descuento, currency),
+          formatMoney(detail.costo_unitario),
+          formatMoney(detail.descuento),
           formatNumber(detail.porcentaje_descuento, 2),
-          `${formatNumber(detail.iva_porcentaje, 0)}%`,
-          splitCurrency(detail.total, currency),
+          formatMoney(detail.iva_total),
+          formatMoney(detail.total),
         ])
-      : [["-", "Sin materiales cargados", "0.00", "0.00", "0.00", "0.00", "0%", "0.00"]],
+      : [["-", "Sin materiales cargados", "0.00", "0.00", "0.00", "0.00", "0.00", "0.00"]],
+    foot: [[
+      { content: "TOTALES:", colSpan: 2, styles: { halign: "right" } },
+      formatNumber(totalQuantity, 2),
+      formatMoneyWithSymbol(totalUnitCost),
+      formatMoneyWithSymbol(totalDiscount),
+      "",
+      formatMoneyWithSymbol(totalIva),
+      formatMoneyWithSymbol(totalAmount),
+    ]],
   });
 
-  const finalY = (doc as any).lastAutoTable?.finalY ?? cursorY + 120;
-  let totalsY = finalY + 18;
+  const lastTable = (doc as any).lastAutoTable;
+  let signatureY = (lastTable?.finalY ?? cursorY + 220) + 68;
+
+  if (signatureY > pageHeight - 150) {
+    doc.addPage();
+    signatureY = 150;
+  }
+
+  const lineWidth = 150;
+  const gap = (usableWidth - lineWidth * 3) / 2;
+  const signaturePositions: [number, number, number] = [
+    marginLeft,
+    marginLeft + lineWidth + gap,
+    marginLeft + (lineWidth + gap) * 2,
+  ];
+  const [preparedX, approvedX, receivedX] = signaturePositions;
+
+  signaturePositions.forEach((x) => {
+    doc.line(x, signatureY, x + lineWidth, signatureY);
+  });
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("Subtotal:", rightX - 110, totalsY);
-  doc.text(splitCurrency(order.subtotal, currency), rightX, totalsY, { align: "right" });
-  totalsY += 14;
-  doc.text("Descuento:", rightX - 110, totalsY);
-  doc.text(splitCurrency(order.descuento_total, currency), rightX, totalsY, {
-    align: "right",
+  doc.setFontSize(8.5);
+  doc.text("ELABORADO POR", preparedX + lineWidth / 2, signatureY + 14, {
+    align: "center",
   });
-  totalsY += 14;
-  doc.text("IVA:", rightX - 110, totalsY);
-  doc.text(splitCurrency(order.iva_total, currency), rightX, totalsY, { align: "right" });
-  totalsY += 16;
-  doc.setFontSize(11);
-  doc.text("TOTAL:", rightX - 110, totalsY);
-  doc.text(splitCurrency(order.total, currency), rightX, totalsY, { align: "right" });
-
-  const signatureY = Math.max(totalsY + 44, 690);
-  const signatureWidth = 150;
-  const signatureGap = (pageWidth - marginX * 2 - signatureWidth * 3) / 2;
-  const signatureXs = [
-    marginX,
-    marginX + signatureWidth + signatureGap,
-    marginX + (signatureWidth + signatureGap) * 2,
-  ];
-  const signatureLabels = ["Elaborado por", "Autorizado por", "Recibido por"];
-
-  doc.setLineWidth(0.6);
-  signatureXs.forEach((x, index) => {
-    doc.line(x, signatureY, x + signatureWidth, signatureY);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(signatureLabels[index] || "", x + signatureWidth / 2, signatureY + 14, {
-      align: "center",
-    });
+  doc.text("AUTORIZADO POR", approvedX + lineWidth / 2, signatureY + 14, {
+    align: "center",
+  });
+  doc.text("RECIBIDO POR", receivedX + lineWidth / 2, signatureY + 14, {
+    align: "center",
   });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(91, 107, 123);
-  doc.text(`Generado por: ${repairText(userName)}`, marginX, 812);
-  doc.text(todayLabel, rightX, 812, { align: "right" });
+  doc.text(preparedBy, preparedX, signatureY + 30);
+  doc.text(formatDate(order.fecha_emision || new Date()), preparedX, signatureY + 42);
+  doc.text(approvedBy, approvedX, signatureY + 30);
+  doc.text(formatDate(order.fecha_emision || new Date()), approvedX, signatureY + 42);
+  doc.text("CI:", receivedX, signatureY + 30);
 
-  doc.save(`${repairText(order.codigo || "orden_compra")}.pdf`);
+  doc.setFontSize(8);
+  doc.text(
+    `Generado por: ${safeText(userName, "Sistema")} a la fecha ${generatedAt}`,
+    marginLeft,
+    pageHeight - 26,
+  );
+
+  doc.save(`${safeText(order.codigo, "orden_compra")}.pdf`);
 }
