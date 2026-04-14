@@ -449,6 +449,7 @@ const serverItemsPerPage = ref(15);
 const serverTotalItems = ref(0);
 let serverFetchTimer: ReturnType<typeof setTimeout> | null = null;
 let serverRequestId = 0;
+const PURCHASE_ORDER_DEFAULT_IVA = 15;
 const orders = ref<PurchaseOrderRow[]>([]);
 const suppliers = ref<any[]>([]);
 const products = ref<any[]>([]);
@@ -538,7 +539,9 @@ const orderTotals = computed(() => {
           ? toNumber(detail.descuento)
           : gross * (toNumber(detail.porcentaje_descuento) / 100);
       const subtotal = Math.max(0, gross - discount);
-      const iva = subtotal * (toNumber(detail.iva_porcentaje || 12) / 100);
+      const iva =
+        subtotal *
+        (toNumber(detail.iva_porcentaje || PURCHASE_ORDER_DEFAULT_IVA) / 100);
       acc.subtotal += subtotal;
       acc.descuento += discount;
       acc.iva += iva;
@@ -648,7 +651,7 @@ function createEmptyDetail(): OrderDetailForm {
     costo_unitario: "0",
     descuento: "0",
     porcentaje_descuento: "0",
-    iva_porcentaje: "12",
+    iva_porcentaje: String(PURCHASE_ORDER_DEFAULT_IVA),
     observacion: "",
   };
 }
@@ -673,7 +676,9 @@ function detailGrandTotal(detail: OrderDetailForm) {
       ? toNumber(detail.descuento)
       : gross * (toNumber(detail.porcentaje_descuento) / 100);
   const subtotal = Math.max(0, gross - discount);
-  const iva = subtotal * (toNumber(detail.iva_porcentaje || 12) / 100);
+  const iva =
+    subtotal *
+    (toNumber(detail.iva_porcentaje || PURCHASE_ORDER_DEFAULT_IVA) / 100);
   return subtotal + iva;
 }
 
@@ -712,7 +717,7 @@ function handleDetailProductChange(detail: OrderDetailForm) {
   if (!product) return;
   detail.costo_unitario = String(product.costo_promedio || product.ultimo_costo || 0);
   if (!detail.iva_porcentaje) {
-    detail.iva_porcentaje = "12";
+    detail.iva_porcentaje = String(PURCHASE_ORDER_DEFAULT_IVA);
   }
 }
 
@@ -837,7 +842,9 @@ async function openEdit(item: PurchaseOrderRow) {
           costo_unitario: String(detail.costo_unitario || "0"),
           descuento: String(detail.descuento || "0"),
           porcentaje_descuento: String(detail.porcentaje_descuento || "0"),
-          iva_porcentaje: String(detail.iva_porcentaje || "12"),
+          iva_porcentaje: String(
+            detail.iva_porcentaje || String(PURCHASE_ORDER_DEFAULT_IVA),
+          ),
           observacion: String(detail.observacion || ""),
         }))
       : [createEmptyDetail()];
@@ -905,7 +912,9 @@ function buildPayload() {
       costo_unitario: toNumber(detail.costo_unitario),
       descuento: toNumber(detail.descuento),
       porcentaje_descuento: toNumber(detail.porcentaje_descuento),
-      iva_porcentaje: toNumber(detail.iva_porcentaje || 12),
+      iva_porcentaje: toNumber(
+        detail.iva_porcentaje || PURCHASE_ORDER_DEFAULT_IVA,
+      ),
       observacion: detail.observacion || undefined,
     })),
   };
