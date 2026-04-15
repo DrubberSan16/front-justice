@@ -87,239 +87,6 @@
       </v-row>
     </v-card>
 
-    <v-row class="mb-1">
-      <v-col cols="12" md="6" xl="4">
-        <DashboardBarChartCard
-          title="Distribucion por proceso"
-          subtitle="Peso de cada frente operativo dentro del periodo"
-          :chip-label="`${breakdownItems.length} procesos`"
-          chip-color="primary"
-          :items="breakdownChartItems"
-          empty-text="Sin eventos documentados para graficar."
-        />
-      </v-col>
-
-      <v-col cols="12" md="6" xl="4">
-        <DashboardBarChartCard
-          title="Presion operativa"
-          subtitle="Backlog, eventos y monitoreo critico"
-          :chip-label="`${processIndicatorRows.length} KPI`"
-          chip-color="warning"
-          :items="processPressureChartItems"
-          empty-text="No hay indicadores operativos para comparar."
-        />
-      </v-col>
-
-      <v-col cols="12" xl="4">
-        <DashboardBarChartCard
-          title="Cadencia operativa"
-          subtitle="Horas programadas por dia en OPERACION y MPG"
-          :chip-label="operationScheduleSummary.hoursLabel"
-          chip-color="success"
-          :items="operationCadenceChartItems"
-          empty-text="No hay actividades OPERACION/MPG para el periodo seleccionado."
-        />
-      </v-col>
-    </v-row>
-
-    <v-row>
-      <v-col cols="12" lg="4">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between mb-3 intelligence-wrap">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">Indicadores de proceso</div>
-              <div class="text-body-2 text-medium-emphasis">Semaforizacion operativa y trazabilidad por proceso.</div>
-            </div>
-            <v-chip label color="secondary" variant="tonal">{{ processIndicatorRows.length }} indicadores</v-chip>
-          </div>
-
-          <LoadingTableState v-if="loading" message="Cargando indicadores de proceso..." :rows="4" :columns="2" />
-          <div v-else class="indicator-grid">
-            <div v-for="item in processIndicatorRows" :key="item.key" class="indicator-tile">
-              <div class="text-caption text-medium-emphasis">{{ item.label }}</div>
-              <div class="text-h6 font-weight-bold">{{ item.value }}</div>
-              <div class="text-caption text-medium-emphasis">{{ item.helper }}</div>
-            </div>
-          </div>
-
-          <v-divider class="my-4" />
-
-          <div class="text-subtitle-2 font-weight-medium mb-2">Distribucion por proceso</div>
-          <LoadingTableState v-if="loading" message="Cargando distribución por proceso..." :rows="3" :columns="2" />
-          <div v-else class="breakdown-grid">
-            <div v-for="item in breakdownItems" :key="item.tipo_proceso" class="breakdown-chip">
-              <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
-              <div class="text-h6 font-weight-bold">{{ item.total }}</div>
-            </div>
-            <div v-if="!breakdownItems.length" class="text-body-2 text-medium-emphasis">
-              Sin eventos documentados.
-            </div>
-          </div>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" lg="8">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between mb-3 intelligence-wrap">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">Eventos y notificaciones</div>
-              <div class="text-body-2 text-medium-emphasis">Cada proceso principal deja traza y dispara el KPI operativo.</div>
-            </div>
-            <v-chip label color="secondary" variant="tonal">{{ recentEvents.length }} eventos recientes</v-chip>
-          </div>
-
-          <div class="summary-strip mb-3">
-            <v-chip size="small" label color="secondary" variant="tonal">
-              {{ recentEvents.length }} eventos visibles
-            </v-chip>
-            <v-chip size="small" label color="info" variant="tonal">
-              {{ breakdownItems.length }} procesos activos
-            </v-chip>
-            <v-chip size="small" label color="success" variant="tonal">
-              {{ generatedAtLabel }}
-            </v-chip>
-          </div>
-
-          <LoadingTableState v-if="loading" message="Cargando eventos recientes..." :rows="5" :columns="4" />
-          <div v-else class="dashboard-table-shell">
-            <v-table density="compact" class="dashboard-mini-table">
-              <thead>
-                <tr>
-                  <th>Proceso</th>
-                  <th>Accion</th>
-                  <th>Referencia</th>
-                  <th>Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in recentEventsTableRows" :key="item.id">
-                  <td class="font-weight-medium">{{ item.proceso }}</td>
-                  <td>{{ item.accion }}</td>
-                  <td>{{ item.referencia }}</td>
-                  <td class="text-medium-emphasis">{{ item.fecha }}</td>
-                </tr>
-                <tr v-if="!recentEventsTableRows.length">
-                  <td colspan="4" class="text-center text-medium-emphasis py-4">
-                    Las notificaciones de mantenimiento apareceran aqui.
-                  </td>
-                </tr>
-              </tbody>
-            </v-table>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-
-    <v-row>
-      <v-col cols="12" xl="6">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">Procedimientos y plantillas MPG</div>
-              <div class="text-body-2 text-medium-emphasis">Base operativa para mantenimientos preventivos y flujos de trabajo.</div>
-            </div>
-            <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-              <v-chip label color="primary" variant="tonal">{{ procedures.length }} plantillas</v-chip>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('procedimientos', 'excel')" @click="exportModule('procedimientos', 'excel')">Excel</v-btn>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('procedimientos', 'pdf')" @click="exportModule('procedimientos', 'pdf')">PDF</v-btn>
-            </div>
-          </div>
-
-          <div class="summary-strip mb-4">
-            <v-chip label color="secondary" variant="tonal">Actividades: {{ totalProcedureActivities }}</v-chip>
-            <v-chip label color="info" variant="tonal">Clases: {{ maintenanceClassesCount }}</v-chip>
-            <v-chip label color="success" variant="tonal">Documentos base: {{ procedureDocumentCount }}</v-chip>
-          </div>
-
-          <LoadingTableState v-if="loading" message="Cargando plantillas MPG..." :rows="5" :columns="5" />
-          <div v-else class="dashboard-table-shell">
-            <v-table density="compact" class="dashboard-mini-table">
-              <thead>
-                <tr>
-                  <th>Codigo</th>
-                  <th>Plantilla</th>
-                  <th>Frecuencia</th>
-                  <th>Actividades</th>
-                  <th>Documento</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in procedurePreview" :key="item.id">
-                  <td>{{ item.codigo }}</td>
-                  <td>
-                    <div class="font-weight-medium">{{ item.nombre }}</div>
-                    <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
-                  </td>
-                  <td>{{ item.frecuencia_horas ? `${item.frecuencia_horas} H` : "N/A" }}</td>
-                  <td>{{ item.actividades?.length ?? 0 }}</td>
-                  <td>{{ item.documento_referencia || "Sin referencia" }}</td>
-                </tr>
-                <tr v-if="!procedurePreview.length">
-                  <td colspan="5" class="text-center text-medium-emphasis py-4">No hay procedimientos cargados.</td>
-                </tr>
-              </tbody>
-            </v-table>
-          </div>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12" xl="6">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
-            <div>
-              <div class="text-subtitle-1 font-weight-bold">Analisis de lubricante</div>
-              <div class="text-body-2 text-medium-emphasis">Control predictivo por compartimento, diagnostico y nivel de alerta.</div>
-            </div>
-            <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-              <v-chip label color="warning" variant="tonal">{{ filteredAnalyses.length }} analisis</v-chip>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('analisis', 'excel')" @click="exportModule('analisis', 'excel')">Excel</v-btn>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('analisis', 'pdf')" @click="exportModule('analisis', 'pdf')">PDF</v-btn>
-            </div>
-          </div>
-
-          <div class="summary-strip mb-4">
-            <v-chip label color="error" variant="tonal">Alerta: {{ analysesInAlert }}</v-chip>
-            <v-chip label color="secondary" variant="tonal">Parametros: {{ analysisDetailCount }}</v-chip>
-            <v-chip label color="success" variant="tonal">Lubricantes: {{ analysisLubricantCount }}</v-chip>
-          </div>
-
-          <LoadingTableState v-if="loading" message="Cargando análisis de lubricante..." :rows="5" :columns="5" />
-          <div v-else class="dashboard-table-shell">
-            <v-table density="compact" class="dashboard-mini-table">
-            <thead>
-              <tr>
-                <th>Codigo</th>
-                <th>Equipo</th>
-                <th>Compartimento</th>
-                <th>Estado</th>
-                <th>Fecha reporte</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in analysisPreview" :key="item.id">
-                <td>{{ item.codigo }}</td>
-                <td>
-                  <div class="font-weight-medium">{{ item.lubricante || item.equipo_codigo || "Sin lubricante" }}</div>
-                  <div class="text-caption text-medium-emphasis">{{ item.marca_lubricante || item.equipo_nombre || "Sin marca" }}</div>
-                </td>
-                <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
-                <td>
-                  <v-chip size="small" :color="chipColorForStatus(item.estado_diagnostico)" variant="tonal">
-                    {{ item.estado_diagnostico || "NORMAL" }}
-                  </v-chip>
-                </td>
-                <td>{{ item.fecha_reporte || "Sin fecha" }}</td>
-              </tr>
-              <tr v-if="!analysisPreview.length">
-                <td colspan="5" class="text-center text-medium-emphasis py-4">No hay analisis cargados.</td>
-              </tr>
-            </tbody>
-            </v-table>
-          </div>
-        </v-card>
-      </v-col>
-    </v-row>
-
     <v-row>
       <v-col cols="12">
         <v-card rounded="xl" class="pa-5 enterprise-surface">
@@ -566,6 +333,241 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <v-row class="mb-1">
+      <v-col cols="12" md="6" xl="4">
+        <DashboardBarChartCard
+          title="Distribucion por proceso"
+          subtitle="Peso de cada frente operativo dentro del periodo"
+          :chip-label="`${breakdownItems.length} procesos`"
+          chip-color="primary"
+          :items="breakdownChartItems"
+          empty-text="Sin eventos documentados para graficar."
+        />
+      </v-col>
+
+      <v-col cols="12" md="6" xl="4">
+        <DashboardBarChartCard
+          title="Presion operativa"
+          subtitle="Backlog, eventos y monitoreo critico"
+          :chip-label="`${processIndicatorRows.length} KPI`"
+          chip-color="warning"
+          :items="processPressureChartItems"
+          empty-text="No hay indicadores operativos para comparar."
+        />
+      </v-col>
+
+      <v-col cols="12" xl="4">
+        <DashboardBarChartCard
+          title="Cadencia operativa"
+          subtitle="Horas programadas por dia en OPERACION y MPG"
+          :chip-label="operationScheduleSummary.hoursLabel"
+          chip-color="success"
+          :items="operationCadenceChartItems"
+          empty-text="No hay actividades OPERACION/MPG para el periodo seleccionado."
+        />
+      </v-col>
+    </v-row>
+
+    <v-row>
+      <v-col cols="12" lg="4">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-3 intelligence-wrap">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Indicadores de proceso</div>
+              <div class="text-body-2 text-medium-emphasis">Semaforizacion operativa y trazabilidad por proceso.</div>
+            </div>
+            <v-chip label color="secondary" variant="tonal">{{ processIndicatorRows.length }} indicadores</v-chip>
+          </div>
+
+          <LoadingTableState v-if="loading" message="Cargando indicadores de proceso..." :rows="4" :columns="2" />
+          <div v-else class="indicator-grid">
+            <div v-for="item in processIndicatorRows" :key="item.key" class="indicator-tile">
+              <div class="text-caption text-medium-emphasis">{{ item.label }}</div>
+              <div class="text-h6 font-weight-bold">{{ item.value }}</div>
+              <div class="text-caption text-medium-emphasis">{{ item.helper }}</div>
+            </div>
+          </div>
+
+          <v-divider class="my-4" />
+
+          <div class="text-subtitle-2 font-weight-medium mb-2">Distribucion por proceso</div>
+          <LoadingTableState v-if="loading" message="Cargando distribución por proceso..." :rows="3" :columns="2" />
+          <div v-else class="breakdown-grid">
+            <div v-for="item in breakdownItems" :key="item.tipo_proceso" class="breakdown-chip">
+              <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
+              <div class="text-h6 font-weight-bold">{{ item.total }}</div>
+            </div>
+            <div v-if="!breakdownItems.length" class="text-body-2 text-medium-emphasis">
+              Sin eventos documentados.
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" lg="8">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-3 intelligence-wrap">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Eventos y notificaciones</div>
+              <div class="text-body-2 text-medium-emphasis">Cada proceso principal deja traza y dispara el KPI operativo.</div>
+            </div>
+            <v-chip label color="secondary" variant="tonal">{{ recentEvents.length }} eventos recientes</v-chip>
+          </div>
+
+          <div class="summary-strip mb-3">
+            <v-chip size="small" label color="secondary" variant="tonal">
+              {{ recentEvents.length }} eventos visibles
+            </v-chip>
+            <v-chip size="small" label color="info" variant="tonal">
+              {{ breakdownItems.length }} procesos activos
+            </v-chip>
+            <v-chip size="small" label color="success" variant="tonal">
+              {{ generatedAtLabel }}
+            </v-chip>
+          </div>
+
+          <LoadingTableState v-if="loading" message="Cargando eventos recientes..." :rows="5" :columns="4" />
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+              <thead>
+                <tr>
+                  <th>Proceso</th>
+                  <th>Accion</th>
+                  <th>Referencia</th>
+                  <th>Fecha</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in recentEventsTableRows" :key="item.id">
+                  <td class="font-weight-medium">{{ item.proceso }}</td>
+                  <td>{{ item.accion }}</td>
+                  <td>{{ item.referencia }}</td>
+                  <td class="text-medium-emphasis">{{ item.fecha }}</td>
+                </tr>
+                <tr v-if="!recentEventsTableRows.length">
+                  <td colspan="4" class="text-center text-medium-emphasis py-4">
+                    Las notificaciones de mantenimiento apareceran aqui.
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <v-row>
+      <v-col cols="12" xl="6">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Procedimientos y plantillas MPG</div>
+              <div class="text-body-2 text-medium-emphasis">Base operativa para mantenimientos preventivos y flujos de trabajo.</div>
+            </div>
+            <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
+              <v-chip label color="primary" variant="tonal">{{ procedures.length }} plantillas</v-chip>
+              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('procedimientos', 'excel')" @click="exportModule('procedimientos', 'excel')">Excel</v-btn>
+              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('procedimientos', 'pdf')" @click="exportModule('procedimientos', 'pdf')">PDF</v-btn>
+            </div>
+          </div>
+
+          <div class="summary-strip mb-4">
+            <v-chip label color="secondary" variant="tonal">Actividades: {{ totalProcedureActivities }}</v-chip>
+            <v-chip label color="info" variant="tonal">Clases: {{ maintenanceClassesCount }}</v-chip>
+            <v-chip label color="success" variant="tonal">Documentos base: {{ procedureDocumentCount }}</v-chip>
+          </div>
+
+          <LoadingTableState v-if="loading" message="Cargando plantillas MPG..." :rows="5" :columns="5" />
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+              <thead>
+                <tr>
+                  <th>Codigo</th>
+                  <th>Plantilla</th>
+                  <th>Frecuencia</th>
+                  <th>Actividades</th>
+                  <th>Documento</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in procedurePreview" :key="item.id">
+                  <td>{{ item.codigo }}</td>
+                  <td>
+                    <div class="font-weight-medium">{{ item.nombre }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ prettifyProcess(item.tipo_proceso) }}</div>
+                  </td>
+                  <td>{{ item.frecuencia_horas ? `${item.frecuencia_horas} H` : "N/A" }}</td>
+                  <td>{{ item.actividades?.length ?? 0 }}</td>
+                  <td>{{ item.documento_referencia || "Sin referencia" }}</td>
+                </tr>
+                <tr v-if="!procedurePreview.length">
+                  <td colspan="5" class="text-center text-medium-emphasis py-4">No hay procedimientos cargados.</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" xl="6">
+        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
+          <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Analisis de lubricante</div>
+              <div class="text-body-2 text-medium-emphasis">Control predictivo por compartimento, diagnostico y nivel de alerta.</div>
+            </div>
+            <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
+              <v-chip label color="warning" variant="tonal">{{ filteredAnalyses.length }} analisis</v-chip>
+              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('analisis', 'excel')" @click="exportModule('analisis', 'excel')">Excel</v-btn>
+              <v-btn size="small" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('analisis', 'pdf')" @click="exportModule('analisis', 'pdf')">PDF</v-btn>
+            </div>
+          </div>
+
+          <div class="summary-strip mb-4">
+            <v-chip label color="error" variant="tonal">Alerta: {{ analysesInAlert }}</v-chip>
+            <v-chip label color="secondary" variant="tonal">Parametros: {{ analysisDetailCount }}</v-chip>
+            <v-chip label color="success" variant="tonal">Lubricantes: {{ analysisLubricantCount }}</v-chip>
+          </div>
+
+          <LoadingTableState v-if="loading" message="Cargando análisis de lubricante..." :rows="5" :columns="5" />
+          <div v-else class="dashboard-table-shell">
+            <v-table density="compact" class="dashboard-mini-table">
+            <thead>
+              <tr>
+                <th>Codigo</th>
+                <th>Equipo</th>
+                <th>Compartimento</th>
+                <th>Estado</th>
+                <th>Fecha reporte</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in analysisPreview" :key="item.id">
+                <td>{{ item.codigo }}</td>
+                <td>
+                  <div class="font-weight-medium">{{ item.lubricante || item.equipo_codigo || "Sin lubricante" }}</div>
+                  <div class="text-caption text-medium-emphasis">{{ item.marca_lubricante || item.equipo_nombre || "Sin marca" }}</div>
+                </td>
+                <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
+                <td>
+                  <v-chip size="small" :color="chipColorForStatus(item.estado_diagnostico)" variant="tonal">
+                    {{ item.estado_diagnostico || "NORMAL" }}
+                  </v-chip>
+                </td>
+                <td>{{ item.fecha_reporte || "Sin fecha" }}</td>
+              </tr>
+              <tr v-if="!analysisPreview.length">
+                <td colspan="5" class="text-center text-medium-emphasis py-4">No hay analisis cargados.</td>
+              </tr>
+            </tbody>
+            </v-table>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    
 
     <v-row>
       <v-col cols="12">
