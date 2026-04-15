@@ -467,6 +467,18 @@ export async function downloadReportPdf(report: ReportDefinition) {
     const rows = normalizeRows(sheet.rows);
     const safeRows = rows.length ? rows : [{ Estado: sheet.emptyMessage || "Sin registros disponibles" }];
     const columns = resolveColumns(sheet, safeRows);
+    const compactTable = columns.length >= 9;
+    const columnStyles = Object.fromEntries(
+      columns.map((column, columnIndex) => [
+        columnIndex,
+        {
+          cellWidth: Math.max(
+            compactTable ? 42 : 52,
+            Math.min(compactTable ? 140 : 180, Number(column.width ?? 14) * (compactTable ? 4.2 : 5.2)),
+          ),
+        },
+      ]),
+    );
 
     if (index > 0) {
       doc.addPage(report.orientation ?? "landscape");
@@ -500,19 +512,27 @@ export async function downloadReportPdf(report: ReportDefinition) {
       startY: cursorY,
       margin: { left: marginX, right: marginX },
       theme: "grid",
+      styles: {
+        fontSize: compactTable ? 6.5 : 8,
+        cellPadding: compactTable ? 3 : 5,
+        overflow: "linebreak",
+        valign: "middle",
+      },
       headStyles: {
         fillColor: [31, 78, 120],
         textColor: [255, 255, 255],
         fontStyle: "bold",
         halign: "center",
+        fontSize: compactTable ? 7 : 8,
       },
       bodyStyles: {
         textColor: [31, 41, 55],
-        fontSize: 8,
-        cellPadding: 5,
+        fontSize: compactTable ? 6.5 : 8,
+        cellPadding: compactTable ? 3 : 5,
         overflow: "linebreak",
       },
       alternateRowStyles: { fillColor: [247, 250, 252] },
+      columnStyles,
       head: [columns.map((column) => repairText(column.header))],
       body: safeRows.map((row) =>
         columns.map((column) => repairText(String(formatValue(row[column.key] ?? row[column.header])))),
@@ -877,6 +897,30 @@ export function buildWorkOrderReport(payload: {
   history: AnyRow[];
 }) {
   const header = payload.header || {};
+  const mainHeaderRow = {
+    codigo: header.code || header.codigo || "",
+    estado: header.status_workflow || "",
+    equipo: header.equipment_label || header.equipo_nombre || header.equipment_id || "",
+    compartimiento: header.equipment_component_label || header.equipo_componente_nombre_oficial || "",
+    mantenimiento: header.maintenance_kind || header.tipo_mantenimiento || "",
+    procedimiento: header.procedimiento || "",
+    plan_operativo: header.plan_operativo || "",
+    alerta: header.alerta || "",
+    causa: header.causa || "",
+    accion: header.accion || "",
+    prevencion: header.prevencion || "",
+  };
+  const traceabilityRow = {
+    creado_por: header.creado_por || "",
+    fecha_creacion: header.fecha_creacion || "",
+    realizado_por: header.realizado_por || "",
+    fecha_realizacion: header.fecha_realizacion || "",
+    aprobado_por: header.aprobado_por || "",
+    fecha_aprobacion: header.fecha_aprobacion || "",
+    accion_aprobacion: header.accion_aprobacion || "",
+    ot_bloqueante: header.blocked_by || "",
+    motivo_bloqueo: header.blocked_reason || "",
+  };
   return {
     fileName: `ot_${repairText(String(header.code || header.codigo || "sin_codigo"))}`.replace(/\s+/g, "_"),
     title: `Reporte de orden de trabajo ${repairText(String(header.code || header.codigo || ""))}`.trim(),
@@ -902,7 +946,40 @@ export function buildWorkOrderReport(payload: {
       { label: "Salidas", value: payload.issues.length },
     ],
     sheets: [
-      { name: "Cabecera", rows: [header], note: "Datos principales de la orden de trabajo." },
+      {
+        name: "Cabecera",
+        rows: [mainHeaderRow],
+        note: "Datos principales de la orden de trabajo. La trazabilidad operativa y de aprobacion se muestra en la hoja siguiente.",
+        columns: [
+          { key: "codigo", header: "Codigo", width: 12 },
+          { key: "estado", header: "Estado", width: 12 },
+          { key: "equipo", header: "Equipo", width: 16 },
+          { key: "compartimiento", header: "Compartimiento", width: 18 },
+          { key: "mantenimiento", header: "Tipo mtto", width: 12 },
+          { key: "procedimiento", header: "Procedimiento", width: 18 },
+          { key: "plan_operativo", header: "Plan operativo", width: 18 },
+          { key: "alerta", header: "Alerta", width: 16 },
+          { key: "causa", header: "Causa", width: 24 },
+          { key: "accion", header: "Accion", width: 24 },
+          { key: "prevencion", header: "Prevencion", width: 24 },
+        ],
+      },
+      {
+        name: "Trazabilidad",
+        rows: [traceabilityRow],
+        note: "Responsables y fechas de creacion, ejecucion, aprobacion y bloqueo de la orden.",
+        columns: [
+          { key: "creado_por", header: "Creado por", width: 16 },
+          { key: "fecha_creacion", header: "Fecha creacion", width: 18, format: "datetime" },
+          { key: "realizado_por", header: "Realizado por", width: 16 },
+          { key: "fecha_realizacion", header: "Fecha realizacion", width: 18, format: "datetime" },
+          { key: "aprobado_por", header: "Aprobado por", width: 16 },
+          { key: "fecha_aprobacion", header: "Fecha aprobacion", width: 18, format: "datetime" },
+          { key: "accion_aprobacion", header: "Accion final", width: 16 },
+          { key: "ot_bloqueante", header: "OT bloqueante", width: 18 },
+          { key: "motivo_bloqueo", header: "Motivo bloqueo", width: 22 },
+        ],
+      },
       { name: "Tareas", rows: payload.tasks },
       { name: "Adjuntos", rows: payload.attachments },
       { name: "Consumos", rows: payload.consumos },

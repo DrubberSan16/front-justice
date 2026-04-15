@@ -59,6 +59,15 @@
           v-if="editingId && canAccessWorkOrderReports"
           variant="tonal"
           class="mr-2"
+          prepend-icon="mdi-eye-outline"
+          @click="reportPreviewDialog = true"
+        >
+          Ver reporte
+        </v-btn>
+        <v-btn
+          v-if="editingId && canAccessWorkOrderReports"
+          variant="tonal"
+          class="mr-2"
           prepend-icon="mdi-file-excel"
           :loading="isExporting('excel')"
           @click="exportWorkOrder('excel')"
@@ -666,6 +675,152 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog
+    v-model="reportPreviewDialog"
+    :fullscreen="isReportPreviewFullscreen"
+    :max-width="isReportPreviewFullscreen ? undefined : 1360"
+    scrollable
+  >
+    <v-card rounded="xl" class="report-preview-dialog">
+      <v-toolbar color="primary" density="comfortable">
+        <v-btn icon="mdi-close" @click="reportPreviewDialog = false" />
+        <v-toolbar-title>Reporte de orden de trabajo</v-toolbar-title>
+        <v-spacer />
+        <v-btn
+          variant="tonal"
+          class="mr-2"
+          prepend-icon="mdi-file-excel"
+          :loading="isExporting('excel')"
+          @click="exportWorkOrder('excel')"
+        >
+          Excel
+        </v-btn>
+        <v-btn
+          variant="tonal"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="isExporting('pdf')"
+          @click="exportWorkOrder('pdf')"
+        >
+          PDF
+        </v-btn>
+      </v-toolbar>
+
+      <v-card-text class="report-preview-body">
+        <div class="d-flex align-center justify-space-between flex-wrap mb-4" style="gap: 12px;">
+          <div>
+            <div class="text-h6 font-weight-bold">{{ headerForm.code || "Orden de trabajo" }}</div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ [selectedEquipmentLabel, selectedEquipmentComponentLabel, headerForm.maintenance_kind].filter(Boolean).join(" · ") || "Sin contexto operativo" }}
+            </div>
+          </div>
+          <div class="d-flex flex-wrap" style="gap: 8px;">
+            <v-chip
+              v-for="item in workOrderPreviewSummary"
+              :key="item.label"
+              size="small"
+              color="primary"
+              variant="tonal"
+            >
+              {{ item.label }}: {{ item.value }}
+            </v-chip>
+          </div>
+        </div>
+
+        <v-row dense class="mb-4">
+          <v-col cols="12" md="7">
+            <v-card rounded="lg" class="section-card h-100 pa-4">
+              <div class="text-subtitle-1 font-weight-bold mb-3">Datos principales</div>
+              <div class="report-preview-grid">
+                <div v-for="item in workOrderPreviewMainInfo" :key="item.label" class="report-preview-field">
+                  <span class="report-preview-field__label">{{ item.label }}</span>
+                  <strong class="report-preview-field__value">{{ item.value || "Sin dato" }}</strong>
+                </div>
+              </div>
+            </v-card>
+          </v-col>
+          <v-col cols="12" md="5">
+            <v-card rounded="lg" class="section-card h-100 pa-4">
+              <div class="text-subtitle-1 font-weight-bold mb-3">Trazabilidad</div>
+              <div class="report-preview-grid report-preview-grid--trace">
+                <div v-for="item in workOrderPreviewTraceability" :key="item.label" class="report-preview-field">
+                  <span class="report-preview-field__label">{{ item.label }}</span>
+                  <strong class="report-preview-field__value">{{ item.value || "Sin dato" }}</strong>
+                </div>
+              </div>
+            </v-card>
+          </v-col>
+        </v-row>
+
+        <v-expansion-panels multiple variant="accordion">
+          <v-expansion-panel>
+            <v-expansion-panel-title>Tareas ejecutadas ({{ taskRows.length }})</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <v-data-table
+                :headers="reportPreviewTaskHeaders"
+                :items="reportPreviewTasks"
+                density="compact"
+                class="table-enterprise enterprise-table"
+                :items-per-page="10"
+              />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel>
+            <v-expansion-panel-title>Adjuntos ({{ attachmentRows.length }})</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <v-data-table
+                :headers="reportPreviewAttachmentHeaders"
+                :items="reportPreviewAttachments"
+                density="compact"
+                class="table-enterprise enterprise-table"
+                :items-per-page="10"
+              />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel>
+            <v-expansion-panel-title>Consumos ({{ consumoRows.length }})</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <v-data-table
+                :headers="reportPreviewConsumoHeaders"
+                :items="consumoRows"
+                density="compact"
+                class="table-enterprise enterprise-table"
+                :items-per-page="10"
+              />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel>
+            <v-expansion-panel-title>Salidas de material ({{ issueRows.length }})</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <v-data-table
+                :headers="reportPreviewIssueHeaders"
+                :items="issueRows"
+                density="compact"
+                class="table-enterprise enterprise-table"
+                :items-per-page="10"
+              />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel>
+            <v-expansion-panel-title>Histórico ({{ localHistory.length }})</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <v-data-table
+                :headers="reportPreviewHistoryHeaders"
+                :items="reportPreviewHistory"
+                density="compact"
+                class="table-enterprise enterprise-table"
+                :items-per-page="10"
+              />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
+      </v-card-text>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -700,7 +855,9 @@ const records = ref<any[]>([]);
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const reportPreviewDialog = ref(false);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
+const isReportPreviewFullscreen = computed(() => smAndDown.value);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
@@ -1010,6 +1167,112 @@ const issueHeaders = computed(() => {
 });
 
 const currentWorkOrderAudit = computed(() => currentWorkOrderRecord.value?._raw ?? currentWorkOrderRecord.value ?? {});
+const workOrderPreviewSummary = computed(() => [
+  { label: "Estado", value: workflowLabel(headerForm.status_workflow) },
+  { label: "Tareas", value: taskRows.value.length },
+  { label: "Adjuntos", value: attachmentRows.value.length },
+  { label: "Consumos", value: consumoRows.value.length },
+  { label: "Salidas", value: issueRows.value.length },
+]);
+const workOrderPreviewMainInfo = computed(() => [
+  { label: "Código", value: headerForm.code },
+  { label: "Equipo", value: selectedEquipmentLabel.value },
+  { label: "Compartimiento", value: selectedEquipmentComponentLabel.value },
+  { label: "Tipo de mantenimiento", value: headerForm.maintenance_kind },
+  { label: "Procedimiento", value: selectedProcedureLabel.value },
+  { label: "Plan operativo", value: resolvedOperationalPlanLabel.value },
+  { label: "Alerta", value: selectedAlertLabel.value },
+  { label: "Causa", value: headerForm.causa },
+  { label: "Acción", value: headerForm.accion },
+  { label: "Prevención", value: headerForm.prevencion },
+]);
+const workOrderPreviewTraceability = computed(() => [
+  { label: "Creado por", value: currentWorkOrderAudit.value?.created_by_label || currentWorkOrderAudit.value?.created_by || "" },
+  { label: "Fecha creación", value: currentWorkOrderAudit.value?.created_at || "" },
+  { label: "Realizado por", value: currentWorkOrderAudit.value?.processed_by_label || currentWorkOrderAudit.value?.updated_by || "" },
+  { label: "Fecha realización", value: currentWorkOrderAudit.value?.processed_at || currentWorkOrderAudit.value?.updated_at || "" },
+  { label: "Aprobado por", value: currentWorkOrderAudit.value?.approved_by_label || "" },
+  { label: "Fecha aprobación", value: currentWorkOrderAudit.value?.approved_at || "" },
+  { label: "Acción final", value: currentWorkOrderAudit.value?.approval_action || "" },
+  { label: "OT bloqueante", value: selectedBlockingOrderLabel.value },
+  { label: "Motivo bloqueo", value: headerForm.blocked_reason || "" },
+]);
+const reportPreviewTaskHeaders = [
+  { title: "Plan", key: "plan" },
+  { title: "Tarea", key: "tarea" },
+  { title: "Captura", key: "captura" },
+  { title: "Observación", key: "observacion" },
+  { title: "Requisitos", key: "requisitos" },
+];
+const reportPreviewAttachmentHeaders = [
+  { title: "Tipo", key: "tipo" },
+  { title: "Origen", key: "origen" },
+  { title: "Nombre", key: "nombre" },
+];
+const reportPreviewConsumoHeaders = computed(() => {
+  const base = [
+    { title: "Bodega", key: "bodega_label" },
+    { title: "Material", key: "producto_label" },
+    { title: "Reservado", key: "cantidad_reservada" },
+    { title: "Emitido", key: "cantidad_emitida" },
+    { title: "Pendiente", key: "cantidad_pendiente" },
+  ];
+  if (canViewCosts.value) {
+    base.push({ title: "Costo", key: "costo_unitario" } as any);
+    base.push({ title: "Subtotal", key: "subtotal" } as any);
+  }
+  return base;
+});
+const reportPreviewIssueHeaders = computed(() => {
+  const base = [
+    { title: "Salida", key: "entrega_code" },
+    { title: "Fecha", key: "fecha_label" },
+    { title: "Bodega", key: "bodega_label" },
+    { title: "Material", key: "producto_label" },
+    { title: "Cantidad", key: "cantidad" },
+  ];
+  if (canViewCosts.value) {
+    base.push({ title: "Costo", key: "costo_unitario" } as any);
+    base.push({ title: "Subtotal", key: "subtotal" } as any);
+  }
+  return base;
+});
+const reportPreviewHistoryHeaders = [
+  { title: "Desde", key: "from" },
+  { title: "Hacia", key: "to" },
+  { title: "Usuario", key: "user" },
+  { title: "Fecha", key: "date" },
+  { title: "Nota", key: "note" },
+];
+const reportPreviewTasks = computed(() =>
+  taskRows.value.map((item: any) => ({
+    plan: getPlanLabelForTask(item),
+    tarea: getTaskLabelForTask(item),
+    captura: [
+      item?.valor_boolean != null ? (item.valor_boolean ? "Sí" : "No") : "",
+      item?.valor_numeric ?? "",
+      item?.valor_text ?? "",
+    ].filter(Boolean).join(" · "),
+    observacion: item?.observacion || "",
+    requisitos: getTaskRequirementChips(item).join(" · "),
+  })),
+);
+const reportPreviewAttachments = computed(() =>
+  attachmentRows.value.map((item: any) => ({
+    tipo: item?.tipo || "",
+    origen: getAttachmentOriginLabel(item),
+    nombre: item?.nombre || "",
+  })),
+);
+const reportPreviewHistory = computed(() =>
+  localHistory.value.map((item: any) => ({
+    from: workflowLabel(item?.from_status),
+    to: workflowLabel(item?.to_status),
+    user: item?.changed_by || "",
+    date: item?.changed_at ? new Date(item.changed_at).toLocaleString() : "",
+    note: item?.note || "",
+  })),
+);
 
 const workOrderReportDefinition = computed(() =>
   buildWorkOrderReport({
@@ -3077,6 +3340,52 @@ watch(
 
 .section-card :deep(.v-field) {
   background: var(--field-background);
+}
+
+.report-preview-dialog {
+  background: var(--app-main-background);
+  color: var(--app-text);
+}
+
+.report-preview-body {
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--v-theme-primary) 10%, transparent), transparent 32%),
+    var(--app-main-background);
+}
+
+.report-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.report-preview-grid--trace {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.report-preview-field {
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+  padding: 12px 14px;
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-preview-field__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.report-preview-field__value {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--app-text);
+  word-break: break-word;
 }
 
 .capture-cell {
