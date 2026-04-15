@@ -506,6 +506,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canAccessDigitalTwins } from "@/app/utils/role-access";
+import { formatDateTime } from "@/app/utils/date-time";
 
 type TwinRow = {
   twin?: {
@@ -677,7 +678,7 @@ function riskPercent(value: number) {
 
 function formatDate(value?: string | null) {
   if (!value) return "Sin fecha";
-  return new Date(value).toLocaleString("es-EC");
+  return formatDateTime(value, "Sin fecha");
 }
 
 function displaySignalValue(signal: any) {

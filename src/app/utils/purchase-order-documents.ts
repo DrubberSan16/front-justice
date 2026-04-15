@@ -1,3 +1,5 @@
+import { formatDateOnly, formatDateTime as formatAppDateTime } from "@/app/utils/date-time";
+
 type PurchaseOrderDetailLike = {
   codigo_producto?: string | null;
   nombre_producto?: string | null;
@@ -77,27 +79,11 @@ function formatMoneyWithSymbol(value: unknown) {
 }
 
 function formatDate(value: unknown) {
-  if (!value) return "";
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("es-EC", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
-
-function pad2(value: number) {
-  return String(value).padStart(2, "0");
+  return formatDateOnly(value, String(value ?? ""));
 }
 
 function formatDateTime(value: unknown) {
-  if (!value) return "";
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(
-    date.getHours(),
-  )}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  return formatAppDateTime(value, String(value ?? ""));
 }
 
 function sumBy<T>(rows: T[], getter: (row: T) => unknown) {

@@ -389,6 +389,7 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
+import { formatDateForInput, formatDateOnly } from "@/app/utils/date-time";
 
 type CatalogOption = { value: string; title: string };
 
@@ -461,7 +462,7 @@ const warehousesLoaded = ref(false);
 
 const form = reactive({
   codigo: "",
-  fecha_emision: new Date().toISOString().slice(0, 10),
+  fecha_emision: formatDateForInput(),
   fecha_requerida: "",
   proveedor_id: "",
   bodega_destino_id: "",
@@ -578,9 +579,7 @@ function formatCurrency(value: unknown) {
 
 function formatDate(value: unknown) {
   if (!value) return "";
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("es-EC");
+  return formatDateOnly(value, String(value ?? ""));
 }
 
 function createLocalId() {
@@ -688,7 +687,7 @@ function resetForm() {
     orders.value.map((item) => item?.referencia || ""),
   );
   form.codigo = nextPurchaseOrderCode(lastCode);
-  form.fecha_emision = new Date().toISOString().slice(0, 10);
+  form.fecha_emision = formatDateForInput();
   form.fecha_requerida = "";
   form.proveedor_id = "";
   form.bodega_destino_id = String(defaultWarehouse.value?.id || "");

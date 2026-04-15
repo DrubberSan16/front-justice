@@ -654,7 +654,7 @@
                 v-for="(item, i) in localHistory"
                 :key="i"
                 :title="`${workflowLabel(item.to_status)}${item.from_status ? ` · desde ${workflowLabel(item.from_status)}` : ''}`"
-                :subtitle="`${item.note || 'Sin detalle'}${item.changed_at ? ` · ${new Date(item.changed_at).toLocaleString()}` : ''}`"
+                :subtitle="`${item.note || 'Sin detalle'}${item.changed_at ? ` · ${formatDateTime(item.changed_at, '')}` : ''}`"
               />
               <v-list-item v-if="!localHistory.length" title="Sin historial" subtitle="No hay movimientos registrados para esta orden." />
             </v-list>
@@ -838,6 +838,7 @@ import {
   downloadReportExcel,
   downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
+import { formatDateTime } from "@/app/utils/date-time";
 
 const ui = useUiStore();
 const { smAndDown } = useDisplay();
@@ -1269,7 +1270,7 @@ const reportPreviewHistory = computed(() =>
     from: workflowLabel(item?.from_status),
     to: workflowLabel(item?.to_status),
     user: item?.changed_by || "",
-    date: item?.changed_at ? new Date(item.changed_at).toLocaleString() : "",
+    date: item?.changed_at ? formatDateTime(item.changed_at, "") : "",
     note: item?.note || "",
   })),
 );
@@ -1560,7 +1561,7 @@ const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
   return rawItems.map((detail: any, index: number) => ({
     id: `${issue?.id || issue?.entrega_id || 'issue'}-${detail?.id || index}`,
     entrega_code: issue?.code || issue?.codigo || "Sin código",
-    fecha_label: issue?.fecha ? new Date(issue.fecha).toLocaleString() : "-",
+    fecha_label: issue?.fecha ? formatDateTime(issue.fecha, "-") : "-",
     producto_label: detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
     bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
     cantidad: toPositiveNumber(detail?.cantidad),

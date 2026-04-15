@@ -270,6 +270,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { formatDateTime } from "@/app/utils/date-time";
 
 type AlertRow = Record<string, any>;
 type SelectOption = { title: string; value: string };
@@ -380,9 +381,7 @@ function stateColor(state: unknown) {
 
 function formatDate(value: unknown) {
   if (!value) return "Sin fecha";
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString();
+  return formatDateTime(value, "Sin fecha");
 }
 
 function formatInventoryNumber(value: unknown) {

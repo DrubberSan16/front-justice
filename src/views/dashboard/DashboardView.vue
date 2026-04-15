@@ -494,6 +494,7 @@ import { canReadComponent } from "@/app/utils/menu-permissions";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { formatDateTime } from "@/app/utils/date-time";
 import {
   buildExecutiveDashboardReport,
   downloadReportExcel,
@@ -1273,7 +1274,7 @@ async function exportDashboard(format: "excel" | "pdf") {
 
 const lastUpdatedLabel = computed(() => {
   if (!lastUpdatedAt.value) return "Sin datos";
-  return lastUpdatedAt.value.toLocaleString();
+  return formatDateTime(lastUpdatedAt.value, "Sin datos");
 });
 
 onMounted(() => {

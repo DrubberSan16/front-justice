@@ -55,12 +55,13 @@
 <script setup lang="ts">
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useNotificationsStore } from "@/app/stores/notifications.store";
+import { formatDateTime } from "@/app/utils/date-time";
 
 const auth = useAuthStore();
 const store = useNotificationsStore();
 
 function buildSubtitle(item: any) {
-  const timestamp = item?.created_at ? new Date(item.created_at).toLocaleString() : "";
+  const timestamp = item?.created_at ? formatDateTime(item.created_at, "") : "";
   const moduleLabel = item?.module ? ` · ${item.module}` : "";
   return `${item?.body || ""}${moduleLabel}${timestamp ? ` · ${timestamp}` : ""}`;
 }

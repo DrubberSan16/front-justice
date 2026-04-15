@@ -303,6 +303,7 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
+import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 
 type CatalogOption = { value: string; title: string };
 
@@ -405,7 +406,7 @@ const form = reactive({
   orden_compra_id: "",
   bodega_origen_id: "",
   bodega_destino_id: "",
-  fecha_transferencia: new Date().toISOString().slice(0, 10),
+  fecha_transferencia: formatDateForInput(),
   observacion: "",
   detalles: [] as TransferDetailForm[],
 });
@@ -523,9 +524,7 @@ function formatCurrency(value: unknown) {
 
 function formatDate(value: unknown) {
   if (!value) return "";
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("es-EC");
+  return formatDateTime(value, String(value ?? ""));
 }
 
 function createLocalId() {
@@ -596,7 +595,7 @@ function resetForm() {
   form.orden_compra_id = "";
   form.bodega_origen_id = "";
   form.bodega_destino_id = "";
-  form.fecha_transferencia = new Date().toISOString().slice(0, 10);
+  form.fecha_transferencia = formatDateForInput();
   form.observacion = "";
   form.detalles = [createEmptyDetail()];
 }

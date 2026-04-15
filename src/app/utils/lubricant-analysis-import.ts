@@ -4,6 +4,7 @@ import {
   lubricantCompartments,
   lubricantConditionOptions,
 } from "@/app/config/lubricant-analysis";
+import { formatDateForInput } from "@/app/utils/date-time";
 
 type AnyRow = Record<string, any>;
 
@@ -79,7 +80,7 @@ function asDateOnly(value: unknown): string | null {
 
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  return formatDateForInput(parsed);
 }
 
 function asNullableNumber(value: unknown): number | null {

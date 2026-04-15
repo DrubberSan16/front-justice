@@ -1,3 +1,11 @@
+import {
+  currentDateTimeLabel,
+  formatDateForInput,
+  formatDateOnly,
+  formatDateTime,
+  looksLikeDateValue,
+} from "@/app/utils/date-time";
+
 type AnyRow = Record<string, any>;
 
 export type ReportSummaryItem = {
@@ -91,10 +99,16 @@ function formatValue(value: unknown): string | number {
   if (value === null || value === undefined) return "";
   if (typeof value === "number") return Number.isFinite(value) ? value : "";
   if (typeof value === "boolean") return value ? "Si" : "No";
-  if (value instanceof Date) return value.toLocaleString();
+  if (value instanceof Date) return formatDateTime(value, "");
   if (Array.isArray(value)) return value.map((item) => formatValue(item)).filter(Boolean).join(" | ");
   if (typeof value === "object") return JSON.stringify(value);
-  return repairText(String(value));
+  const repaired = repairText(String(value));
+  if (looksLikeDateValue(repaired)) {
+    return /[tT ]\d{2}:\d{2}/.test(repaired)
+      ? formatDateTime(repaired, repaired)
+      : formatDateOnly(repaired, repaired);
+  }
+  return repaired;
 }
 
 function normalizeRows(rows: AnyRow[]) {
@@ -217,12 +231,12 @@ function applyCellFormat(cell: any, format: ReportColumn["format"]) {
     return;
   }
   if (format === "date") {
-    cell.numFmt = "yyyy-mm-dd";
+    cell.numFmt = "dd-mm-yyyy";
     cell.alignment = { horizontal: "center", vertical: "middle" };
     return;
   }
   if (format === "datetime") {
-    cell.numFmt = "yyyy-mm-dd hh:mm";
+    cell.numFmt = "dd-mm-yyyy hh:mm:ss";
     cell.alignment = { horizontal: "center", vertical: "middle" };
     return;
   }
@@ -238,8 +252,8 @@ export async function downloadReportExcel(report: ReportDefinition) {
   workbook.modified = new Date();
 
   const generatedLabel = report.generatedAt
-    ? new Date(report.generatedAt).toLocaleString()
-    : new Date().toLocaleString();
+    ? formatDateTime(report.generatedAt, currentDateTimeLabel())
+    : currentDateTimeLabel();
 
   for (const [sheetIndex, sheet] of report.sheets.entries()) {
     const rows = normalizeRows(sheet.rows);
@@ -413,8 +427,8 @@ export async function downloadReportPdf(report: ReportDefinition) {
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 32;
   const generatedLabel = report.generatedAt
-    ? new Date(report.generatedAt).toLocaleString()
-    : new Date().toLocaleString();
+    ? formatDateTime(report.generatedAt, currentDateTimeLabel())
+    : currentDateTimeLabel();
 
   function drawPageHeader(title: string, subtitle?: string, pageLabel?: string) {
     doc.setFillColor(31, 78, 120);
@@ -574,7 +588,7 @@ export function buildIndicatorsReport(summary: AnyRow) {
   }));
 
   return {
-    fileName: `indicadores_proceso_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `indicadores_proceso_${formatDateForInput(new Date())}`,
     title: "Reporte de indicadores de proceso",
     subtitle: "Consolidado de eventos KPI, procesos operativos y trazabilidad documental.",
     generatedAt: summary?.generated_at,
@@ -615,7 +629,7 @@ export function buildProceduresReport(procedures: AnyRow[]) {
   );
 
   return {
-    fileName: `procedimientos_mpg_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `procedimientos_mpg_${formatDateForInput(new Date())}`,
     title: "Reporte de procedimientos y plantillas MPG",
     subtitle: "Procedimientos preventivos, actividades y controles derivados de las plantillas documentales.",
     summary: [
@@ -664,7 +678,7 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   ).length;
 
   return {
-    fileName: `analisis_lubricante_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `analisis_lubricante_${formatDateForInput(new Date())}`,
     title: "Reporte de análisis de lubricante",
     subtitle: "Resultados, tendencias y detalle por compartimento para monitoreo predictivo.",
     summary: [
@@ -702,7 +716,7 @@ export function buildComponentsReport(components: AnyRow[]) {
   ).length;
 
   return {
-    fileName: `componentes_criticos_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `componentes_criticos_${formatDateForInput(new Date())}`,
     title: "Reporte de control de componentes críticos",
     subtitle: "Seguimiento de componentes mayores, horas de uso, causas y estado operativo.",
     summary: [
@@ -778,7 +792,7 @@ export function buildDailyReportsReport(reports: AnyRow[]) {
   );
 
   return {
-    fileName: `reporte_operacion_diaria_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `reporte_operacion_diaria_${formatDateForInput(new Date())}`,
     title: "Reporte de operación diaria",
     subtitle: "Consolidado diario de unidades, combustible y control de componentes.",
     summary: [
@@ -825,7 +839,7 @@ export function buildWeeklyScheduleReport(schedules: AnyRow[]) {
   );
 
   return {
-    fileName: `cronograma_semanal_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `cronograma_semanal_${formatDateForInput(new Date())}`,
     title: "Reporte de cronograma semanal de actividades",
     subtitle: "Planificación semanal por frente, área responsable y equipo asociado.",
     summary: [
@@ -850,7 +864,7 @@ export function buildExecutiveDashboardReport(payload: {
   weeklyActivities: AnyRow[];
 }) {
   return {
-    fileName: `dashboard_ejecutivo_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `dashboard_ejecutivo_${formatDateForInput(new Date())}`,
     title: "Dashboard ejecutivo KPI",
     subtitle: `Resumen consolidado del período ${payload.periodLabel}.`,
     summary: payload.kpis,
@@ -872,7 +886,7 @@ export function buildInventoryStockReport(payload: {
   movementRows?: AnyRow[];
 }) {
   return {
-    fileName: `inventario_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `inventario_${formatDateForInput(new Date())}`,
     title: "Reporte de inventario",
     subtitle: `Agrupado por ${payload.groupLabel.toLowerCase()}.`,
     summary: payload.summary,
@@ -996,7 +1010,7 @@ export function buildMonthlyProgrammingReport(payload: {
   summary: ReportSummaryItem[];
 }) {
   return {
-    fileName: `programacion_mensual_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `programacion_mensual_${formatDateForInput(new Date())}`,
     title: "Reporte de programación mensual MPG",
     subtitle: `Calendario mensual del período ${payload.periodLabel}.`,
     summary: payload.summary,
@@ -1014,7 +1028,7 @@ export function buildWeeklyProgrammingReport(payload: {
   detailRows: AnyRow[];
 }) {
   return {
-    fileName: `programacion_semanal_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `programacion_semanal_${formatDateForInput(new Date())}`,
     title: "Reporte de programación semanal",
     subtitle: `Cronograma operativo de la semana ${payload.rangeLabel}.`,
     summary: payload.summary,
@@ -1033,7 +1047,7 @@ export function buildAgendaProgrammingReport(payload: {
   monthlyRows: AnyRow[];
 }) {
   return {
-    fileName: `agenda_programaciones_${new Date().toISOString().slice(0, 10)}`,
+    fileName: `agenda_programaciones_${formatDateForInput(new Date())}`,
     title: "Reporte de agenda operativa",
     subtitle: `Agenda consolidada del mes ${payload.monthLabel}.`,
     summary: payload.summary,

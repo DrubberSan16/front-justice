@@ -841,6 +841,7 @@ import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
 import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import {
   buildDailyReportsReport,
   buildIndicatorsReport,
@@ -909,7 +910,7 @@ const oilKpiLoading = ref(false);
 const oilKpiError = ref<string | null>(null);
 const oilSelectedProductId = ref<string | undefined>(undefined);
 const oilPeriod = ref("MENSUAL");
-const oilReferenceDate = ref(new Date().toISOString().slice(0, 10));
+const oilReferenceDate = ref(formatDateForInput());
 const oilCustomFrom = ref("");
 const oilCustomTo = ref("");
 const perms = computed(() =>
@@ -1375,7 +1376,7 @@ async function reloadDashboard() {
 
 const generatedAtLabel = computed(() => {
   if (!summary.generated_at) return "Sin sincronizar";
-  return new Date(summary.generated_at).toLocaleString();
+  return formatDateTime(summary.generated_at, "Sin sincronizar");
 });
 
 const breakdownItems = computed(() => summary.process_breakdown ?? []);
@@ -1476,7 +1477,7 @@ const recentEvents = computed(() =>
   (summary.recent_events ?? []).map((item: AnyRow) => ({
     id: item.id,
     title: `${prettifyProcess(item.tipo_proceso)} · ${item.accion}`,
-    subtitle: `${item.referencia_codigo || item.referencia_tabla || "Sin referencia"}${item.fecha_evento ? ` · ${new Date(item.fecha_evento).toLocaleString()}` : ""}`,
+    subtitle: `${item.referencia_codigo || item.referencia_tabla || "Sin referencia"}${item.fecha_evento ? ` · ${formatDateTime(item.fecha_evento, "")}` : ""}`,
   })),
 );
 
@@ -1486,7 +1487,7 @@ const recentEventsTableRows = computed(() =>
     proceso: prettifyProcess(item.tipo_proceso),
     accion: item.accion || "Sin accion",
     referencia: item.referencia_codigo || item.referencia_tabla || "Sin referencia",
-    fecha: item.fecha_evento ? new Date(item.fecha_evento).toLocaleString() : "Sin fecha",
+    fecha: item.fecha_evento ? formatDateTime(item.fecha_evento, "Sin fecha") : "Sin fecha",
   })),
 );
 
@@ -1572,17 +1573,17 @@ const scheduleWeek = computed(() => {
 });
 
 onMounted(() => {
-  oilCustomFrom.value = selectedPeriodRange.value.start.toISOString().slice(0, 10);
-  oilCustomTo.value = selectedPeriodRange.value.end.toISOString().slice(0, 10);
-  oilReferenceDate.value = selectedPeriodRange.value.end.toISOString().slice(0, 10);
+  oilCustomFrom.value = formatDateForInput(selectedPeriodRange.value.start);
+  oilCustomTo.value = formatDateForInput(selectedPeriodRange.value.end);
+  oilReferenceDate.value = formatDateForInput(selectedPeriodRange.value.end);
   loadIntelligence();
   loadOilKpi();
 });
 
 watch([selectedYear, selectedMonth], () => {
-  oilCustomFrom.value = selectedPeriodRange.value.start.toISOString().slice(0, 10);
-  oilCustomTo.value = selectedPeriodRange.value.end.toISOString().slice(0, 10);
-  oilReferenceDate.value = selectedPeriodRange.value.end.toISOString().slice(0, 10);
+  oilCustomFrom.value = formatDateForInput(selectedPeriodRange.value.start);
+  oilCustomTo.value = formatDateForInput(selectedPeriodRange.value.end);
+  oilReferenceDate.value = formatDateForInput(selectedPeriodRange.value.end);
   loadIntelligence();
   if (oilPeriod.value === "MENSUAL" || oilPeriod.value === "ANUAL") {
     loadOilKpi();

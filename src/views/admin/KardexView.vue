@@ -293,6 +293,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { formatDateTime } from "@/app/utils/date-time";
 import {
   buildInventoryStockReport,
   downloadReportExcel,
@@ -508,7 +509,7 @@ const kardexRows = computed(() => {
 
   return kardex.value.map((row) => ({
     ...row,
-    fecha: new Date(row.fecha).toLocaleString(),
+    fecha: formatDateTime(row.fecha, String(row.fecha ?? "")),
     producto: productNameById.get(row.producto_id) ?? row.producto_id,
     bodega: bodegaNameById.get(row.bodega_id) ?? row.bodega_id,
     entrada_cantidad: formatNumberForDisplay(row.entrada_cantidad),
