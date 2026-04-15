@@ -93,10 +93,30 @@
         >
           Cerrar OT
         </v-btn>
-        <v-btn v-if="canPersistHeader" variant="tonal" :loading="savingHeader" :disabled="savingHeader" @click="saveAll">Guardar</v-btn>
+        <v-btn
+          v-if="canPersistHeader"
+          variant="tonal"
+          :loading="savingHeader"
+          :disabled="savingHeader || loadingCatalogs"
+          @click="saveAll"
+        >
+          Guardar
+        </v-btn>
       </v-toolbar>
 
       <v-card-text class="pt-4 ot-dialog-content">
+        <v-alert
+          v-if="loadingCatalogs"
+          type="info"
+          variant="tonal"
+          class="mb-4"
+        >
+          <div class="d-flex flex-column" style="gap: 8px;">
+            <div class="font-weight-medium">Cargando información base de la orden de trabajo.</div>
+            <div class="text-body-2">Estamos obteniendo catálogos y referencias para que puedas continuar.</div>
+            <v-progress-linear indeterminate color="primary" rounded />
+          </div>
+        </v-alert>
         <v-alert
           v-if="detailNoticeText"
           type="warning"
@@ -448,8 +468,43 @@
 
           <v-window-item value="consumos">
             <v-row v-if="!isReadOnlyWorkflow" dense class="pt-2">
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" /></v-col>
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.producto_id" :items="getWarehouseProductOptions(consumoForm.bodega_id)" item-title="title" item-value="value" label="Material" :disabled="!consumoForm.bodega_id" variant="outlined" /></v-col>
+              <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" :disabled="loadingCatalogs" /></v-col>
+              <v-col cols="12" md="4">
+                <v-autocomplete
+                  v-model="consumoForm.producto_id"
+                  v-model:search="consumoProductSearch"
+                  :items="consumoProductOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Material"
+                  variant="outlined"
+                  clearable
+                  no-filter
+                  :disabled="!consumoForm.bodega_id || loadingCatalogs"
+                  :loading="loadingConsumoProducts"
+                  hint="Se cargan materiales por bodega a medida que los necesites."
+                  persistent-hint
+                />
+                <div
+                  v-if="consumoForm.bodega_id"
+                  class="d-flex align-center justify-space-between mt-1 px-1"
+                  style="gap: 8px; flex-wrap: wrap;"
+                >
+                  <div class="text-caption text-medium-emphasis">
+                    {{ consumoProductOptions.length }} de {{ consumoProductsTotal || 0 }} materiales cargados
+                  </div>
+                  <v-btn
+                    v-if="consumoProductsPage < consumoProductsTotalPages"
+                    size="x-small"
+                    variant="text"
+                    prepend-icon="mdi-chevron-down"
+                    :loading="loadingConsumoProducts"
+                    @click="loadMoreConsumoProducts"
+                  >
+                    Cargar más
+                  </v-btn>
+                </div>
+              </v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col v-if="canViewCosts" cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" readonly /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
@@ -635,6 +690,7 @@ const auth = useAuthStore();
 const menuStore = useMenuStore();
 const loading = ref(false);
 const loadingDetails = ref(false);
+const loadingCatalogs = ref(false);
 const savingHeader = ref(false);
 const issuingMaterials = ref(false);
 const exportState = reactive<Record<string, boolean>>({});
@@ -658,11 +714,16 @@ const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
 const alertOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
-const stockByWarehouseRows = ref<any[]>([]);
 const productCatalogRows = ref<any[]>([]);
 const warehouseCatalogRows = ref<any[]>([]);
 const workOrderCatalogRows = ref<any[]>([]);
 const catalogsLoaded = ref(false);
+const consumoProductOptions = ref<any[]>([]);
+const consumoProductSearch = ref("");
+const loadingConsumoProducts = ref(false);
+const consumoProductsPage = ref(1);
+const consumoProductsTotalPages = ref(1);
+const consumoProductsTotal = ref(0);
 const taskOptions = ref<any[]>([]);
 const loadingTaskOptions = ref(false);
 const loadingEquipmentComponents = ref(false);
@@ -671,6 +732,9 @@ const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
 const planTaskCatalogByPlan = ref<Record<string, any[]>>({});
 const procedureCatalog = ref<any[]>([]);
 const taskEvidenceInputKeys = ref<Record<string, number>>({});
+let catalogsPromise: Promise<void> | null = null;
+let consumoSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let consumoProductsRequestId = 0;
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -1068,12 +1132,33 @@ function normalizeEquipmentComponent(item: any) {
   };
 }
 
-const productNameMap = computed(() => productCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
-  const key = String(item?.id || "");
-  if (!key) return acc;
-  acc[key] = normalize(item).title;
-  return acc;
-}, {}));
+const productNameMap = computed(() => {
+  const out: Record<string, string> = {};
+  for (const item of productCatalogRows.value) {
+    const key = String(item?.id || "");
+    if (!key) continue;
+    out[key] = normalize(item).title;
+  }
+  for (const item of consumoProductOptions.value) {
+    const key = String(item?.value || "");
+    if (!key || out[key]) continue;
+    out[key] = String(item?.label || item?.title || key);
+  }
+  for (const row of localConsumos.value) {
+    const key = String(row?.producto_id || "");
+    if (!key || out[key]) continue;
+    out[key] = String(row?.producto_label || row?.producto_nombre || key);
+  }
+  for (const issue of localIssues.value) {
+    const details = Array.isArray(issue?.items) ? issue.items : [];
+    for (const row of details) {
+      const key = String(row?.producto_id || "");
+      if (!key || out[key]) continue;
+      out[key] = String(row?.producto_label || row?.producto_nombre || key);
+    }
+  }
+  return out;
+});
 
 const warehouseNameMap = computed(() => warehouseCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
   const key = String(item?.id || "");
@@ -1087,23 +1172,85 @@ function toPositiveNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getWarehouseProductOptions(warehouseId: string) {
-  const warehouseKey = String(warehouseId || "");
-  if (!warehouseKey) return [] as any[];
-  const seen = new Set<string>();
-  return stockByWarehouseRows.value
-    .filter((row: any) => String(row?.bodega_id || "") === warehouseKey)
-    .filter((row: any) => {
-      const productKey = String(row?.producto_id || "");
-      if (!productKey || seen.has(productKey)) return false;
-      seen.add(productKey);
-      return true;
-    })
-    .map((row: any) => ({
-      value: row.producto_id,
-      title: `${productNameMap.value[String(row.producto_id)] || row.producto_id} · Stock: ${toPositiveNumber(row?.stock_actual)}`,
-    }))
-    .sort((a: any, b: any) => String(a.title).localeCompare(String(b.title)));
+function normalizeStockProductOption(row: any) {
+  const productId = String(row?.producto_id || row?.id || "");
+  const productLabel =
+    row?.producto_label ||
+    row?.producto_nombre ||
+    productNameMap.value[productId] ||
+    productId;
+  const stock = toPositiveNumber(row?.stock_actual);
+  return {
+    value: productId,
+    title: `${productLabel} - Stock: ${stock}`,
+    label: String(productLabel || productId),
+    stock_actual: stock,
+  };
+}
+
+async function loadConsumoProducts(options?: { reset?: boolean; search?: string }) {
+  const warehouseId = String(consumoForm.bodega_id || "").trim();
+  if (!warehouseId) {
+    consumoProductOptions.value = [];
+    consumoProductsPage.value = 1;
+    consumoProductsTotalPages.value = 1;
+    consumoProductsTotal.value = 0;
+    return;
+  }
+
+  const searchValue = String(options?.search ?? consumoProductSearch.value ?? "").trim();
+  const reset = Boolean(options?.reset);
+  const pageToLoad = reset ? 1 : consumoProductsPage.value;
+  const requestId = ++consumoProductsRequestId;
+
+  loadingConsumoProducts.value = true;
+  try {
+    const { data } = await api.get("/kpi_inventory/stock-bodega", {
+      params: {
+        bodega_id: warehouseId,
+        search: searchValue || undefined,
+        page: pageToLoad,
+        limit: 50,
+      },
+    });
+
+    if (requestId !== consumoProductsRequestId) return;
+
+    const rows = asArray(data).map(normalizeStockProductOption).filter((item: any) => item.value);
+    const pagination = data?.pagination ?? {};
+    const nextItems = reset ? [] : [...consumoProductOptions.value];
+    const seen = new Set(nextItems.map((item: any) => String(item?.value || "")));
+    for (const row of rows) {
+      const key = String(row?.value || "");
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      nextItems.push(row);
+    }
+
+    consumoProductOptions.value = nextItems;
+    consumoProductsPage.value = Number(pagination?.page || pageToLoad || 1);
+    consumoProductsTotalPages.value = Number(pagination?.totalPages || 1);
+    consumoProductsTotal.value = Number(pagination?.total || nextItems.length);
+  } catch (e: any) {
+    if (requestId === consumoProductsRequestId) {
+      consumoProductOptions.value = [];
+      consumoProductsPage.value = 1;
+      consumoProductsTotalPages.value = 1;
+      consumoProductsTotal.value = 0;
+      ui.error(e?.response?.data?.message || "No se pudieron cargar los materiales de la bodega.");
+    }
+  } finally {
+    if (requestId === consumoProductsRequestId) {
+      loadingConsumoProducts.value = false;
+    }
+  }
+}
+
+async function loadMoreConsumoProducts() {
+  if (loadingConsumoProducts.value) return;
+  if (consumoProductsPage.value >= consumoProductsTotalPages.value) return;
+  consumoProductsPage.value += 1;
+  await loadConsumoProducts();
 }
 
 function getWarehouseReservedProductOptions(warehouseId: string) {
@@ -1115,7 +1262,7 @@ function getWarehouseReservedProductOptions(warehouseId: string) {
     if (!productKey) continue;
     const current = grouped.get(productKey) ?? {
       value: productKey,
-      title: productNameMap.value[productKey] || productKey,
+      title: String(row?.producto_label || row?.producto_nombre || productNameMap.value[productKey] || productKey),
       pending: 0,
     };
     current.pending += toPositiveNumber(row?.cantidad_pendiente);
@@ -1125,11 +1272,11 @@ function getWarehouseReservedProductOptions(warehouseId: string) {
     .filter((item) => item.pending > 0)
     .map((item) => ({
       value: item.value,
-      title: `${item.title} · Reservado pendiente: ${item.pending}`,
+      title: `${item.title} - Reservado pendiente: ${item.pending}`,
     }))
     .sort((a, b) => String(a.title).localeCompare(String(b.title)));
 
-  return reservedOptions.length ? reservedOptions : getWarehouseProductOptions(warehouseId);
+  return reservedOptions;
 }
 
 const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
@@ -1165,7 +1312,7 @@ function resetConsumoProductIfInvalid() {
     consumoForm.producto_id = "";
     return;
   }
-  const exists = getWarehouseProductOptions(String(consumoForm.bodega_id)).some((option: any) => String(option.value) === String(consumoForm.producto_id || ""));
+  const exists = consumoProductOptions.value.some((option: any) => String(option.value) === String(consumoForm.producto_id || ""));
   if (!exists) consumoForm.producto_id = "";
 }
 
@@ -1180,12 +1327,28 @@ function resetMaterialProductIfInvalid(index: number) {
   if (!exists) current.producto_id = "";
 }
 
-function syncConsumoUnitCost() {
-  const selectedProduct = productCatalogRows.value.find((item: any) => String(item?.id || "") === String(consumoForm.producto_id || ""));
-  if (!selectedProduct) return;
-  const nextCost = Number(selectedProduct?.ultimo_costo ?? 0);
-  if (!consumoForm.costo_unitario || Number(consumoForm.costo_unitario) <= 0) {
-    consumoForm.costo_unitario = String(nextCost || "");
+async function syncConsumoUnitCost() {
+  if (!consumoForm.producto_id || !consumoForm.bodega_id) {
+    consumoForm.costo_unitario = "";
+    return;
+  }
+  try {
+    const { data } = await api.get("/kpi_maintenance/inventory/cost-reference", {
+      params: {
+        producto_id: consumoForm.producto_id,
+        bodega_id: consumoForm.bodega_id,
+      },
+    });
+    const resolved = unwrapData(data);
+    const nextCost = Number(
+      resolved?.costo_unitario
+      ?? resolved?.saldo_costo_promedio
+      ?? resolved?.ultimo_costo
+      ?? 0,
+    );
+    consumoForm.costo_unitario = nextCost > 0 ? String(nextCost) : "";
+  } catch {
+    consumoForm.costo_unitario = "";
   }
 }
 function getEquipmentLabel(item: any) {
@@ -1201,22 +1364,21 @@ function getEquipmentLabel(item: any) {
 
 
 async function loadCatalogs() {
-  const [equipos, planes, procedimientos, alertas, productos, bodegas, stockRows, workOrders] = await Promise.all([
+  loadingCatalogs.value = true;
+  try {
+    const [equipos, planes, procedimientos, alertas, bodegas] = await Promise.all([
     listAll("/kpi_maintenance/equipos"),
     listAll("/kpi_maintenance/planes"),
     listAll("/kpi_maintenance/inteligencia/procedimientos"),
     listAll("/kpi_maintenance/alertas"),
-    listAll("/kpi_inventory/productos"),
-    listAll("/kpi_inventory/bodegas"),
-    listAll("/kpi_inventory/stock-bodega"),
-    listAll("/kpi_maintenance/work-orders"),
-  ]);
-  equipmentOptions.value = equipos.map(normalize);
-  planOptions.value = planes.map(normalize);
-  procedureCatalog.value = procedimientos;
-  procedureOptions.value = procedimientos.map(normalize);
-  workOrderCatalogRows.value = workOrders;
-  alertOptions.value = alertas.map((item: any) => ({
+      listAll("/kpi_inventory/bodegas"),
+    ]);
+    equipmentOptions.value = equipos.map(normalize);
+    planOptions.value = planes.map(normalize);
+    procedureCatalog.value = procedimientos;
+    procedureOptions.value = procedimientos.map(normalize);
+    workOrderCatalogRows.value = records.value;
+    alertOptions.value = alertas.map((item: any) => ({
     value: item.id,
     title: [
       item?.title || item?.tipo_alerta || item?.nombre || item?.codigo || item?.id,
@@ -1227,17 +1389,28 @@ async function loadCatalogs() {
     ]
       .filter(Boolean)
       .join(" · "),
-  }));
-  productCatalogRows.value = productos;
-  warehouseCatalogRows.value = bodegas;
-  stockByWarehouseRows.value = stockRows;
-  warehouseOptions.value = bodegas.map(normalize);
-  catalogsLoaded.value = true;
+    }));
+    productCatalogRows.value = [];
+    warehouseCatalogRows.value = bodegas;
+    warehouseOptions.value = bodegas.map(normalize);
+    catalogsLoaded.value = true;
+  } finally {
+    loadingCatalogs.value = false;
+  }
 }
 
 async function ensureCatalogsLoaded(force = false) {
   if (catalogsLoaded.value && !force) return;
-  await loadCatalogs();
+  if (catalogsPromise && !force) {
+    await catalogsPromise;
+    return;
+  }
+  catalogsPromise = loadCatalogs();
+  try {
+    await catalogsPromise;
+  } finally {
+    catalogsPromise = null;
+  }
 }
 
 async function loadEquipmentComponents(equipmentId: string) {
@@ -2082,6 +2255,11 @@ function resetAllForms() {
   consumoForm.cantidad = "";
   consumoForm.costo_unitario = "";
   consumoForm.observacion = "";
+  consumoProductSearch.value = "";
+  consumoProductOptions.value = [];
+  consumoProductsPage.value = 1;
+  consumoProductsTotalPages.value = 1;
+  consumoProductsTotal.value = 0;
 
   materialItems.value = [newMaterialItem()];
   materialsForm.observacion = "";
@@ -2098,18 +2276,17 @@ function resetAllForms() {
 
 async function openCreate() {
   if (!canCreate.value) return;
-  await ensureCatalogsLoaded();
   editingId.value = null;
   currentWorkOrderRecord.value = null;
   closingFlow.value = false;
   resetAllForms();
-  await assignNextWorkOrderCode();
   dialog.value = true;
+  await ensureCatalogsLoaded();
+  await assignNextWorkOrderCode();
 }
 
 async function openEdit(item: any) {
   if (!canEdit.value) return;
-  await ensureCatalogsLoaded();
   editingId.value = item.id;
   currentWorkOrderRecord.value = item?._raw ?? item;
   closingFlow.value = false;
@@ -2133,6 +2310,7 @@ async function openEdit(item: any) {
   headerForm.accion = headerValorJson?.accion ?? "";
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
   dialog.value = true;
+  await ensureCatalogsLoaded();
   await loadEquipmentComponents(String(headerForm.equipment_id || ""));
   await loadDetailData();
   if (!isReadOnlyWorkflow.value) {
@@ -2822,6 +3000,9 @@ watch(
 watch(
   () => consumoForm.bodega_id,
   async () => {
+    consumoForm.producto_id = "";
+    consumoProductSearch.value = "";
+    await loadConsumoProducts({ reset: true, search: "" });
     resetConsumoProductIfInvalid();
     await syncConsumoUnitCost();
   },
@@ -2831,6 +3012,17 @@ watch(
   () => consumoForm.producto_id,
   async () => {
     await syncConsumoUnitCost();
+  },
+);
+
+watch(
+  () => consumoProductSearch.value,
+  (value) => {
+    if (!consumoForm.bodega_id) return;
+    if (consumoSearchTimer) clearTimeout(consumoSearchTimer);
+    consumoSearchTimer = setTimeout(() => {
+      void loadConsumoProducts({ reset: true, search: value });
+    }, 300);
   },
 );
 
