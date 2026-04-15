@@ -643,8 +643,33 @@
             <v-col cols="12" md="6">
               <v-checkbox v-model="form.activo" label="Activo" hide-details />
             </v-col>
+            <v-col cols="12">
+              <v-select
+                v-model="form.work_order_id"
+                :items="workOrderOptions"
+                item-title="title"
+                item-value="value"
+                label="Orden de trabajo a ejecutar"
+                variant="outlined"
+                clearable
+                :loading="loadingWorkOrderCatalog"
+                hint="La programación quedará anexada a esta OT y tomará su equipo y plan operativo."
+                persistent-hint
+              />
+            </v-col>
+            <v-col v-if="selectedWorkOrderSummary" cols="12">
+              <v-alert type="info" variant="tonal" :text="selectedWorkOrderSummary" />
+            </v-col>
             <v-col cols="12" md="6">
-              <v-select v-model="form.equipo_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" />
+              <v-select
+                v-model="form.equipo_id"
+                :items="equipmentOptions"
+                item-title="title"
+                item-value="value"
+                label="Equipo"
+                variant="outlined"
+                :disabled="Boolean(form.work_order_id)"
+              />
             </v-col>
             <v-col cols="12" md="6">
               <v-select
@@ -654,6 +679,7 @@
                 item-value="value"
                 label="Plantilla MPG"
                 variant="outlined"
+                :disabled="Boolean(form.work_order_id)"
               />
             </v-col>
             <v-col cols="12">
@@ -1230,9 +1256,12 @@ const monthlyPaletteForm = reactive<Record<string, string>>({
   SINCRONIZADO: "#8ED1A5",
   DEFAULT: "#D7E0EA",
 });
+const workOrderCatalog = ref<any[]>([]);
+const loadingWorkOrderCatalog = ref(false);
 
 const form = reactive<any>({
   sucursal_id: "",
+  work_order_id: "",
   equipo_id: "",
   procedimiento_id: "",
   plan_id: "",
@@ -1265,6 +1294,7 @@ const requiresExplicitSucursalSelection = computed(
 
 const agendaHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
+  { title: "OT", key: "work_order_code" },
   { title: "Plantilla MPG", key: "procedimiento_nombre" },
   { title: "Fecha", key: "proxima_fecha" },
   { title: "Modo", key: "modo_programacion" },
@@ -1300,6 +1330,43 @@ const monthlyPaletteFields = [
 const currentRoleName = computed(() =>
   String(auth.user?.role?.nombre || "").trim().toUpperCase(),
 );
+const selectedWorkOrderRecord = computed(
+  () =>
+    workOrderCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(form.work_order_id || ""),
+    ) ?? null,
+);
+const workOrderOptions = computed(() =>
+  workOrderCatalog.value
+    .filter((item: any) => {
+      const selectedEquipmentId = String(form.equipo_id || "").trim();
+      if (!selectedEquipmentId) return true;
+      return String(item?.equipment_id || "") === selectedEquipmentId;
+    })
+    .map((item: any) => ({
+      value: item.id,
+      title: [
+        item?.code || item?.codigo || item?.id,
+        item?.title || item?.titulo || item?.plan_nombre || null,
+        item?.equipment_codigo || item?.equipo_codigo || item?.equipment_nombre || null,
+        item?.status_workflow || null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    })),
+);
+const selectedWorkOrderSummary = computed(() => {
+  const selected = selectedWorkOrderRecord.value;
+  if (!selected) return "";
+  return [
+    selected?.code || selected?.codigo || "OT",
+    selected?.title || selected?.titulo || "Sin título",
+    selected?.equipment_codigo || selected?.equipo_codigo || selected?.equipment_nombre || null,
+    selected?.procedimiento_nombre || selected?.plan_nombre || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+});
 
 function resolveSucursalId(explicitSucursalId?: string | null) {
   const explicit = String(explicitSucursalId || "").trim();
@@ -1440,14 +1507,21 @@ function normalize(item: any) {
 }
 
 async function loadCatalogs() {
-  const [equipos, procedimientos] = await Promise.all([
-    listAll("/kpi_maintenance/equipos"),
-    listAll("/kpi_maintenance/inteligencia/procedimientos"),
-  ]);
-  equipmentCatalog.value = equipos;
-  equipmentOptions.value = equipos.map(normalize);
-  procedureCatalog.value = procedimientos;
-  procedureOptions.value = procedimientos.map(normalize);
+  loadingWorkOrderCatalog.value = true;
+  try {
+    const [equipos, procedimientos, workOrders] = await Promise.all([
+      listAll("/kpi_maintenance/equipos"),
+      listAll("/kpi_maintenance/inteligencia/procedimientos"),
+      listAll("/kpi_maintenance/work-orders"),
+    ]);
+    equipmentCatalog.value = equipos;
+    equipmentOptions.value = equipos.map(normalize);
+    procedureCatalog.value = procedimientos;
+    procedureOptions.value = procedimientos.map(normalize);
+    workOrderCatalog.value = Array.isArray(workOrders) ? workOrders : [];
+  } finally {
+    loadingWorkOrderCatalog.value = false;
+  }
 }
 
 async function loadAgendaRows() {
@@ -1517,6 +1591,19 @@ async function loadSelectedWeekly(id: string | null) {
 watch(selectedMonthlyId, async (value) => {
   await loadSelectedMonthly(value);
 });
+
+watch(
+  () => form.work_order_id,
+  (value) => {
+    const selected = workOrderCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(value || ""),
+    );
+    if (!selected) return;
+    form.equipo_id = selected.equipment_id || form.equipo_id;
+    form.procedimiento_id = selected.procedimiento_id || form.procedimiento_id;
+    form.plan_id = selected.plan_id || form.plan_id;
+  },
+);
 
 watch(selectedWeeklyId, async (value) => {
   await loadSelectedWeekly(value);
@@ -2373,6 +2460,7 @@ function resetForm() {
   programacionSourcePayload.value = {};
   programacionSourceDocument.value = null;
   form.sucursal_id = resolveSucursalId() || "";
+  form.work_order_id = "";
   form.equipo_id = "";
   form.procedimiento_id = "";
   form.plan_id = "";
@@ -2624,6 +2712,7 @@ function openEdit(item: any) {
     item?.sucursal_id ||
     resolveSucursalId() ||
     "";
+  form.work_order_id = item.work_order_id || "";
   form.equipo_id = item.equipo_id || "";
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
@@ -2689,6 +2778,7 @@ function buildPayload() {
       ? programacionSourcePayload.value
       : {};
   return {
+    work_order_id: form.work_order_id || undefined,
     equipo_id: form.equipo_id,
     procedimiento_id: form.procedimiento_id || undefined,
     plan_id: form.plan_id || undefined,
@@ -2717,8 +2807,12 @@ function resolveSingleFile(value: File | File[] | null) {
 
 async function save() {
   if (!canPersistProgramacion.value) return;
+  if (!form.work_order_id) {
+    ui.error("Debes seleccionar la orden de trabajo que ejecutará la programación.");
+    return;
+  }
   if (!form.equipo_id || (!form.procedimiento_id && !form.plan_id)) {
-    ui.error("Debes seleccionar equipo y plantilla MPG o plan operativo.");
+    ui.error("La orden de trabajo debe tener equipo y plantilla MPG o plan operativo vinculados.");
     return;
   }
   const payload = buildPayload();

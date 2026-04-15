@@ -34,7 +34,13 @@
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
-          <v-btn v-if="canDelete" icon="mdi-delete" variant="text" color="error" @click="openDelete(item._raw ?? item)" />
+          <v-btn
+            v-if="canDelete && canCloseOrVoidWorkOrder(item._raw ?? item)"
+            icon="mdi-delete"
+            variant="text"
+            color="error"
+            @click="openDelete(item._raw ?? item)"
+          />
         </div>
       </template>
     </v-data-table>
@@ -79,7 +85,7 @@
           Completar información
         </v-btn>
         <v-btn
-          v-if="editingId && isInProcess && canEdit"
+          v-if="editingId && isInProcess && canEdit && canCloseOrVoidCurrent"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-lock-check-outline"
@@ -104,6 +110,13 @@
           variant="tonal"
           class="mb-4"
           :text="blockingAlertText"
+        />
+        <v-alert
+          v-if="closeRestrictionText"
+          type="warning"
+          variant="tonal"
+          class="mb-4"
+          :text="closeRestrictionText"
         />
 
         <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
@@ -159,7 +172,7 @@
           <v-col cols="12" md="4">
             <v-select
               v-model="headerForm.status_workflow"
-              :items="workflowOptions"
+              :items="workflowOptionsForCurrent"
               item-title="title"
               item-value="value"
               label="Estado workflow"
@@ -637,6 +650,7 @@ const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
 const closingFlow = ref(false);
 const unsupportedDetailMessages = ref<string[]>([]);
+const currentWorkOrderRecord = ref<any | null>(null);
 
 const equipmentOptions = ref<any[]>([]);
 const equipmentComponentOptions = ref<any[]>([]);
@@ -773,10 +787,49 @@ const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
 const isBlocked = computed(() => normalizedWorkflow.value === "BLOCKED");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
+function currentUserId() {
+  return String(auth.user?.id || auth.userId || "").trim();
+}
+
+function currentUserName() {
+  return String(auth.user?.nameUser || (auth.user as any)?.username || "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeOwnerName(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function canCloseOrVoidWorkOrder(item: any) {
+  const row = item?._raw ?? item;
+  if (!row) return false;
+  if (typeof row?.can_close_or_void === "boolean") {
+    return row.can_close_or_void;
+  }
+  const userId = currentUserId();
+  const userName = currentUserName();
+  const ownerIds = [String(row?.requested_by || "").trim()].filter(Boolean);
+  const ownerNames = [
+    normalizeOwnerName(row?.created_by),
+    normalizeOwnerName(row?.linked_programacion_owner),
+  ].filter(Boolean);
+  return (!!userId && ownerIds.includes(userId)) || (!!userName && ownerNames.includes(userName));
+}
+
+const canCloseOrVoidCurrent = computed(() =>
+  editingId.value ? canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) : true,
+);
 const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
 const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const isEditingLockedFields = computed(() => !!editingId.value);
+const workflowOptionsForCurrent = computed(() => {
+  if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
+    return workflowOptions;
+  }
+  return workflowOptions.filter((item) => item.value !== "CLOSED");
+});
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
 const blockingWorkOrderOptions = computed(() =>
@@ -803,6 +856,16 @@ const blockingAlertText = computed(() => {
 });
 const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
+const closeRestrictionText = computed(() => {
+  if (!editingId.value || canCloseOrVoidCurrent.value) return "";
+  const owner =
+    String(
+      currentWorkOrderRecord.value?.linked_programacion_owner ||
+        currentWorkOrderRecord.value?.created_by ||
+        "",
+    ).trim() || "el usuario que creó o planificó la orden";
+  return `Solo ${owner} puede cerrar o anular esta orden de trabajo.`;
+});
 
 const headers = [
   { title: "Code", key: "code" },
@@ -882,6 +945,8 @@ const issueHeaders = computed(() => {
   return base;
 });
 
+const currentWorkOrderAudit = computed(() => currentWorkOrderRecord.value?._raw ?? currentWorkOrderRecord.value ?? {});
+
 const workOrderReportDefinition = computed(() =>
   buildWorkOrderReport({
     header: {
@@ -898,6 +963,13 @@ const workOrderReportDefinition = computed(() =>
       causa: headerForm.causa,
       accion: headerForm.accion,
       prevencion: headerForm.prevencion,
+      creado_por: currentWorkOrderAudit.value?.created_by_label || currentWorkOrderAudit.value?.created_by || "",
+      fecha_creacion: currentWorkOrderAudit.value?.created_at || "",
+      realizado_por: currentWorkOrderAudit.value?.processed_by_label || currentWorkOrderAudit.value?.updated_by || "",
+      fecha_realizacion: currentWorkOrderAudit.value?.processed_at || currentWorkOrderAudit.value?.updated_at || "",
+      aprobado_por: currentWorkOrderAudit.value?.approved_by_label || "",
+      fecha_aprobacion: currentWorkOrderAudit.value?.approved_at || "",
+      accion_aprobacion: currentWorkOrderAudit.value?.approval_action || "",
     },
     tasks: taskRows.value.map((item: any) => ({
       plan: getPlanLabelForTask(item),
@@ -938,6 +1010,7 @@ const workOrderReportDefinition = computed(() =>
     history: localHistory.value.map((item: any) => ({
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
+      usuario: item?.changed_by || "",
       nota: item?.note || "",
       fecha: item?.changed_at || "",
     })),
@@ -1915,6 +1988,12 @@ async function fetchWorkOrders() {
     const { data } = await api.get("/kpi_maintenance/work-orders");
     records.value = asArray(data);
     workOrderCatalogRows.value = records.value;
+    if (editingId.value) {
+      const refreshed = records.value.find((item: any) => String(item?.id || "") === String(editingId.value || ""));
+      if (refreshed) {
+        currentWorkOrderRecord.value = refreshed;
+      }
+    }
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudieron cargar las órdenes de trabajo.";
   } finally {
@@ -1927,13 +2006,15 @@ async function loadDetailData() {
   loadingDetails.value = true;
   unsupportedDetailMessages.value = [];
   try {
-    const [tasksRes, attachmentsRes, consumosRows, issuesRows, historyRes] = await Promise.all([
+    const [headerRes, tasksRes, attachmentsRes, consumosRows, issuesRows, historyRes] = await Promise.all([
+      api.get(`/kpi_maintenance/work-orders/${editingId.value}`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/tareas`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, "El backend actual no expone un listado de consumos por OT; los consumos nuevos sí se registran correctamente, pero al reabrir la OT no podrán consultarse desde esta pantalla."),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, "El backend actual no expone un listado de salidas de materiales por OT; las emisiones nuevas dependen de la reserva de stock del backend."),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/history`, "No se pudo cargar el historial de la orden de trabajo."),
     ]);
+    currentWorkOrderRecord.value = unwrapData(headerRes.data);
     taskRows.value = asArray(tasksRes.data).map((x) => ({
       ...x,
       _json_text:
@@ -1969,6 +2050,7 @@ const rows = computed(() => {
 });
 
 function resetAllForms() {
+  currentWorkOrderRecord.value = null;
   headerForm.code = "";
   headerForm.type = "MANTENIMIENTO";
   headerForm.title = "";
@@ -2018,6 +2100,7 @@ async function openCreate() {
   if (!canCreate.value) return;
   await ensureCatalogsLoaded();
   editingId.value = null;
+  currentWorkOrderRecord.value = null;
   closingFlow.value = false;
   resetAllForms();
   await assignNextWorkOrderCode();
@@ -2028,6 +2111,7 @@ async function openEdit(item: any) {
   if (!canEdit.value) return;
   await ensureCatalogsLoaded();
   editingId.value = item.id;
+  currentWorkOrderRecord.value = item?._raw ?? item;
   closingFlow.value = false;
   resetAllForms();
   headerForm.code = item.code ?? item.codigo ?? "";
@@ -2119,8 +2203,12 @@ async function handleAttachmentFileChange(value: File | File[] | null) {
 }
 
 function openDelete(item: any) {
-  if (!canDelete.value) return;
+  if (!canDelete.value || !canCloseOrVoidWorkOrder(item)) {
+    ui.error("Solo el usuario que creó o planificó la OT puede anularla.");
+    return;
+  }
   deletingId.value = item.id;
+  currentWorkOrderRecord.value = item?._raw ?? item;
   deleteDialog.value = true;
 }
 
@@ -2139,6 +2227,10 @@ async function startProcess() {
 }
 
 async function prepareClose() {
+  if (!canCloseOrVoidCurrent.value) {
+    ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
+    return;
+  }
   closingFlow.value = true;
   headerForm.status_workflow = "CLOSED";
   if (!materialItems.value.length) {
@@ -2149,6 +2241,15 @@ async function prepareClose() {
 
 async function saveHeader(manageLoading = true, refreshAfterSave = true) {
   if (!canPersistHeader.value) return false;
+  if (
+    editingId.value &&
+    normalizedWorkflow.value === "CLOSED" &&
+    !canCloseOrVoidCurrent.value &&
+    !isClosed.value
+  ) {
+    ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
+    return false;
+  }
   if (!headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
     return false;
@@ -2225,6 +2326,7 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     }
 
     if (savedHeader) {
+      currentWorkOrderRecord.value = savedHeader;
       headerForm.plan_id = savedHeader.plan_id ?? headerForm.plan_id;
       headerForm.procedimiento_id = savedHeader.procedimiento_id ?? headerForm.procedimiento_id;
       headerForm.equipo_componente_id = savedHeader.equipo_componente_id ?? headerForm.equipo_componente_id;
@@ -2563,6 +2665,10 @@ function hasMaterialDraft() {
 
 async function confirmDelete() {
   if (!deletingId.value) return;
+  if (!canCloseOrVoidCurrent.value) {
+    ui.error(closeRestrictionText.value || "No tienes permiso para anular esta orden de trabajo.");
+    return;
+  }
   savingHeader.value = true;
   try {
     await api.delete(`/kpi_maintenance/work-orders/${deletingId.value}`);
