@@ -1201,14 +1201,16 @@ const workOrderPreviewTraceability = computed(() => [
 const reportPreviewTaskHeaders = [
   { title: "Plan", key: "plan" },
   { title: "Tarea", key: "tarea" },
-  { title: "Captura", key: "captura" },
+  { title: "Tipo captura", key: "tipo_captura" },
+  { title: "Valor registrado", key: "valor_registrado" },
   { title: "Observación", key: "observacion" },
   { title: "Requisitos", key: "requisitos" },
 ];
 const reportPreviewAttachmentHeaders = [
-  { title: "Tipo", key: "tipo" },
+  { title: "Tipo archivo", key: "tipo_archivo" },
   { title: "Origen", key: "origen" },
   { title: "Nombre", key: "nombre" },
+  { title: "Visualizacion", key: "visualizacion" },
 ];
 const reportPreviewConsumoHeaders = computed(() => {
   const base = [
@@ -1249,6 +1251,8 @@ const reportPreviewTasks = computed(() =>
   taskRows.value.map((item: any) => ({
     plan: getPlanLabelForTask(item),
     tarea: getTaskLabelForTask(item),
+    tipo_captura: getFriendlyTaskCaptureType(item),
+    valor_registrado: getTaskReportValue(item),
     captura: [
       item?.valor_boolean != null ? (item.valor_boolean ? "Sí" : "No") : "",
       item?.valor_numeric ?? "",
@@ -1261,8 +1265,12 @@ const reportPreviewTasks = computed(() =>
 const reportPreviewAttachments = computed(() =>
   attachmentRows.value.map((item: any) => ({
     tipo: item?.tipo || "",
+    tipo_archivo: getFriendlyAttachmentType(item),
     origen: getAttachmentOriginLabel(item),
     nombre: item?.nombre || "",
+    visualizacion: isAttachmentImage(item)
+      ? "Imagen adjunta"
+      : getAttachmentReportUrl(item) || "Sin enlace",
   })),
 );
 const reportPreviewHistory = computed(() =>
@@ -1302,19 +1310,12 @@ const workOrderReportDefinition = computed(() =>
     tasks: taskRows.value.map((item: any) => ({
       plan: getPlanLabelForTask(item),
       tarea: getTaskLabelForTask(item),
-      tipo_captura: getTaskFieldType(item),
-      valor_boolean: item?.valor_boolean ?? "",
-      valor_numerico: item?.valor_numeric ?? "",
-      valor_texto: item?.valor_text ?? "",
+      tipo_captura: getFriendlyTaskCaptureType(item),
+      valor_registrado: getTaskReportValue(item),
       observacion: item?.observacion ?? "",
       requisitos: getTaskRequirementChips(item).join(" | "),
     })),
-    attachments: attachmentRows.value.map((item: any) => ({
-      tipo: item?.tipo || "",
-      origen: getAttachmentOriginLabel(item),
-      nombre: item?.nombre || "",
-      mime_type: item?.mime_type || "",
-    })),
+    attachments: attachmentRows.value.map((item: any) => buildWorkOrderAttachmentReportRow(item)),
     consumos: consumoRows.value.map((item: any) => ({
       bodega: item?.bodega_label || "",
       material: item?.producto_label || "",
@@ -1932,6 +1933,88 @@ function getTaskFieldType(task: any) {
   return normalizeTaskFieldType(
     definition?.field_type ?? definition?.meta?.field_type ?? task?.field_type ?? task?.task_meta?.field_type,
   );
+}
+
+function getFriendlyTaskCaptureType(task: any) {
+  const fieldType = getTaskFieldType(task);
+  if (fieldType === "BOOLEAN") return "CHECK";
+  if (fieldType === "NUMBER") return "NUMERO";
+  if (fieldType === "TEXT") return "TEXTO";
+  if (fieldType === "JSON") {
+    return isTaskEvidenceField(task) || getTaskEvidenceEntries(task).length > 0 ? "ARCHIVOS" : "FORMULARIO";
+  }
+  return "CAMPO";
+}
+
+function getTaskReportValue(task: any) {
+  const fieldType = getTaskFieldType(task);
+  if (fieldType === "BOOLEAN") {
+    return task?.valor_boolean == null ? "" : task.valor_boolean ? "Si" : "No";
+  }
+  if (fieldType === "NUMBER") {
+    return task?.valor_numeric ?? "";
+  }
+  if (fieldType === "TEXT") {
+    return String(task?.valor_text ?? "").trim();
+  }
+  if (fieldType === "JSON") {
+    if (isTaskEvidenceField(task) || getTaskEvidenceEntries(task).length > 0) {
+      return getTaskEvidenceEntries(task)
+        .map((entry: any) => {
+          const fileName = String(entry?.nombre || "Adjunto").trim();
+          const evidenceLabel = getTaskEvidenceRequirementLabel(entry?.evidence_kind || entry?.tipo);
+          return evidenceLabel === "Archivo" ? fileName : `${evidenceLabel}: ${fileName}`;
+        })
+        .filter(Boolean)
+        .join(" | ");
+    }
+    return String(getTaskJsonText(task) ?? "").trim() ? "Formulario registrado" : "";
+  }
+  return "";
+}
+
+function getAttachmentMimeType(attachment: any) {
+  return String(attachment?.mime_type || attachment?.meta?.mime_type || "").trim().toLowerCase();
+}
+
+function isAttachmentImage(attachment: any) {
+  const mimeType = getAttachmentMimeType(attachment);
+  if (mimeType.startsWith("image/")) return true;
+  return normalizeEvidenceKind(attachment?.meta?.evidence_kind || attachment?.tipo) === "IMAGEN";
+}
+
+function isAttachmentVideo(attachment: any) {
+  const mimeType = getAttachmentMimeType(attachment);
+  if (mimeType.startsWith("video/")) return true;
+  return normalizeEvidenceKind(attachment?.meta?.evidence_kind || attachment?.tipo) === "VIDEO";
+}
+
+function getFriendlyAttachmentType(attachment: any) {
+  if (isAttachmentImage(attachment)) return "IMAGEN";
+  if (isAttachmentVideo(attachment)) return "VIDEO";
+  return "DOCUMENTO";
+}
+
+function getAttachmentReportUrl(attachment: any) {
+  const rawUrl = String(attachment?.view_url || attachment?.preview_url || "").trim();
+  if (!rawUrl) return "";
+  if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
+  const normalizedPath = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
+  return `https://justicecompany-ec.com${normalizedPath}`;
+}
+
+function buildWorkOrderAttachmentReportRow(attachment: any, compact = false) {
+  const isImage = isAttachmentImage(attachment);
+  const url = getAttachmentReportUrl(attachment);
+  return {
+    tipo_archivo: getFriendlyAttachmentType(attachment),
+    origen: getAttachmentOriginLabel(attachment),
+    nombre: attachment?.nombre || "",
+    visualizacion: compact ? (isImage ? "Imagen adjunta" : url || "Sin enlace") : undefined,
+    vista_previa: isImage ? "Imagen adjunta" : "",
+    url_visualizacion: url,
+    media_url: isImage ? url : "",
+  };
 }
 
 function isTaskRequired(task: any) {

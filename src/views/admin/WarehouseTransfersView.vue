@@ -59,6 +59,18 @@
       <template #item.total_cantidad="{ item }">
         {{ formatNumber(item.total_cantidad) }}
       </template>
+
+      <template #item.egreso_bodega_codigo="{ item }">
+        <v-chip size="small" variant="tonal" color="error">
+          {{ item.egreso_bodega_codigo || "-" }}
+        </v-chip>
+      </template>
+
+      <template #item.ingreso_bodega_codigo="{ item }">
+        <v-chip size="small" variant="tonal" color="success">
+          {{ item.ingreso_bodega_codigo || "-" }}
+        </v-chip>
+      </template>
     </v-data-table-server>
   </v-card>
 
@@ -353,6 +365,8 @@ type TransferRow = {
   orden_compra_proveedor?: string | null;
   bodega_origen_label?: string | null;
   bodega_destino_label?: string | null;
+  egreso_bodega_codigo?: string | null;
+  ingreso_bodega_codigo?: string | null;
   estado?: string | null;
   total_items?: number;
   total_cantidad?: string | number | null;
@@ -418,6 +432,8 @@ const headers = [
   { title: "Proveedor", key: "orden_compra_proveedor" },
   { title: "Origen", key: "bodega_origen_label" },
   { title: "Destino", key: "bodega_destino_label" },
+  { title: "EB", key: "egreso_bodega_codigo" },
+  { title: "IB", key: "ingreso_bodega_codigo" },
   { title: "Items", key: "total_items" },
   { title: "Cantidad total", key: "total_cantidad" },
   { title: "Estado", key: "estado" },

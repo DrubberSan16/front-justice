@@ -205,23 +205,12 @@
       <v-card rounded="xl" class="pa-4 enterprise-surface">
         <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
           <div>
-            <div class="text-h6 font-weight-bold">Kardex</div>
+            <div class="text-h6 font-weight-bold">Kardex agrupado por material</div>
             <div class="text-body-2 text-medium-emphasis">
-              Historial de movimientos con indicación clara de ingreso o salida.
+              Consulta el rango seleccionado y expande cada material para revisar ingresos, egresos y su referencia IB / EB.
             </div>
           </div>
           <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-            <v-select
-              v-model="inventoryGroupBy"
-              :items="inventoryGroupingOptions"
-              item-title="title"
-              item-value="value"
-              label="Agrupar inventario por"
-              variant="outlined"
-              density="compact"
-              hide-details
-              style="min-width: 220px;"
-            />
             <v-btn
               v-if="canAccessInventoryReports"
               variant="tonal"
@@ -240,42 +229,176 @@
             >
               PDF
             </v-btn>
-            <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex">
-              Recargar
+            <v-btn color="primary" prepend-icon="mdi-magnify" :loading="loadingKardex" @click="loadKardex">
+              Consultar
             </v-btn>
           </div>
         </div>
 
-        <v-data-table
-          :headers="kardexHeaders"
-          :items="kardexRows"
-          :loading="loadingKardex"
-          loading-text="Obteniendo movimientos de kardex..."
-          :items-per-page="20"
-          class="elevation-0 enterprise-table"
-        >
-          <template #item.tipo="{ item }">
-            <v-chip
-              size="small"
-              variant="tonal"
-              :color="item.tipo_movimiento === 'INGRESO' ? 'success' : 'error'"
-            >
-              {{ item.tipo_movimiento === "INGRESO" ? "Ingreso" : "Salida" }}
-            </v-chip>
-          </template>
+        <v-row dense class="mb-3">
+          <v-col cols="12" md="4">
+            <v-text-field
+              v-model="kardexFilters.search"
+              label="Buscar por material, documento o referencia"
+              variant="outlined"
+              prepend-inner-icon="mdi-magnify"
+              hide-details
+              clearable
+              @keyup.enter="loadKardex"
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field
+              v-model="kardexFilters.desde"
+              type="date"
+              label="Desde"
+              variant="outlined"
+              hide-details
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field
+              v-model="kardexFilters.hasta"
+              type="date"
+              label="Hasta"
+              variant="outlined"
+              hide-details
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-select
+              v-model="inventoryGroupBy"
+              :items="inventoryGroupingOptions"
+              item-title="title"
+              item-value="value"
+              label="Exportar stock"
+              variant="outlined"
+              hide-details
+            />
+          </v-col>
+        </v-row>
 
-          <template #item.movimiento="{ item }">
-            <span
-              class="font-weight-bold"
-              :class="item.tipo_movimiento === 'INGRESO' ? 'text-success' : 'text-error'"
-            >
-              {{ item.tipo_movimiento === "INGRESO" ? "+" : "-" }}
-              {{ item.tipo_movimiento === "INGRESO"
-                ? item.entrada_cantidad
-                : item.salida_cantidad }}
-            </span>
-          </template>
-        </v-data-table>
+        <div class="d-flex flex-wrap mb-4" style="gap: 8px;">
+          <v-chip color="primary" variant="tonal">
+            {{ kardexRangeLabel }}
+          </v-chip>
+          <v-chip color="info" variant="tonal">
+            {{ kardexTotals.materiales }} materiales
+          </v-chip>
+          <v-chip color="secondary" variant="tonal">
+            {{ kardexTotals.movimientos }} movimientos
+          </v-chip>
+          <v-chip color="success" variant="tonal">
+            Entradas {{ formatNumberForDisplay(kardexTotals.entradas) }}
+          </v-chip>
+          <v-chip color="error" variant="tonal">
+            Salidas {{ formatNumberForDisplay(kardexTotals.salidas) }}
+          </v-chip>
+        </div>
+
+        <v-progress-linear
+          v-if="loadingKardex"
+          indeterminate
+          color="primary"
+          rounded
+          class="mb-4"
+        />
+
+        <v-alert
+          v-if="!loadingKardex && !kardexGroups.length"
+          type="info"
+          variant="tonal"
+        >
+          No hay movimientos de kardex para el rango seleccionado.
+        </v-alert>
+
+        <v-expansion-panels
+          v-else
+          multiple
+          variant="accordion"
+          class="kardex-groups"
+        >
+          <v-expansion-panel
+            v-for="group in kardexGroups"
+            :key="group.producto_id"
+            rounded="xl"
+          >
+            <v-expansion-panel-title class="kardex-group-title">
+              <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
+                <div>
+                  <div class="text-subtitle-1 font-weight-bold">
+                    [{{ group.producto_codigo || "SIN CODIGO" }}] {{ group.producto_nombre }}
+                  </div>
+                  <div class="text-caption text-medium-emphasis mt-1">
+                    Línea: {{ group.linea_label || "Sin línea" }}
+                    · Categoría: {{ group.categoria_label || "Sin categoría" }}
+                    · Unidad: {{ group.unidad_label || "Sin unidad" }}
+                  </div>
+                </div>
+                <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+                  <v-chip size="small" color="info" variant="tonal">
+                    Stock inicial {{ formatNumberForDisplay(group.stock_inicial) }}
+                  </v-chip>
+                  <v-chip size="small" color="success" variant="tonal">
+                    Entradas +{{ formatNumberForDisplay(group.entradas) }}
+                  </v-chip>
+                  <v-chip size="small" color="error" variant="tonal">
+                    Salidas -{{ formatNumberForDisplay(group.salidas) }}
+                  </v-chip>
+                  <v-chip size="small" color="primary" variant="tonal">
+                    Stock final {{ formatNumberForDisplay(group.stock_final) }}
+                  </v-chip>
+                  <v-chip size="small" color="secondary" variant="tonal">
+                    {{ group.movimientos_count }} movimientos
+                  </v-chip>
+                </div>
+              </div>
+            </v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <div class="kardex-detail-table">
+                <table class="kardex-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha emisión</th>
+                      <th>F. creación</th>
+                      <th>Documento</th>
+                      <th>Referencia</th>
+                      <th>Concepto</th>
+                      <th>Descripción</th>
+                      <th>Bodega</th>
+                      <th class="text-right">Entrada</th>
+                      <th class="text-right">Salida</th>
+                      <th class="text-right">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr
+                      v-for="movement in group.movimientos"
+                      :key="movement.id"
+                    >
+                      <td>{{ formatDateTime(movement.fecha_emision, "") }}</td>
+                      <td>{{ formatDateTime(movement.fecha_creacion, "") }}</td>
+                      <td class="font-weight-bold">{{ movement.documento || "-" }}</td>
+                      <td>{{ movement.referencia || "-" }}</td>
+                      <td>{{ movement.concepto || "-" }}</td>
+                      <td>{{ movement.descripcion || "-" }}</td>
+                      <td>{{ movement.bodega || "-" }}</td>
+                      <td class="text-right text-success font-weight-medium">
+                        {{ movement.entrada ? formatNumberForDisplay(movement.entrada) : "" }}
+                      </td>
+                      <td class="text-right text-error font-weight-medium">
+                        {{ movement.salida ? formatNumberForDisplay(movement.salida) : "" }}
+                      </td>
+                      <td class="text-right font-weight-bold">
+                        {{ formatNumberForDisplay(movement.stock) }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
       </v-card>
     </v-col>
     </template>
@@ -292,8 +415,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
-import { listAllPages } from "@/app/utils/list-all-pages";
-import { formatDateTime } from "@/app/utils/date-time";
+import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import {
   buildInventoryStockReport,
   downloadReportExcel,
@@ -314,16 +436,33 @@ type StockRow = {
   costo_promedio_bodega: string;
 };
 
-type KardexRow = {
+type KardexMovementRow = {
   id: string;
-  fecha: string;
-  tipo_movimiento: string;
+  fecha_emision: string;
+  fecha_creacion: string;
+  documento: string;
+  referencia: string;
+  concepto: string;
+  descripcion: string;
+  bodega: string;
+  entrada: number | string;
+  salida: number | string;
+  stock: number | string;
+};
+
+type KardexMaterialGroup = {
   producto_id: string;
-  bodega_id: string;
-  entrada_cantidad: string;
-  salida_cantidad: string;
-  saldo_cantidad: string;
-  costo_unitario: string;
+  producto_codigo: string;
+  producto_nombre: string;
+  linea_label: string;
+  categoria_label: string;
+  unidad_label: string;
+  stock_inicial: number;
+  entradas: number;
+  salidas: number;
+  stock_final: number;
+  movimientos_count: number;
+  movimientos: KardexMovementRow[];
 };
 
 type ImportSummary = {
@@ -390,10 +529,21 @@ const movementForm = reactive({
 const products = ref<any[]>([]);
 const bodegas = ref<any[]>([]);
 const stocks = ref<StockRow[]>([]);
-const kardex = ref<KardexRow[]>([]);
+const kardexGroups = ref<KardexMaterialGroup[]>([]);
 const sucursales = ref<any[]>([]);
 const lineas = ref<any[]>([]);
 const categorias = ref<any[]>([]);
+const kardexFilters = reactive({
+  desde: formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+  hasta: formatDateForInput(),
+  search: "",
+});
+const kardexTotals = reactive({
+  materiales: 0,
+  movimientos: 0,
+  entradas: 0,
+  salidas: 0,
+});
 
 const movementTypes = [
   { value: "INGRESO", title: "Ingreso de material" },
@@ -489,35 +639,36 @@ const productOptions = computed(() => {
     });
 });
 
-const kardexHeaders = [
-  { title: "Fecha", key: "fecha" },
-  { title: "Tipo", key: "tipo" },
-  { title: "Movimiento", key: "movimiento" },
-  { title: "Material", key: "producto" },
-  { title: "Bodega", key: "bodega" },
-  { title: "Saldo", key: "saldo_cantidad" },
-  { title: "Costo unitario", key: "costo_unitario" },
-];
-
-const kardexRows = computed(() => {
-  const productNameById = new Map(
-    products.value.map((p) => [p.id, `${p.codigo} - ${p.nombre}`]),
-  );
-  const bodegaNameById = new Map(
-    bodegas.value.map((b) => [b.id, `${b.codigo} - ${b.nombre}`]),
-  );
-
-  return kardex.value.map((row) => ({
-    ...row,
-    fecha: formatDateTime(row.fecha, String(row.fecha ?? "")),
-    producto: productNameById.get(row.producto_id) ?? row.producto_id,
-    bodega: bodegaNameById.get(row.bodega_id) ?? row.bodega_id,
-    entrada_cantidad: formatNumberForDisplay(row.entrada_cantidad),
-    salida_cantidad: formatNumberForDisplay(row.salida_cantidad),
-    saldo_cantidad: formatNumberForDisplay(row.saldo_cantidad),
-    costo_unitario: formatNumberForDisplay(row.costo_unitario),
-  }));
+const kardexRangeLabel = computed(() => {
+  const from = String(kardexFilters.desde || "").trim();
+  const to = String(kardexFilters.hasta || "").trim();
+  if (!from && !to) return "Rango abierto";
+  if (!from) return `Hasta ${to}`;
+  if (!to) return `Desde ${from}`;
+  return `${from} -> ${to}`;
 });
+
+const kardexMovementReportRows = computed(() =>
+  kardexGroups.value.flatMap((group) =>
+    (group.movimientos || []).map((movement) => ({
+      codigo_material: group.producto_codigo || "",
+      material: group.producto_nombre || "",
+      linea: group.linea_label || "",
+      categoria: group.categoria_label || "",
+      unidad: group.unidad_label || "",
+      fecha_emision: movement.fecha_emision,
+      fecha_creacion: movement.fecha_creacion,
+      documento: movement.documento || "",
+      referencia: movement.referencia || "",
+      concepto: movement.concepto || "",
+      descripcion: movement.descripcion || "",
+      bodega: movement.bodega || "",
+      entrada: Number(movement.entrada || 0),
+      salida: Number(movement.salida || 0),
+      stock: Number(movement.stock || 0),
+    })),
+  ),
+);
 
 function getUserName() {
   return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM";
@@ -534,10 +685,6 @@ function resetMovementForm() {
   movementForm.productoId = "";
   movementForm.cantidad = "";
   movementForm.observacion = "";
-}
-
-async function listAll(endpoint: string) {
-  return listAllPages(endpoint);
 }
 
 async function loadBaseData() {
@@ -633,7 +780,7 @@ async function exportInventoryReport(format: "excel" | "pdf") {
       groupLabel: inventoryGroupingOptions.find((item) => item.value === inventoryGroupBy.value)?.title || "Bodega",
       summary: inventorySummary.value,
       rows: inventoryReportRows.value,
-      movementRows: kardexRows.value,
+      movementRows: kardexMovementReportRows.value,
     });
     if (format === "excel") {
       await downloadReportExcel(report);
@@ -651,8 +798,25 @@ async function loadKardex() {
   if (!canRead.value) return;
   loadingKardex.value = true;
   try {
-    kardex.value = (await listAll("/kpi_inventory/kardex")) as KardexRow[];
+    const { data } = await api.get("/kpi_inventory/kardex/resumen-material", {
+      params: {
+        desde: kardexFilters.desde || undefined,
+        hasta: kardexFilters.hasta || undefined,
+        search: kardexFilters.search || undefined,
+      },
+    });
+    const payload = data?.data ?? data ?? {};
+    kardexGroups.value = Array.isArray(payload?.groups) ? payload.groups : [];
+    kardexTotals.materiales = Number(payload?.totals?.materiales || 0);
+    kardexTotals.movimientos = Number(payload?.totals?.movimientos || 0);
+    kardexTotals.entradas = Number(payload?.totals?.entradas || 0);
+    kardexTotals.salidas = Number(payload?.totals?.salidas || 0);
   } catch (error: any) {
+    kardexGroups.value = [];
+    kardexTotals.materiales = 0;
+    kardexTotals.movimientos = 0;
+    kardexTotals.entradas = 0;
+    kardexTotals.salidas = 0;
     ui.error(error?.response?.data?.message || "No se pudo cargar kardex.");
   } finally {
     loadingKardex.value = false;
@@ -945,3 +1109,50 @@ onBeforeUnmount(() => {
   stopImportPolling();
 });
 </script>
+
+<style scoped>
+.kardex-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.kardex-group-title {
+  padding-block: 16px;
+}
+
+.kardex-detail-table {
+  overflow-x: auto;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 18px;
+}
+
+.kardex-table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+  background: rgba(var(--v-theme-surface), 0.92);
+}
+
+.kardex-table th,
+.kardex-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  font-size: 0.92rem;
+  vertical-align: top;
+}
+
+.kardex-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(var(--v-theme-primary), 0.08);
+  white-space: nowrap;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.kardex-table tbody tr:nth-child(even) {
+  background: rgba(var(--v-theme-on-surface), 0.02);
+}
+</style>

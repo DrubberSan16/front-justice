@@ -20,10 +20,18 @@ export type ReportColumn = {
   format?: "text" | "number" | "currency" | "date" | "datetime" | "hours";
 };
 
+export type ReportSheetMedia = {
+  imageUrlKey: string;
+  previewColumnKey: string;
+  linkUrlKey?: string;
+  rowHeight?: number;
+};
+
 export type ReportSheet = {
   name: string;
   rows: AnyRow[];
   columns?: ReportColumn[];
+  media?: ReportSheetMedia;
   note?: string;
   groupBy?: string[];
   emptyMessage?: string;
@@ -179,6 +187,73 @@ function resolveColumns(sheet: ReportSheet, rows: AnyRow[]) {
     width: inferColumnWidth(key, rows),
     format: inferColumnFormat(key),
   }));
+}
+
+function resolveRowValueByKey(row: AnyRow, key: string, header?: string) {
+  if (!row || !key) return "";
+  if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  const prettyKey = prettifyLabel(key);
+  if (Object.prototype.hasOwnProperty.call(row, prettyKey)) return row[prettyKey];
+  if (header && Object.prototype.hasOwnProperty.call(row, header)) return row[header];
+  const repairedHeader = repairText(header || "");
+  if (repairedHeader && Object.prototype.hasOwnProperty.call(row, repairedHeader)) return row[repairedHeader];
+  return "";
+}
+
+function resolveColumnValue(row: AnyRow, column: { key: string; header?: string }) {
+  return resolveRowValueByKey(row, column.key, column.header);
+}
+
+function resolveColumnIndex(columns: Array<{ key: string; header?: string }>, targetKey?: string) {
+  if (!targetKey) return -1;
+  return columns.findIndex((column) => {
+    const normalizedTarget = prettifyLabel(targetKey);
+    return column.key === targetKey || prettifyLabel(column.key) === normalizedTarget || prettifyLabel(column.header || "") === normalizedTarget;
+  });
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+const imageDataUrlCache = new Map<string, Promise<string | null>>();
+
+async function loadImageDataUrl(url: string) {
+  const normalizedUrl = repairText(String(url || "")).trim();
+  if (!normalizedUrl) return null;
+  if (normalizedUrl.startsWith("data:image/")) return normalizedUrl;
+  if (imageDataUrlCache.has(normalizedUrl)) {
+    return imageDataUrlCache.get(normalizedUrl) ?? null;
+  }
+  const pending = (async () => {
+    try {
+      const response = await fetch(normalizedUrl);
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      if (!String(blob.type || "").toLowerCase().startsWith("image/")) return null;
+      return await blobToDataUrl(blob);
+    } catch {
+      return null;
+    }
+  })();
+  imageDataUrlCache.set(normalizedUrl, pending);
+  return pending;
+}
+
+function inferImageExtension(dataUrl: string, fallbackUrl = "") {
+  const normalized = String(dataUrl || "").trim().toLowerCase();
+  if (normalized.startsWith("data:image/png")) return "png";
+  if (normalized.startsWith("data:image/jpeg") || normalized.startsWith("data:image/jpg")) return "jpeg";
+  if (normalized.startsWith("data:image/gif")) return "gif";
+  const fallback = String(fallbackUrl || "").toLowerCase();
+  if (fallback.includes(".png")) return "png";
+  if (fallback.includes(".gif")) return "gif";
+  return "jpeg";
 }
 
 function formatSheetValue(value: unknown) {
@@ -359,6 +434,8 @@ export async function downloadReportExcel(report: ReportDefinition) {
     headerRow.height = 22;
 
     const groupedRows = buildGroupedRows(safeRows, sheet.groupBy);
+    const previewColumnIndex = resolveColumnIndex(columns, sheet.media?.previewColumnKey);
+    const linkColumnIndex = resolveColumnIndex(columns, sheet.media?.linkUrlKey);
     let rowIndex = headerRowIndex + 1;
     let zebraIndex = 0;
 
@@ -377,7 +454,7 @@ export async function downloadReportExcel(report: ReportDefinition) {
       const row = worksheet.getRow(rowIndex);
       columns.forEach((column, columnIndex) => {
         const cell = row.getCell(columnIndex + 1);
-        cell.value = formatSheetValue(entry.row?.[column.key]);
+        cell.value = formatSheetValue(resolveColumnValue(entry.row ?? {}, column));
         applyCellFormat(cell, column.format);
         cell.border = {
           top: { style: "thin", color: { argb: REPORT_THEME.border } },
@@ -389,7 +466,41 @@ export async function downloadReportExcel(report: ReportDefinition) {
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.zebra } };
         }
       });
-      row.height = 20;
+
+      if (sheet.media) {
+        const linkValue = repairText(String(resolveRowValueByKey(entry.row ?? {}, sheet.media.linkUrlKey || "") || ""));
+        if (linkColumnIndex >= 0 && linkValue) {
+          const linkCell = row.getCell(linkColumnIndex + 1);
+          linkCell.value = { text: linkValue, hyperlink: linkValue };
+          linkCell.font = {
+            name: "Arial",
+            size: 9,
+            color: { argb: "0563C1" },
+            underline: true,
+          };
+          linkCell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
+        }
+
+        const imageUrl = repairText(String(resolveRowValueByKey(entry.row ?? {}, sheet.media.imageUrlKey) || ""));
+        if (previewColumnIndex >= 0 && imageUrl) {
+          const imageDataUrl = await loadImageDataUrl(imageUrl);
+          if (imageDataUrl) {
+            const imageId = workbook.addImage({
+              base64: imageDataUrl,
+              extension: inferImageExtension(imageDataUrl, imageUrl),
+            });
+            const rowHeight = Math.max(sheet.media.rowHeight ?? 58, 58);
+            row.height = rowHeight;
+            worksheet.addImage(imageId, {
+              tl: { col: previewColumnIndex + 0.12, row: rowIndex - 1 + 0.12 },
+              ext: { width: 84, height: rowHeight - 8 },
+            });
+            row.getCell(previewColumnIndex + 1).value = "";
+          }
+        }
+      }
+
+      row.height = Math.max(row.height ?? 0, 20);
       zebraIndex += 1;
       rowIndex += 1;
     }
@@ -481,6 +592,8 @@ export async function downloadReportPdf(report: ReportDefinition) {
     const rows = normalizeRows(sheet.rows);
     const safeRows = rows.length ? rows : [{ Estado: sheet.emptyMessage || "Sin registros disponibles" }];
     const columns = resolveColumns(sheet, safeRows);
+    const previewColumnIndex = resolveColumnIndex(columns, sheet.media?.previewColumnKey);
+    const linkColumnIndex = resolveColumnIndex(columns, sheet.media?.linkUrlKey);
     const compactTable = columns.length >= 9;
     const columnStyles = Object.fromEntries(
       columns.map((column, columnIndex) => [
@@ -493,6 +606,21 @@ export async function downloadReportPdf(report: ReportDefinition) {
         },
       ]),
     );
+    const imageMap = new Map<string, string>();
+
+    if (sheet.media && previewColumnIndex >= 0) {
+      const imageUrls = [
+        ...new Set(
+          safeRows
+            .map((row) => repairText(String(resolveRowValueByKey(row, sheet.media?.imageUrlKey || "") || "")).trim())
+            .filter(Boolean),
+        ),
+      ];
+      for (const imageUrl of imageUrls) {
+        const imageDataUrl = await loadImageDataUrl(imageUrl);
+        if (imageDataUrl) imageMap.set(imageUrl, imageDataUrl);
+      }
+    }
 
     if (index > 0) {
       doc.addPage(report.orientation ?? "landscape");
@@ -549,8 +677,56 @@ export async function downloadReportPdf(report: ReportDefinition) {
       columnStyles,
       head: [columns.map((column) => repairText(column.header))],
       body: safeRows.map((row) =>
-        columns.map((column) => repairText(String(formatValue(row[column.key] ?? row[column.header])))),
+        columns.map((column) => repairText(String(formatValue(resolveColumnValue(row, column))))),
       ),
+      didParseCell: (hookData: any) => {
+        if (
+          sheet.media &&
+          hookData.section === "body" &&
+          previewColumnIndex >= 0 &&
+          hookData.column.index === previewColumnIndex
+        ) {
+          const row = safeRows[hookData.row.index] ?? {};
+          const imageUrl = repairText(String(resolveRowValueByKey(row, sheet.media.imageUrlKey) || "")).trim();
+          if (imageUrl) {
+            hookData.cell.text = imageMap.has(imageUrl) ? [""] : ["Ver imagen"];
+            hookData.cell.styles.minCellHeight = Math.max(sheet.media.rowHeight ?? 58, 58);
+          }
+        }
+      },
+      didDrawCell: (hookData: any) => {
+        if (!sheet.media || hookData.section !== "body") return;
+        const row = safeRows[hookData.row.index] ?? {};
+
+        if (previewColumnIndex >= 0 && hookData.column.index === previewColumnIndex) {
+          const imageUrl = repairText(String(resolveRowValueByKey(row, sheet.media.imageUrlKey) || "")).trim();
+          const imageDataUrl = imageMap.get(imageUrl);
+          if (imageDataUrl) {
+            const padding = 4;
+            const width = Math.max(12, hookData.cell.width - padding * 2);
+            const height = Math.max(12, hookData.cell.height - padding * 2);
+            doc.addImage(
+              imageDataUrl,
+              inferImageExtension(imageDataUrl, imageUrl).toUpperCase(),
+              hookData.cell.x + padding,
+              hookData.cell.y + padding,
+              width,
+              height,
+              undefined,
+              "FAST",
+            );
+          }
+        }
+
+        if (linkColumnIndex >= 0 && hookData.column.index === linkColumnIndex) {
+          const linkUrl = repairText(String(resolveRowValueByKey(row, sheet.media.linkUrlKey || "") || "")).trim();
+          if (linkUrl) {
+            doc.link(hookData.cell.x, hookData.cell.y, hookData.cell.width, hookData.cell.height, {
+              url: linkUrl,
+            });
+          }
+        }
+      },
     });
 
     cursorY = (doc as any).lastAutoTable.finalY + 12;
@@ -994,8 +1170,37 @@ export function buildWorkOrderReport(payload: {
           { key: "motivo_bloqueo", header: "Motivo bloqueo", width: 22 },
         ],
       },
-      { name: "Tareas", rows: payload.tasks },
-      { name: "Adjuntos", rows: payload.attachments },
+      {
+        name: "Tareas",
+        rows: payload.tasks,
+        note: "Detalle de tareas ejecutadas con etiquetas de captura pensadas para el usuario final.",
+        columns: [
+          { key: "plan", header: "Plan", width: 20 },
+          { key: "tarea", header: "Tarea", width: 28 },
+          { key: "tipo_captura", header: "Tipo captura", width: 14 },
+          { key: "valor_registrado", header: "Valor registrado", width: 28 },
+          { key: "observacion", header: "Observacion", width: 20 },
+          { key: "requisitos", header: "Requisitos", width: 22 },
+        ],
+      },
+      {
+        name: "Adjuntos",
+        rows: payload.attachments,
+        note: "Las imagenes se muestran dentro del reporte y los documentos o videos quedan con su enlace directo.",
+        columns: [
+          { key: "tipo_archivo", header: "Tipo archivo", width: 14 },
+          { key: "origen", header: "Origen", width: 24 },
+          { key: "nombre", header: "Nombre archivo", width: 28 },
+          { key: "vista_previa", header: "Vista previa", width: 18 },
+          { key: "url_visualizacion", header: "URL visualizacion", width: 34 },
+        ],
+        media: {
+          imageUrlKey: "media_url",
+          previewColumnKey: "vista_previa",
+          linkUrlKey: "url_visualizacion",
+          rowHeight: 62,
+        },
+      },
       { name: "Consumos", rows: payload.consumos },
       { name: "Salidas material", rows: payload.issues },
       { name: "Histórico", rows: payload.history },
