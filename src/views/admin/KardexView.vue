@@ -7,400 +7,651 @@
     </v-col>
 
     <template v-else>
-    <v-col cols="12" lg="4">
-      <v-card rounded="xl" class="pa-4 h-100 enterprise-surface">
-        <div class="text-h6 font-weight-bold mb-2">Movimiento manual</div>
-        <div class="text-body-2 text-medium-emphasis mb-4">
-          Selecciona primero la bodega y luego el material para registrar ingresos y salidas con mejor control.
-        </div>
-
-        <v-select
-          v-model="movementForm.bodegaId"
-          :items="warehouseOptions"
-          item-title="title"
-          item-value="value"
-          label="Bodega"
-          variant="outlined"
-          class="mb-2"
-        />
-
-        <v-autocomplete
-          v-model="movementForm.productoId"
-          :items="productOptions"
-          item-title="title"
-          item-value="value"
-          label="Material"
-          variant="outlined"
-          class="mb-2"
-          :disabled="!movementForm.bodegaId"
-          clearable
-          no-data-text="Selecciona una bodega para listar materiales"
-        />
-
-        <v-select
-          v-model="movementForm.tipo"
-          :items="movementTypes"
-          item-title="title"
-          item-value="value"
-          label="Tipo de movimiento"
-          variant="outlined"
-          class="mb-2"
-        />
-
-        <v-alert
-          v-if="selectedStockRow"
-          :type="movementForm.tipo === 'SALIDA' ? 'warning' : 'info'"
-          variant="tonal"
-          class="mb-3"
-        >
-          <div class="font-weight-medium">
-            Stock actual en bodega: {{ formatNumberForDisplay(selectedStockRow.stock_actual) }}
+      <v-col cols="12" xl="5">
+        <v-card rounded="xl" class="pa-4 mb-4 enterprise-surface">
+          <div class="text-h6 font-weight-bold mb-2">Ingreso / Egreso de Bodega</div>
+          <div class="text-body-2 text-medium-emphasis mb-4">
+            Registra una transacción con cabecera y detalle. El sistema generará el código `IB` o `EB`.
           </div>
-          <div class="text-caption">
-            Mínimo: {{ formatNumberForDisplay(selectedStockRow.stock_min_bodega) }} · Máximo:
-            {{ formatNumberForDisplay(selectedStockRow.stock_max_bodega) }}
+
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="documentForm.tipo"
+                :items="movementTypes"
+                item-title="title"
+                item-value="value"
+                label="Tipo de documento"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="documentForm.fecha"
+                type="date"
+                label="Fecha"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12">
+              <v-select
+                v-model="documentForm.bodegaId"
+                :items="warehouseOptions"
+                item-title="title"
+                item-value="value"
+                label="Bodega"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="documentForm.referencia"
+                label="Referencia"
+                variant="outlined"
+                placeholder="Opcional"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                :model-value="documentForm.tipo === 'INGRESO' ? 'IB-########' : 'EB-########'"
+                label="Código generado"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col cols="12">
+              <v-textarea
+                v-model="documentForm.observacion"
+                label="Observación general"
+                variant="outlined"
+                rows="2"
+                auto-grow
+              />
+            </v-col>
+          </v-row>
+
+          <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Detalle de materiales</div>
+              <div class="text-body-2 text-medium-emphasis">
+                Agrega todos los materiales de la transacción.
+              </div>
+            </div>
+            <v-btn
+              v-if="canCreate"
+              color="primary"
+              variant="tonal"
+              prepend-icon="mdi-plus"
+              @click="addMovementDetail"
+            >
+              Agregar material
+            </v-btn>
           </div>
-        </v-alert>
 
-        <v-text-field
-          v-model="movementForm.cantidad"
-          type="number"
-          min="0"
-          label="Cantidad"
-          variant="outlined"
-          class="mb-2"
-        />
+          <v-alert
+            v-if="!documentForm.bodegaId"
+            type="info"
+            variant="tonal"
+            class="mb-3"
+          >
+            Selecciona una bodega para habilitar el detalle y validar stock.
+          </v-alert>
 
-        <v-textarea
-          v-model="movementForm.observacion"
-          label="Observación"
-          variant="outlined"
-          rows="2"
-          auto-grow
-          class="mb-2"
-        />
+          <div class="movement-detail-list">
+            <v-card
+              v-for="(detail, index) in movementDetails"
+              :key="detail.localId"
+              rounded="xl"
+              variant="tonal"
+              class="pa-3 movement-detail-card"
+            >
+              <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px;">
+                <div class="text-subtitle-2 font-weight-bold">Material {{ index + 1 }}</div>
+                <v-btn
+                  icon="mdi-delete-outline"
+                  variant="text"
+                  color="error"
+                  density="comfortable"
+                  :disabled="movementDetails.length === 1"
+                  @click="removeMovementDetail(detail.localId)"
+                />
+              </div>
 
-        <v-btn
-          v-if="canCreate"
-          color="primary"
-          block
-          :loading="savingMovement"
-          @click="saveMovement"
-        >
-          Registrar movimiento
-        </v-btn>
-      </v-card>
-    </v-col>
+              <v-row dense>
+                <v-col cols="12">
+                  <v-autocomplete
+                    v-model="detail.productoId"
+                    :items="getProductOptions()"
+                    item-title="title"
+                    item-value="value"
+                    label="Material"
+                    variant="outlined"
+                    :disabled="!documentForm.bodegaId"
+                    clearable
+                    no-data-text="No hay materiales disponibles para esta bodega"
+                  />
+                </v-col>
+                <v-col cols="12" md="5">
+                  <v-text-field
+                    :model-value="getDetailStockLabel(detail)"
+                    label="Stock actual"
+                    variant="outlined"
+                    readonly
+                  />
+                </v-col>
+                <v-col cols="12" md="4">
+                  <v-text-field
+                    v-model="detail.cantidad"
+                    type="number"
+                    min="0"
+                    label="Cantidad"
+                    variant="outlined"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-chip
+                    class="mt-md-2"
+                    :color="documentForm.tipo === 'SALIDA' ? 'warning' : 'info'"
+                    variant="tonal"
+                    label
+                  >
+                    {{ documentForm.tipo === "SALIDA" ? "Descuenta stock" : "Suma stock" }}
+                  </v-chip>
+                </v-col>
+                <v-col cols="12">
+                  <v-textarea
+                    v-model="detail.observacion"
+                    label="Observación del detalle"
+                    variant="outlined"
+                    rows="2"
+                    auto-grow
+                  />
+                </v-col>
+              </v-row>
 
-    <v-col cols="12" lg="8">
-      <v-card rounded="xl" class="pa-4 mb-4 enterprise-surface">
-        <div class="text-h6 font-weight-bold mb-2">Carga masiva CSV/XLSX</div>
-        <div class="text-body-2 text-medium-emphasis mb-3">
-          Sube el inventario por CSV o Excel. El sistema creará materiales nuevos, dará de alta catálogos faltantes y ajustará ingresos o salidas por diferencia de stock.
-        </div>
+              <v-alert
+                v-if="detailExceedsStock(detail)"
+                type="error"
+                variant="tonal"
+                density="comfortable"
+              >
+                La cantidad supera el stock disponible de
+                {{ formatNumberForDisplay(getDetailAvailableStock(detail)) }}.
+              </v-alert>
+            </v-card>
+          </div>
 
-        <v-file-input
-          v-model="xlsxFile"
-          accept=".csv,.xlsx,.xls,text/csv"
-          prepend-icon="mdi-file-excel"
-          label="Selecciona archivo CSV o XLSX"
-          variant="outlined"
-          show-size
-          class="mb-3"
-        />
+          <div class="d-flex flex-wrap mt-4 mb-4" style="gap: 8px;">
+            <v-chip color="primary" variant="tonal">{{ movementDetails.length }} materiales</v-chip>
+            <v-chip color="secondary" variant="tonal">
+              {{ formatNumberForDisplay(documentTotalQuantity) }} unidades
+            </v-chip>
+          </div>
 
-        <div class="d-flex flex-wrap" style="gap: 8px;">
           <v-btn
             v-if="canCreate"
             color="primary"
-            prepend-icon="mdi-upload"
-            :loading="uploading"
-            @click="processXlsx"
+            block
+            size="large"
+            :loading="savingDocument"
+            @click="saveMovementDocument"
           >
-            Procesar carga masiva
+            Guardar {{ documentForm.tipo === "INGRESO" ? "Ingreso de Bodega" : "Egreso de Bodega" }}
           </v-btn>
-          <v-btn variant="outlined" prepend-icon="mdi-download" :loading="downloadingTemplate" @click="downloadTemplate">
-            Descargar formato
-          </v-btn>
-          <v-chip v-if="lastBulkSummary" color="success" variant="tonal">
-            Procesados: {{ lastBulkSummary.procesados }} · Creados: {{ lastBulkSummary.creados }} ·
-            Actualizados: {{ lastBulkSummary.actualizados }} · Ingresos: {{ lastBulkSummary.ingresos }} ·
-            Salidas: {{ lastBulkSummary.salidas }}
-          </v-chip>
-        </div>
+        </v-card>
 
-        <v-alert
-          v-if="activeImportJob"
-          type="info"
-          variant="tonal"
-          class="mt-3"
-        >
-          <div class="d-flex align-center justify-space-between" style="gap: 12px; flex-wrap: wrap;">
+        <v-card rounded="xl" class="pa-4 enterprise-surface">
+          <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
             <div>
-              <div class="font-weight-medium">Carga en servidor</div>
-              <div class="text-caption">
-                {{ activeImportJob.source_file_name || activeImportJob.stored_file_name || "Inventario" }}
+              <div class="text-h6 font-weight-bold">Documentos recientes</div>
+              <div class="text-body-2 text-medium-emphasis">
+                Consulta cabeceras `IB/EB` y expande cada documento para revisar el detalle.
               </div>
             </div>
-            <v-chip :color="importJobColor(activeImportJob.status)" variant="tonal" label>
-              {{ importJobStatusLabel(activeImportJob.status) }}
-            </v-chip>
+            <v-btn
+              variant="tonal"
+              prepend-icon="mdi-refresh"
+              :loading="documentsLoading"
+              @click="loadMovementDocuments()"
+            >
+              Actualizar
+            </v-btn>
           </div>
-          <div class="text-body-2 mt-2">
-            {{ activeImportJob.current_step || "Procesando archivo..." }}
-          </div>
-          <div class="d-flex flex-wrap mt-3" style="gap: 8px;">
-            <v-chip size="small" variant="tonal" color="primary" label>
-              Total: {{ activeImportTotalRows }}
-            </v-chip>
-            <v-chip size="small" variant="tonal" color="success" label>
-              Procesados: {{ activeImportProcessedRows }}
-            </v-chip>
-            <v-chip size="small" variant="tonal" color="warning" label>
-              Pendientes: {{ activeImportPendingRows }}
-            </v-chip>
-            <v-chip size="small" variant="tonal" color="secondary" label>
-              Avance: {{ activeImportProgress }}%
-            </v-chip>
-          </div>
+
+          <v-row dense class="mb-3">
+            <v-col cols="12" md="7">
+              <v-text-field
+                v-model="documentsSearch"
+                label="Buscar por código, referencia, bodega o material"
+                variant="outlined"
+                prepend-inner-icon="mdi-magnify"
+                hide-details
+                clearable
+                @keyup.enter="loadMovementDocuments(1)"
+              />
+            </v-col>
+            <v-col cols="12" md="5">
+              <v-select
+                v-model="documentTypeFilter"
+                :items="documentTypeFilters"
+                item-title="title"
+                item-value="value"
+                label="Tipo"
+                variant="outlined"
+                hide-details
+                @update:model-value="loadMovementDocuments(1)"
+              />
+            </v-col>
+          </v-row>
+
           <v-progress-linear
-            class="mt-3"
-            :model-value="activeImportProgress"
-            :color="importJobColor(activeImportJob.status)"
-            :indeterminate="activeImportProgress <= 0 || activeImportProgress >= 100 && activeImportJob.status === 'PROCESSING'"
+            v-if="documentsLoading"
+            indeterminate
+            color="primary"
             rounded
-            height="10"
+            class="mb-4"
           />
-          <div class="text-caption mt-2">
-            {{ activeImportProcessedRows }} procesadas de {{ activeImportTotalRows }} fila(s). Faltan {{ activeImportPendingRows }}.
-          </div>
-          <div class="text-caption text-medium-emphasis mt-1">
-            Si sales de esta pantalla y vuelves a entrar, el progreso seguirá mostrándose automáticamente.
-          </div>
-          <div v-if="activeImportJob.error_message" class="text-caption text-error mt-2">
-            {{ activeImportJob.error_message }}
-          </div>
-        </v-alert>
 
-        <v-alert
-          v-if="lastBulkSummary?.errores?.length"
-          type="warning"
-          variant="tonal"
-          class="mt-3"
-        >
-          <div class="font-weight-medium mb-2">Errores detectados en la importación</div>
-          <div
-            v-for="(error, index) in lastBulkSummary.errores.slice(0, 8)"
-            :key="`${index}-${error}`"
-            class="text-caption"
+          <v-alert
+            v-if="!documentsLoading && !movementDocuments.length"
+            type="info"
+            variant="tonal"
           >
-            {{ error }}
-          </div>
-          <div v-if="lastBulkSummary.errores.length > 8" class="text-caption mt-1">
-            ... y {{ lastBulkSummary.errores.length - 8 }} errores adicionales.
-          </div>
-        </v-alert>
-      </v-card>
+            No hay documentos de bodega registrados para los filtros seleccionados.
+          </v-alert>
 
-      <v-card rounded="xl" class="pa-4 enterprise-surface">
-        <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
-          <div>
-            <div class="text-h6 font-weight-bold">Kardex agrupado por material</div>
+          <v-expansion-panels
+            v-else
+            multiple
+            variant="accordion"
+            class="movement-documents"
+          >
+            <v-expansion-panel
+              v-for="document in movementDocuments"
+              :key="document.id"
+              rounded="xl"
+            >
+              <v-expansion-panel-title class="movement-document-title">
+                <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
+                  <div>
+                    <div class="text-subtitle-1 font-weight-bold">
+                      {{ document.numero_documento || "SIN CÓDIGO" }}
+                    </div>
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      {{ document.tipo_documento_label || "-" }}
+                      · {{ formatDateTime(document.fecha_movimiento, "-") }}
+                      · {{ document.bodega_label || "Sin bodega" }}
+                    </div>
+                  </div>
+                  <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+                    <v-chip size="small" color="secondary" variant="tonal">
+                      {{ document.total_items || 0 }} ítems
+                    </v-chip>
+                    <v-chip size="small" color="primary" variant="tonal">
+                      {{ formatNumberForDisplay(document.total_cantidad || 0) }} unidades
+                    </v-chip>
+                    <v-chip size="small" color="info" variant="tonal">
+                      Ref. {{ document.referencia || "N/A" }}
+                    </v-chip>
+                  </div>
+                </div>
+              </v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <div class="text-body-2 text-medium-emphasis mb-3">
+                  {{ document.observacion || "Sin observación general." }}
+                </div>
+                <div class="kardex-detail-table">
+                  <table class="kardex-table movement-document-table">
+                    <thead>
+                      <tr>
+                        <th>Material</th>
+                        <th>Unidad</th>
+                        <th class="text-right">Cantidad</th>
+                        <th>Observación</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="detail in document.detalles" :key="detail.id">
+                        <td>
+                          <div class="font-weight-medium">{{ detail.producto_codigo || "-" }}</div>
+                          <div>{{ detail.producto_nombre || "-" }}</div>
+                        </td>
+                        <td>{{ detail.unidad_label || "-" }}</td>
+                        <td class="text-right font-weight-bold">
+                          {{ formatNumberForDisplay(detail.cantidad || 0) }}
+                        </td>
+                        <td>{{ detail.observacion || "-" }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
+
+          <div class="d-flex justify-space-between align-center mt-4" style="gap: 12px; flex-wrap: wrap;">
             <div class="text-body-2 text-medium-emphasis">
-              Consulta el rango seleccionado y expande cada material para revisar ingresos, egresos y su referencia IB / EB.
+              {{ documentsPagination.total }} documento(s) encontrados
+            </div>
+            <v-pagination
+              v-model="documentsPagination.page"
+              :length="documentsPagination.totalPages"
+              :total-visible="6"
+              density="comfortable"
+              @update:model-value="loadMovementDocuments"
+            />
+          </div>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" xl="7">
+        <v-card rounded="xl" class="pa-4 mb-4 enterprise-surface">
+          <div class="text-h6 font-weight-bold mb-2">Carga masiva CSV/XLSX</div>
+          <div class="text-body-2 text-medium-emphasis mb-3">
+            Sube el inventario por CSV o Excel. El sistema creará materiales nuevos y ajustará ingresos o salidas por diferencia de stock.
+          </div>
+
+          <v-file-input
+            v-model="xlsxFile"
+            accept=".csv,.xlsx,.xls,text/csv"
+            prepend-icon="mdi-file-excel"
+            label="Selecciona archivo CSV o XLSX"
+            variant="outlined"
+            show-size
+            class="mb-3"
+          />
+
+          <div class="d-flex flex-wrap" style="gap: 8px;">
+            <v-btn
+              v-if="canCreate"
+              color="primary"
+              prepend-icon="mdi-upload"
+              :loading="uploading"
+              @click="processXlsx"
+            >
+              Procesar carga masiva
+            </v-btn>
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-download"
+              :loading="downloadingTemplate"
+              @click="downloadTemplate"
+            >
+              Descargar formato
+            </v-btn>
+            <v-chip v-if="lastBulkSummary" color="success" variant="tonal">
+              Procesados: {{ lastBulkSummary.procesados }} · Creados: {{ lastBulkSummary.creados }} ·
+              Actualizados: {{ lastBulkSummary.actualizados }} · Ingresos: {{ lastBulkSummary.ingresos }} ·
+              Salidas: {{ lastBulkSummary.salidas }}
+            </v-chip>
+          </div>
+
+          <v-alert
+            v-if="activeImportJob"
+            type="info"
+            variant="tonal"
+            class="mt-3"
+          >
+            <div class="d-flex align-center justify-space-between" style="gap: 12px; flex-wrap: wrap;">
+              <div>
+                <div class="font-weight-medium">Carga en servidor</div>
+                <div class="text-caption">
+                  {{ activeImportJob.source_file_name || activeImportJob.stored_file_name || "Inventario" }}
+                </div>
+              </div>
+              <v-chip :color="importJobColor(activeImportJob.status)" variant="tonal" label>
+                {{ importJobStatusLabel(activeImportJob.status) }}
+              </v-chip>
+            </div>
+            <div class="text-body-2 mt-2">
+              {{ activeImportJob.current_step || "Procesando archivo..." }}
+            </div>
+            <div class="d-flex flex-wrap mt-3" style="gap: 8px;">
+              <v-chip size="small" variant="tonal" color="primary" label>
+                Total: {{ activeImportTotalRows }}
+              </v-chip>
+              <v-chip size="small" variant="tonal" color="success" label>
+                Procesados: {{ activeImportProcessedRows }}
+              </v-chip>
+              <v-chip size="small" variant="tonal" color="warning" label>
+                Pendientes: {{ activeImportPendingRows }}
+              </v-chip>
+              <v-chip size="small" variant="tonal" color="secondary" label>
+                Avance: {{ activeImportProgress }}%
+              </v-chip>
+            </div>
+            <v-progress-linear
+              class="mt-3"
+              :model-value="activeImportProgress"
+              :color="importJobColor(activeImportJob.status)"
+              :indeterminate="activeImportProgress <= 0 || activeImportProgress >= 100 && activeImportJob.status === 'PROCESSING'"
+              rounded
+              height="10"
+            />
+            <div class="text-caption mt-2">
+              {{ activeImportProcessedRows }} procesadas de {{ activeImportTotalRows }} fila(s). Faltan {{ activeImportPendingRows }}.
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              Si sales de esta pantalla y vuelves a entrar, el progreso seguirá mostrándose automáticamente.
+            </div>
+            <div v-if="activeImportJob.error_message" class="text-caption text-error mt-2">
+              {{ activeImportJob.error_message }}
+            </div>
+          </v-alert>
+
+          <v-alert
+            v-if="lastBulkSummary?.errores?.length"
+            type="warning"
+            variant="tonal"
+            class="mt-3"
+          >
+            <div class="font-weight-medium mb-2">Errores detectados en la importación</div>
+            <div
+              v-for="(error, index) in lastBulkSummary.errores.slice(0, 8)"
+              :key="`${index}-${error}`"
+              class="text-caption"
+            >
+              {{ error }}
+            </div>
+            <div v-if="lastBulkSummary.errores.length > 8" class="text-caption mt-1">
+              ... y {{ lastBulkSummary.errores.length - 8 }} errores adicionales.
+            </div>
+          </v-alert>
+        </v-card>
+
+        <v-card rounded="xl" class="pa-4 enterprise-surface">
+          <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
+            <div>
+              <div class="text-h6 font-weight-bold">Kardex agrupado por material</div>
+              <div class="text-body-2 text-medium-emphasis">
+                Consulta el rango seleccionado y expande cada material para revisar ingresos, egresos y sus referencias `IB / EB`.
+              </div>
+            </div>
+            <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+              <v-btn
+                v-if="canAccessInventoryReports"
+                variant="tonal"
+                prepend-icon="mdi-file-excel"
+                :loading="isExporting('excel')"
+                @click="exportInventoryReport('excel')"
+              >
+                Excel
+              </v-btn>
+              <v-btn
+                v-if="canAccessInventoryReports"
+                variant="tonal"
+                prepend-icon="mdi-file-pdf-box"
+                :loading="isExporting('pdf')"
+                @click="exportInventoryReport('pdf')"
+              >
+                PDF
+              </v-btn>
+              <v-btn color="primary" prepend-icon="mdi-magnify" :loading="loadingKardex" @click="loadKardex">
+                Consultar
+              </v-btn>
             </div>
           </div>
-          <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-            <v-btn
-              v-if="canAccessInventoryReports"
-              variant="tonal"
-              prepend-icon="mdi-file-excel"
-              :loading="isExporting('excel')"
-              @click="exportInventoryReport('excel')"
-            >
-              Excel
-            </v-btn>
-            <v-btn
-              v-if="canAccessInventoryReports"
-              variant="tonal"
-              prepend-icon="mdi-file-pdf-box"
-              :loading="isExporting('pdf')"
-              @click="exportInventoryReport('pdf')"
-            >
-              PDF
-            </v-btn>
-            <v-btn color="primary" prepend-icon="mdi-magnify" :loading="loadingKardex" @click="loadKardex">
-              Consultar
-            </v-btn>
+
+          <v-row dense class="mb-3">
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="kardexFilters.search"
+                label="Buscar por material, documento o referencia"
+                variant="outlined"
+                prepend-inner-icon="mdi-magnify"
+                hide-details
+                clearable
+                @keyup.enter="loadKardex"
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field
+                v-model="kardexFilters.desde"
+                type="date"
+                label="Desde"
+                variant="outlined"
+                hide-details
+              />
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field
+                v-model="kardexFilters.hasta"
+                type="date"
+                label="Hasta"
+                variant="outlined"
+                hide-details
+              />
+            </v-col>
+            <v-col cols="12" md="2">
+              <v-select
+                v-model="inventoryGroupBy"
+                :items="inventoryGroupingOptions"
+                item-title="title"
+                item-value="value"
+                label="Exportar stock"
+                variant="outlined"
+                hide-details
+              />
+            </v-col>
+          </v-row>
+
+          <div class="d-flex flex-wrap mb-4" style="gap: 8px;">
+            <v-chip color="primary" variant="tonal">{{ kardexRangeLabel }}</v-chip>
+            <v-chip color="info" variant="tonal">{{ kardexTotals.materiales }} materiales</v-chip>
+            <v-chip color="secondary" variant="tonal">{{ kardexTotals.movimientos }} movimientos</v-chip>
+            <v-chip color="success" variant="tonal">
+              Entradas {{ formatNumberForDisplay(kardexTotals.entradas) }}
+            </v-chip>
+            <v-chip color="error" variant="tonal">
+              Salidas {{ formatNumberForDisplay(kardexTotals.salidas) }}
+            </v-chip>
           </div>
-        </div>
 
-        <v-row dense class="mb-3">
-          <v-col cols="12" md="4">
-            <v-text-field
-              v-model="kardexFilters.search"
-              label="Buscar por material, documento o referencia"
-              variant="outlined"
-              prepend-inner-icon="mdi-magnify"
-              hide-details
-              clearable
-              @keyup.enter="loadKardex"
-            />
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-text-field
-              v-model="kardexFilters.desde"
-              type="date"
-              label="Desde"
-              variant="outlined"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-text-field
-              v-model="kardexFilters.hasta"
-              type="date"
-              label="Hasta"
-              variant="outlined"
-              hide-details
-            />
-          </v-col>
-          <v-col cols="12" md="2">
-            <v-select
-              v-model="inventoryGroupBy"
-              :items="inventoryGroupingOptions"
-              item-title="title"
-              item-value="value"
-              label="Exportar stock"
-              variant="outlined"
-              hide-details
-            />
-          </v-col>
-        </v-row>
+          <v-progress-linear
+            v-if="loadingKardex"
+            indeterminate
+            color="primary"
+            rounded
+            class="mb-4"
+          />
 
-        <div class="d-flex flex-wrap mb-4" style="gap: 8px;">
-          <v-chip color="primary" variant="tonal">
-            {{ kardexRangeLabel }}
-          </v-chip>
-          <v-chip color="info" variant="tonal">
-            {{ kardexTotals.materiales }} materiales
-          </v-chip>
-          <v-chip color="secondary" variant="tonal">
-            {{ kardexTotals.movimientos }} movimientos
-          </v-chip>
-          <v-chip color="success" variant="tonal">
-            Entradas {{ formatNumberForDisplay(kardexTotals.entradas) }}
-          </v-chip>
-          <v-chip color="error" variant="tonal">
-            Salidas {{ formatNumberForDisplay(kardexTotals.salidas) }}
-          </v-chip>
-        </div>
-
-        <v-progress-linear
-          v-if="loadingKardex"
-          indeterminate
-          color="primary"
-          rounded
-          class="mb-4"
-        />
-
-        <v-alert
-          v-if="!loadingKardex && !kardexGroups.length"
-          type="info"
-          variant="tonal"
-        >
-          No hay movimientos de kardex para el rango seleccionado.
-        </v-alert>
-
-        <v-expansion-panels
-          v-else
-          multiple
-          variant="accordion"
-          class="kardex-groups"
-        >
-          <v-expansion-panel
-            v-for="group in kardexGroups"
-            :key="group.producto_id"
-            rounded="xl"
+          <v-alert
+            v-if="!loadingKardex && !kardexGroups.length"
+            type="info"
+            variant="tonal"
           >
-            <v-expansion-panel-title class="kardex-group-title">
-              <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
-                <div>
-                  <div class="text-subtitle-1 font-weight-bold">
-                    [{{ group.producto_codigo || "SIN CODIGO" }}] {{ group.producto_nombre }}
+            No hay movimientos de kardex para el rango seleccionado.
+          </v-alert>
+
+          <v-expansion-panels
+            v-else
+            multiple
+            variant="accordion"
+            class="kardex-groups"
+          >
+            <v-expansion-panel
+              v-for="group in kardexGroups"
+              :key="group.producto_id"
+              rounded="xl"
+            >
+              <v-expansion-panel-title class="kardex-group-title">
+                <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
+                  <div>
+                    <div class="text-subtitle-1 font-weight-bold">
+                      [{{ group.producto_codigo || "SIN CODIGO" }}] {{ group.producto_nombre }}
+                    </div>
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      Línea: {{ group.linea_label || "Sin línea" }}
+                      · Categoría: {{ group.categoria_label || "Sin categoría" }}
+                      · Unidad: {{ group.unidad_label || "Sin unidad" }}
+                    </div>
                   </div>
-                  <div class="text-caption text-medium-emphasis mt-1">
-                    Línea: {{ group.linea_label || "Sin línea" }}
-                    · Categoría: {{ group.categoria_label || "Sin categoría" }}
-                    · Unidad: {{ group.unidad_label || "Sin unidad" }}
+                  <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+                    <v-chip size="small" color="info" variant="tonal">
+                      Stock inicial {{ formatNumberForDisplay(group.stock_inicial) }}
+                    </v-chip>
+                    <v-chip size="small" color="success" variant="tonal">
+                      Entradas +{{ formatNumberForDisplay(group.entradas) }}
+                    </v-chip>
+                    <v-chip size="small" color="error" variant="tonal">
+                      Salidas -{{ formatNumberForDisplay(group.salidas) }}
+                    </v-chip>
+                    <v-chip size="small" color="primary" variant="tonal">
+                      Stock final {{ formatNumberForDisplay(group.stock_final) }}
+                    </v-chip>
+                    <v-chip size="small" color="secondary" variant="tonal">
+                      {{ group.movimientos_count }} movimientos
+                    </v-chip>
                   </div>
                 </div>
-                <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
-                  <v-chip size="small" color="info" variant="tonal">
-                    Stock inicial {{ formatNumberForDisplay(group.stock_inicial) }}
-                  </v-chip>
-                  <v-chip size="small" color="success" variant="tonal">
-                    Entradas +{{ formatNumberForDisplay(group.entradas) }}
-                  </v-chip>
-                  <v-chip size="small" color="error" variant="tonal">
-                    Salidas -{{ formatNumberForDisplay(group.salidas) }}
-                  </v-chip>
-                  <v-chip size="small" color="primary" variant="tonal">
-                    Stock final {{ formatNumberForDisplay(group.stock_final) }}
-                  </v-chip>
-                  <v-chip size="small" color="secondary" variant="tonal">
-                    {{ group.movimientos_count }} movimientos
-                  </v-chip>
+              </v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <div class="kardex-detail-table">
+                  <table class="kardex-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha emisión</th>
+                        <th>F. creación</th>
+                        <th>Documento</th>
+                        <th>Referencia</th>
+                        <th>Concepto</th>
+                        <th>Descripción</th>
+                        <th>Bodega</th>
+                        <th class="text-right">Entrada</th>
+                        <th class="text-right">Salida</th>
+                        <th class="text-right">Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        v-for="movement in group.movimientos"
+                        :key="movement.id"
+                      >
+                        <td>{{ formatDateTime(movement.fecha_emision, "") }}</td>
+                        <td>{{ formatDateTime(movement.fecha_creacion, "") }}</td>
+                        <td class="font-weight-bold">{{ movement.documento || "-" }}</td>
+                        <td>{{ movement.referencia || "-" }}</td>
+                        <td>{{ movement.concepto || "-" }}</td>
+                        <td>{{ movement.descripcion || "-" }}</td>
+                        <td>{{ movement.bodega || "-" }}</td>
+                        <td class="text-right text-success font-weight-medium">
+                          {{ movement.entrada ? formatNumberForDisplay(movement.entrada) : "" }}
+                        </td>
+                        <td class="text-right text-error font-weight-medium">
+                          {{ movement.salida ? formatNumberForDisplay(movement.salida) : "" }}
+                        </td>
+                        <td class="text-right font-weight-bold">
+                          {{ formatNumberForDisplay(movement.stock) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-            </v-expansion-panel-title>
-            <v-expansion-panel-text>
-              <div class="kardex-detail-table">
-                <table class="kardex-table">
-                  <thead>
-                    <tr>
-                      <th>Fecha emisión</th>
-                      <th>F. creación</th>
-                      <th>Documento</th>
-                      <th>Referencia</th>
-                      <th>Concepto</th>
-                      <th>Descripción</th>
-                      <th>Bodega</th>
-                      <th class="text-right">Entrada</th>
-                      <th class="text-right">Salida</th>
-                      <th class="text-right">Stock</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="movement in group.movimientos"
-                      :key="movement.id"
-                    >
-                      <td>{{ formatDateTime(movement.fecha_emision, "") }}</td>
-                      <td>{{ formatDateTime(movement.fecha_creacion, "") }}</td>
-                      <td class="font-weight-bold">{{ movement.documento || "-" }}</td>
-                      <td>{{ movement.referencia || "-" }}</td>
-                      <td>{{ movement.concepto || "-" }}</td>
-                      <td>{{ movement.descripcion || "-" }}</td>
-                      <td>{{ movement.bodega || "-" }}</td>
-                      <td class="text-right text-success font-weight-medium">
-                        {{ movement.entrada ? formatNumberForDisplay(movement.entrada) : "" }}
-                      </td>
-                      <td class="text-right text-error font-weight-medium">
-                        {{ movement.salida ? formatNumberForDisplay(movement.salida) : "" }}
-                      </td>
-                      <td class="text-right font-weight-bold">
-                        {{ formatNumberForDisplay(movement.stock) }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </v-expansion-panel-text>
-          </v-expansion-panel>
-        </v-expansion-panels>
-      </v-card>
-    </v-col>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
+        </v-card>
+      </v-col>
     </template>
   </v-row>
 </template>
@@ -488,14 +739,46 @@ type ImportJob = {
   error_message?: string | null;
 };
 
+type MovementDocumentDetail = {
+  id: string;
+  producto_id: string;
+  producto_codigo: string;
+  producto_nombre: string;
+  unidad_label: string;
+  cantidad: number | string;
+  observacion?: string | null;
+};
+
+type MovementDocument = {
+  id: string;
+  numero_documento: string;
+  tipo_movimiento: MovementType;
+  tipo_documento_label: string;
+  fecha_movimiento: string;
+  referencia?: string | null;
+  observacion?: string | null;
+  bodega_label: string;
+  total_items: number;
+  total_cantidad: number;
+  detalles: MovementDocumentDetail[];
+};
+
+type MovementDetailForm = {
+  localId: string;
+  productoId: string;
+  cantidad: string;
+  observacion: string;
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 
-const savingMovement = ref(false);
+const savingDocument = ref(false);
 const uploading = ref(false);
 const downloadingTemplate = ref(false);
 const loadingKardex = ref(false);
+const documentsLoading = ref(false);
 const importJob = ref<ImportJob | null>(null);
 const importPollHandle = ref<number | null>(null);
 const exportState = reactive<Record<string, boolean>>({});
@@ -503,6 +786,10 @@ const exportState = reactive<Record<string, boolean>>({});
 const xlsxFile = ref<File | null>(null);
 const lastBulkSummary = ref<ImportSummary | null>(null);
 const inventoryGroupBy = ref("bodega");
+const documentsSearch = ref("");
+const documentTypeFilter = ref<"" | MovementType>("");
+const movementDocuments = ref<MovementDocument[]>([]);
+
 const perms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, [
     "Kardex",
@@ -518,12 +805,20 @@ const canAccessInventoryReports = computed(() =>
 
 const KARDEx_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 
-const movementForm = reactive({
+const documentForm = reactive({
   tipo: "INGRESO" as MovementType,
-  productoId: "",
+  fecha: formatDateForInput(),
   bodegaId: "",
-  cantidad: "1",
+  referencia: "",
   observacion: "",
+});
+
+const movementDetails = ref<MovementDetailForm[]>([createMovementDetail()]);
+const documentsPagination = reactive({
+  page: 1,
+  limit: 6,
+  total: 0,
+  totalPages: 1,
 });
 
 const products = ref<any[]>([]);
@@ -533,11 +828,13 @@ const kardexGroups = ref<KardexMaterialGroup[]>([]);
 const sucursales = ref<any[]>([]);
 const lineas = ref<any[]>([]);
 const categorias = ref<any[]>([]);
+
 const kardexFilters = reactive({
   desde: formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
   hasta: formatDateForInput(),
   search: "",
 });
+
 const kardexTotals = reactive({
   materiales: 0,
   movimientos: 0,
@@ -546,9 +843,11 @@ const kardexTotals = reactive({
 });
 
 const movementTypes = [
-  { value: "INGRESO", title: "Ingreso de material" },
-  { value: "SALIDA", title: "Salida de material" },
+  { value: "INGRESO", title: "Ingreso de Bodega" },
+  { value: "SALIDA", title: "Egreso de Bodega" },
 ];
+
+const documentTypeFilters = [{ value: "", title: "Todos" }, ...movementTypes];
 
 const inventoryGroupingOptions = [
   { value: "bodega", title: "Bodega" },
@@ -562,7 +861,7 @@ const warehouseOptions = computed(() =>
   bodegas.value.map((b) => ({
     value: b.id,
     title: `${b.codigo} - ${b.nombre}`,
-  }))
+  })),
 );
 
 const warehouseMap = computed(() => new Map(bodegas.value.map((item) => [String(item.id), item])));
@@ -577,15 +876,6 @@ const stockByWarehouseProduct = computed(() => {
     map.set(`${row.bodega_id}:${row.producto_id}`, row);
   }
   return map;
-});
-
-const selectedStockRow = computed(() => {
-  if (!movementForm.bodegaId || !movementForm.productoId) return null;
-  return (
-    stockByWarehouseProduct.value.get(
-      `${movementForm.bodegaId}:${movementForm.productoId}`,
-    ) ?? null
-  );
 });
 
 const activeImportJob = computed(() => {
@@ -614,31 +904,6 @@ const activeImportPendingRows = computed(() =>
   Math.max(0, activeImportTotalRows.value - activeImportProcessedRows.value),
 );
 
-const productOptions = computed(() => {
-  if (!movementForm.bodegaId) return [];
-
-  return products.value
-    .filter((product) => {
-      const stock = stockByWarehouseProduct.value.get(
-        `${movementForm.bodegaId}:${product.id}`,
-      );
-      if (movementForm.tipo !== "SALIDA") return true;
-      return Number(stock?.stock_actual || 0) > 0;
-    })
-    .map((product) => {
-      const stock = stockByWarehouseProduct.value.get(
-        `${movementForm.bodegaId}:${product.id}`,
-      );
-      const stockLabel = stock
-        ? ` · stock ${formatNumberForDisplay(stock.stock_actual)}`
-        : "";
-      return {
-        value: product.id,
-        title: `${product.codigo} - ${product.nombre}${stockLabel}`,
-      };
-    });
-});
-
 const kardexRangeLabel = computed(() => {
   const from = String(kardexFilters.desde || "").trim();
   const to = String(kardexFilters.hasta || "").trim();
@@ -647,6 +912,89 @@ const kardexRangeLabel = computed(() => {
   if (!to) return `Desde ${from}`;
   return `${from} -> ${to}`;
 });
+
+const documentTotalQuantity = computed(() =>
+  movementDetails.value.reduce((sum, detail) => sum + parsePositiveNumber(detail.cantidad), 0),
+);
+
+function createMovementDetail(): MovementDetailForm {
+  return {
+    localId: `detail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    productoId: "",
+    cantidad: "",
+    observacion: "",
+  };
+}
+
+function addMovementDetail() {
+  movementDetails.value.push(createMovementDetail());
+}
+
+function removeMovementDetail(localId: string) {
+  if (movementDetails.value.length === 1) {
+    movementDetails.value = [createMovementDetail()];
+    return;
+  }
+  movementDetails.value = movementDetails.value.filter((detail) => detail.localId !== localId);
+}
+
+function getUserName() {
+  return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM";
+}
+
+function parsePositiveNumber(value: string | number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function resetMovementDocumentForm() {
+  documentForm.tipo = "INGRESO";
+  documentForm.fecha = formatDateForInput();
+  documentForm.bodegaId = "";
+  documentForm.referencia = "";
+  documentForm.observacion = "";
+  movementDetails.value = [createMovementDetail()];
+}
+
+function getProductOptions() {
+  if (!documentForm.bodegaId) return [];
+
+  return products.value
+    .filter((product) => {
+      if (documentForm.tipo !== "SALIDA") return true;
+      const stock = stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`);
+      return Number(stock?.stock_actual || 0) > 0;
+    })
+    .map((product) => {
+      const stock = stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`);
+      const stockLabel = stock ? ` · stock ${formatNumberForDisplay(stock.stock_actual)}` : "";
+      return {
+        value: product.id,
+        title: `${product.codigo} - ${product.nombre}${stockLabel}`,
+      };
+    });
+}
+
+function getDetailStockRow(detail: MovementDetailForm) {
+  if (!documentForm.bodegaId || !detail.productoId) return null;
+  return stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${detail.productoId}`) ?? null;
+}
+
+function getDetailAvailableStock(detail: MovementDetailForm) {
+  return Number(getDetailStockRow(detail)?.stock_actual || 0);
+}
+
+function getDetailStockLabel(detail: MovementDetailForm) {
+  if (!detail.productoId) return "Selecciona un material";
+  return formatNumberForDisplay(getDetailAvailableStock(detail));
+}
+
+function detailExceedsStock(detail: MovementDetailForm) {
+  if (documentForm.tipo !== "SALIDA") return false;
+  const qty = parsePositiveNumber(detail.cantidad);
+  if (!qty) return false;
+  return qty > getDetailAvailableStock(detail);
+}
 
 const kardexMovementReportRows = computed(() =>
   kardexGroups.value.flatMap((group) =>
@@ -669,23 +1017,6 @@ const kardexMovementReportRows = computed(() =>
     })),
   ),
 );
-
-function getUserName() {
-  return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM";
-}
-
-function parsePositiveNumber(value: string): number {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function resetMovementForm() {
-  movementForm.tipo = "INGRESO";
-  movementForm.bodegaId = "";
-  movementForm.productoId = "";
-  movementForm.cantidad = "";
-  movementForm.observacion = "";
-}
 
 async function loadBaseData() {
   if (!canRead.value) return;
@@ -764,7 +1095,9 @@ const inventorySummary = computed(() => [
   { label: "Sucursales", value: new Set(inventoryReportRows.value.map((item) => item.sucursal)).size },
   {
     label: "Stock total",
-    value: inventoryReportRows.value.reduce((acc, item) => acc + Number(item.stock_actual || 0), 0).toFixed(2),
+    value: inventoryReportRows.value
+      .reduce((acc, item) => acc + Number(item.stock_actual || 0), 0)
+      .toFixed(2),
   },
 ]);
 
@@ -777,7 +1110,9 @@ async function exportInventoryReport(format: "excel" | "pdf") {
   exportState[key] = true;
   try {
     const report = buildInventoryStockReport({
-      groupLabel: inventoryGroupingOptions.find((item) => item.value === inventoryGroupBy.value)?.title || "Bodega",
+      groupLabel:
+        inventoryGroupingOptions.find((item) => item.value === inventoryGroupBy.value)?.title ||
+        "Bodega",
       summary: inventorySummary.value,
       rows: inventoryReportRows.value,
       movementRows: kardexMovementReportRows.value,
@@ -823,53 +1158,111 @@ async function loadKardex() {
   }
 }
 
-async function saveMovement() {
+async function loadMovementDocuments(page = documentsPagination.page) {
+  if (!canRead.value) return;
+  documentsLoading.value = true;
+  try {
+    const { data } = await api.get("/kpi_inventory/kardex/documentos/lista", {
+      params: {
+        page,
+        limit: documentsPagination.limit,
+        search: documentsSearch.value || undefined,
+        tipo_movimiento: documentTypeFilter.value || undefined,
+      },
+    });
+    const payload = data?.data ?? data ?? {};
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const pagination = payload?.pagination ?? {};
+    movementDocuments.value = rows;
+    documentsPagination.page = Number(pagination?.page || page || 1);
+    documentsPagination.limit = Number(pagination?.limit || documentsPagination.limit || 6);
+    documentsPagination.total = Number(pagination?.total || rows.length || 0);
+    documentsPagination.totalPages = Math.max(1, Number(pagination?.totalPages || 1));
+  } catch (error: any) {
+    movementDocuments.value = [];
+    documentsPagination.total = 0;
+    documentsPagination.totalPages = 1;
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo cargar los documentos de bodega.",
+    );
+  } finally {
+    documentsLoading.value = false;
+  }
+}
+
+async function saveMovementDocument() {
   if (!canCreate.value) {
-    ui.error("No tienes permisos para registrar movimientos.");
+    ui.error("No tienes permisos para registrar documentos de bodega.");
     return;
   }
-  const cantidad = parsePositiveNumber(movementForm.cantidad);
-
-  if (!movementForm.bodegaId) {
+  if (!documentForm.bodegaId) {
     ui.error("La bodega es obligatoria.");
     return;
   }
 
-  if (!movementForm.productoId) {
-    ui.error("El material es obligatorio.");
+  const candidateDetails = movementDetails.value.filter(
+    (detail) =>
+      detail.productoId ||
+      String(detail.cantidad || "").trim() ||
+      String(detail.observacion || "").trim(),
+  );
+
+  if (!candidateDetails.length) {
+    ui.error("Debes agregar al menos un material al detalle.");
     return;
   }
 
-  if (!cantidad) {
-    ui.error("La cantidad debe ser mayor a cero.");
-    return;
-  }
+  const payloadDetails: Array<{ producto_id: string; cantidad: number; observacion?: string }> = [];
 
-  savingMovement.value = true;
-  try {
-    await api.post("/kpi_inventory/kardex/movimiento-manual", {
-      tipo_movimiento: movementForm.tipo,
-      bodega_id: movementForm.bodegaId,
-      producto_id: movementForm.productoId,
+  for (const [index, detail] of candidateDetails.entries()) {
+    if (!detail.productoId) {
+      ui.error(`Selecciona el material en la fila ${index + 1}.`);
+      return;
+    }
+    const cantidad = parsePositiveNumber(detail.cantidad);
+    if (!cantidad) {
+      ui.error(`La cantidad de la fila ${index + 1} debe ser mayor a cero.`);
+      return;
+    }
+    if (detailExceedsStock(detail)) {
+      ui.error(`La fila ${index + 1} supera el stock disponible de la bodega.`);
+      return;
+    }
+    payloadDetails.push({
+      producto_id: detail.productoId,
       cantidad,
-      observacion: movementForm.observacion || undefined,
+      observacion: detail.observacion || undefined,
+    });
+  }
+
+  savingDocument.value = true;
+  try {
+    await api.post("/kpi_inventory/kardex/documentos", {
+      tipo_movimiento: documentForm.tipo,
+      fecha_movimiento: documentForm.fecha || undefined,
+      bodega_id: documentForm.bodegaId,
+      referencia: documentForm.referencia || undefined,
+      observacion: documentForm.observacion || undefined,
       created_by: getUserName(),
       updated_by: getUserName(),
+      detalles: payloadDetails,
     });
 
     ui.success(
-      `${movementForm.tipo === "INGRESO" ? "Ingreso" : "Salida"} registrado correctamente.`,
+      `${documentForm.tipo === "INGRESO" ? "Ingreso" : "Egreso"} de bodega registrado correctamente.`,
     );
-    resetMovementForm();
-    await Promise.allSettled([loadKardex(), loadBaseData()]);
+    resetMovementDocumentForm();
+    await Promise.allSettled([loadBaseData(), loadKardex(), loadMovementDocuments(1)]);
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
         error?.message ||
-        "No se pudo registrar el movimiento.",
+        "No se pudo registrar el documento de bodega.",
     );
   } finally {
-    savingMovement.value = false;
+    savingDocument.value = false;
   }
 }
 
@@ -886,7 +1279,7 @@ function emitBrowserNotification(title: string, body: string, tag: string) {
   try {
     new window.Notification(title, { body, tag });
   } catch {
-    // ignore notification failures
+    // ignore
   }
 }
 
@@ -962,15 +1355,14 @@ async function fetchImportJobStatus(jobId: string) {
       variant: "success",
       tag: "inventory-import-completed",
     });
-    await Promise.allSettled([loadBaseData(), loadKardex()]);
+    await Promise.allSettled([loadBaseData(), loadKardex(), loadMovementDocuments(1)]);
     return;
   }
 
   if (status === "FAILED") {
     stopImportPolling();
     persistImportJobId(null);
-    const failureMessage =
-      importJob.value.error_message || "La carga de inventario falló.";
+    const failureMessage = importJob.value.error_message || "La carga de inventario falló.";
     importJob.value = null;
     notifyImportLifecycle({
       title: "Carga de inventario fallida",
@@ -1030,8 +1422,7 @@ async function processXlsx() {
       persistImportJobId(job.id);
       notifyImportLifecycle({
         title: "Carga de inventario iniciada",
-        message:
-          "Archivo recibido. El sistema lo está procesando en segundo plano.",
+        message: "Archivo recibido. El sistema lo está procesando en segundo plano.",
         variant: "info",
         requestPermission: true,
         tag: "inventory-import-started",
@@ -1080,28 +1471,33 @@ async function downloadTemplate() {
 }
 
 watch(
-  () => movementForm.bodegaId,
+  () => documentForm.tipo,
   () => {
-    movementForm.productoId = "";
+    if (documentForm.tipo !== "SALIDA") return;
+    movementDetails.value = movementDetails.value.map((detail) => {
+      if (!detail.productoId) return detail;
+      if (getDetailAvailableStock(detail) > 0) return detail;
+      return { ...detail, productoId: "", cantidad: "" };
+    });
   },
 );
 
 watch(
-  () => movementForm.tipo,
+  () => documentForm.bodegaId,
   () => {
-    if (!movementForm.productoId) return;
-    const stillExists = productOptions.value.some(
-      (item) => item.value === movementForm.productoId,
-    );
-    if (!stillExists) {
-      movementForm.productoId = "";
+    if (!documentForm.bodegaId) {
+      movementDetails.value = movementDetails.value.map((detail) => ({
+        ...detail,
+        productoId: "",
+        cantidad: "",
+      }));
     }
   },
 );
 
 onMounted(async () => {
   if (!canRead.value) return;
-  await Promise.allSettled([loadBaseData(), loadKardex()]);
+  await Promise.allSettled([loadBaseData(), loadKardex(), loadMovementDocuments(1)]);
   await restoreImportJob();
 });
 
@@ -1111,11 +1507,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.movement-detail-list,
+.movement-documents,
 .kardex-groups {
   display: grid;
   gap: 12px;
 }
 
+.movement-detail-card {
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.movement-document-title,
 .kardex-group-title {
   padding-block: 16px;
 }
@@ -1128,9 +1531,13 @@ onBeforeUnmount(() => {
 
 .kardex-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 980px;
   border-collapse: collapse;
   background: rgba(var(--v-theme-surface), 0.92);
+}
+
+.movement-document-table {
+  min-width: 720px;
 }
 
 .kardex-table th,
