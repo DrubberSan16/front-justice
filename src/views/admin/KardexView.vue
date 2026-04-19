@@ -20,15 +20,18 @@
               <v-btn v-if="canCreate" color="warning" variant="tonal" prepend-icon="mdi-tray-arrow-up" @click="openMovementDialog('SALIDA')">Egreso de bodega</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('excel')" @click="exportInventoryReport('excel')">Excel</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('pdf')" @click="exportInventoryReport('pdf')">PDF</v-btn>
-              <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex">Actualizar</v-btn>
+              <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loadingKardex" @click="loadKardex()">Actualizar</v-btn>
             </div>
           </div>
 
           <v-row dense class="mb-3">
-            <v-col cols="12" md="4"><v-text-field v-model="kardexFilters.search" label="Buscar material o bodega" variant="outlined" prepend-inner-icon="mdi-magnify" hide-details clearable @keyup.enter="loadKardex" /></v-col>
+            <v-col cols="12" md="4"><v-text-field v-model="kardexFilters.search" label="Buscar material o bodega" variant="outlined" prepend-inner-icon="mdi-magnify" hide-details clearable @keyup.enter="applyKardexFilters" /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model="kardexFilters.desde" type="date" label="Desde" variant="outlined" hide-details /></v-col>
             <v-col cols="12" md="3"><v-text-field v-model="kardexFilters.hasta" type="date" label="Hasta" variant="outlined" hide-details /></v-col>
             <v-col cols="12" md="2"><v-select v-model="inventoryGroupBy" :items="inventoryGroupingOptions" item-title="title" item-value="value" label="Agrupar exportacion" variant="outlined" hide-details /></v-col>
+            <v-col cols="12" class="d-flex justify-end">
+              <v-btn color="primary" variant="tonal" prepend-icon="mdi-filter-outline" :loading="loadingKardex" @click="applyKardexFilters">Aplicar filtros</v-btn>
+            </v-col>
           </v-row>
 
           <div class="summary-chip-list mb-4">
@@ -43,8 +46,8 @@
           <v-alert v-if="!loadingKardex && !kardexGroups.length" type="info" variant="tonal">No hay movimientos de kardex para el rango seleccionado.</v-alert>
 
           <v-expansion-panels v-else v-model="expandedMaterials" multiple variant="accordion" class="kardex-groups">
-            <v-expansion-panel v-for="group in kardexGroups" :key="group.producto_id" :value="group.producto_id" rounded="xl">
-              <v-expansion-panel-title class="kardex-group-title">
+              <v-expansion-panel v-for="group in kardexGroups" :key="group.producto_id" :value="group.producto_id" rounded="xl">
+              <v-expansion-panel-title class="kardex-group-title" @click="prefetchMaterialDetail(group.producto_id)">
                 <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap:12px">
                   <div>
                     <div class="text-subtitle-1 font-weight-bold">[{{ group.producto_codigo || 'SIN CODIGO' }}] {{ group.producto_nombre || 'Sin nombre' }}</div>
@@ -60,7 +63,15 @@
                 </div>
               </v-expansion-panel-title>
               <v-expansion-panel-text>
-                <div v-if="isMaterialDetailLoading(group.producto_id)" class="detail-loading-state"><v-progress-circular indeterminate size="20" width="2" color="primary" /><span>Cargando detalle del material...</span></div>
+                <div v-if="isMaterialDetailLoading(group.producto_id)" class="detail-loading-state">
+                  <div class="w-100">
+                    <div class="d-flex align-center justify-space-between flex-wrap mb-2" style="gap:12px">
+                      <div class="text-body-2 font-weight-medium">Consultando detalle del material...</div>
+                      <div class="text-caption text-medium-emphasis">Esto solo carga el material seleccionado.</div>
+                    </div>
+                    <v-progress-linear indeterminate color="primary" rounded height="8" />
+                  </div>
+                </div>
                 <v-alert v-else-if="getMaterialDetailError(group.producto_id)" type="error" variant="tonal" density="comfortable">{{ getMaterialDetailError(group.producto_id) }}<template #append><v-btn size="small" variant="tonal" color="error" @click="loadMaterialDetail(group.producto_id, true)">Reintentar</v-btn></template></v-alert>
                 <v-alert v-else-if="!getMaterialMovements(group.producto_id).length" type="info" variant="tonal" density="comfortable">No hay movimientos detallados para este material dentro del rango seleccionado.</v-alert>
                 <div v-else class="kardex-detail-table">
@@ -76,6 +87,31 @@
               </v-expansion-panel-text>
             </v-expansion-panel>
           </v-expansion-panels>
+
+          <div v-if="kardexGroups.length" class="kardex-pagination">
+            <div class="text-body-2 text-medium-emphasis">
+              Mostrando {{ kardexPageFrom }} - {{ kardexPageTo }} de {{ kardexPagination.total }} materiales
+            </div>
+            <div class="d-flex align-center flex-wrap justify-end" style="gap:12px">
+              <v-select
+                :model-value="kardexPagination.limit"
+                :items="kardexPageSizeOptions"
+                label="Items por pagina"
+                variant="outlined"
+                density="comfortable"
+                hide-details
+                style="max-width: 160px"
+                @update:model-value="updateKardexPageSize"
+              />
+              <v-pagination
+                :model-value="kardexPagination.page"
+                :length="kardexPagination.totalPages"
+                :total-visible="6"
+                density="comfortable"
+                @update:model-value="changeKardexPage"
+              />
+            </div>
+          </div>
         </v-card>
       </v-col>
 
@@ -215,6 +251,7 @@ const sucursales = ref<any[]>([]);
 const lineas = ref<any[]>([]);
 const categorias = ref<any[]>([]);
 const kardexGroups = ref<any[]>([]);
+const kardexPagination = reactive({ page: 1, limit: 10, total: 0, totalPages: 1 });
 const materialMovements = reactive<Record<string, KardexMovementRow[]>>({});
 const materialDetailLoading = reactive<Record<string, boolean>>({});
 const materialDetailLoaded = reactive<Record<string, boolean>>({});
@@ -230,6 +267,7 @@ const movementDetails = ref<MovementDetailForm[]>([{ localId: `detail-${Date.now
 const kardexFilters = reactive({ desde: formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), hasta: formatDateForInput(), search: "" });
 const kardexTotals = reactive({ materiales: 0, movimientos: 0, entradas: 0, salidas: 0 });
 const movementTypes = [{ value: "INGRESO", title: "Ingreso de Bodega" }, { value: "SALIDA", title: "Egreso de Bodega" }];
+const kardexPageSizeOptions = [{ title: "10", value: 10 }, { title: "25", value: 25 }, { title: "50", value: 50 }, { title: "100", value: 100 }];
 const inventoryGroupingOptions = [{ value: "bodega", title: "Bodega" }, { value: "sucursal", title: "Sucursal" }, { value: "linea", title: "Linea" }, { value: "categoria", title: "Categoria" }, { value: "material", title: "Material" }];
 const warehouseOptions = computed(() => bodegas.value.map((bodega) => ({ value: bodega.id, title: `${bodega.codigo} - ${bodega.nombre}` })));
 const warehouseMap = computed(() => new Map(bodegas.value.map((item) => [String(item.id), item])));
@@ -245,6 +283,8 @@ const activeImportTotalRows = computed(() => { const total = Number(importJob.va
 const activeImportProcessedRows = computed(() => { const processed = Number(importJob.value?.current_index || 0); return Number.isFinite(processed) && processed > 0 ? processed : 0; });
 const activeImportPendingRows = computed(() => Math.max(0, activeImportTotalRows.value - activeImportProcessedRows.value));
 const kardexRangeLabel = computed(() => { const from = String(kardexFilters.desde || "").trim(); const to = String(kardexFilters.hasta || "").trim(); if (!from && !to) return "Rango abierto"; if (!from) return `Hasta ${to}`; if (!to) return `Desde ${from}`; return `${from} -> ${to}`; });
+const kardexPageFrom = computed(() => kardexPagination.total > 0 ? (kardexPagination.page - 1) * kardexPagination.limit + 1 : 0);
+const kardexPageTo = computed(() => kardexPagination.total > 0 ? Math.min(kardexPagination.total, kardexPagination.page * kardexPagination.limit) : 0);
 const documentTotalQuantity = computed(() => movementDetails.value.reduce((sum, detail) => sum + parsePositiveNumber(detail.cantidad), 0));
 const movementDialogTitle = computed(() => documentForm.tipo === "INGRESO" ? "Ingreso de bodega" : "Egreso de bodega");
 const kardexMovementReportRows = computed(() => Object.entries(materialMovements).flatMap(([productoId, rows]) => { const group = groupMap.value.get(productoId); return (rows || []).map((movement: any) => ({ codigo_material: group?.producto_codigo || "", material: group?.producto_nombre || "", linea: group?.linea_label || "", categoria: group?.categoria_label || "", unidad: group?.unidad_label || "", fecha_emision: movement.fecha_emision, fecha_creacion: movement.fecha_creacion, documento: movement.documento || "", referencia: movement.referencia || "", concepto: movement.concepto || "", descripcion: movement.descripcion || "", bodega: movement.bodega || "", entrada: Number(movement.entrada || 0), salida: Number(movement.salida || 0), stock: Number(movement.stock || 0) })); }));
@@ -270,12 +310,67 @@ function detailExceedsStock(detail: MovementDetailForm) { const qty = parsePosit
 function getMaterialMovements(productoId: string) { return materialMovements[productoId] ?? []; }
 function isMaterialDetailLoading(productoId: string) { return Boolean(materialDetailLoading[productoId]); }
 function getMaterialDetailError(productoId: string) { return materialDetailErrors[productoId] ?? ""; }
+function prefetchMaterialDetail(productoId: string) { void loadMaterialDetail(productoId); }
 async function loadMaterialDetail(productoId: string, force = false) { const normalizedId = String(productoId || "").trim(); if (!normalizedId || materialDetailLoading[normalizedId] || (materialDetailLoaded[normalizedId] && !force)) return; materialDetailLoading[normalizedId] = true; materialDetailErrors[normalizedId] = ""; try { const { data } = await api.get(`/kpi_inventory/kardex/resumen-material/${normalizedId}/detalle`, { params: { desde: kardexFilters.desde || undefined, hasta: kardexFilters.hasta || undefined, search: kardexFilters.search || undefined } }); const payload = data?.data ?? data ?? {}; materialMovements[normalizedId] = Array.isArray(payload.movements) ? payload.movements : []; materialDetailLoaded[normalizedId] = true; } catch (error: any) { materialMovements[normalizedId] = []; materialDetailErrors[normalizedId] = error?.response?.data?.message || error?.message || "No se pudo cargar el detalle del material."; } finally { materialDetailLoading[normalizedId] = false; } }
 async function ensureAllMaterialDetailsLoaded() { for (const group of kardexGroups.value) await loadMaterialDetail(group.producto_id); }
 function exportKey(format: "excel" | "pdf") { return `inventory:${format}`; }
 function isExporting(format: "excel" | "pdf") { return Boolean(exportState[exportKey(format)]); }
 async function exportInventoryReport(format: "excel" | "pdf") { if (!canAccessInventoryReports.value) { ui.error("No tienes permisos para exportar este reporte."); return; } const key = exportKey(format); exportState[key] = true; try { await ensureMovementCatalogsLoaded(); await ensureAllMaterialDetailsLoaded(); const report = buildInventoryStockReport({ groupLabel: inventoryGroupingOptions.find((item) => item.value === inventoryGroupBy.value)?.title || "Bodega", summary: inventorySummary.value, rows: inventoryReportRows.value, movementRows: kardexMovementReportRows.value }); if (format === "excel") await downloadReportExcel(report); else await downloadReportPdf(report); } catch (error: any) { ui.error(error?.message || "No se pudo generar el reporte de inventario."); } finally { exportState[key] = false; } }
-async function loadKardex() { if (!canRead.value) return; loadingKardex.value = true; resetMaterialDetailCache(); try { const { data } = await api.get("/kpi_inventory/kardex/resumen-material", { params: { desde: kardexFilters.desde || undefined, hasta: kardexFilters.hasta || undefined, search: kardexFilters.search || undefined } }); const payload = data?.data ?? data ?? {}; kardexGroups.value = Array.isArray(payload?.groups) ? payload.groups : []; kardexTotals.materiales = Number(payload?.totals?.materiales || 0); kardexTotals.movimientos = Number(payload?.totals?.movimientos || 0); kardexTotals.entradas = Number(payload?.totals?.entradas || 0); kardexTotals.salidas = Number(payload?.totals?.salidas || 0); } catch (error: any) { kardexGroups.value = []; kardexTotals.materiales = 0; kardexTotals.movimientos = 0; kardexTotals.entradas = 0; kardexTotals.salidas = 0; ui.error(error?.response?.data?.message || "No se pudo cargar kardex."); } finally { loadingKardex.value = false; } }
+async function loadKardex(page = kardexPagination.page) {
+  if (!canRead.value) return;
+  const targetPage = Number.isFinite(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+  loadingKardex.value = true;
+  resetMaterialDetailCache();
+  try {
+    const { data } = await api.get("/kpi_inventory/kardex/resumen-material", {
+      params: {
+        desde: kardexFilters.desde || undefined,
+        hasta: kardexFilters.hasta || undefined,
+        search: kardexFilters.search || undefined,
+        page: targetPage,
+        limit: kardexPagination.limit,
+      },
+    });
+    const payload = data?.data ?? data ?? {};
+    const pagination = payload?.pagination ?? {};
+    kardexGroups.value = Array.isArray(payload?.groups) ? payload.groups : [];
+    kardexTotals.materiales = Number(payload?.totals?.materiales || 0);
+    kardexTotals.movimientos = Number(payload?.totals?.movimientos || 0);
+    kardexTotals.entradas = Number(payload?.totals?.entradas || 0);
+    kardexTotals.salidas = Number(payload?.totals?.salidas || 0);
+    kardexPagination.page = Number(pagination?.page || targetPage || 1);
+    kardexPagination.limit = Number(pagination?.limit || kardexPagination.limit || 10);
+    kardexPagination.total = Number(pagination?.total || kardexGroups.value.length || 0);
+    kardexPagination.totalPages = Math.max(1, Number(pagination?.totalPages || 1));
+  } catch (error: any) {
+    kardexGroups.value = [];
+    kardexTotals.materiales = 0;
+    kardexTotals.movimientos = 0;
+    kardexTotals.entradas = 0;
+    kardexTotals.salidas = 0;
+    kardexPagination.page = targetPage;
+    kardexPagination.total = 0;
+    kardexPagination.totalPages = 1;
+    ui.error(error?.response?.data?.message || "No se pudo cargar kardex.");
+  } finally {
+    loadingKardex.value = false;
+  }
+}
+function applyKardexFilters() {
+  kardexPagination.page = 1;
+  void loadKardex(1);
+}
+function changeKardexPage(page: number) {
+  if (loadingKardex.value || page === kardexPagination.page) return;
+  void loadKardex(page);
+}
+function updateKardexPageSize(limit: number) {
+  const safeLimit = Number(limit);
+  if (!Number.isFinite(safeLimit) || safeLimit <= 0 || safeLimit === kardexPagination.limit) return;
+  kardexPagination.limit = safeLimit;
+  kardexPagination.page = 1;
+  void loadKardex(1);
+}
 async function refreshCatalogsIfLoaded() { if (inventoryCatalogLoaded.value) await ensureMovementCatalogsLoaded(true); }
 async function saveMovementDocument() { if (!canCreate.value) return ui.error("No tienes permisos para registrar documentos de bodega."); if (!documentForm.bodegaId) return ui.error("La bodega es obligatoria."); const candidateDetails = movementDetails.value.filter((detail) => detail.productoId || String(detail.cantidad || "").trim() || String(detail.observacion || "").trim()); if (!candidateDetails.length) return ui.error("Debes agregar al menos un material al detalle."); const payloadDetails: Array<{ producto_id: string; cantidad: number; observacion?: string }> = []; for (const [index, detail] of candidateDetails.entries()) { if (!detail.productoId) return ui.error(`Selecciona el material en la fila ${index + 1}.`); const cantidad = parsePositiveNumber(detail.cantidad); if (!cantidad) return ui.error(`La cantidad de la fila ${index + 1} debe ser mayor a cero.`); if (detailExceedsStock(detail)) return ui.error(`La fila ${index + 1} supera el stock disponible de la bodega.`); payloadDetails.push({ producto_id: detail.productoId, cantidad, observacion: detail.observacion || undefined }); } savingDocument.value = true; try { await api.post("/kpi_inventory/kardex/documentos", { tipo_movimiento: documentForm.tipo, fecha_movimiento: documentForm.fecha || undefined, bodega_id: documentForm.bodegaId, referencia: documentForm.referencia || undefined, observacion: documentForm.observacion || undefined, created_by: getUserName(), updated_by: getUserName(), detalles: payloadDetails }); ui.success(`${documentForm.tipo === "INGRESO" ? "Ingreso" : "Egreso"} de bodega registrado correctamente.`); movementDialog.open = false; resetMovementDocumentForm(); await Promise.allSettled([loadKardex(), refreshCatalogsIfLoaded()]); } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo registrar el documento de bodega."); } finally { savingDocument.value = false; } }
 function requestBrowserNotificationPermission() { if (typeof window !== "undefined" && "Notification" in window && window.Notification.permission === "default") void window.Notification.requestPermission().catch(() => undefined); }
@@ -304,8 +399,9 @@ onBeforeUnmount(() => stopImportPolling());
 .summary-chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .kardex-header-copy { max-width: 720px; }
 .kardex-groups { display: grid; gap: 12px; }
+.kardex-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
 .kardex-group-title { padding-block: 16px; }
-.detail-loading-state { display: flex; align-items: center; gap: 12px; padding: 12px 4px; color: rgba(var(--v-theme-on-surface), 0.72); }
+.detail-loading-state { display: flex; align-items: center; gap: 12px; padding: 12px 4px; color: rgba(var(--v-theme-on-surface), 0.72); min-height: 78px; }
 .kardex-detail-table, .document-editor-table { overflow-x: auto; border: 1px solid rgba(var(--v-theme-on-surface), 0.08); border-radius: 18px; }
 .kardex-table, .document-editor-grid { width: 100%; border-collapse: collapse; background: rgba(var(--v-theme-surface), 0.94); }
 .kardex-table { min-width: 1080px; }
