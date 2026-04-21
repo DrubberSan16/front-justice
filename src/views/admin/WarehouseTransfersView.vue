@@ -182,7 +182,7 @@
             />
           </v-col>
 
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="5">
             <v-text-field
               v-if="selectedOrder"
               :model-value="sourceWarehouseLabel"
@@ -201,7 +201,7 @@
             />
           </v-col>
 
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
             <v-select
               v-model="form.bodega_destino_id"
               :items="destinationWarehouseOptions"
@@ -406,19 +406,43 @@
           </v-col>
 
           <v-col cols="12" md="4">
-            <v-text-field v-model="sriConfigForm.ruc" label="RUC emisor" variant="outlined" maxlength="13" />
+            <v-text-field
+              v-model="sriConfigForm.ruc"
+              label="RUC emisor"
+              variant="outlined"
+              maxlength="13"
+              :loading="sriTaxpayerLookupLoading"
+              hint="Al completar los 13 dígitos se consultará el SRI automáticamente."
+              persistent-hint
+            />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field v-model="sriConfigForm.codigo_numerico" label="Código numérico (8 dígitos)" variant="outlined" maxlength="8" />
+            <v-text-field
+              model-value="Automático por cada documento"
+              label="Código numérico"
+              variant="outlined"
+              readonly
+            />
           </v-col>
           <v-col cols="12" md="4">
             <v-select v-model="sriConfigForm.obligado_contabilidad" :items="yesNoOptions" label="Obligado a llevar contabilidad" variant="outlined" />
           </v-col>
 
-          <v-col cols="12" md="6">
+          <v-col cols="12" v-if="sriTaxpayerLookupError">
+            <v-alert type="warning" variant="tonal">
+              {{ sriTaxpayerLookupError }}
+            </v-alert>
+          </v-col>
+          <v-col cols="12" v-else-if="sriTaxpayerLookupMessage">
+            <v-alert type="info" variant="tonal">
+              {{ sriTaxpayerLookupMessage }}
+            </v-alert>
+          </v-col>
+
+          <v-col cols="12" md="5">
             <v-text-field v-model="sriConfigForm.razon_social" label="Razón social" variant="outlined" />
           </v-col>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
             <v-text-field v-model="sriConfigForm.nombre_comercial" label="Nombre comercial" variant="outlined" />
           </v-col>
 
@@ -457,25 +481,26 @@
           </v-col>
         </v-row>
 
-        <v-divider class="my-4" />
+        <template v-if="canManageSriSignature">
+          <v-divider class="my-4" />
 
-        <div class="text-subtitle-2 font-weight-bold mb-2">Certificado de firma electrónica (.p12)</div>
+        <div class="text-subtitle-2 font-weight-bold mb-2">Firma electrónica global del sistema (.p12)</div>
         <v-alert type="info" variant="tonal" class="mb-4">
-          La clave del certificado se usa para firmar el XML XAdES_BES antes de enviarlo al SRI.
+          Esta firma se carga una sola vez y se reutiliza para todas las sucursales, bodegas y guías del sistema. Solo el Super Administrador puede actualizarla.
         </v-alert>
 
         <v-row dense>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="5">
             <v-file-input
               v-model="sriCertificateFile"
-              label="Archivo .p12"
+              label="Archivo .p12 global"
               variant="outlined"
               accept=".p12"
               prepend-icon="mdi-lock-outline"
               show-size
             />
           </v-col>
-          <v-col cols="12" md="6">
+          <v-col cols="12" md="4">
             <v-text-field
               v-model="sriCertificatePassword"
               label="Clave del certificado"
@@ -483,14 +508,26 @@
               type="password"
             />
           </v-col>
+          <v-col cols="12" md="3" class="d-flex align-center">
+            <v-btn
+              color="primary"
+              block
+              prepend-icon="mdi-content-save"
+              :loading="sriSignatureSaving"
+              @click="saveGlobalSriSignature"
+            >
+              Guardar firma global
+            </v-btn>
+          </v-col>
         </v-row>
 
         <v-alert v-if="sriConfigMeta.cert_subject || sriConfigMeta.cert_valid_to" type="success" variant="tonal" class="mt-2">
-          Certificado cargado:
+          Firma global cargada:
           <strong>{{ sriConfigMeta.certificate_filename || 'certificado.p12' }}</strong>
           <span v-if="sriConfigMeta.cert_subject"> · {{ sriConfigMeta.cert_subject }}</span>
           <span v-if="sriConfigMeta.cert_valid_to"> · Vigencia hasta {{ formatDate(sriConfigMeta.cert_valid_to) }}</span>
         </v-alert>
+        </template>
       </v-card-text>
       <v-divider />
       <v-card-actions class="justify-end pa-4">
@@ -706,6 +743,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
+import { isSuperAdministrator } from "@/app/utils/role-access";
 
 type CatalogOption = { value: string; title: string };
 
@@ -857,6 +895,7 @@ const perms = computed(() =>
 );
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
+const canManageSriSignature = computed(() => isSuperAdministrator(auth.user));
 
 const loading = ref(false);
 const saving = ref(false);
@@ -869,6 +908,13 @@ const guideAuthorizing = ref(false);
 const guidePreviewLoading = ref(false);
 const sriConfigLoading = ref(false);
 const sriConfigSaving = ref(false);
+const sriSignatureSaving = ref(false);
+const sriTaxpayerLookupLoading = ref(false);
+const sriTaxpayerLookupMessage = ref("");
+const sriTaxpayerLookupError = ref("");
+const sriConfigHydrating = ref(false);
+const lastSriLookedUpRuc = ref("");
+const sriTaxpayerLookupTimer = ref<number | null>(null);
 const consultingGuideId = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
@@ -912,7 +958,6 @@ const sriConfigForm = reactive({
   dir_establecimiento: "",
   estab: "001",
   pto_emi: "001",
-  codigo_numerico: "12345678",
   contribuyente_especial: "",
   obligado_contabilidad: "NO",
   dir_partida_default: "",
@@ -1121,6 +1166,126 @@ function getUserName() {
   return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM";
 }
 
+function normalizeRuc(value: unknown) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 13);
+}
+
+function clearSriTaxpayerLookupTimer() {
+  if (sriTaxpayerLookupTimer.value == null) return;
+  window.clearTimeout(sriTaxpayerLookupTimer.value);
+  sriTaxpayerLookupTimer.value = null;
+}
+
+function clearSriTaxpayerLookupFeedback() {
+  sriTaxpayerLookupMessage.value = "";
+  sriTaxpayerLookupError.value = "";
+}
+
+function clearSriSignatureMeta() {
+  sriConfigMeta.certificate_filename = "";
+  sriConfigMeta.cert_subject = "";
+  sriConfigMeta.cert_valid_to = "";
+}
+
+function resetSriSignatureUploadForm() {
+  sriCertificateFile.value = null;
+  sriCertificatePassword.value = "";
+}
+
+function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | undefined) {
+  if (!payload) return;
+  const ruc = normalizeRuc(payload.ruc);
+  const razonSocial = String(payload.razon_social || "").trim();
+  const nombreComercial = String(
+    payload.nombre_comercial || payload.razon_social || "",
+  ).trim();
+  const obligadoContabilidad = String(
+    payload.obligado_contabilidad || "NO",
+  ).trim();
+  const contribuyenteEspecial = String(
+    payload.contribuyente_especial || "",
+  ).trim();
+
+  if (ruc) {
+    sriConfigForm.ruc = ruc;
+  }
+  if (razonSocial) {
+    sriConfigForm.razon_social = razonSocial;
+  }
+  if (nombreComercial) {
+    sriConfigForm.nombre_comercial = nombreComercial;
+  }
+  sriConfigForm.obligado_contabilidad = obligadoContabilidad || "NO";
+  sriConfigForm.contribuyente_especial = contribuyenteEspecial;
+
+  if (!String(sriConfigForm.razon_social_transportista_default || "").trim()) {
+    sriConfigForm.razon_social_transportista_default = razonSocial;
+  }
+  if (!String(sriConfigForm.identificacion_transportista_default || "").trim()) {
+    sriConfigForm.identificacion_transportista_default = ruc;
+  }
+}
+
+async function lookupSriTaxpayerByRuc(
+  ruc = sriConfigForm.ruc,
+  notifyOnError = false,
+) {
+  const normalizedRuc = normalizeRuc(ruc);
+  if (normalizedRuc.length !== 13 || sriConfigHydrating.value) return;
+
+  sriTaxpayerLookupLoading.value = true;
+  clearSriTaxpayerLookupFeedback();
+
+  try {
+    const { data } = await api.get(
+      "/kpi_inventory/guias-remision-sri/catalogo-contribuyente",
+      {
+        params: { ruc: normalizedRuc },
+      },
+    );
+    const payload = (data?.data ?? data) as Record<string, unknown> | null;
+    applySriTaxpayerAutofill(payload);
+    lastSriLookedUpRuc.value = normalizedRuc;
+    sriTaxpayerLookupMessage.value =
+      "Datos del contribuyente cargados desde el SRI. Completa la direccion matriz y la direccion del establecimiento si aun no estan definidas.";
+  } catch (error: any) {
+    lastSriLookedUpRuc.value = "";
+    sriTaxpayerLookupError.value =
+      error?.response?.data?.message ||
+      error?.message ||
+      "No se pudo consultar el RUC en el SRI.";
+    if (notifyOnError) {
+      ui.error(sriTaxpayerLookupError.value);
+    }
+  } finally {
+    sriTaxpayerLookupLoading.value = false;
+  }
+}
+
+function scheduleSriTaxpayerLookup(force = false) {
+  clearSriTaxpayerLookupTimer();
+  const normalizedRuc = normalizeRuc(sriConfigForm.ruc);
+  if (normalizedRuc !== sriConfigForm.ruc) {
+    sriConfigForm.ruc = normalizedRuc;
+    return;
+  }
+
+  if (normalizedRuc.length < 13) {
+    lastSriLookedUpRuc.value = "";
+    clearSriTaxpayerLookupFeedback();
+    return;
+  }
+
+  if (sriConfigHydrating.value) return;
+  if (!force && normalizedRuc === lastSriLookedUpRuc.value) return;
+
+  sriTaxpayerLookupTimer.value = window.setTimeout(() => {
+    void lookupSriTaxpayerByRuc(normalizedRuc, force);
+  }, 450);
+}
+
 function detailSubtotal(detail: TransferDetailForm) {
   return toNumber(detail.cantidad) * toNumber(detail.costo_unitario);
 }
@@ -1171,6 +1336,11 @@ function resetForm() {
 }
 
 function resetSriConfigForm() {
+  clearSriTaxpayerLookupTimer();
+  clearSriTaxpayerLookupFeedback();
+  sriTaxpayerLookupLoading.value = false;
+  sriConfigHydrating.value = false;
+  lastSriLookedUpRuc.value = "";
   sriConfigForm.ambiente_default = "PRUEBAS";
   sriConfigForm.ruc = "";
   sriConfigForm.razon_social = "";
@@ -1179,7 +1349,6 @@ function resetSriConfigForm() {
   sriConfigForm.dir_establecimiento = "";
   sriConfigForm.estab = "001";
   sriConfigForm.pto_emi = "001";
-  sriConfigForm.codigo_numerico = "12345678";
   sriConfigForm.contribuyente_especial = "";
   sriConfigForm.obligado_contabilidad = "NO";
   sriConfigForm.dir_partida_default = "";
@@ -1189,11 +1358,6 @@ function resetSriConfigForm() {
   sriConfigForm.placa_default = "";
   sriConfigForm.info_adicional_email = "";
   sriConfigForm.info_adicional_telefono = "";
-  sriCertificateFile.value = null;
-  sriCertificatePassword.value = "";
-  sriConfigMeta.certificate_filename = "";
-  sriConfigMeta.cert_subject = "";
-  sriConfigMeta.cert_valid_to = "";
 }
 
 function resetGuideForm() {
@@ -1448,11 +1612,18 @@ async function openCreate() {
 async function openSriConfigDialog() {
   sriConfigDialog.value = true;
   sriConfigLoading.value = true;
+  resetSriSignatureUploadForm();
+  clearSriSignatureMeta();
   try {
     await ensureSucursalesLoaded();
-    if (sriConfigForm.sucursal_id) {
-      await loadConfigForSucursal(sriConfigForm.sucursal_id);
-    }
+    await Promise.all([
+      sriConfigForm.sucursal_id
+        ? loadConfigForSucursal(sriConfigForm.sucursal_id)
+        : Promise.resolve(),
+      canManageSriSignature.value
+        ? loadGlobalSriSignature()
+        : Promise.resolve(),
+    ]);
   } catch (error: any) {
     ui.error(error?.response?.data?.message || error?.message || "No se pudo cargar la configuración SRI.");
   } finally {
@@ -1460,10 +1631,21 @@ async function openSriConfigDialog() {
   }
 }
 
+async function loadGlobalSriSignature() {
+  clearSriSignatureMeta();
+  const { data } = await api.get("/kpi_inventory/guias-remision-sri/config/firma-global");
+  const payload = data?.data ?? data;
+  if (!payload) return;
+  sriConfigMeta.certificate_filename = String(payload.certificate_filename || "");
+  sriConfigMeta.cert_subject = String(payload.cert_subject || "");
+  sriConfigMeta.cert_valid_to = String(payload.cert_valid_to || "");
+}
+
 async function loadConfigForSucursal(sucursalId: string) {
   resetSriConfigForm();
   sriConfigForm.sucursal_id = sucursalId;
   if (!sucursalId) return;
+  sriConfigHydrating.value = true;
   try {
     const { data } = await api.get(`/kpi_inventory/guias-remision-sri/config/sucursal/${sucursalId}`);
     const payload = data?.data ?? data;
@@ -1476,7 +1658,6 @@ async function loadConfigForSucursal(sucursalId: string) {
     sriConfigForm.dir_establecimiento = String(payload.dir_establecimiento || "");
     sriConfigForm.estab = String(payload.estab || "001");
     sriConfigForm.pto_emi = String(payload.pto_emi || "001");
-    sriConfigForm.codigo_numerico = String(payload.codigo_numerico || "12345678");
     sriConfigForm.contribuyente_especial = String(payload.contribuyente_especial || "");
     sriConfigForm.obligado_contabilidad = String(payload.obligado_contabilidad || "NO");
     sriConfigForm.dir_partida_default = String(payload.dir_partida_default || "");
@@ -1486,13 +1667,14 @@ async function loadConfigForSucursal(sucursalId: string) {
     sriConfigForm.placa_default = String(payload.placa_default || "");
     sriConfigForm.info_adicional_email = String(payload.info_adicional_email || "");
     sriConfigForm.info_adicional_telefono = String(payload.info_adicional_telefono || "");
-    sriConfigMeta.certificate_filename = String(payload.certificate_filename || "");
-    sriConfigMeta.cert_subject = String(payload.cert_subject || "");
-    sriConfigMeta.cert_valid_to = String(payload.cert_valid_to || "");
+    lastSriLookedUpRuc.value = normalizeRuc(payload.ruc);
+    clearSriTaxpayerLookupFeedback();
   } catch (error: any) {
     if (error?.response?.status !== 404) {
       throw error;
     }
+  } finally {
+    sriConfigHydrating.value = false;
   }
 }
 
@@ -1513,20 +1695,7 @@ async function saveSriConfig() {
       updated_by: getUserName(),
     });
 
-    if (sriCertificateFile.value && sriCertificatePassword.value) {
-      const formData = new FormData();
-      formData.append("sucursal_id", sriConfigForm.sucursal_id);
-      formData.append("password", sriCertificatePassword.value);
-      formData.append("updated_by", getUserName());
-      formData.append("file", sriCertificateFile.value);
-      await api.post("/kpi_inventory/guias-remision-sri/config/certificate", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-    }
-
     await loadConfigForSucursal(sriConfigForm.sucursal_id);
-    sriCertificateFile.value = null;
-    sriCertificatePassword.value = "";
     ui.success("Configuración SRI guardada correctamente.");
   } catch (error: any) {
     ui.error(
@@ -1536,6 +1705,44 @@ async function saveSriConfig() {
     );
   } finally {
     sriConfigSaving.value = false;
+  }
+}
+
+async function saveGlobalSriSignature() {
+  if (!canManageSriSignature.value) {
+    ui.error("Solo el Super Administrador puede actualizar la firma global SRI.");
+    return;
+  }
+  if (!sriCertificateFile.value || !sriCertificatePassword.value) {
+    ui.error("Debes seleccionar el archivo .p12 y su clave para actualizar la firma global.");
+    return;
+  }
+
+  sriSignatureSaving.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("password", sriCertificatePassword.value);
+    formData.append("updated_by", getUserName());
+    formData.append("file", sriCertificateFile.value);
+    await api.post(
+      "/kpi_inventory/guias-remision-sri/config/firma-global/certificate",
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      },
+    );
+
+    await loadGlobalSriSignature();
+    resetSriSignatureUploadForm();
+    ui.success("Firma global SRI actualizada correctamente.");
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo actualizar la firma global SRI.",
+    );
+  } finally {
+    sriSignatureSaving.value = false;
   }
 }
 
@@ -1846,6 +2053,19 @@ watch(
 );
 
 watch(
+  () => sriConfigForm.ruc,
+  (value) => {
+    if (!sriConfigDialog.value) return;
+    const normalizedRuc = normalizeRuc(value);
+    if (normalizedRuc !== value) {
+      sriConfigForm.ruc = normalizedRuc;
+      return;
+    }
+    scheduleSriTaxpayerLookup(false);
+  },
+);
+
+watch(
   () => guideDialog.value,
   (open, previous) => {
     if (open || !previous) return;
@@ -1862,6 +2082,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  clearSriTaxpayerLookupTimer();
   revokeGuidePreviewUrl();
 });
 </script>

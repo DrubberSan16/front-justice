@@ -17,6 +17,11 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${auth.accessToken}`;
   }
 
+  if (auth.user?.role?.nombre) {
+    config.headers = config.headers ?? {};
+    config.headers["X-Role-Name"] = auth.user.role.nombre;
+  }
+
   const method = String(config.method || "get").toUpperCase();
   if (method && branchScope.effectiveSelectedSucursalId) {
     config.headers = config.headers ?? {};
