@@ -15,6 +15,14 @@
         <v-chip color="info" variant="tonal">
           {{ pendingOrders.length }} órdenes disponibles para precarga
         </v-chip>
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-cog"
+          :loading="sriConfigLoading"
+          @click="openSriConfigDialog"
+        >
+          Configuración SRI
+        </v-btn>
         <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loading" @click="hydrateView">
           Recargar
         </v-btn>
@@ -70,6 +78,64 @@
         <v-chip size="small" variant="tonal" color="success">
           {{ item.ingreso_bodega_codigo || "-" }}
         </v-chip>
+      </template>
+
+      <template #item.guia_remision="{ item }">
+        <div class="d-flex flex-column" style="gap: 4px; min-width: 180px;">
+          <v-chip
+            v-if="item.guia_remision_numero"
+            size="small"
+            variant="tonal"
+            :color="guideStateColor(item.guia_remision_estado)"
+          >
+            {{ item.guia_remision_numero }}
+          </v-chip>
+          <v-chip
+            v-if="item.guia_remision_sri_estado"
+            size="small"
+            variant="outlined"
+            :color="guideSriStateColor(item.guia_remision_sri_estado)"
+          >
+            {{ item.guia_remision_sri_estado }}
+          </v-chip>
+          <span v-if="!item.guia_remision_numero" class="text-caption text-medium-emphasis">
+            Sin guía
+          </span>
+        </div>
+      </template>
+
+      <template #item.acciones="{ item }">
+        <div class="d-flex flex-wrap" style="gap: 8px; min-width: 270px;">
+          <v-btn
+            size="small"
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-file-document-plus-outline"
+            :disabled="!canGenerateGuide(item)"
+            @click="openGuideDialog(item)"
+          >
+            {{ item.guia_remision_id ? 'Regenerar guía' : 'Generar guía' }}
+          </v-btn>
+          <v-btn
+            v-if="item.guia_remision_id"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-cloud-search-outline"
+            :loading="consultingGuideId === item.guia_remision_id"
+            @click="consultGuide(item)"
+          >
+            Consultar SRI
+          </v-btn>
+          <v-btn
+            v-if="item.guia_remision_id"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-download"
+            @click="downloadGuideXml(item, 'signed')"
+          >
+            XML firmado
+          </v-btn>
+        </div>
       </template>
     </v-data-table-server>
   </v-card>
@@ -277,25 +343,22 @@
               </tr>
               <tr v-if="!form.detalles.length">
                 <td colspan="8" class="text-center text-medium-emphasis py-4">
-                  {{ selectedOrder ? "La orden seleccionada no tiene materiales disponibles." : "Agrega materiales para continuar." }}
+                  No hay materiales cargados para esta transferencia.
                 </td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5" class="text-right font-weight-bold">Total referencial</td>
+                <td class="text-right font-weight-bold">{{ formatCurrency(totalReferentialAmount) }}</td>
+                <td colspan="2" class="text-right font-weight-bold">Cantidad total: {{ formatNumber(totalQuantity) }}</td>
+              </tr>
+            </tfoot>
           </table>
-        </div>
-
-        <div class="d-flex flex-wrap justify-end mt-4" style="gap: 12px;">
-          <v-chip color="info" variant="tonal">
-            Ítems: {{ form.detalles.length }}
-          </v-chip>
-          <v-chip color="success" variant="tonal">
-            Cantidad total: {{ formatNumber(totalQuantity) }}
-          </v-chip>
         </div>
       </v-card-text>
       <v-divider />
-      <v-card-actions class="pa-4">
-        <v-spacer />
+      <v-card-actions class="justify-end pa-4">
         <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
         <v-btn color="primary" :loading="saving" :disabled="orderLoading" @click="saveTransfer">
           Guardar transferencia
@@ -303,10 +366,336 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog
+    v-model="sriConfigDialog"
+    :fullscreen="isDialogFullscreen"
+    :max-width="isDialogFullscreen ? undefined : 1100"
+  >
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Configuración SRI por sucursal
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pt-4 section-surface">
+        <v-row dense>
+          <v-col cols="12" md="5">
+            <v-select
+              v-model="sriConfigForm.sucursal_id"
+              :items="sucursalOptions"
+              item-title="title"
+              item-value="value"
+              label="Sucursal"
+              variant="outlined"
+              :loading="sriConfigLoading"
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="sriConfigForm.ambiente_default"
+              :items="environmentOptions"
+              label="Ambiente por defecto"
+              variant="outlined"
+            />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-text-field v-model="sriConfigForm.estab" label="Estab" variant="outlined" maxlength="3" />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-text-field v-model="sriConfigForm.pto_emi" label="Punto emisor" variant="outlined" maxlength="3" />
+          </v-col>
+
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.ruc" label="RUC emisor" variant="outlined" maxlength="13" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.codigo_numerico" label="Código numérico (8 dígitos)" variant="outlined" maxlength="8" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-select v-model="sriConfigForm.obligado_contabilidad" :items="yesNoOptions" label="Obligado a llevar contabilidad" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="sriConfigForm.razon_social" label="Razón social" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="sriConfigForm.nombre_comercial" label="Nombre comercial" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="sriConfigForm.dir_matriz" label="Dirección matriz" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="sriConfigForm.dir_establecimiento" label="Dirección establecimiento" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.contribuyente_especial" label="Contribuyente especial" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.info_adicional_email" label="Email adicional" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.info_adicional_telefono" label="Teléfono adicional" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="sriConfigForm.dir_partida_default" label="Dirección partida por defecto" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="sriConfigForm.razon_social_transportista_default" label="Razón social transportista por defecto" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="4">
+            <v-select v-model="sriConfigForm.tipo_identificacion_transportista_default" :items="transportIdTypeOptions" label="Tipo identificación transportista" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.identificacion_transportista_default" label="Identificación transportista" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="sriConfigForm.placa_default" label="Placa por defecto" variant="outlined" />
+          </v-col>
+        </v-row>
+
+        <v-divider class="my-4" />
+
+        <div class="text-subtitle-2 font-weight-bold mb-2">Certificado de firma electrónica (.p12)</div>
+        <v-alert type="info" variant="tonal" class="mb-4">
+          La clave del certificado se usa para firmar el XML XAdES_BES antes de enviarlo al SRI.
+        </v-alert>
+
+        <v-row dense>
+          <v-col cols="12" md="6">
+            <v-file-input
+              v-model="sriCertificateFile"
+              label="Archivo .p12"
+              variant="outlined"
+              accept=".p12"
+              prepend-icon="mdi-lock-outline"
+              show-size
+            />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field
+              v-model="sriCertificatePassword"
+              label="Clave del certificado"
+              variant="outlined"
+              type="password"
+            />
+          </v-col>
+        </v-row>
+
+        <v-alert v-if="sriConfigMeta.cert_subject || sriConfigMeta.cert_valid_to" type="success" variant="tonal" class="mt-2">
+          Certificado cargado:
+          <strong>{{ sriConfigMeta.certificate_filename || 'certificado.p12' }}</strong>
+          <span v-if="sriConfigMeta.cert_subject"> · {{ sriConfigMeta.cert_subject }}</span>
+          <span v-if="sriConfigMeta.cert_valid_to"> · Vigencia hasta {{ formatDate(sriConfigMeta.cert_valid_to) }}</span>
+        </v-alert>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="justify-end pa-4">
+        <v-btn variant="text" @click="sriConfigDialog = false">Cerrar</v-btn>
+        <v-btn color="primary" :loading="sriConfigSaving" @click="saveSriConfig">
+          Guardar configuración
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog
+    v-model="guideDialog"
+    :fullscreen="isDialogFullscreen"
+    :max-width="isDialogFullscreen ? undefined : 1250"
+    :persistent="guideSaving || guideAuthorizing || guidePreviewLoading"
+  >
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Generar guía de remisión electrónica
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pt-4 section-surface">
+        <v-alert type="info" variant="tonal" class="mb-4">
+          Primero genera la guía y revisa su vista previa en PDF. Cuando confirmes el documento, usa el botón de autorizar para enviarlo al SRI.
+        </v-alert>
+
+        <v-row dense>
+          <v-col cols="12" md="6">
+            <v-text-field :model-value="guideContext.transferencia?.codigo || ''" label="Transferencia" variant="outlined" readonly />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field :model-value="guideContext.sucursal?.nombre || ''" label="Sucursal emisora" variant="outlined" readonly />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field :model-value="guideContext.transferencia?.bodega_origen_label || ''" label="Bodega origen" variant="outlined" readonly />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field :model-value="guideContext.transferencia?.bodega_destino_label || ''" label="Bodega destino" variant="outlined" readonly />
+          </v-col>
+
+          <v-col cols="12" md="3">
+            <v-select v-model="guideForm.ambiente" :items="environmentOptions" label="Ambiente SRI" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.fecha_emision" type="date" label="Fecha emisión" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.fecha_ini_transporte" type="date" label="Fecha inicio transporte" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.fecha_fin_transporte" type="date" label="Fecha fin transporte" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.dir_partida" label="Dirección partida" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.dir_destinatario" label="Dirección destinatario" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.razon_social_transportista" label="Razón social transportista" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-select v-model="guideForm.tipo_identificacion_transportista" :items="transportIdTypeOptions" label="Tipo ID transportista" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-text-field v-model="guideForm.identificacion_transportista" label="ID transportista" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="2">
+            <v-text-field v-model="guideForm.placa" label="Placa" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="4">
+            <v-text-field v-model="guideForm.identificacion_destinatario" label="Identificación destinatario" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="guideForm.razon_social_destinatario" label="Razón social destinatario" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field v-model="guideForm.cod_estab_destino" label="Código estab. destino" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.motivo_traslado" label="Motivo de traslado" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.ruta" label="Ruta" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.cod_doc_sustento" label="Cod. doc. sustento" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.num_doc_sustento" label="Núm. doc. sustento" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.num_aut_doc_sustento" label="Autorización sustento" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field v-model="guideForm.fecha_emision_doc_sustento" type="date" label="Fecha emisión sustento" variant="outlined" />
+          </v-col>
+
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.info_adicional_email" label="Info adicional: email" variant="outlined" />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="guideForm.info_adicional_telefono" label="Info adicional: teléfono" variant="outlined" />
+          </v-col>
+        </v-row>
+
+        <div class="d-flex align-center justify-space-between mt-4 mb-2" style="gap: 8px; flex-wrap: wrap;">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">Detalle incluido en la guía</div>
+            <div class="text-body-2 text-medium-emphasis">
+              Se toma directamente de la transferencia registrada en inventario.
+            </div>
+          </div>
+        </div>
+
+        <div class="transfer-details-table">
+          <table class="details-table compact-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Descripción</th>
+                <th>Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="detail in guideContext.transferencia?.detalles || []" :key="detail.id || detail.producto_id">
+                <td>{{ detail.codigo_producto || '-' }}</td>
+                <td>{{ detail.nombre_producto || '-' }}</td>
+                <td>{{ formatNumber(detail.cantidad) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <v-alert
+          v-if="generatedGuide"
+          type="success"
+          variant="tonal"
+          class="mt-4"
+        >
+          Guía <strong>{{ generatedGuide.numero_guia || generatedGuide.clave_acceso || "generada" }}</strong>
+          lista para revisión.
+          <span v-if="generatedGuide.estado_emision"> Estado: {{ generatedGuide.estado_emision }}.</span>
+          <span v-if="generatedGuide.sri_estado"> SRI: {{ generatedGuide.sri_estado }}.</span>
+        </v-alert>
+
+        <div v-if="guidePreviewLoading" class="guide-preview-loading mt-4">
+          <div class="text-body-2 font-weight-medium mb-2">Generando vista previa del PDF...</div>
+          <v-progress-linear indeterminate color="primary" rounded height="8" />
+        </div>
+
+        <v-card
+          v-else-if="guidePreviewUrl"
+          variant="outlined"
+          rounded="xl"
+          class="mt-4 guide-preview-card"
+        >
+          <div class="d-flex align-center justify-space-between flex-wrap px-4 pt-4" style="gap: 8px;">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Vista previa PDF</div>
+              <div class="text-body-2 text-medium-emphasis">
+                Revisa la guía generada antes de autorizarla en el SRI.
+              </div>
+            </div>
+            <v-btn
+              variant="tonal"
+              prepend-icon="mdi-open-in-new"
+              @click="openGuidePreviewInNewTab"
+            >
+              Abrir PDF
+            </v-btn>
+          </div>
+          <div class="guide-preview-frame-wrapper">
+            <iframe :src="guidePreviewUrl" title="Vista previa de guía de remisión" class="guide-preview-frame" />
+          </div>
+        </v-card>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="justify-end pa-4">
+        <v-btn variant="text" @click="closeGuideDialog">Cerrar</v-btn>
+        <v-btn color="primary" :loading="guideSaving" @click="generateGuide">
+          {{ generatedGuide?.id ? "Regenerar guía" : "Generar guía" }}
+        </v-btn>
+        <v-btn
+          color="success"
+          variant="tonal"
+          :disabled="!canAuthorizeCurrentGuide"
+          :loading="guideAuthorizing"
+          @click="authorizeGuide"
+        >
+          Autorizar en SRI
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -316,6 +705,7 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
+import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 
 type CatalogOption = { value: string; title: string };
 
@@ -357,7 +747,16 @@ type PurchaseOrderRow = {
   detalles?: PurchaseOrderDetailRow[];
 };
 
-type TransferRow = {
+type TransferGuideSummary = {
+  guia_remision_id?: string | null;
+  guia_remision_estado?: string | null;
+  guia_remision_sri_estado?: string | null;
+  guia_remision_clave_acceso?: string | null;
+  guia_remision_numero?: string | null;
+  guia_remision_numero_autorizacion?: string | null;
+};
+
+type TransferRow = TransferGuideSummary & {
   id: string;
   codigo: string;
   fecha_transferencia?: string | null;
@@ -383,6 +782,67 @@ type TransferDetailForm = {
   observacion: string;
 };
 
+type SucursalRow = {
+  id: string;
+  codigo?: string | null;
+  nombre?: string | null;
+};
+
+type SriConfigMeta = {
+  certificate_filename?: string | null;
+  cert_subject?: string | null;
+  cert_valid_to?: string | null;
+};
+
+type GuideDetailRow = {
+  id?: string;
+  producto_id?: string;
+  codigo_producto?: string | null;
+  nombre_producto?: string | null;
+  cantidad?: string | number | null;
+};
+
+type GuideContext = {
+  transferencia?: {
+    id: string;
+    codigo?: string | null;
+    fecha_transferencia?: string | null;
+    bodega_origen_label?: string | null;
+    bodega_destino_label?: string | null;
+    detalles?: GuideDetailRow[];
+  };
+  sucursal?: SucursalRow;
+  config?: Record<string, unknown> | null;
+  draft?: Record<string, unknown> | null;
+  guia_existente?: Record<string, unknown> | null;
+};
+
+type GuideResponse = {
+  id: string;
+  numero_guia?: string | null;
+  clave_acceso?: string | null;
+  estado_emision?: string | null;
+  sri_estado?: string | null;
+  numero_autorizacion?: string | null;
+  fecha_autorizacion?: string | null;
+  ambiente?: string | null;
+  fecha_emision?: string | null;
+  fecha_ini_transporte?: string | null;
+  fecha_fin_transporte?: string | null;
+  dir_partida?: string | null;
+  razon_social_transportista?: string | null;
+  identificacion_transportista?: string | null;
+  placa?: string | null;
+  identificacion_destinatario?: string | null;
+  razon_social_destinatario?: string | null;
+  dir_destinatario?: string | null;
+  motivo_traslado?: string | null;
+  cod_estab_destino?: string | null;
+  ruta?: string | null;
+  detalle_snapshot?: GuideDetailRow[] | null;
+  info_adicional?: Record<string, unknown> | null;
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
@@ -402,12 +862,21 @@ const loading = ref(false);
 const saving = ref(false);
 const orderLoading = ref(false);
 const dialog = ref(false);
+const sriConfigDialog = ref(false);
+const guideDialog = ref(false);
+const guideSaving = ref(false);
+const guideAuthorizing = ref(false);
+const guidePreviewLoading = ref(false);
+const sriConfigLoading = ref(false);
+const sriConfigSaving = ref(false);
+const consultingGuideId = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
 const serverTotalItems = ref(0);
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
+const sucursales = ref<SucursalRow[]>([]);
 const products = ref<ProductRow[]>([]);
 const stockRows = ref<StockRow[]>([]);
 const warehousesLoaded = ref(false);
@@ -415,6 +884,14 @@ const productsLoaded = ref(false);
 const pendingOrdersLoaded = ref(false);
 const stockRowsLoaded = ref(false);
 const stockRowsLoading = ref(false);
+const sucursalesLoaded = ref(false);
+const selectedTransfer = ref<TransferRow | null>(null);
+const sriCertificateFile = ref<File | null>(null);
+const sriCertificatePassword = ref("");
+const guideContext = ref<GuideContext>({});
+const generatedGuide = ref<GuideResponse | null>(null);
+const guidePreviewUrl = ref("");
+const sriConfigMeta = reactive<SriConfigMeta>({});
 
 const form = reactive({
   orden_compra_id: "",
@@ -423,6 +900,53 @@ const form = reactive({
   fecha_transferencia: formatDateForInput(),
   observacion: "",
   detalles: [] as TransferDetailForm[],
+});
+
+const sriConfigForm = reactive({
+  sucursal_id: "",
+  ambiente_default: "PRUEBAS",
+  ruc: "",
+  razon_social: "",
+  nombre_comercial: "",
+  dir_matriz: "",
+  dir_establecimiento: "",
+  estab: "001",
+  pto_emi: "001",
+  codigo_numerico: "12345678",
+  contribuyente_especial: "",
+  obligado_contabilidad: "NO",
+  dir_partida_default: "",
+  razon_social_transportista_default: "",
+  tipo_identificacion_transportista_default: "04",
+  identificacion_transportista_default: "",
+  placa_default: "",
+  info_adicional_email: "",
+  info_adicional_telefono: "",
+});
+
+const guideForm = reactive({
+  ambiente: "PRUEBAS",
+  fecha_emision: formatDateForInput(),
+  fecha_ini_transporte: formatDateForInput(),
+  fecha_fin_transporte: formatDateForInput(),
+  dir_partida: "",
+  razon_social_transportista: "",
+  tipo_identificacion_transportista: "04",
+  identificacion_transportista: "",
+  placa: "",
+  identificacion_destinatario: "",
+  razon_social_destinatario: "",
+  dir_destinatario: "",
+  motivo_traslado: "",
+  cod_estab_destino: "",
+  ruta: "",
+  cod_doc_sustento: "",
+  num_doc_sustento: "",
+  num_aut_doc_sustento: "",
+  fecha_emision_doc_sustento: "",
+  info_adicional_email: "",
+  info_adicional_telefono: "",
+  forzar_regeneracion: true,
 });
 
 const headers = [
@@ -437,14 +961,31 @@ const headers = [
   { title: "Items", key: "total_items" },
   { title: "Cantidad total", key: "total_cantidad" },
   { title: "Estado", key: "estado" },
+  { title: "Guía SRI", key: "guia_remision", sortable: false },
+  { title: "Acciones", key: "acciones", sortable: false },
+];
+
+const environmentOptions = ["PRUEBAS", "PRODUCCION"];
+const yesNoOptions = ["SI", "NO"];
+const transportIdTypeOptions = [
+  { title: "RUC (04)", value: "04" },
+  { title: "Cédula (05)", value: "05" },
+  { title: "Pasaporte (06)", value: "06" },
+  { title: "Consumidor final (07)", value: "07" },
 ];
 
 const isDialogFullscreen = computed(() => mdAndDown.value);
-
 const selectedOrder = ref<PurchaseOrderRow | null>(null);
 
 const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
   warehouses.value.map((item) => ({
+    value: String(item.id),
+    title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
+  })),
+);
+
+const sucursalOptions = computed<CatalogOption[]>(() =>
+  sucursales.value.map((item) => ({
     value: String(item.id),
     title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
   })),
@@ -516,6 +1057,19 @@ const tableRows = computed(() => transfers.value);
 const totalQuantity = computed(() =>
   form.detalles.reduce((sum, detail) => sum + toNumber(detail.cantidad), 0),
 );
+
+const totalReferentialAmount = computed(() =>
+  form.detalles.reduce((sum, detail) => sum + detailSubtotal(detail), 0),
+);
+
+const canAuthorizeCurrentGuide = computed(() => {
+  if (!generatedGuide.value?.id || guideSaving.value || guidePreviewLoading.value) {
+    return false;
+  }
+  const emissionState = String(generatedGuide.value.estado_emision || "").trim().toUpperCase();
+  const sriState = String(generatedGuide.value.sri_estado || "").trim().toUpperCase();
+  return emissionState !== "AUTORIZADA" && sriState !== "AUTORIZADO";
+});
 
 function toNumber(value: unknown) {
   const parsed = Number(String(value ?? "").replace(/,/g, "."));
@@ -616,6 +1170,124 @@ function resetForm() {
   form.detalles = [createEmptyDetail()];
 }
 
+function resetSriConfigForm() {
+  sriConfigForm.ambiente_default = "PRUEBAS";
+  sriConfigForm.ruc = "";
+  sriConfigForm.razon_social = "";
+  sriConfigForm.nombre_comercial = "";
+  sriConfigForm.dir_matriz = "";
+  sriConfigForm.dir_establecimiento = "";
+  sriConfigForm.estab = "001";
+  sriConfigForm.pto_emi = "001";
+  sriConfigForm.codigo_numerico = "12345678";
+  sriConfigForm.contribuyente_especial = "";
+  sriConfigForm.obligado_contabilidad = "NO";
+  sriConfigForm.dir_partida_default = "";
+  sriConfigForm.razon_social_transportista_default = "";
+  sriConfigForm.tipo_identificacion_transportista_default = "04";
+  sriConfigForm.identificacion_transportista_default = "";
+  sriConfigForm.placa_default = "";
+  sriConfigForm.info_adicional_email = "";
+  sriConfigForm.info_adicional_telefono = "";
+  sriCertificateFile.value = null;
+  sriCertificatePassword.value = "";
+  sriConfigMeta.certificate_filename = "";
+  sriConfigMeta.cert_subject = "";
+  sriConfigMeta.cert_valid_to = "";
+}
+
+function resetGuideForm() {
+  guideForm.ambiente = "PRUEBAS";
+  guideForm.fecha_emision = formatDateForInput();
+  guideForm.fecha_ini_transporte = formatDateForInput();
+  guideForm.fecha_fin_transporte = formatDateForInput();
+  guideForm.dir_partida = "";
+  guideForm.razon_social_transportista = "";
+  guideForm.tipo_identificacion_transportista = "04";
+  guideForm.identificacion_transportista = "";
+  guideForm.placa = "";
+  guideForm.identificacion_destinatario = "";
+  guideForm.razon_social_destinatario = "";
+  guideForm.dir_destinatario = "";
+  guideForm.motivo_traslado = "";
+  guideForm.cod_estab_destino = "";
+  guideForm.ruta = "";
+  guideForm.cod_doc_sustento = "";
+  guideForm.num_doc_sustento = "";
+  guideForm.num_aut_doc_sustento = "";
+  guideForm.fecha_emision_doc_sustento = "";
+  guideForm.info_adicional_email = "";
+  guideForm.info_adicional_telefono = "";
+  guideForm.forzar_regeneracion = true;
+}
+
+function revokeGuidePreviewUrl() {
+  if (!guidePreviewUrl.value) return;
+  window.URL.revokeObjectURL(guidePreviewUrl.value);
+  guidePreviewUrl.value = "";
+}
+
+function resetGuidePreview() {
+  generatedGuide.value = null;
+  guidePreviewLoading.value = false;
+  guideAuthorizing.value = false;
+  revokeGuidePreviewUrl();
+}
+
+function closeGuideDialog() {
+  if (guideSaving.value || guideAuthorizing.value) return;
+  guideDialog.value = false;
+  resetGuideForm();
+  resetGuidePreview();
+  guideContext.value = {};
+  selectedTransfer.value = null;
+}
+
+async function buildGuidePreview(guide: GuideResponse) {
+  if (!guide?.id) return;
+  guidePreviewLoading.value = true;
+  revokeGuidePreviewUrl();
+  try {
+    const blob = await buildGuideRemisionPdfBlob({
+      guide,
+      transfer: guideContext.value.transferencia,
+      sucursal: guideContext.value.sucursal,
+      generatedBy: getUserName(),
+    });
+    guidePreviewUrl.value = window.URL.createObjectURL(blob);
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo generar la vista previa del PDF.");
+  } finally {
+    guidePreviewLoading.value = false;
+  }
+}
+
+async function loadGuidePreviewByTransfer(transferId: string) {
+  if (!String(transferId || "").trim()) return;
+  try {
+    const { data } = await api.get(`/kpi_inventory/guias-remision-sri/transfer/${transferId}`);
+    const payload = (data?.data ?? data) as GuideResponse | null;
+    if (!payload?.id) {
+      resetGuidePreview();
+      return;
+    }
+    generatedGuide.value = payload;
+    await buildGuidePreview(payload);
+  } catch (error: any) {
+    resetGuidePreview();
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo cargar la guía generada.",
+    );
+  }
+}
+
+function openGuidePreviewInNewTab() {
+  if (!guidePreviewUrl.value) return;
+  window.open(guidePreviewUrl.value, "_blank", "noopener,noreferrer");
+}
+
 function addDetail() {
   form.detalles.push(createEmptyDetail());
 }
@@ -655,6 +1327,23 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
     : [];
 }
 
+function guideStateColor(state?: string | null) {
+  const normalized = String(state || "").toUpperCase();
+  if (normalized.includes("AUTORIZ")) return "success";
+  if (normalized.includes("DEVUEL") || normalized.includes("NO AUTORIZ")) return "error";
+  if (normalized.includes("RECIB")) return "info";
+  return "secondary";
+}
+
+function guideSriStateColor(state?: string | null) {
+  return guideStateColor(state);
+}
+
+function canGenerateGuide(item: TransferRow) {
+  const normalized = String(item.estado || "COMPLETADA").toUpperCase();
+  return ["COMPLETADA", "COMPLETADO", "FINALIZADA", "FINALIZADO", "APROBADA", "APROBADO"].includes(normalized);
+}
+
 async function loadTransfers() {
   const response = await fetchPaginatedResource(
     "/kpi_inventory/transferencias-bodega",
@@ -678,6 +1367,15 @@ async function ensureWarehousesLoaded(force = false) {
   if (warehousesLoaded.value && !force) return;
   warehouses.value = await listAllPages("/kpi_inventory/bodegas");
   warehousesLoaded.value = true;
+}
+
+async function ensureSucursalesLoaded(force = false) {
+  if (sucursalesLoaded.value && !force) return;
+  sucursales.value = (await listAllPages("/kpi_inventory/sucursales")) as SucursalRow[];
+  sucursalesLoaded.value = true;
+  if (!sriConfigForm.sucursal_id) {
+    sriConfigForm.sucursal_id = String(sucursales.value[0]?.id || "");
+  }
 }
 
 async function ensurePendingOrdersLoaded(force = false) {
@@ -725,14 +1423,9 @@ async function hydrateView() {
   }
 }
 
-function handleServerOptionsUpdate(options: {
-  page?: number;
-  itemsPerPage?: number;
-}) {
+function handleServerOptionsUpdate(options: { page?: number; itemsPerPage?: number }) {
   const nextPage = Number(options?.page || serverPage.value || 1);
-  const nextItemsPerPage = Number(
-    options?.itemsPerPage || serverItemsPerPage.value || 15,
-  );
+  const nextItemsPerPage = Number(options?.itemsPerPage || serverItemsPerPage.value || 15);
   const pageChanged = nextPage !== serverPage.value;
   const limitChanged = nextItemsPerPage !== serverItemsPerPage.value;
   if (!pageChanged && !limitChanged) return;
@@ -750,6 +1443,255 @@ async function openCreate() {
     ensurePendingOrdersLoaded(),
     ensureProductsLoaded(),
   ]);
+}
+
+async function openSriConfigDialog() {
+  sriConfigDialog.value = true;
+  sriConfigLoading.value = true;
+  try {
+    await ensureSucursalesLoaded();
+    if (sriConfigForm.sucursal_id) {
+      await loadConfigForSucursal(sriConfigForm.sucursal_id);
+    }
+  } catch (error: any) {
+    ui.error(error?.response?.data?.message || error?.message || "No se pudo cargar la configuración SRI.");
+  } finally {
+    sriConfigLoading.value = false;
+  }
+}
+
+async function loadConfigForSucursal(sucursalId: string) {
+  resetSriConfigForm();
+  sriConfigForm.sucursal_id = sucursalId;
+  if (!sucursalId) return;
+  try {
+    const { data } = await api.get(`/kpi_inventory/guias-remision-sri/config/sucursal/${sucursalId}`);
+    const payload = data?.data ?? data;
+    if (!payload) return;
+    sriConfigForm.ambiente_default = String(payload.ambiente_default || "PRUEBAS");
+    sriConfigForm.ruc = String(payload.ruc || "");
+    sriConfigForm.razon_social = String(payload.razon_social || "");
+    sriConfigForm.nombre_comercial = String(payload.nombre_comercial || "");
+    sriConfigForm.dir_matriz = String(payload.dir_matriz || "");
+    sriConfigForm.dir_establecimiento = String(payload.dir_establecimiento || "");
+    sriConfigForm.estab = String(payload.estab || "001");
+    sriConfigForm.pto_emi = String(payload.pto_emi || "001");
+    sriConfigForm.codigo_numerico = String(payload.codigo_numerico || "12345678");
+    sriConfigForm.contribuyente_especial = String(payload.contribuyente_especial || "");
+    sriConfigForm.obligado_contabilidad = String(payload.obligado_contabilidad || "NO");
+    sriConfigForm.dir_partida_default = String(payload.dir_partida_default || "");
+    sriConfigForm.razon_social_transportista_default = String(payload.razon_social_transportista_default || "");
+    sriConfigForm.tipo_identificacion_transportista_default = String(payload.tipo_identificacion_transportista_default || "04");
+    sriConfigForm.identificacion_transportista_default = String(payload.identificacion_transportista_default || "");
+    sriConfigForm.placa_default = String(payload.placa_default || "");
+    sriConfigForm.info_adicional_email = String(payload.info_adicional_email || "");
+    sriConfigForm.info_adicional_telefono = String(payload.info_adicional_telefono || "");
+    sriConfigMeta.certificate_filename = String(payload.certificate_filename || "");
+    sriConfigMeta.cert_subject = String(payload.cert_subject || "");
+    sriConfigMeta.cert_valid_to = String(payload.cert_valid_to || "");
+  } catch (error: any) {
+    if (error?.response?.status !== 404) {
+      throw error;
+    }
+  }
+}
+
+async function saveSriConfig() {
+  if (!sriConfigForm.sucursal_id) {
+    ui.error("Debes seleccionar una sucursal para la configuración SRI.");
+    return;
+  }
+  if (!sriConfigForm.ruc || !sriConfigForm.razon_social || !sriConfigForm.dir_matriz) {
+    ui.error("Completa al menos RUC, razón social y dirección matriz.");
+    return;
+  }
+  sriConfigSaving.value = true;
+  try {
+    await api.post("/kpi_inventory/guias-remision-sri/config", {
+      ...sriConfigForm,
+      created_by: getUserName(),
+      updated_by: getUserName(),
+    });
+
+    if (sriCertificateFile.value && sriCertificatePassword.value) {
+      const formData = new FormData();
+      formData.append("sucursal_id", sriConfigForm.sucursal_id);
+      formData.append("password", sriCertificatePassword.value);
+      formData.append("updated_by", getUserName());
+      formData.append("file", sriCertificateFile.value);
+      await api.post("/kpi_inventory/guias-remision-sri/config/certificate", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    }
+
+    await loadConfigForSucursal(sriConfigForm.sucursal_id);
+    sriCertificateFile.value = null;
+    sriCertificatePassword.value = "";
+    ui.success("Configuración SRI guardada correctamente.");
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo guardar la configuración SRI.",
+    );
+  } finally {
+    sriConfigSaving.value = false;
+  }
+}
+
+async function openGuideDialog(item: TransferRow) {
+  if (!canGenerateGuide(item)) {
+    ui.error("La guía solo puede generarse cuando la transferencia esté aprobada, completada o finalizada.");
+    return;
+  }
+  guideDialog.value = true;
+  guideSaving.value = false;
+  guideAuthorizing.value = false;
+  selectedTransfer.value = item;
+  resetGuideForm();
+  resetGuidePreview();
+  try {
+    const { data } = await api.get(`/kpi_inventory/guias-remision-sri/prepare/${item.id}`);
+    const payload = (data?.data ?? data) as GuideContext;
+    guideContext.value = payload || {};
+    const draft = (payload?.draft ?? {}) as Record<string, unknown>;
+    guideForm.ambiente = String(draft.ambiente || "PRUEBAS");
+    guideForm.fecha_emision = String(draft.fecha_emision || formatDateForInput());
+    guideForm.fecha_ini_transporte = String(draft.fecha_ini_transporte || guideForm.fecha_emision);
+    guideForm.fecha_fin_transporte = String(draft.fecha_fin_transporte || guideForm.fecha_ini_transporte);
+    guideForm.dir_partida = String(draft.dir_partida || "");
+    guideForm.razon_social_transportista = String(draft.razon_social_transportista || "");
+    guideForm.tipo_identificacion_transportista = String(draft.tipo_identificacion_transportista || "04");
+    guideForm.identificacion_transportista = String(draft.identificacion_transportista || "");
+    guideForm.placa = String(draft.placa || "");
+    guideForm.identificacion_destinatario = String(draft.identificacion_destinatario || "");
+    guideForm.razon_social_destinatario = String(draft.razon_social_destinatario || "");
+    guideForm.dir_destinatario = String(draft.dir_destinatario || "");
+    guideForm.motivo_traslado = String(draft.motivo_traslado || "");
+    guideForm.cod_estab_destino = String(draft.cod_estab_destino || "");
+    guideForm.ruta = String(draft.ruta || "");
+    guideForm.info_adicional_email = String(draft.info_adicional_email || "");
+    guideForm.info_adicional_telefono = String(draft.info_adicional_telefono || "");
+    guideForm.forzar_regeneracion = Boolean(payload?.guia_existente);
+    if (payload?.guia_existente) {
+      await loadGuidePreviewByTransfer(item.id);
+    }
+  } catch (error: any) {
+    closeGuideDialog();
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo preparar la guía de remisión.",
+    );
+  }
+}
+
+async function generateGuide() {
+  if (!selectedTransfer.value?.id) {
+    ui.error("No se encontró la transferencia seleccionada.");
+    return;
+  }
+  if (!guideForm.dir_partida || !guideForm.razon_social_transportista || !guideForm.placa) {
+    ui.error("Completa la dirección de partida, el transportista y la placa.");
+    return;
+  }
+  if (!guideForm.identificacion_destinatario || !guideForm.razon_social_destinatario || !guideForm.dir_destinatario) {
+    ui.error("Completa los datos del destinatario de la guía.");
+    return;
+  }
+  guideSaving.value = true;
+  try {
+    const { data } = await api.post(`/kpi_inventory/guias-remision-sri/transfer/${selectedTransfer.value.id}/generate`, {
+      ...guideForm,
+      emitir_y_enviar: false,
+      cod_doc_sustento: guideForm.cod_doc_sustento || undefined,
+      num_doc_sustento: guideForm.num_doc_sustento || undefined,
+      num_aut_doc_sustento: guideForm.num_aut_doc_sustento || undefined,
+      fecha_emision_doc_sustento: guideForm.fecha_emision_doc_sustento || undefined,
+      created_by: getUserName(),
+      updated_by: getUserName(),
+    });
+    const payload = (data?.data ?? data) as GuideResponse;
+    generatedGuide.value = payload;
+    guideForm.forzar_regeneracion = true;
+    await buildGuidePreview(payload);
+    ui.success("Guía generada correctamente. Revisa la vista previa y luego autorízala en el SRI.");
+    await loadTransfers();
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo generar la guía de remisión.",
+    );
+  } finally {
+    guideSaving.value = false;
+  }
+}
+
+async function authorizeGuide() {
+  if (!generatedGuide.value?.id) {
+    ui.error("Primero debes generar la guía antes de autorizarla.");
+    return;
+  }
+  guideAuthorizing.value = true;
+  try {
+    const { data } = await api.post(
+      `/kpi_inventory/guias-remision-sri/${generatedGuide.value.id}/autorizar`,
+      {
+        updated_by: getUserName(),
+      },
+    );
+    const payload = (data?.data ?? data) as GuideResponse;
+    generatedGuide.value = payload;
+    await buildGuidePreview(payload);
+    ui.success("La guía fue enviada al SRI correctamente.");
+    await loadTransfers();
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo autorizar la guía en el SRI.",
+    );
+  } finally {
+    guideAuthorizing.value = false;
+  }
+}
+
+async function consultGuide(item: TransferRow) {
+  if (!item.guia_remision_id) return;
+  consultingGuideId.value = item.guia_remision_id;
+  try {
+    await api.post(`/kpi_inventory/guias-remision-sri/${item.guia_remision_id}/consultar-autorizacion`, {
+      updated_by: getUserName(),
+    });
+    ui.success("Consulta de autorización ejecutada correctamente.");
+    await hydrateView();
+  } catch (error: any) {
+    ui.error(error?.response?.data?.message || error?.message || "No se pudo consultar el estado en SRI.");
+  } finally {
+    consultingGuideId.value = "";
+  }
+}
+
+async function downloadGuideXml(item: TransferRow, kind: "unsigned" | "signed") {
+  if (!item.guia_remision_id) return;
+  try {
+    const response = await api.get(`/kpi_inventory/guias-remision-sri/${item.guia_remision_id}/xml`, {
+      params: { kind },
+      responseType: "blob",
+    });
+    const blob = new Blob([response.data], { type: "application/xml" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${item.guia_remision_numero || item.codigo || 'guia'}-${kind}.xml`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error: any) {
+    ui.error(error?.response?.data?.message || error?.message || "No se pudo descargar el XML.");
+  }
 }
 
 async function loadSelectedOrder(orderId: string) {
@@ -895,9 +1837,32 @@ watch(
   },
 );
 
+watch(
+  () => sriConfigForm.sucursal_id,
+  (sucursalId, prev) => {
+    if (!sucursalId || sucursalId === prev || !sriConfigDialog.value) return;
+    void loadConfigForSucursal(String(sucursalId));
+  },
+);
+
+watch(
+  () => guideDialog.value,
+  (open, previous) => {
+    if (open || !previous) return;
+    resetGuideForm();
+    resetGuidePreview();
+    guideContext.value = {};
+    selectedTransfer.value = null;
+  },
+);
+
 onMounted(async () => {
   if (!canRead.value) return;
   await hydrateView();
+});
+
+onBeforeUnmount(() => {
+  revokeGuidePreviewUrl();
 });
 </script>
 
@@ -928,11 +1893,39 @@ onMounted(async () => {
   letter-spacing: 0.04em;
 }
 
+.compact-table {
+  min-width: 600px;
+}
+
 .quantity-cell {
   min-width: 180px;
 }
 
 .available-stock-field {
   min-width: 260px;
+}
+
+.guide-preview-loading {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 18px;
+  padding: 18px;
+  background: rgba(var(--v-theme-surface), 0.75);
+}
+
+.guide-preview-card {
+  overflow: hidden;
+  border-color: rgba(var(--v-theme-primary), 0.2);
+}
+
+.guide-preview-frame-wrapper {
+  padding: 16px;
+}
+
+.guide-preview-frame {
+  width: 100%;
+  min-height: 720px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+  border-radius: 16px;
+  background: white;
 }
 </style>
