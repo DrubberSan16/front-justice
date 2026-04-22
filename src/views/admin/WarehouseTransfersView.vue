@@ -454,7 +454,24 @@
           </v-col>
 
           <v-col cols="12" md="4">
-            <v-text-field v-model="sriConfigForm.contribuyente_especial" label="Contribuyente especial" variant="outlined" />
+            <v-switch
+              v-model="sriConfigSpecialTaxpayerEnabled"
+              color="primary"
+              inset
+              label="Contribuyente especial"
+              hint="Actívalo solo si tienes número de resolución."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4" v-if="sriConfigSpecialTaxpayerEnabled">
+            <v-text-field
+              v-model="sriConfigForm.contribuyente_especial"
+              label="Resolución contribuyente especial"
+              variant="outlined"
+              maxlength="5"
+              hint="Solo números, entre 3 y 5 dígitos."
+              persistent-hint
+            />
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field v-model="sriConfigForm.info_adicional_email" label="Email adicional" variant="outlined" />
@@ -1065,6 +1082,7 @@ const sriConfigForm = reactive({
   info_adicional_email: "",
   info_adicional_telefono: "",
 });
+const sriConfigSpecialTaxpayerEnabled = ref(false);
 
 const guideForm = reactive({
   ambiente: "PRUEBAS",
@@ -1346,6 +1364,12 @@ function normalizeRuc(value: unknown) {
     .slice(0, 13);
 }
 
+function normalizeSpecialTaxpayerResolution(value: unknown) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 5);
+}
+
 function normalizeComparableText(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
@@ -1495,9 +1519,9 @@ function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | unde
   const obligadoContabilidad = String(
     payload.obligado_contabilidad || "NO",
   ).trim();
-  const contribuyenteEspecial = String(
-    payload.contribuyente_especial || "",
-  ).trim();
+  const contribuyenteEspecial = normalizeSpecialTaxpayerResolution(
+    payload.contribuyente_especial,
+  );
 
   if (ruc) {
     sriConfigForm.ruc = ruc;
@@ -1509,6 +1533,7 @@ function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | unde
     sriConfigForm.nombre_comercial = nombreComercial;
   }
   sriConfigForm.obligado_contabilidad = obligadoContabilidad || "NO";
+  sriConfigSpecialTaxpayerEnabled.value = Boolean(contribuyenteEspecial);
   sriConfigForm.contribuyente_especial = contribuyenteEspecial;
   sriConfigForm.dir_matriz = String(payload.dir_matriz || sriConfigForm.dir_matriz || "");
   sriConfigForm.dir_establecimiento = String(
@@ -1848,6 +1873,7 @@ function resetSriConfigForm() {
   sriConfigForm.estab = "001";
   sriConfigForm.pto_emi = "001";
   sriConfigForm.contribuyente_especial = "";
+  sriConfigSpecialTaxpayerEnabled.value = false;
   sriConfigForm.obligado_contabilidad = "NO";
   sriConfigForm.dir_partida_default = "";
   sriConfigForm.info_adicional_email = "";
@@ -2164,7 +2190,12 @@ async function loadConfigForSucursal(sucursalId: string) {
     sriConfigForm.dir_establecimiento = String(payload.dir_establecimiento || "");
     sriConfigForm.estab = String(payload.estab || "001");
     sriConfigForm.pto_emi = String(payload.pto_emi || "001");
-    sriConfigForm.contribuyente_especial = String(payload.contribuyente_especial || "");
+    sriConfigForm.contribuyente_especial = normalizeSpecialTaxpayerResolution(
+      payload.contribuyente_especial,
+    );
+    sriConfigSpecialTaxpayerEnabled.value = Boolean(
+      sriConfigForm.contribuyente_especial,
+    );
     sriConfigForm.obligado_contabilidad = String(payload.obligado_contabilidad || "NO");
     sriConfigForm.dir_partida_default = String(payload.dir_partida_default || "");
     sriConfigForm.info_adicional_email = String(payload.info_adicional_email || "");
@@ -2189,10 +2220,23 @@ async function saveSriConfig() {
     ui.error("Completa al menos RUC, razón social y dirección matriz.");
     return;
   }
+  const normalizedSpecialTaxpayerResolution = sriConfigSpecialTaxpayerEnabled.value
+    ? normalizeSpecialTaxpayerResolution(sriConfigForm.contribuyente_especial)
+    : "";
+  if (
+    sriConfigSpecialTaxpayerEnabled.value &&
+    normalizedSpecialTaxpayerResolution.length < 3
+  ) {
+    ui.error(
+      "La resolución de contribuyente especial debe tener entre 3 y 5 dígitos.",
+    );
+    return;
+  }
   sriConfigSaving.value = true;
   try {
     await api.post("/kpi_inventory/guias-remision-sri/config", {
       ...sriConfigForm,
+      contribuyente_especial: normalizedSpecialTaxpayerResolution,
       created_by: getUserName(),
       updated_by: getUserName(),
     });
@@ -2612,6 +2656,25 @@ watch(
       return;
     }
     scheduleSriTaxpayerLookup(false);
+  },
+);
+
+watch(
+  () => sriConfigSpecialTaxpayerEnabled.value,
+  (enabled) => {
+    if (!enabled) {
+      sriConfigForm.contribuyente_especial = "";
+    }
+  },
+);
+
+watch(
+  () => sriConfigForm.contribuyente_especial,
+  (value) => {
+    const normalized = normalizeSpecialTaxpayerResolution(value);
+    if (normalized !== value) {
+      sriConfigForm.contribuyente_especial = normalized;
+    }
   },
 );
 
