@@ -2315,12 +2315,19 @@ async function openGuideDialog(item: TransferRow) {
     const payload = (data?.data ?? data) as GuideContext;
     guideContext.value = payload || {};
     const draft = (payload?.draft ?? {}) as Record<string, unknown>;
+    const regenerationDate = payload?.guia_existente ? formatDateForInput() : "";
     guideRecipientLookupHydrating.value = true;
     guideProviderLookupHydrating.value = true;
     guideForm.ambiente = String(draft.ambiente || "PRUEBAS");
-    guideForm.fecha_emision = String(draft.fecha_emision || formatDateForInput());
-    guideForm.fecha_ini_transporte = String(draft.fecha_ini_transporte || guideForm.fecha_emision);
-    guideForm.fecha_fin_transporte = String(draft.fecha_fin_transporte || guideForm.fecha_ini_transporte);
+    guideForm.fecha_emision = String(
+      regenerationDate || draft.fecha_emision || formatDateForInput(),
+    );
+    guideForm.fecha_ini_transporte = String(
+      regenerationDate || draft.fecha_ini_transporte || guideForm.fecha_emision,
+    );
+    guideForm.fecha_fin_transporte = String(
+      regenerationDate || draft.fecha_fin_transporte || guideForm.fecha_ini_transporte,
+    );
     guideForm.dir_partida = String(draft.dir_partida || "");
     guideForm.proveedor_identificacion = String(payload?.proveedor?.identificacion || "");
     guideForm.proveedor_razon_social = String(payload?.proveedor?.razon_social || "");
