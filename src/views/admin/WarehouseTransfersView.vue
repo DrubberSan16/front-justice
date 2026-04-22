@@ -806,7 +806,7 @@
       <v-card-actions class="justify-end pa-4">
         <v-btn variant="text" @click="closeGuideDialog">Cerrar</v-btn>
         <v-btn color="primary" :loading="guideSaving" @click="generateGuide">
-          {{ generatedGuide?.id ? "Regenerar guía" : "Generar guía" }}
+          {{ isGuideRegenerationFlow ? "Regenerar guía" : "Generar guía" }}
         </v-btn>
         <v-btn
           color="success"
@@ -1159,6 +1159,13 @@ const guideStatusVariant = computed(() => {
   ) return "error";
   return "info";
 });
+const isGuideRegenerationFlow = computed(() =>
+  Boolean(
+    generatedGuide.value?.id ||
+      (guideContext.value.guia_existente as Record<string, unknown> | null)?.id ||
+      selectedTransfer.value?.guia_remision_id,
+  ),
+);
 const selectedOrder = ref<PurchaseOrderRow | null>(null);
 
 const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
@@ -2361,6 +2368,8 @@ async function generateGuide() {
     ui.error("No se encontró la transferencia seleccionada.");
     return;
   }
+  const isRegeneration = isGuideRegenerationFlow.value;
+  guideForm.forzar_regeneracion = isRegeneration;
   applyGuideTransportInference();
   if (!guideForm.razon_social_transportista || !guideForm.placa) {
     ui.error("Completa al menos el nombre del transportista y la placa.");
@@ -2408,6 +2417,16 @@ async function generateGuide() {
     const payload = (data?.data ?? data) as GuideResponse;
     generatedGuide.value = payload;
     guideForm.forzar_regeneracion = true;
+    guideContext.value = {
+      ...guideContext.value,
+      guia_existente: {
+        id: payload.id,
+        estado_emision: payload.estado_emision,
+        sri_estado: payload.sri_estado,
+        clave_acceso: payload.clave_acceso,
+        numero_guia: payload.numero_guia,
+      },
+    };
     await buildGuidePreview(payload);
     ui.success("Guía generada correctamente. Revisa la vista previa y luego autorízala en el SRI.");
     await loadTransfers();
