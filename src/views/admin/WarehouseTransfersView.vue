@@ -467,17 +467,9 @@
             <v-text-field v-model="sriConfigForm.dir_partida_default" label="Dirección partida por defecto" variant="outlined" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="sriConfigForm.razon_social_transportista_default" label="Razón social transportista por defecto" variant="outlined" />
-          </v-col>
-
-          <v-col cols="12" md="4">
-            <v-select v-model="sriConfigForm.tipo_identificacion_transportista_default" :items="transportIdTypeOptions" label="Tipo identificación transportista" variant="outlined" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-text-field v-model="sriConfigForm.identificacion_transportista_default" label="Identificación transportista" variant="outlined" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-text-field v-model="sriConfigForm.placa_default" label="Placa por defecto" variant="outlined" />
+            <v-alert type="info" variant="tonal" class="h-100 d-flex align-center">
+              Los datos del conductor y del vehículo se piden en cada guía de remisión. Aquí solo se guarda la configuración tributaria del emisor.
+            </v-alert>
           </v-col>
         </v-row>
 
@@ -588,6 +580,68 @@
           <v-col cols="12" md="6">
             <v-text-field v-model="guideForm.dir_destinatario" label="Dirección destinatario" variant="outlined" />
           </v-col>
+          <v-col v-if="hasGuideSupplierFromOrder" cols="12">
+            <v-alert type="info" variant="tonal">
+              <div class="font-weight-bold mb-1">Proveedor detectado desde la orden de compra</div>
+              <div>
+                {{ guideContext.proveedor?.razon_social || "Sin nombre" }}
+                <span v-if="guideContext.proveedor?.identificacion">
+                  · {{ guideContext.proveedor?.identificacion }}
+                </span>
+              </div>
+              <div v-if="guideContext.proveedor?.direccion" class="text-body-2 mt-1">
+                Origen sugerido: {{ guideContext.proveedor?.direccion }}
+              </div>
+            </v-alert>
+          </v-col>
+          <template v-else>
+            <v-col cols="12">
+              <v-alert type="info" variant="tonal">
+                Completa el proveedor que origina el traslado. Si ingresas un RUC de 13 dígitos, el sistema consultará automáticamente el SRI para cargar nombre comercial y direcciones.
+              </v-alert>
+            </v-col>
+            <v-col cols="12" md="3">
+              <v-text-field
+                v-model="guideForm.proveedor_identificacion"
+                label="RUC proveedor"
+                variant="outlined"
+                :loading="guideProviderLookupLoading"
+                hint="Al completar 13 dígitos se consultará el SRI."
+                persistent-hint
+              />
+            </v-col>
+            <v-col cols="12" md="5">
+              <v-text-field
+                v-model="guideForm.proveedor_razon_social"
+                label="Razón social proveedor"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="guideForm.proveedor_nombre_comercial"
+                label="Nombre comercial proveedor"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12">
+              <v-text-field
+                v-model="guideForm.proveedor_direccion"
+                label="Dirección proveedor"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" v-if="guideProviderLookupError">
+              <v-alert type="warning" variant="tonal">
+                {{ guideProviderLookupError }}
+              </v-alert>
+            </v-col>
+            <v-col cols="12" v-else-if="guideProviderLookupMessage">
+              <v-alert type="info" variant="tonal">
+                {{ guideProviderLookupMessage }}
+              </v-alert>
+            </v-col>
+          </template>
 
           <v-col cols="12" md="6">
             <v-text-field v-model="guideForm.razon_social_transportista" label="Razón social transportista" variant="outlined" />
@@ -603,7 +657,14 @@
           </v-col>
 
           <v-col cols="12" md="4">
-            <v-text-field v-model="guideForm.identificacion_destinatario" label="Identificación destinatario" variant="outlined" />
+            <v-text-field
+              v-model="guideForm.identificacion_destinatario"
+              label="Identificación destinatario"
+              variant="outlined"
+              :loading="guideRecipientLookupLoading"
+              hint="Si ingresas un RUC de 13 dígitos se consultará el SRI."
+              persistent-hint
+            />
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field v-model="guideForm.razon_social_destinatario" label="Razón social destinatario" variant="outlined" />
@@ -619,17 +680,15 @@
             <v-text-field v-model="guideForm.ruta" label="Ruta" variant="outlined" />
           </v-col>
 
-          <v-col cols="12" md="3">
-            <v-text-field v-model="guideForm.cod_doc_sustento" label="Cod. doc. sustento" variant="outlined" />
+          <v-col cols="12" v-if="guideRecipientLookupError">
+            <v-alert type="warning" variant="tonal">
+              {{ guideRecipientLookupError }}
+            </v-alert>
           </v-col>
-          <v-col cols="12" md="3">
-            <v-text-field v-model="guideForm.num_doc_sustento" label="Núm. doc. sustento" variant="outlined" />
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-text-field v-model="guideForm.num_aut_doc_sustento" label="Autorización sustento" variant="outlined" />
-          </v-col>
-          <v-col cols="12" md="3">
-            <v-text-field v-model="guideForm.fecha_emision_doc_sustento" type="date" label="Fecha emisión sustento" variant="outlined" />
+          <v-col cols="12" v-else-if="guideRecipientLookupMessage">
+            <v-alert type="info" variant="tonal">
+              {{ guideRecipientLookupMessage }}
+            </v-alert>
           </v-col>
 
           <v-col cols="12" md="6">
@@ -850,6 +909,14 @@ type GuideContext = {
     detalles?: GuideDetailRow[];
   };
   sucursal?: SucursalRow;
+  proveedor?: {
+    id?: string | null;
+    identificacion?: string | null;
+    razon_social?: string | null;
+    nombre_comercial?: string | null;
+    direccion?: string | null;
+    origen?: string | null;
+  } | null;
   config?: Record<string, unknown> | null;
   draft?: Record<string, unknown> | null;
   guia_existente?: Record<string, unknown> | null;
@@ -869,6 +936,7 @@ type GuideResponse = {
   fecha_fin_transporte?: string | null;
   dir_partida?: string | null;
   razon_social_transportista?: string | null;
+  tipo_identificacion_transportista?: string | null;
   identificacion_transportista?: string | null;
   placa?: string | null;
   identificacion_destinatario?: string | null;
@@ -915,6 +983,18 @@ const sriTaxpayerLookupError = ref("");
 const sriConfigHydrating = ref(false);
 const lastSriLookedUpRuc = ref("");
 const sriTaxpayerLookupTimer = ref<number | null>(null);
+const guideRecipientLookupLoading = ref(false);
+const guideRecipientLookupMessage = ref("");
+const guideRecipientLookupError = ref("");
+const lastGuideRecipientLookedUpRuc = ref("");
+const guideRecipientLookupTimer = ref<number | null>(null);
+const guideRecipientLookupHydrating = ref(false);
+const guideProviderLookupLoading = ref(false);
+const guideProviderLookupMessage = ref("");
+const guideProviderLookupError = ref("");
+const lastGuideProviderLookedUpRuc = ref("");
+const guideProviderLookupTimer = ref<number | null>(null);
+const guideProviderLookupHydrating = ref(false);
 const consultingGuideId = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
@@ -961,10 +1041,6 @@ const sriConfigForm = reactive({
   contribuyente_especial: "",
   obligado_contabilidad: "NO",
   dir_partida_default: "",
-  razon_social_transportista_default: "",
-  tipo_identificacion_transportista_default: "04",
-  identificacion_transportista_default: "",
-  placa_default: "",
   info_adicional_email: "",
   info_adicional_telefono: "",
 });
@@ -975,6 +1051,10 @@ const guideForm = reactive({
   fecha_ini_transporte: formatDateForInput(),
   fecha_fin_transporte: formatDateForInput(),
   dir_partida: "",
+  proveedor_identificacion: "",
+  proveedor_razon_social: "",
+  proveedor_nombre_comercial: "",
+  proveedor_direccion: "",
   razon_social_transportista: "",
   tipo_identificacion_transportista: "04",
   identificacion_transportista: "",
@@ -985,10 +1065,6 @@ const guideForm = reactive({
   motivo_traslado: "",
   cod_estab_destino: "",
   ruta: "",
-  cod_doc_sustento: "",
-  num_doc_sustento: "",
-  num_aut_doc_sustento: "",
-  fecha_emision_doc_sustento: "",
   info_adicional_email: "",
   info_adicional_telefono: "",
   forzar_regeneracion: true,
@@ -1020,6 +1096,12 @@ const transportIdTypeOptions = [
 ];
 
 const isDialogFullscreen = computed(() => mdAndDown.value);
+const hasGuideSupplierFromOrder = computed(() => {
+  const origin = String(guideContext.value.proveedor?.origen || "")
+    .trim()
+    .toUpperCase();
+  return ["ORDEN_COMPRA", "ORDEN_COMPRA_LOCAL", "SRI_ORDEN_COMPRA"].includes(origin);
+});
 const selectedOrder = ref<PurchaseOrderRow | null>(null);
 
 const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
@@ -1183,6 +1265,28 @@ function clearSriTaxpayerLookupFeedback() {
   sriTaxpayerLookupError.value = "";
 }
 
+function clearGuideRecipientLookupTimer() {
+  if (guideRecipientLookupTimer.value == null) return;
+  window.clearTimeout(guideRecipientLookupTimer.value);
+  guideRecipientLookupTimer.value = null;
+}
+
+function clearGuideRecipientLookupFeedback() {
+  guideRecipientLookupMessage.value = "";
+  guideRecipientLookupError.value = "";
+}
+
+function clearGuideProviderLookupTimer() {
+  if (guideProviderLookupTimer.value == null) return;
+  window.clearTimeout(guideProviderLookupTimer.value);
+  guideProviderLookupTimer.value = null;
+}
+
+function clearGuideProviderLookupFeedback() {
+  guideProviderLookupMessage.value = "";
+  guideProviderLookupError.value = "";
+}
+
 function clearSriSignatureMeta() {
   sriConfigMeta.certificate_filename = "";
   sriConfigMeta.cert_subject = "";
@@ -1219,13 +1323,11 @@ function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | unde
   }
   sriConfigForm.obligado_contabilidad = obligadoContabilidad || "NO";
   sriConfigForm.contribuyente_especial = contribuyenteEspecial;
-
-  if (!String(sriConfigForm.razon_social_transportista_default || "").trim()) {
-    sriConfigForm.razon_social_transportista_default = razonSocial;
-  }
-  if (!String(sriConfigForm.identificacion_transportista_default || "").trim()) {
-    sriConfigForm.identificacion_transportista_default = ruc;
-  }
+  sriConfigForm.dir_matriz = String(payload.dir_matriz || sriConfigForm.dir_matriz || "");
+  sriConfigForm.dir_establecimiento = String(
+    payload.dir_establecimiento || sriConfigForm.dir_establecimiento || sriConfigForm.dir_matriz || "",
+  );
+  sriConfigForm.estab = String(payload.estab || sriConfigForm.estab || "001");
 }
 
 async function lookupSriTaxpayerByRuc(
@@ -1249,7 +1351,7 @@ async function lookupSriTaxpayerByRuc(
     applySriTaxpayerAutofill(payload);
     lastSriLookedUpRuc.value = normalizedRuc;
     sriTaxpayerLookupMessage.value =
-      "Datos del contribuyente cargados desde el SRI. Completa la direccion matriz y la direccion del establecimiento si aun no estan definidas.";
+      "Datos tributarios y direcciones cargados desde el SRI.";
   } catch (error: any) {
     lastSriLookedUpRuc.value = "";
     sriTaxpayerLookupError.value =
@@ -1283,6 +1385,215 @@ function scheduleSriTaxpayerLookup(force = false) {
 
   sriTaxpayerLookupTimer.value = window.setTimeout(() => {
     void lookupSriTaxpayerByRuc(normalizedRuc, force);
+  }, 450);
+}
+
+function getGuideProviderSnapshot() {
+  const provider = {
+    identificacion: normalizeRuc(guideForm.proveedor_identificacion),
+    razon_social: String(guideForm.proveedor_razon_social || "").trim(),
+    nombre_comercial: String(guideForm.proveedor_nombre_comercial || "").trim(),
+    direccion: String(guideForm.proveedor_direccion || "").trim(),
+    origen: "MANUAL",
+  };
+  if (
+    !provider.identificacion &&
+    !provider.razon_social &&
+    !provider.nombre_comercial &&
+    !provider.direccion
+  ) {
+    return null;
+  }
+  return provider;
+}
+
+function getGuidePreviewProvider() {
+  if (hasGuideSupplierFromOrder.value) {
+    return guideContext.value.proveedor ?? null;
+  }
+  return getGuideProviderSnapshot() ?? guideContext.value.proveedor ?? null;
+}
+
+function syncManualGuideProviderContext() {
+  if (hasGuideSupplierFromOrder.value) return;
+  const snapshot = getGuideProviderSnapshot();
+  guideContext.value = {
+    ...guideContext.value,
+    proveedor: snapshot,
+  };
+}
+
+function applyGuideProviderAutofill(payload: Record<string, unknown> | null | undefined) {
+  if (!payload) return;
+  const ruc = normalizeRuc(payload.ruc);
+  const razonSocial = String(payload.razon_social || "").trim();
+  const nombreComercial = String(
+    payload.nombre_comercial || payload.razon_social || "",
+  ).trim();
+  const direccion = String(
+    payload.dir_establecimiento || payload.dir_matriz || "",
+  ).trim();
+
+  if (ruc) {
+    guideForm.proveedor_identificacion = ruc;
+  }
+  if (razonSocial) {
+    guideForm.proveedor_razon_social = razonSocial;
+  }
+  if (nombreComercial) {
+    guideForm.proveedor_nombre_comercial = nombreComercial;
+  }
+  if (direccion) {
+    guideForm.proveedor_direccion = direccion;
+    if (!String(guideForm.dir_partida || "").trim()) {
+      guideForm.dir_partida = direccion;
+    }
+  }
+  syncManualGuideProviderContext();
+}
+
+async function lookupGuideProviderByRuc(
+  ruc = guideForm.proveedor_identificacion,
+  notifyOnError = false,
+) {
+  const normalizedRuc = normalizeRuc(ruc);
+  if (
+    normalizedRuc.length !== 13 ||
+    !guideDialog.value ||
+    guideProviderLookupHydrating.value ||
+    hasGuideSupplierFromOrder.value
+  ) return;
+
+  guideProviderLookupLoading.value = true;
+  clearGuideProviderLookupFeedback();
+
+  try {
+    const { data } = await api.get(
+      "/kpi_inventory/guias-remision-sri/catalogo-contribuyente",
+      {
+        params: { ruc: normalizedRuc },
+      },
+    );
+    const payload = (data?.data ?? data) as Record<string, unknown> | null;
+    applyGuideProviderAutofill(payload);
+    lastGuideProviderLookedUpRuc.value = normalizedRuc;
+    guideProviderLookupMessage.value =
+      "Proveedor completado automáticamente desde el SRI.";
+  } catch (error: any) {
+    lastGuideProviderLookedUpRuc.value = "";
+    guideProviderLookupError.value =
+      error?.response?.data?.message ||
+      error?.message ||
+      "No se pudo consultar el proveedor en el SRI.";
+    if (notifyOnError) {
+      ui.error(guideProviderLookupError.value);
+    }
+  } finally {
+    guideProviderLookupLoading.value = false;
+  }
+}
+
+function scheduleGuideProviderLookup(force = false) {
+  clearGuideProviderLookupTimer();
+  const normalizedRuc = normalizeRuc(guideForm.proveedor_identificacion);
+  if (normalizedRuc !== guideForm.proveedor_identificacion) {
+    guideForm.proveedor_identificacion = normalizedRuc;
+    return;
+  }
+
+  if (normalizedRuc.length < 13) {
+    lastGuideProviderLookedUpRuc.value = "";
+    clearGuideProviderLookupFeedback();
+    syncManualGuideProviderContext();
+    return;
+  }
+
+  if (
+    !guideDialog.value ||
+    guideProviderLookupHydrating.value ||
+    hasGuideSupplierFromOrder.value
+  ) return;
+  if (!force && normalizedRuc === lastGuideProviderLookedUpRuc.value) return;
+
+  guideProviderLookupTimer.value = window.setTimeout(() => {
+    void lookupGuideProviderByRuc(normalizedRuc, force);
+  }, 450);
+}
+
+function applyGuideRecipientAutofill(payload: Record<string, unknown> | null | undefined) {
+  if (!payload) return;
+  const ruc = normalizeRuc(payload.ruc);
+  const razonSocial = String(payload.razon_social || "").trim();
+  const direccion = String(
+    payload.dir_establecimiento || payload.dir_matriz || "",
+  ).trim();
+
+  if (ruc) {
+    guideForm.identificacion_destinatario = ruc;
+  }
+  if (razonSocial) {
+    guideForm.razon_social_destinatario = razonSocial;
+  }
+  if (direccion && !String(guideForm.dir_destinatario || "").trim()) {
+    guideForm.dir_destinatario = direccion;
+  }
+}
+
+async function lookupGuideRecipientByRuc(
+  ruc = guideForm.identificacion_destinatario,
+  notifyOnError = false,
+) {
+  const normalizedRuc = normalizeRuc(ruc);
+  if (normalizedRuc.length !== 13 || !guideDialog.value || guideRecipientLookupHydrating.value) return;
+
+  guideRecipientLookupLoading.value = true;
+  clearGuideRecipientLookupFeedback();
+
+  try {
+    const { data } = await api.get(
+      "/kpi_inventory/guias-remision-sri/catalogo-contribuyente",
+      {
+        params: { ruc: normalizedRuc },
+      },
+    );
+    const payload = (data?.data ?? data) as Record<string, unknown> | null;
+    applyGuideRecipientAutofill(payload);
+    lastGuideRecipientLookedUpRuc.value = normalizedRuc;
+    guideRecipientLookupMessage.value =
+      "Destinatario completado automáticamente desde el SRI.";
+  } catch (error: any) {
+    lastGuideRecipientLookedUpRuc.value = "";
+    guideRecipientLookupError.value =
+      error?.response?.data?.message ||
+      error?.message ||
+      "No se pudo consultar el destinatario en el SRI.";
+    if (notifyOnError) {
+      ui.error(guideRecipientLookupError.value);
+    }
+  } finally {
+    guideRecipientLookupLoading.value = false;
+  }
+}
+
+function scheduleGuideRecipientLookup(force = false) {
+  clearGuideRecipientLookupTimer();
+  const normalizedRuc = normalizeRuc(guideForm.identificacion_destinatario);
+  if (normalizedRuc !== guideForm.identificacion_destinatario) {
+    guideForm.identificacion_destinatario = normalizedRuc;
+    return;
+  }
+
+  if (normalizedRuc.length < 13) {
+    lastGuideRecipientLookedUpRuc.value = "";
+    clearGuideRecipientLookupFeedback();
+    return;
+  }
+
+  if (!guideDialog.value || guideRecipientLookupHydrating.value) return;
+  if (!force && normalizedRuc === lastGuideRecipientLookedUpRuc.value) return;
+
+  guideRecipientLookupTimer.value = window.setTimeout(() => {
+    void lookupGuideRecipientByRuc(normalizedRuc, force);
   }, 450);
 }
 
@@ -1352,20 +1663,22 @@ function resetSriConfigForm() {
   sriConfigForm.contribuyente_especial = "";
   sriConfigForm.obligado_contabilidad = "NO";
   sriConfigForm.dir_partida_default = "";
-  sriConfigForm.razon_social_transportista_default = "";
-  sriConfigForm.tipo_identificacion_transportista_default = "04";
-  sriConfigForm.identificacion_transportista_default = "";
-  sriConfigForm.placa_default = "";
   sriConfigForm.info_adicional_email = "";
   sriConfigForm.info_adicional_telefono = "";
 }
 
 function resetGuideForm() {
+  clearGuideRecipientLookupTimer();
+  clearGuideProviderLookupTimer();
   guideForm.ambiente = "PRUEBAS";
   guideForm.fecha_emision = formatDateForInput();
   guideForm.fecha_ini_transporte = formatDateForInput();
   guideForm.fecha_fin_transporte = formatDateForInput();
   guideForm.dir_partida = "";
+  guideForm.proveedor_identificacion = "";
+  guideForm.proveedor_razon_social = "";
+  guideForm.proveedor_nombre_comercial = "";
+  guideForm.proveedor_direccion = "";
   guideForm.razon_social_transportista = "";
   guideForm.tipo_identificacion_transportista = "04";
   guideForm.identificacion_transportista = "";
@@ -1376,13 +1689,17 @@ function resetGuideForm() {
   guideForm.motivo_traslado = "";
   guideForm.cod_estab_destino = "";
   guideForm.ruta = "";
-  guideForm.cod_doc_sustento = "";
-  guideForm.num_doc_sustento = "";
-  guideForm.num_aut_doc_sustento = "";
-  guideForm.fecha_emision_doc_sustento = "";
   guideForm.info_adicional_email = "";
   guideForm.info_adicional_telefono = "";
   guideForm.forzar_regeneracion = true;
+  guideRecipientLookupLoading.value = false;
+  guideRecipientLookupHydrating.value = false;
+  guideProviderLookupLoading.value = false;
+  guideProviderLookupHydrating.value = false;
+  clearGuideRecipientLookupFeedback();
+  clearGuideProviderLookupFeedback();
+  lastGuideRecipientLookedUpRuc.value = "";
+  lastGuideProviderLookedUpRuc.value = "";
 }
 
 function revokeGuidePreviewUrl() {
@@ -1416,6 +1733,8 @@ async function buildGuidePreview(guide: GuideResponse) {
       guide,
       transfer: guideContext.value.transferencia,
       sucursal: guideContext.value.sucursal,
+      config: (guideContext.value.config ?? null) as any,
+      provider: getGuidePreviewProvider(),
       generatedBy: getUserName(),
     });
     guidePreviewUrl.value = window.URL.createObjectURL(blob);
@@ -1661,10 +1980,6 @@ async function loadConfigForSucursal(sucursalId: string) {
     sriConfigForm.contribuyente_especial = String(payload.contribuyente_especial || "");
     sriConfigForm.obligado_contabilidad = String(payload.obligado_contabilidad || "NO");
     sriConfigForm.dir_partida_default = String(payload.dir_partida_default || "");
-    sriConfigForm.razon_social_transportista_default = String(payload.razon_social_transportista_default || "");
-    sriConfigForm.tipo_identificacion_transportista_default = String(payload.tipo_identificacion_transportista_default || "04");
-    sriConfigForm.identificacion_transportista_default = String(payload.identificacion_transportista_default || "");
-    sriConfigForm.placa_default = String(payload.placa_default || "");
     sriConfigForm.info_adicional_email = String(payload.info_adicional_email || "");
     sriConfigForm.info_adicional_telefono = String(payload.info_adicional_telefono || "");
     lastSriLookedUpRuc.value = normalizeRuc(payload.ruc);
@@ -1762,11 +2077,17 @@ async function openGuideDialog(item: TransferRow) {
     const payload = (data?.data ?? data) as GuideContext;
     guideContext.value = payload || {};
     const draft = (payload?.draft ?? {}) as Record<string, unknown>;
+    guideRecipientLookupHydrating.value = true;
+    guideProviderLookupHydrating.value = true;
     guideForm.ambiente = String(draft.ambiente || "PRUEBAS");
     guideForm.fecha_emision = String(draft.fecha_emision || formatDateForInput());
     guideForm.fecha_ini_transporte = String(draft.fecha_ini_transporte || guideForm.fecha_emision);
     guideForm.fecha_fin_transporte = String(draft.fecha_fin_transporte || guideForm.fecha_ini_transporte);
     guideForm.dir_partida = String(draft.dir_partida || "");
+    guideForm.proveedor_identificacion = String(payload?.proveedor?.identificacion || "");
+    guideForm.proveedor_razon_social = String(payload?.proveedor?.razon_social || "");
+    guideForm.proveedor_nombre_comercial = String(payload?.proveedor?.nombre_comercial || "");
+    guideForm.proveedor_direccion = String(payload?.proveedor?.direccion || "");
     guideForm.razon_social_transportista = String(draft.razon_social_transportista || "");
     guideForm.tipo_identificacion_transportista = String(draft.tipo_identificacion_transportista || "04");
     guideForm.identificacion_transportista = String(draft.identificacion_transportista || "");
@@ -1779,6 +2100,16 @@ async function openGuideDialog(item: TransferRow) {
     guideForm.ruta = String(draft.ruta || "");
     guideForm.info_adicional_email = String(draft.info_adicional_email || "");
     guideForm.info_adicional_telefono = String(draft.info_adicional_telefono || "");
+    lastGuideRecipientLookedUpRuc.value = normalizeRuc(
+      draft.identificacion_destinatario,
+    );
+    lastGuideProviderLookedUpRuc.value = normalizeRuc(
+      payload?.proveedor?.identificacion,
+    );
+    clearGuideRecipientLookupFeedback();
+    clearGuideProviderLookupFeedback();
+    guideRecipientLookupHydrating.value = false;
+    guideProviderLookupHydrating.value = false;
     guideForm.forzar_regeneracion = Boolean(payload?.guia_existente);
     if (payload?.guia_existente) {
       await loadGuidePreviewByTransfer(item.id);
@@ -1806,15 +2137,22 @@ async function generateGuide() {
     ui.error("Completa los datos del destinatario de la guía.");
     return;
   }
+  if (
+    !hasGuideSupplierFromOrder.value &&
+    (!guideForm.proveedor_identificacion || !guideForm.proveedor_razon_social)
+  ) {
+    ui.error("Completa el RUC y la razón social del proveedor para generar la guía.");
+    return;
+  }
   guideSaving.value = true;
   try {
     const { data } = await api.post(`/kpi_inventory/guias-remision-sri/transfer/${selectedTransfer.value.id}/generate`, {
       ...guideForm,
+      proveedor_identificacion: guideForm.proveedor_identificacion,
+      proveedor_razon_social: guideForm.proveedor_razon_social,
+      proveedor_nombre_comercial: guideForm.proveedor_nombre_comercial,
+      proveedor_direccion: guideForm.proveedor_direccion,
       emitir_y_enviar: false,
-      cod_doc_sustento: guideForm.cod_doc_sustento || undefined,
-      num_doc_sustento: guideForm.num_doc_sustento || undefined,
-      num_aut_doc_sustento: guideForm.num_aut_doc_sustento || undefined,
-      fecha_emision_doc_sustento: guideForm.fecha_emision_doc_sustento || undefined,
       created_by: getUserName(),
       updated_by: getUserName(),
     });
@@ -2066,6 +2404,46 @@ watch(
 );
 
 watch(
+  () => guideForm.identificacion_destinatario,
+  (value) => {
+    if (!guideDialog.value) return;
+    const normalizedRuc = normalizeRuc(value);
+    if (normalizedRuc !== value) {
+      guideForm.identificacion_destinatario = normalizedRuc;
+      return;
+    }
+    scheduleGuideRecipientLookup(false);
+  },
+);
+
+watch(
+  () => guideForm.proveedor_identificacion,
+  (value) => {
+    if (!guideDialog.value || hasGuideSupplierFromOrder.value) return;
+    const normalizedRuc = normalizeRuc(value);
+    if (normalizedRuc !== value) {
+      guideForm.proveedor_identificacion = normalizedRuc;
+      return;
+    }
+    scheduleGuideProviderLookup(false);
+  },
+);
+
+watch(
+  () => [
+    guideForm.proveedor_identificacion,
+    guideForm.proveedor_razon_social,
+    guideForm.proveedor_nombre_comercial,
+    guideForm.proveedor_direccion,
+  ],
+  () => {
+    if (!guideDialog.value || hasGuideSupplierFromOrder.value) return;
+    syncManualGuideProviderContext();
+  },
+  { deep: true },
+);
+
+watch(
   () => guideDialog.value,
   (open, previous) => {
     if (open || !previous) return;
@@ -2083,6 +2461,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearSriTaxpayerLookupTimer();
+  clearGuideRecipientLookupTimer();
+  clearGuideProviderLookupTimer();
   revokeGuidePreviewUrl();
 });
 </script>

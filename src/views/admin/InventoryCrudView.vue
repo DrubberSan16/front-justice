@@ -259,6 +259,15 @@
               hide-details
             />
             <v-text-field
+              v-else-if="isThirdPartyIdentificationField(field)"
+              v-model="form[field.key]"
+              :label="field.label"
+              :hint="thirdPartyLookupLoading ? 'Consultando SRI...' : (field.required ? 'Obligatorio · al completar 13 dígitos se consultará el SRI' : 'Al completar 13 dígitos se consultará el SRI')"
+              persistent-hint
+              variant="outlined"
+              :loading="thirdPartyLookupLoading"
+            />
+            <v-text-field
               v-else
               v-model="form[field.key]"
               :type="field.type === 'number' ? 'number' : 'text'"
@@ -267,6 +276,16 @@
               persistent-hint
               variant="outlined"
             />
+          </v-col>
+          <v-col v-if="isThirdPartyModule && thirdPartyLookupError" cols="12">
+            <v-alert type="warning" variant="tonal">
+              {{ thirdPartyLookupError }}
+            </v-alert>
+          </v-col>
+          <v-col v-else-if="isThirdPartyModule && thirdPartyLookupMessage" cols="12">
+            <v-alert type="info" variant="tonal">
+              {{ thirdPartyLookupMessage }}
+            </v-alert>
           </v-col>
         </v-row>
       </v-card-text>
@@ -322,6 +341,7 @@ const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && me
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPermissions.value.isEdited);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
 const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
+const isThirdPartyModule = computed(() => moduleConfig.value?.key === "terceros");
 const records = ref<any[]>([]);
 const loading = ref(false);
 const initialLoading = ref(false);
@@ -352,6 +372,12 @@ const reservationContext = reactive({
   activeCount: 0,
 });
 const form = reactive<Record<string, any>>({});
+const thirdPartyLookupLoading = ref(false);
+const thirdPartyLookupMessage = ref("");
+const thirdPartyLookupError = ref("");
+const thirdPartyLookupHydrating = ref(false);
+const lastThirdPartyLookupRuc = ref("");
+let thirdPartyLookupTimer: ReturnType<typeof setTimeout> | null = null;
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const tableLoading = computed(() => loading.value || initialLoading.value);
@@ -458,6 +484,100 @@ function isMaterialField(field: MaintenanceField) {
   );
 }
 
+function isThirdPartyIdentificationField(field: MaintenanceField) {
+  return isThirdPartyModule.value && field.key === "identificacion";
+}
+
+function normalizeRuc(value: unknown) {
+  return String(value ?? "")
+    .replace(/\D/g, "")
+    .slice(0, 13);
+}
+
+function clearThirdPartyLookupFeedback() {
+  thirdPartyLookupMessage.value = "";
+  thirdPartyLookupError.value = "";
+}
+
+function clearThirdPartyLookupTimer() {
+  if (!thirdPartyLookupTimer) return;
+  clearTimeout(thirdPartyLookupTimer);
+  thirdPartyLookupTimer = null;
+}
+
+function applyThirdPartySriAutofill(payload: Record<string, any> | null | undefined) {
+  if (!payload) return;
+  const ruc = normalizeRuc(payload.ruc);
+  const razonSocial = String(payload.razon_social || "").trim();
+  const nombreComercial = String(
+    payload.nombre_comercial || payload.razon_social || "",
+  ).trim();
+  const direccion = String(
+    payload.dir_establecimiento || payload.dir_matriz || "",
+  ).trim();
+
+  if (ruc) {
+    form.identificacion = ruc;
+  }
+  if (razonSocial) {
+    form.razon_social = razonSocial;
+  }
+  if (nombreComercial) {
+    form.nombre_comercial = nombreComercial;
+  }
+  if (direccion) {
+    form.direccion = direccion;
+  }
+}
+
+async function lookupThirdPartyByRuc(ruc = form.identificacion, notifyOnError = false) {
+  const normalizedRuc = normalizeRuc(ruc);
+  if (!isThirdPartyModule.value || thirdPartyLookupHydrating.value) return;
+  if (normalizedRuc.length !== 13) return;
+
+  thirdPartyLookupLoading.value = true;
+  clearThirdPartyLookupFeedback();
+  try {
+    const { data } = await api.get("/kpi_inventory/guias-remision-sri/catalogo-contribuyente", {
+      params: { ruc: normalizedRuc },
+    });
+    const payload = (data?.data ?? data) as Record<string, any> | null;
+    applyThirdPartySriAutofill(payload);
+    lastThirdPartyLookupRuc.value = normalizedRuc;
+    thirdPartyLookupMessage.value =
+      "Datos del tercero cargados automáticamente desde el SRI.";
+  } catch (e: any) {
+    lastThirdPartyLookupRuc.value = "";
+    thirdPartyLookupError.value =
+      e?.response?.data?.message || e?.message || "No se pudo consultar el RUC en el SRI.";
+    if (notifyOnError) {
+      ui.error(thirdPartyLookupError.value);
+    }
+  } finally {
+    thirdPartyLookupLoading.value = false;
+  }
+}
+
+function scheduleThirdPartyLookup(force = false) {
+  clearThirdPartyLookupTimer();
+  const normalizedRuc = normalizeRuc(form.identificacion);
+  if (normalizedRuc !== String(form.identificacion || "")) {
+    form.identificacion = normalizedRuc;
+    return;
+  }
+  if (normalizedRuc.length < 13) {
+    lastThirdPartyLookupRuc.value = "";
+    clearThirdPartyLookupFeedback();
+    return;
+  }
+  if (thirdPartyLookupHydrating.value) return;
+  if (!force && normalizedRuc === lastThirdPartyLookupRuc.value) return;
+
+  thirdPartyLookupTimer = setTimeout(() => {
+    void lookupThirdPartyByRuc(normalizedRuc, force);
+  }, 400);
+}
+
 async function fetchRecords(skipLoading = false) {
   if (!moduleConfig.value) return;
   if (!canRead.value) return;
@@ -503,6 +623,11 @@ async function hydrateModuleData() {
 }
 
 function resetForm() {
+  clearThirdPartyLookupTimer();
+  clearThirdPartyLookupFeedback();
+  thirdPartyLookupLoading.value = false;
+  thirdPartyLookupHydrating.value = false;
+  lastThirdPartyLookupRuc.value = "";
   Object.keys(form).forEach((k) => delete form[k]);
   for (const field of moduleConfig.value?.fields ?? []) {
     if (field.key === "status") form[field.key] = "ACTIVE";
@@ -636,9 +761,12 @@ function openEdit(item: any) {
   editingId.value = item.id;
   resetForm();
   void ensureFormRelationsLoaded();
+  thirdPartyLookupHydrating.value = true;
   for (const field of moduleConfig.value?.fields ?? []) {
     form[field.key] = item[field.key] ?? form[field.key];
   }
+  lastThirdPartyLookupRuc.value = normalizeRuc(form.identificacion);
+  thirdPartyLookupHydrating.value = false;
   dialog.value = true;
 }
 
@@ -820,6 +948,23 @@ watch(
     if (!stillExists) {
       form.producto_id = "";
     }
+  },
+);
+
+watch(
+  () => form.identificacion,
+  () => {
+    if (!dialog.value || !isThirdPartyModule.value) return;
+    scheduleThirdPartyLookup(false);
+  },
+);
+
+watch(
+  () => dialog.value,
+  (open) => {
+    if (open) return;
+    clearThirdPartyLookupTimer();
+    thirdPartyLookupLoading.value = false;
   },
 );
 
