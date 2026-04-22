@@ -650,7 +650,13 @@
             <v-select v-model="guideForm.tipo_identificacion_transportista" :items="transportIdTypeOptions" label="Tipo ID transportista" variant="outlined" />
           </v-col>
           <v-col cols="12" md="2">
-            <v-text-field v-model="guideForm.identificacion_transportista" label="ID transportista" variant="outlined" />
+            <v-text-field
+              v-model="guideForm.identificacion_transportista"
+              label="RUC/Cédula transportista"
+              variant="outlined"
+              hint="Si coincide con destinatario, proveedor o emisor se completará automáticamente."
+              persistent-hint
+            />
           </v-col>
           <v-col cols="12" md="2">
             <v-text-field v-model="guideForm.placa" label="Placa" variant="outlined" />
@@ -677,7 +683,9 @@
             <v-text-field v-model="guideForm.motivo_traslado" label="Motivo de traslado" variant="outlined" />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="guideForm.ruta" label="Ruta" variant="outlined" />
+            <v-alert type="info" variant="tonal">
+              Ruta y establecimiento destino se completan automáticamente.
+            </v-alert>
           </v-col>
 
           <v-col cols="12" v-if="guideRecipientLookupError">
@@ -729,7 +737,7 @@
 
         <v-alert
           v-if="generatedGuide"
-          type="success"
+          :type="guideStatusVariant"
           variant="tonal"
           class="mt-4"
         >
@@ -737,6 +745,13 @@
           lista para revisión.
           <span v-if="generatedGuide.estado_emision"> Estado: {{ generatedGuide.estado_emision }}.</span>
           <span v-if="generatedGuide.sri_estado"> SRI: {{ generatedGuide.sri_estado }}.</span>
+          <div
+            v-for="(message, index) in summarizeGuideSriMessages(generatedGuide)"
+            :key="`${generatedGuide.id}-sri-${index}`"
+            class="text-body-2 mt-1"
+          >
+            {{ message }}
+          </div>
         </v-alert>
 
         <div v-if="guidePreviewLoading" class="guide-preview-loading mt-4">
@@ -947,6 +962,12 @@ type GuideResponse = {
   ruta?: string | null;
   detalle_snapshot?: GuideDetailRow[] | null;
   info_adicional?: Record<string, unknown> | null;
+  sri_messages?: Array<{
+    identificador?: string | null;
+    mensaje?: string | null;
+    informacionAdicional?: string | null;
+    tipo?: string | null;
+  }> | null;
 };
 
 const ui = useUiStore();
@@ -1102,6 +1123,24 @@ const hasGuideSupplierFromOrder = computed(() => {
     .toUpperCase();
   return ["ORDEN_COMPRA", "ORDEN_COMPRA_LOCAL", "SRI_ORDEN_COMPRA"].includes(origin);
 });
+const guideStatusVariant = computed(() => {
+  const emission = String(generatedGuide.value?.estado_emision || "")
+    .trim()
+    .toUpperCase();
+  const sri = String(generatedGuide.value?.sri_estado || "")
+    .trim()
+    .toUpperCase();
+  const status = sri || emission;
+  if (status === "AUTORIZADO" || emission === "AUTORIZADA") return "success";
+  if (status === "RECIBIDA" || emission === "RECIBIDA") return "info";
+  if (status === "DEVUELTA" || emission === "DEVUELTA") return "warning";
+  if (
+    status === "NO AUTORIZADO" ||
+    status === "RECHAZADO" ||
+    emission === "NO_AUTORIZADA"
+  ) return "error";
+  return "info";
+});
 const selectedOrder = ref<PurchaseOrderRow | null>(null);
 
 const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
@@ -1210,6 +1249,59 @@ function formatNumber(value: unknown) {
   }).format(toNumber(value));
 }
 
+function summarizeGuideSriMessages(guide?: GuideResponse | null) {
+  const messages = Array.isArray(guide?.sri_messages) ? guide?.sri_messages : [];
+  return messages
+    .map((item) => {
+      const parts = [
+        String(item?.identificador || "").trim(),
+        String(item?.mensaje || "").trim(),
+        String(item?.informacionAdicional || "").trim(),
+      ].filter(Boolean);
+      return parts.join(" · ");
+    })
+    .filter(Boolean);
+}
+
+function getGuideUiFeedbackVariant(guide?: GuideResponse | null) {
+  const emission = String(guide?.estado_emision || "").trim().toUpperCase();
+  const sri = String(guide?.sri_estado || "").trim().toUpperCase();
+  const status = sri || emission;
+  if (status === "AUTORIZADO" || emission === "AUTORIZADA") return "success";
+  if (status === "RECIBIDA" || emission === "RECIBIDA") return "info";
+  if (status === "DEVUELTA" || emission === "DEVUELTA") return "warning";
+  if (
+    status === "NO AUTORIZADO" ||
+    status === "RECHAZADO" ||
+    emission === "NO_AUTORIZADA"
+  ) return "error";
+  return "info";
+}
+
+function notifyGuideSriResult(
+  apiMessage: string,
+  guide?: GuideResponse | null,
+) {
+  const lines = summarizeGuideSriMessages(guide);
+  const detail = lines[0] ? ` ${lines[0]}` : "";
+  const text = `${apiMessage}${detail}`.trim();
+  const variant = getGuideUiFeedbackVariant(guide);
+
+  if (variant === "success") {
+    ui.success(text);
+    return;
+  }
+  if (variant === "warning") {
+    ui.open(text, "warning", 7000);
+    return;
+  }
+  if (variant === "error") {
+    ui.error(text);
+    return;
+  }
+  ui.open(text, "info", 5000);
+}
+
 function formatCurrency(value: unknown) {
   return new Intl.NumberFormat("es-EC", {
     style: "currency",
@@ -1252,6 +1344,73 @@ function normalizeRuc(value: unknown) {
   return String(value ?? "")
     .replace(/\D/g, "")
     .slice(0, 13);
+}
+
+function normalizeComparableText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function inferGuideTransportIdentification() {
+  const current = String(guideForm.identificacion_transportista || "").trim();
+  if (current) return current;
+
+  const transportName = normalizeComparableText(
+    guideForm.razon_social_transportista,
+  );
+  if (!transportName) return "";
+
+  const candidatePairs = [
+    {
+      name: guideForm.razon_social_destinatario,
+      identification: guideForm.identificacion_destinatario,
+    },
+    {
+      name: guideForm.proveedor_razon_social || guideContext.value.proveedor?.razon_social,
+      identification:
+        guideForm.proveedor_identificacion ||
+        guideContext.value.proveedor?.identificacion,
+    },
+    {
+      name:
+        guideForm.proveedor_nombre_comercial ||
+        guideContext.value.proveedor?.nombre_comercial,
+      identification:
+        guideForm.proveedor_identificacion ||
+        guideContext.value.proveedor?.identificacion,
+    },
+    {
+      name: String((guideContext.value.config as Record<string, unknown> | null)?.razon_social || ""),
+      identification: String((guideContext.value.config as Record<string, unknown> | null)?.ruc || ""),
+    },
+    {
+      name: String((guideContext.value.config as Record<string, unknown> | null)?.nombre_comercial || ""),
+      identification: String((guideContext.value.config as Record<string, unknown> | null)?.ruc || ""),
+    },
+  ];
+
+  for (const pair of candidatePairs) {
+    const candidateId = String(pair.identification || "").trim();
+    if (
+      candidateId &&
+      normalizeComparableText(pair.name) === transportName
+    ) {
+      return candidateId;
+    }
+  }
+
+  return "";
+}
+
+function applyGuideTransportInference() {
+  const inferred = inferGuideTransportIdentification();
+  if (inferred && !String(guideForm.identificacion_transportista || "").trim()) {
+    guideForm.identificacion_transportista = inferred;
+  }
 }
 
 function clearSriTaxpayerLookupTimer() {
@@ -2110,6 +2269,7 @@ async function openGuideDialog(item: TransferRow) {
     clearGuideProviderLookupFeedback();
     guideRecipientLookupHydrating.value = false;
     guideProviderLookupHydrating.value = false;
+    applyGuideTransportInference();
     guideForm.forzar_regeneracion = Boolean(payload?.guia_existente);
     if (payload?.guia_existente) {
       await loadGuidePreviewByTransfer(item.id);
@@ -2129,8 +2289,13 @@ async function generateGuide() {
     ui.error("No se encontró la transferencia seleccionada.");
     return;
   }
-  if (!guideForm.dir_partida || !guideForm.razon_social_transportista || !guideForm.placa) {
-    ui.error("Completa la dirección de partida, el transportista y la placa.");
+  applyGuideTransportInference();
+  if (!guideForm.razon_social_transportista || !guideForm.placa) {
+    ui.error("Completa al menos el nombre del transportista y la placa.");
+    return;
+  }
+  if (!guideForm.identificacion_transportista) {
+    ui.error("Completa el RUC o cédula del transportista para generar la guía.");
     return;
   }
   if (!guideForm.identificacion_destinatario || !guideForm.razon_social_destinatario || !guideForm.dir_destinatario) {
@@ -2180,16 +2345,19 @@ async function authorizeGuide() {
   }
   guideAuthorizing.value = true;
   try {
-    const { data } = await api.post(
+    const response = await api.post(
       `/kpi_inventory/guias-remision-sri/${generatedGuide.value.id}/autorizar`,
       {
         updated_by: getUserName(),
       },
     );
-    const payload = (data?.data ?? data) as GuideResponse;
+    const payload = (response.data?.data ?? response.data) as GuideResponse;
     generatedGuide.value = payload;
     await buildGuidePreview(payload);
-    ui.success("La guía fue enviada al SRI correctamente.");
+    notifyGuideSriResult(
+      String(response.data?.message || "Estado SRI actualizado."),
+      payload,
+    );
     await loadTransfers();
   } catch (error: any) {
     ui.error(
@@ -2206,10 +2374,14 @@ async function consultGuide(item: TransferRow) {
   if (!item.guia_remision_id) return;
   consultingGuideId.value = item.guia_remision_id;
   try {
-    await api.post(`/kpi_inventory/guias-remision-sri/${item.guia_remision_id}/consultar-autorizacion`, {
+    const response = await api.post(`/kpi_inventory/guias-remision-sri/${item.guia_remision_id}/consultar-autorizacion`, {
       updated_by: getUserName(),
     });
-    ui.success("Consulta de autorización ejecutada correctamente.");
+    const payload = (response.data?.data ?? response.data) as GuideResponse;
+    notifyGuideSriResult(
+      String(response.data?.message || "Consulta de autorización ejecutada."),
+      payload,
+    );
     await hydrateView();
   } catch (error: any) {
     ui.error(error?.response?.data?.message || error?.message || "No se pudo consultar el estado en SRI.");
@@ -2439,6 +2611,21 @@ watch(
   () => {
     if (!guideDialog.value || hasGuideSupplierFromOrder.value) return;
     syncManualGuideProviderContext();
+  },
+  { deep: true },
+);
+
+watch(
+  () => [
+    guideForm.razon_social_transportista,
+    guideForm.razon_social_destinatario,
+    guideForm.identificacion_destinatario,
+    guideForm.proveedor_razon_social,
+    guideForm.proveedor_identificacion,
+  ],
+  () => {
+    if (!guideDialog.value) return;
+    applyGuideTransportInference();
   },
   { deep: true },
 );
