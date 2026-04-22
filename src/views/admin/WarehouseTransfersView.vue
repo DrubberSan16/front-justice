@@ -1355,6 +1355,22 @@ function normalizeComparableText(value: unknown) {
     .toUpperCase();
 }
 
+function inferGuideIdentificationType(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.length === 13) return "04";
+  if (digits.length === 10) return "05";
+  return "";
+}
+
+function isGuideIdentificationTypeCompatible(type: unknown, value: unknown) {
+  const normalizedType = String(type ?? "").trim();
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!normalizedType || !digits) return true;
+  if (normalizedType === "04") return digits.length === 13;
+  if (normalizedType === "05") return digits.length === 10;
+  return true;
+}
+
 function inferGuideTransportIdentification() {
   const current = String(guideForm.identificacion_transportista || "").trim();
   if (current) return current;
@@ -1410,6 +1426,18 @@ function applyGuideTransportInference() {
   const inferred = inferGuideTransportIdentification();
   if (inferred && !String(guideForm.identificacion_transportista || "").trim()) {
     guideForm.identificacion_transportista = inferred;
+  }
+  const effectiveIdentification =
+    String(guideForm.identificacion_transportista || "").trim() || inferred;
+  const inferredType = inferGuideIdentificationType(effectiveIdentification);
+  if (
+    inferredType &&
+    !isGuideIdentificationTypeCompatible(
+      guideForm.tipo_identificacion_transportista,
+      effectiveIdentification,
+    )
+  ) {
+    guideForm.tipo_identificacion_transportista = inferredType;
   }
 }
 
@@ -2297,6 +2325,18 @@ async function generateGuide() {
   if (!guideForm.identificacion_transportista) {
     ui.error("Completa el RUC o cédula del transportista para generar la guía.");
     return;
+  }
+  const inferredTransportType = inferGuideIdentificationType(
+    guideForm.identificacion_transportista,
+  );
+  if (
+    inferredTransportType &&
+    !isGuideIdentificationTypeCompatible(
+      guideForm.tipo_identificacion_transportista,
+      guideForm.identificacion_transportista,
+    )
+  ) {
+    guideForm.tipo_identificacion_transportista = inferredTransportType;
   }
   if (!guideForm.identificacion_destinatario || !guideForm.razon_social_destinatario || !guideForm.dir_destinatario) {
     ui.error("Completa los datos del destinatario de la guía.");
