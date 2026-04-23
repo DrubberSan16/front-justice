@@ -110,14 +110,14 @@
             size="small"
             color="primary"
             variant="tonal"
-            prepend-icon="mdi-file-document-plus-outline"
+            :prepend-icon="isGuideAuthorizedSummary(item) ? 'mdi-eye-outline' : 'mdi-file-document-plus-outline'"
             :disabled="!canGenerateGuide(item)"
             @click="openGuideDialog(item)"
           >
-            {{ item.guia_remision_id ? 'Regenerar guía' : 'Generar guía' }}
+            {{ guideActionLabel(item) }}
           </v-btn>
           <v-btn
-            v-if="item.guia_remision_id"
+            v-if="item.guia_remision_id && !isGuideAuthorizedSummary(item)"
             size="small"
             variant="text"
             prepend-icon="mdi-cloud-search-outline"
@@ -151,6 +151,7 @@
       </v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
+        <fieldset class="guide-form-fieldset" :disabled="isCurrentGuideAuthorized">
         <v-row dense>
           <v-col cols="12" md="5">
             <v-autocomplete
@@ -222,6 +223,7 @@
             />
           </v-col>
         </v-row>
+        </fieldset>
 
         <v-progress-linear
           v-if="orderLoading"
@@ -560,8 +562,13 @@
       </v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
-        <v-alert type="info" variant="tonal" class="mb-4">
-          Primero genera la guía y revisa su vista previa en PDF. Cuando confirmes el documento, usa el botón de autorizar para enviarlo al SRI.
+        <v-alert :type="isCurrentGuideAuthorized ? 'success' : 'info'" variant="tonal" class="mb-4">
+          <span v-if="isCurrentGuideAuthorized">
+            Esta guía ya fue autorizada por el SRI. Aquí solo puedes visualizarla y descargar su XML firmado.
+          </span>
+          <span v-else>
+            Primero genera la guía y revisa su vista previa en PDF. Cuando confirmes el documento, usa el botón de autorizar para enviarlo al SRI.
+          </span>
         </v-alert>
 
         <v-row dense>
@@ -592,10 +599,24 @@
           </v-col>
 
           <v-col cols="12" md="6">
-            <v-text-field v-model="guideForm.dir_partida" label="Dirección partida" variant="outlined" />
+            <v-text-field
+              v-model="guideForm.dir_partida"
+              label="Dirección partida"
+              variant="outlined"
+              readonly
+              hint="Se toma automáticamente desde la bodega origen."
+              persistent-hint
+            />
           </v-col>
           <v-col cols="12" md="6">
-            <v-text-field v-model="guideForm.dir_destinatario" label="Dirección destinatario" variant="outlined" />
+            <v-text-field
+              v-model="guideForm.dir_destinatario"
+              label="Dirección destinatario"
+              variant="outlined"
+              readonly
+              hint="Se toma automáticamente desde la bodega destino."
+              persistent-hint
+            />
           </v-col>
           <v-col v-if="hasGuideSupplierFromOrder" cols="12">
             <v-alert type="info" variant="tonal">
@@ -805,10 +826,24 @@
       <v-divider />
       <v-card-actions class="justify-end pa-4">
         <v-btn variant="text" @click="closeGuideDialog">Cerrar</v-btn>
-        <v-btn color="primary" :loading="guideSaving" @click="generateGuide">
+        <v-btn
+          v-if="generatedGuide?.id"
+          variant="text"
+          prepend-icon="mdi-download"
+          @click="downloadCurrentGuideXml('signed')"
+        >
+          XML firmado
+        </v-btn>
+        <v-btn
+          v-if="!isCurrentGuideAuthorized"
+          color="primary"
+          :loading="guideSaving"
+          @click="generateGuide"
+        >
           {{ isGuideRegenerationFlow ? "Regenerar guía" : "Generar guía" }}
         </v-btn>
         <v-btn
+          v-if="!isCurrentGuideAuthorized"
           color="success"
           variant="tonal"
           :disabled="!canAuthorizeCurrentGuide"
@@ -825,6 +860,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
+import { io, type Socket } from "socket.io-client";
+import { env } from "@/app/config/env";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -956,6 +993,7 @@ type GuideContext = {
 
 type GuideResponse = {
   id: string;
+  transferencia_bodega_id?: string | null;
   numero_guia?: string | null;
   clave_acceso?: string | null;
   estado_emision?: string | null;
@@ -1056,6 +1094,7 @@ const guideContext = ref<GuideContext>({});
 const generatedGuide = ref<GuideResponse | null>(null);
 const guidePreviewUrl = ref("");
 const sriConfigMeta = reactive<SriConfigMeta>({});
+let guideStatusSocket: Socket | null = null;
 
 const form = reactive({
   orden_compra_id: "",
@@ -1262,6 +1301,14 @@ const canAuthorizeCurrentGuide = computed(() => {
   return emissionState !== "AUTORIZADA" && sriState !== "AUTORIZADO";
 });
 
+const isCurrentGuideAuthorized = computed(() =>
+  isGuideAuthorizedSummary(
+    generatedGuide.value ||
+      (guideContext.value.guia_existente as Record<string, unknown> | null) ||
+      selectedTransfer.value,
+  ),
+);
+
 function toNumber(value: unknown) {
   const parsed = Number(String(value ?? "").replace(/,/g, "."));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1339,6 +1386,31 @@ function formatCurrency(value: unknown) {
 function formatDate(value: unknown) {
   if (!value) return "";
   return formatDateTime(value, String(value ?? ""));
+}
+
+function resolveGuideSocketOrigin() {
+  try {
+    return new URL(env.baseUrl, window.location.origin).origin;
+  } catch {
+    return window.location.origin;
+  }
+}
+
+function isGuideAuthorizedSummary(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+) {
+  const emission = String((value as any)?.estado_emision || (value as any)?.guia_remision_estado || "")
+    .trim()
+    .toUpperCase();
+  const sri = String((value as any)?.sri_estado || (value as any)?.guia_remision_sri_estado || "")
+    .trim()
+    .toUpperCase();
+  return emission === "AUTORIZADA" || sri === "AUTORIZADO";
+}
+
+function guideActionLabel(item: TransferRow) {
+  if (isGuideAuthorizedSummary(item)) return "Ver guía";
+  return item.guia_remision_id ? "Regenerar guía" : "Generar guía";
 }
 
 function createLocalId() {
@@ -1664,9 +1736,6 @@ function applyGuideProviderAutofill(payload: Record<string, unknown> | null | un
   }
   if (direccion) {
     guideForm.proveedor_direccion = direccion;
-    if (!String(guideForm.dir_partida || "").trim()) {
-      guideForm.dir_partida = direccion;
-    }
   }
   syncManualGuideProviderContext();
 }
@@ -1743,18 +1812,12 @@ function applyGuideRecipientAutofill(payload: Record<string, unknown> | null | u
   if (!payload) return;
   const ruc = normalizeRuc(payload.ruc);
   const razonSocial = String(payload.razon_social || "").trim();
-  const direccion = String(
-    payload.dir_establecimiento || payload.dir_matriz || "",
-  ).trim();
 
   if (ruc) {
     guideForm.identificacion_destinatario = ruc;
   }
   if (razonSocial) {
     guideForm.razon_social_destinatario = razonSocial;
-  }
-  if (direccion && !String(guideForm.dir_destinatario || "").trim()) {
-    guideForm.dir_destinatario = direccion;
   }
 }
 
@@ -2047,6 +2110,97 @@ function canGenerateGuide(item: TransferRow) {
   return ["COMPLETADA", "COMPLETADO", "FINALIZADA", "FINALIZADO", "APROBADA", "APROBADO"].includes(normalized);
 }
 
+function applyGuideStatusToTransferRow(
+  row: TransferRow,
+  guide: GuideResponse,
+  transferId: string,
+) {
+  if (String(row.id || "") !== String(transferId || "")) return row;
+  return {
+    ...row,
+    guia_remision_id: guide.id,
+    guia_remision_estado: guide.estado_emision ?? row.guia_remision_estado ?? null,
+    guia_remision_sri_estado: guide.sri_estado ?? row.guia_remision_sri_estado ?? null,
+    guia_remision_clave_acceso: guide.clave_acceso ?? row.guia_remision_clave_acceso ?? null,
+    guia_remision_numero: guide.numero_guia ?? row.guia_remision_numero ?? null,
+    guia_remision_numero_autorizacion:
+      guide.numero_autorizacion ?? row.guia_remision_numero_autorizacion ?? null,
+  };
+}
+
+async function handleGuideStatusSocketUpdate(payload: {
+  transferId?: string;
+  guide?: GuideResponse | null;
+  source?: string | null;
+}) {
+  const guide = payload?.guide;
+  const transferId = String(
+    payload?.transferId || guide?.transferencia_bodega_id || "",
+  ).trim();
+  if (!guide?.id || !transferId) return;
+
+  const previousGuide = generatedGuide.value;
+  const previousAuthorized = isGuideAuthorizedSummary(previousGuide);
+  const nextAuthorized = isGuideAuthorizedSummary(guide);
+
+  transfers.value = transfers.value.map((row) =>
+    applyGuideStatusToTransferRow(row, guide, transferId),
+  );
+
+  if (selectedTransfer.value?.id === transferId) {
+    selectedTransfer.value = applyGuideStatusToTransferRow(
+      selectedTransfer.value,
+      guide,
+      transferId,
+    );
+  }
+
+  if (guideContext.value.guia_existente && selectedTransfer.value?.id === transferId) {
+    guideContext.value = {
+      ...guideContext.value,
+      guia_existente: {
+        ...(guideContext.value.guia_existente as Record<string, unknown>),
+        id: guide.id,
+        estado_emision: guide.estado_emision,
+        sri_estado: guide.sri_estado,
+        clave_acceso: guide.clave_acceso,
+        numero_guia: guide.numero_guia,
+      },
+    };
+  }
+
+  if (generatedGuide.value?.id === guide.id) {
+    generatedGuide.value = {
+      ...generatedGuide.value,
+      ...guide,
+    };
+    await buildGuidePreview(generatedGuide.value);
+  }
+
+  if (!previousAuthorized && nextAuthorized && previousGuide?.id === guide.id) {
+    ui.success("La guía fue autorizada por el SRI y la vista se actualizó automáticamente.");
+  }
+}
+
+function connectGuideStatusSocket() {
+  if (guideStatusSocket || !canRead.value) return;
+  const origin = resolveGuideSocketOrigin();
+  guideStatusSocket = io(`${origin}/guide-status`, {
+    path: "/kpi_inventory/socket.io",
+    transports: ["websocket", "polling"],
+    withCredentials: true,
+  });
+  guideStatusSocket.on("guide-status:update", (payload) => {
+    void handleGuideStatusSocketUpdate(payload as any);
+  });
+}
+
+function disconnectGuideStatusSocket() {
+  if (!guideStatusSocket) return;
+  guideStatusSocket.disconnect();
+  guideStatusSocket = null;
+}
+
 async function loadTransfers() {
   const response = await fetchPaginatedResource(
     "/kpi_inventory/transferencias-bodega",
@@ -2315,7 +2469,11 @@ async function openGuideDialog(item: TransferRow) {
     const payload = (data?.data ?? data) as GuideContext;
     guideContext.value = payload || {};
     const draft = (payload?.draft ?? {}) as Record<string, unknown>;
-    const regenerationDate = payload?.guia_existente ? formatDateForInput() : "";
+    const regenerationDate =
+      payload?.guia_existente &&
+      !isGuideAuthorizedSummary(payload.guia_existente as Record<string, unknown>)
+        ? formatDateForInput()
+        : "";
     guideRecipientLookupHydrating.value = true;
     guideProviderLookupHydrating.value = true;
     guideForm.ambiente = String(draft.ambiente || "PRUEBAS");
@@ -2356,7 +2514,10 @@ async function openGuideDialog(item: TransferRow) {
     guideRecipientLookupHydrating.value = false;
     guideProviderLookupHydrating.value = false;
     applyGuideTransportInference();
-    guideForm.forzar_regeneracion = Boolean(payload?.guia_existente);
+    guideForm.forzar_regeneracion = Boolean(
+      payload?.guia_existente &&
+        !isGuideAuthorizedSummary(payload.guia_existente as Record<string, unknown>),
+    );
     if (payload?.guia_existente) {
       await loadGuidePreviewByTransfer(item.id);
     }
@@ -2373,6 +2534,10 @@ async function openGuideDialog(item: TransferRow) {
 async function generateGuide() {
   if (!selectedTransfer.value?.id) {
     ui.error("No se encontró la transferencia seleccionada.");
+    return;
+  }
+  if (isCurrentGuideAuthorized.value) {
+    ui.error("La guía ya fue autorizada. Solo puedes visualizarla o descargar su XML firmado.");
     return;
   }
   const isRegeneration = isGuideRegenerationFlow.value;
@@ -2519,6 +2684,28 @@ async function downloadGuideXml(item: TransferRow, kind: "unsigned" | "signed") 
   } catch (error: any) {
     ui.error(error?.response?.data?.message || error?.message || "No se pudo descargar el XML.");
   }
+}
+
+async function downloadCurrentGuideXml(kind: "unsigned" | "signed") {
+  if (!generatedGuide.value?.id) return;
+  await downloadGuideXml(
+    {
+      id: String(selectedTransfer.value?.id || ""),
+      codigo:
+        String(
+          selectedTransfer.value?.codigo ||
+            generatedGuide.value.numero_guia ||
+            generatedGuide.value.clave_acceso ||
+            "guia",
+        ),
+      guia_remision_id: generatedGuide.value.id,
+      guia_remision_numero:
+        generatedGuide.value.numero_guia ||
+        selectedTransfer.value?.guia_remision_numero ||
+        null,
+    },
+    kind,
+  );
 }
 
 async function loadSelectedOrder(orderId: string) {
@@ -2772,6 +2959,7 @@ watch(
 
 onMounted(async () => {
   if (!canRead.value) return;
+  connectGuideStatusSocket();
   await hydrateView();
 });
 
@@ -2779,11 +2967,19 @@ onBeforeUnmount(() => {
   clearSriTaxpayerLookupTimer();
   clearGuideRecipientLookupTimer();
   clearGuideProviderLookupTimer();
+  disconnectGuideStatusSocket();
   revokeGuidePreviewUrl();
 });
 </script>
 
 <style scoped>
+.guide-form-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
 .transfer-details-table {
   overflow-x: auto;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.12);

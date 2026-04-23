@@ -91,7 +91,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "sucursal_id", label: "Sucursal", type: "select", required: true, relation: { endpoint: "/kpi_inventory/sucursales" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
-      { key: "direccion", label: "Dirección", type: "text" },
+      { key: "direccion", label: "Dirección", type: "text", required: true },
       { key: "es_principal", label: "Es principal", type: "boolean", required: true },
       {
         key: "es_default_compra",
