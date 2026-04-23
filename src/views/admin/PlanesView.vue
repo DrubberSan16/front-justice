@@ -16,13 +16,6 @@
           <v-chip color="warning" variant="tonal">Gestionado desde Plantillas MPG</v-chip>
         </div>
 
-        <v-alert
-          type="warning"
-          variant="tonal"
-          class="mb-3"
-          text="Este modulo ya no es la fuente de verdad operativa. Configura y actualiza tareas, materiales y checklist desde Plantillas MPG."
-        />
-
         <v-text-field
           v-model="planSearch"
           label="Buscar plan"

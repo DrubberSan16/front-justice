@@ -1,15 +1,9 @@
 <template>
   <v-card class="login-card enterprise-surface" rounded="xl" elevation="0">
-    <div class="login-card__eyebrow">
-      <v-chip size="small" color="primary" variant="tonal">Acceso seguro</v-chip>
-      <span class="login-card__status">Tema adaptable y navegacion optimizada</span>
-    </div>
-
     <div class="login-card__header">
       <div class="text-h4 font-weight-bold mb-2">Bienvenido de nuevo</div>
       <p class="login-card__copy">
-        Inicia sesion para revisar tu dashboard, administrar permisos y continuar tu
-        operacion sin interrupciones.
+        Inicia sesion para continuar tu operacion en el sistema.
       </p>
     </div>
 
@@ -47,11 +41,6 @@
         {{ error }}
       </v-alert>
 
-      <div class="login-form__helper">
-        <v-icon icon="mdi-shield-check-outline" size="18" />
-        <span>Tus credenciales se validan contra el servicio central de seguridad.</span>
-      </div>
-
       <v-btn
         :loading="loading"
         type="submit"
@@ -64,17 +53,6 @@
         Entrar al sistema
       </v-btn>
     </v-form>
-
-    <div class="login-card__footer">
-      <div class="login-highlight">
-        <strong>Mas claridad</strong>
-        <span>Jerarquia visual limpia para tareas frecuentes.</span>
-      </div>
-      <div class="login-highlight">
-        <strong>Mas velocidad</strong>
-        <span>Accesos rapidos desde movil, tablet o escritorio.</span>
-      </div>
-    </div>
   </v-card>
 </template>
 
@@ -138,18 +116,6 @@ async function onSubmit() {
   padding: 28px;
 }
 
-.login-card__eyebrow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.login-card__status {
-  color: var(--app-muted-text);
-  font-size: 0.95rem;
-}
-
 .login-card__header {
   display: grid;
   gap: 10px;
@@ -171,54 +137,14 @@ async function onSubmit() {
   background: var(--field-background);
 }
 
-.login-form__helper {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  padding: 14px 16px;
-  border: 1px solid var(--surface-border);
-  border-radius: 18px;
-  color: var(--app-muted-text);
-  background: var(--surface-soft);
-}
-
 .login-submit {
   min-height: 54px;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
-
-.login-card__footer {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.login-highlight {
-  display: grid;
-  gap: 6px;
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-soft);
-}
-
-.login-highlight strong {
-  font-size: 0.95rem;
-}
-
-.login-highlight span {
-  color: var(--app-muted-text);
-  line-height: 1.55;
-}
-
 @media (max-width: 600px) {
   .login-card {
     padding: 22px;
-  }
-
-  .login-card__footer {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

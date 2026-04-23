@@ -274,13 +274,12 @@
         </v-card-title>
         <v-divider />
         <v-card-text v-if="detail" class="pt-4">
-          <v-alert
+          <div
             v-if="analyzingTwinId === detail?.twin?.id"
-            type="info"
-            variant="tonal"
-            class="mb-4"
-            text="Buscando modelos recomendados..."
-          />
+            class="mb-4 text-body-2 text-medium-emphasis"
+          >
+            Buscando modelos recomendados...
+          </div>
           <div class="summary-strip mb-4">
             <v-chip label color="primary" variant="tonal">{{ detail.period.label }}</v-chip>
             <v-chip label :color="healthColor(detail.snapshot.health_score)" variant="tonal">
@@ -375,13 +374,12 @@
                     </div>
                   </div>
                 </div>
-                <v-alert
+                <div
                   v-else
-                  type="info"
-                  variant="tonal"
-                  density="compact"
-                  text="Todavía no hay materiales sugeridos para este equipo."
-                />
+                  class="text-body-2 text-medium-emphasis mt-3"
+                >
+                  Todavía no hay materiales sugeridos para este equipo.
+                </div>
               </v-card>
             </v-col>
           </v-row>
@@ -419,12 +417,12 @@
             <v-col cols="12" lg="7">
               <v-card rounded="lg" variant="outlined" class="pa-4">
                 <div class="text-subtitle-2 font-weight-bold mb-3">Insights y recomendaciones</div>
-                <v-alert
+                <div
                   v-if="!detail.insights.length"
-                  type="info"
-                  variant="tonal"
-                  text="Todavía no hay análisis IA para este período. Puedes generarlo desde esta ventana."
-                />
+                  class="text-body-2 text-medium-emphasis"
+                >
+                  Todavía no hay análisis IA para este período. Puedes generarlo desde esta ventana.
+                </div>
                 <v-timeline v-else density="compact" side="end" align="start">
                   <v-timeline-item
                     v-for="insight in detail.insights"
@@ -1005,3 +1003,4 @@ onMounted(() => {
   }
 }
 </style>
+

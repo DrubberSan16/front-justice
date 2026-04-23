@@ -114,18 +114,13 @@
       </v-toolbar>
 
       <v-card-text class="pt-4 ot-dialog-content">
-        <v-alert
+        <v-progress-linear
           v-if="loadingCatalogs"
-          type="info"
-          variant="tonal"
+          indeterminate
+          color="primary"
+          rounded
           class="mb-4"
-        >
-          <div class="d-flex flex-column" style="gap: 8px;">
-            <div class="font-weight-medium">Cargando información base de la orden de trabajo.</div>
-            <div class="text-body-2">Estamos obteniendo catálogos y referencias para que puedas continuar.</div>
-            <v-progress-linear indeterminate color="primary" rounded />
-          </div>
-        </v-alert>
+        />
         <v-alert
           v-if="detailNoticeText"
           type="warning"
@@ -282,12 +277,6 @@
                 </v-btn>
               </v-col>
             </v-row>
-            <v-alert
-              type="info"
-              variant="tonal"
-              class="mb-3"
-              text="Las tareas se cargan automaticamente desde la plantilla MPG seleccionada y muestran sus requisitos operativos."
-            />
             <v-data-table
               :headers="taskHeaders"
               :items="taskRows"
@@ -519,13 +508,6 @@
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div v-if="!isReadOnlyWorkflow" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
-            <v-alert
-              v-else
-              type="info"
-              variant="tonal"
-              class="mb-3"
-              text="La OT está cerrada. Los consumos se muestran solo para visualización."
-            />
             <v-data-table
               :headers="consumoHeaders"
               :items="consumoRows"
@@ -616,20 +598,6 @@
                 </v-btn>
               </div>
             </template>
-            <v-alert
-              v-if="isReadOnlyWorkflow"
-              type="success"
-              variant="tonal"
-              class="mb-3"
-              text="OT cerrada: esta sección está bloqueada y muestra el resultado final de salida de materiales."
-            />
-            <v-alert
-              v-else
-              type="info"
-              variant="tonal"
-              class="mb-3"
-              text="La emisión de materiales se valida contra lo reservado en Consumos para esta OT. El selector prioriza materiales con cantidad pendiente por emitir."
-            />
             <v-data-table
               :headers="issueHeaders"
               :items="issueRows"

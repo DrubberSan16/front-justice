@@ -157,23 +157,9 @@
       </v-col>
     </v-row>
 
-    <v-alert
-      v-if="!canReadProgramming"
-      type="info"
-      variant="tonal"
-      class="mb-4"
-    >
-      Tu perfil no tiene acceso al modulo de programaciones. La bienvenida sigue disponible,
-      pero la agenda semanal no puede cargarse hasta habilitar ese permiso.
-    </v-alert>
-
-    <v-alert
-      v-else-if="error"
-      type="warning"
-      variant="tonal"
-      class="mb-4"
-      :text="error"
-    />
+    <div v-if="error" class="text-body-2 text-error mb-4">
+      {{ error }}
+    </div>
 
     <v-card rounded="xl" class="pa-5 enterprise-surface">
       <div class="d-flex align-center justify-space-between" style="gap: 12px; flex-wrap: wrap;">

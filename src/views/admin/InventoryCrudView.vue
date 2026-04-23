@@ -282,11 +282,6 @@
               {{ thirdPartyLookupError }}
             </v-alert>
           </v-col>
-          <v-col v-else-if="isThirdPartyModule && thirdPartyLookupMessage" cols="12">
-            <v-alert type="info" variant="tonal">
-              {{ thirdPartyLookupMessage }}
-            </v-alert>
-          </v-col>
         </v-row>
       </v-card-text>
       <v-divider />

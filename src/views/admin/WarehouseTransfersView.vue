@@ -233,13 +233,6 @@
           class="mb-4"
         />
 
-        <v-alert v-if="selectedOrder" type="info" variant="tonal" class="mb-4">
-          La orden <strong>{{ selectedOrder.codigo }}</strong> fue precargada con saldo preaprobado. Al guardar la transferencia se registrará el ingreso de compra, la salida desde la bodega origen y el ingreso en la bodega destino; luego la orden quedará marcada como usada.
-        </v-alert>
-        <v-alert v-else type="info" variant="tonal" class="mb-4">
-          Estás registrando una transferencia manual. Selecciona la bodega origen, la bodega destino y los materiales a mover.
-        </v-alert>
-
         <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px; flex-wrap: wrap;">
           <div>
             <div class="text-subtitle-1 font-weight-bold">Materiales de la transferencia</div>
@@ -435,11 +428,6 @@
               {{ sriTaxpayerLookupError }}
             </v-alert>
           </v-col>
-          <v-col cols="12" v-else-if="sriTaxpayerLookupMessage">
-            <v-alert type="info" variant="tonal">
-              {{ sriTaxpayerLookupMessage }}
-            </v-alert>
-          </v-col>
 
           <v-col cols="12" md="5">
             <v-text-field v-model="sriConfigForm.razon_social" label="Razón social" variant="outlined" />
@@ -485,20 +473,12 @@
           <v-col cols="12" md="6">
             <v-text-field v-model="sriConfigForm.dir_partida_default" label="Dirección partida por defecto" variant="outlined" />
           </v-col>
-          <v-col cols="12" md="6">
-            <v-alert type="info" variant="tonal" class="h-100 d-flex align-center">
-              Los datos del conductor y del vehículo se piden en cada guía de remisión. Aquí solo se guarda la configuración tributaria del emisor.
-            </v-alert>
-          </v-col>
         </v-row>
 
         <template v-if="canManageSriSignature">
           <v-divider class="my-4" />
 
         <div class="text-subtitle-2 font-weight-bold mb-2">Firma electrónica global del sistema (.p12)</div>
-        <v-alert type="info" variant="tonal" class="mb-4">
-          Esta firma se carga una sola vez y se reutiliza para todas las sucursales, bodegas y guías del sistema. Solo el Super Administrador puede actualizarla.
-        </v-alert>
 
         <v-row dense>
           <v-col cols="12" md="5">
@@ -532,12 +512,15 @@
           </v-col>
         </v-row>
 
-        <v-alert v-if="sriConfigMeta.cert_subject || sriConfigMeta.cert_valid_to" type="success" variant="tonal" class="mt-2">
-          Firma global cargada:
+        <div
+          v-if="sriConfigMeta.cert_subject || sriConfigMeta.cert_valid_to"
+          class="text-body-2 text-medium-emphasis mt-2"
+        >
+          Firma global:
           <strong>{{ sriConfigMeta.certificate_filename || 'certificado.p12' }}</strong>
-          <span v-if="sriConfigMeta.cert_subject"> · {{ sriConfigMeta.cert_subject }}</span>
-          <span v-if="sriConfigMeta.cert_valid_to"> · Vigencia hasta {{ formatDate(sriConfigMeta.cert_valid_to) }}</span>
-        </v-alert>
+          <span v-if="sriConfigMeta.cert_subject"> - {{ sriConfigMeta.cert_subject }}</span>
+          <span v-if="sriConfigMeta.cert_valid_to"> - Vigencia hasta {{ formatDate(sriConfigMeta.cert_valid_to) }}</span>
+        </div>
         </template>
       </v-card-text>
       <v-divider />
@@ -562,14 +545,6 @@
       </v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
-        <v-alert :type="isCurrentGuideAuthorized ? 'success' : 'info'" variant="tonal" class="mb-4">
-          <span v-if="isCurrentGuideAuthorized">
-            Esta guía ya fue autorizada por el SRI. Aquí solo puedes visualizarla y descargar su XML firmado.
-          </span>
-          <span v-else>
-            Primero genera la guía y revisa su vista previa en PDF. Cuando confirmes el documento, usa el botón de autorizar para enviarlo al SRI.
-          </span>
-        </v-alert>
 
         <v-row dense>
           <v-col cols="12" md="6">
@@ -618,26 +593,7 @@
               persistent-hint
             />
           </v-col>
-          <v-col v-if="hasGuideSupplierFromOrder" cols="12">
-            <v-alert type="info" variant="tonal">
-              <div class="font-weight-bold mb-1">Proveedor detectado desde la orden de compra</div>
-              <div>
-                {{ guideContext.proveedor?.razon_social || "Sin nombre" }}
-                <span v-if="guideContext.proveedor?.identificacion">
-                  · {{ guideContext.proveedor?.identificacion }}
-                </span>
-              </div>
-              <div v-if="guideContext.proveedor?.direccion" class="text-body-2 mt-1">
-                Origen sugerido: {{ guideContext.proveedor?.direccion }}
-              </div>
-            </v-alert>
-          </v-col>
-          <template v-else>
-            <v-col cols="12">
-              <v-alert type="info" variant="tonal">
-                Completa el proveedor que origina el traslado. Si ingresas un RUC de 13 dígitos, el sistema consultará automáticamente el SRI para cargar nombre comercial y direcciones.
-              </v-alert>
-            </v-col>
+          <template v-if="!hasGuideSupplierFromOrder">
             <v-col cols="12" md="3">
               <v-text-field
                 v-model="guideForm.proveedor_identificacion"
@@ -672,11 +628,6 @@
             <v-col cols="12" v-if="guideProviderLookupError">
               <v-alert type="warning" variant="tonal">
                 {{ guideProviderLookupError }}
-              </v-alert>
-            </v-col>
-            <v-col cols="12" v-else-if="guideProviderLookupMessage">
-              <v-alert type="info" variant="tonal">
-                {{ guideProviderLookupMessage }}
               </v-alert>
             </v-col>
           </template>
@@ -720,20 +671,9 @@
           <v-col cols="12" md="6">
             <v-text-field v-model="guideForm.motivo_traslado" label="Motivo de traslado" variant="outlined" />
           </v-col>
-          <v-col cols="12" md="6">
-            <v-alert type="info" variant="tonal">
-              Ruta y establecimiento destino se completan automáticamente.
-            </v-alert>
-          </v-col>
-
           <v-col cols="12" v-if="guideRecipientLookupError">
             <v-alert type="warning" variant="tonal">
               {{ guideRecipientLookupError }}
-            </v-alert>
-          </v-col>
-          <v-col cols="12" v-else-if="guideRecipientLookupMessage">
-            <v-alert type="info" variant="tonal">
-              {{ guideRecipientLookupMessage }}
             </v-alert>
           </v-col>
 
@@ -773,24 +713,39 @@
           </table>
         </div>
 
-        <v-alert
-          v-if="generatedGuide"
-          :type="guideStatusVariant"
-          variant="tonal"
-          class="mt-4"
-        >
-          Guía <strong>{{ generatedGuide.numero_guia || generatedGuide.clave_acceso || "generada" }}</strong>
-          lista para revisión.
-          <span v-if="generatedGuide.estado_emision"> Estado: {{ generatedGuide.estado_emision }}.</span>
-          <span v-if="generatedGuide.sri_estado"> SRI: {{ generatedGuide.sri_estado }}.</span>
+        <div v-if="generatedGuide" class="mt-4 guide-status-summary">
+          <div class="d-flex align-center justify-space-between flex-wrap" style="gap: 8px;">
+            <div class="text-body-2">
+              Guía <strong>{{ generatedGuide.numero_guia || generatedGuide.clave_acceso || "generada" }}</strong>
+              lista para revisión.
+            </div>
+            <div class="d-flex flex-wrap" style="gap: 8px;">
+              <v-chip
+                v-if="generatedGuide.estado_emision"
+                size="small"
+                variant="tonal"
+                :color="guideStatusVariant"
+              >
+                {{ generatedGuide.estado_emision }}
+              </v-chip>
+              <v-chip
+                v-if="generatedGuide.sri_estado"
+                size="small"
+                variant="outlined"
+                :color="guideStatusVariant"
+              >
+                SRI: {{ generatedGuide.sri_estado }}
+              </v-chip>
+            </div>
+          </div>
           <div
             v-for="(message, index) in summarizeGuideSriMessages(generatedGuide)"
             :key="`${generatedGuide.id}-sri-${index}`"
-            class="text-body-2 mt-1"
+            class="text-body-2 text-medium-emphasis mt-2"
           >
             {{ message }}
           </div>
-        </v-alert>
+        </div>
 
         <div v-if="guidePreviewLoading" class="guide-preview-loading mt-4">
           <div class="text-body-2 font-weight-medium mb-2">Generando vista previa del PDF...</div>
@@ -3018,6 +2973,13 @@ onBeforeUnmount(() => {
   min-width: 260px;
 }
 
+.guide-status-summary {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 18px;
+  padding: 14px 16px;
+  background: rgba(var(--v-theme-surface), 0.72);
+}
+
 .guide-preview-loading {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.1);
   border-radius: 18px;
@@ -3042,3 +3004,4 @@ onBeforeUnmount(() => {
   background: white;
 }
 </style>
+

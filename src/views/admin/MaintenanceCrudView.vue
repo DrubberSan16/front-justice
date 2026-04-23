@@ -228,12 +228,6 @@
               Agregar compartimiento
             </v-btn>
           </div>
-          <v-alert
-            type="info"
-            variant="tonal"
-            class="mb-3"
-            text="Define los nombres oficiales de los compartimientos y el modelo del equipo. Esta información alimenta las órdenes de trabajo y el análisis del gemelo digital."
-          />
           <v-card
             v-for="(component, index) in selectedEquipmentComponentRows"
             :key="component.id || `${component.codigo}-${index}`"

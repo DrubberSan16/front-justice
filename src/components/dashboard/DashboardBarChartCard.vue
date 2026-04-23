@@ -31,13 +31,12 @@
       </div>
     </div>
 
-    <v-alert
+    <div
       v-else
-      type="info"
-      variant="tonal"
-      density="compact"
-      :text="emptyText"
-    />
+      class="dashboard-bar-chart__empty text-body-2 text-medium-emphasis"
+    >
+      {{ emptyText }}
+    </div>
   </v-card>
 </template>
 
@@ -154,5 +153,9 @@ const normalizedItems = computed(() => {
 .dashboard-bar-chart__helper {
   font-size: 0.78rem;
   color: var(--app-muted-text);
+}
+
+.dashboard-bar-chart__empty {
+  padding: 0.35rem 0;
 }
 </style>

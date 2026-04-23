@@ -133,9 +133,9 @@
             </div>
           </div>
 
-          <v-alert type="info" variant="tonal" class="mt-4">
+          <div class="mt-4 text-body-2 text-medium-emphasis">
             {{ activeManual.purpose }}
-          </v-alert>
+          </div>
 
           <div class="mt-4">
             <div class="text-subtitle-1 font-weight-bold mb-2">Requisitos previos</div>

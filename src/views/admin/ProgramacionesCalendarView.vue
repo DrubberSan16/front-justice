@@ -657,9 +657,6 @@
                 persistent-hint
               />
             </v-col>
-            <v-col v-if="selectedWorkOrderSummary" cols="12">
-              <v-alert type="info" variant="tonal" :text="selectedWorkOrderSummary" />
-            </v-col>
             <v-col cols="12" md="6">
               <v-select
                 v-model="form.equipo_id"
@@ -681,9 +678,6 @@
                 variant="outlined"
                 :disabled="Boolean(form.work_order_id)"
               />
-            </v-col>
-            <v-col cols="12">
-              <v-alert type="info" variant="tonal" text="El sistema sincroniza autom?ticamente un plan interno desde la plantilla MPG seleccionada." />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field :model-value="resolvedPlanLabel" label="Plan operativo generado" variant="outlined" readonly />
@@ -1330,12 +1324,6 @@ const monthlyPaletteFields = [
 const currentRoleName = computed(() =>
   String(auth.user?.role?.nombre || "").trim().toUpperCase(),
 );
-const selectedWorkOrderRecord = computed(
-  () =>
-    workOrderCatalog.value.find(
-      (item: any) => String(item?.id || "") === String(form.work_order_id || ""),
-    ) ?? null,
-);
 const workOrderOptions = computed(() =>
   workOrderCatalog.value
     .filter((item: any) => {
@@ -1355,19 +1343,6 @@ const workOrderOptions = computed(() =>
         .join(" · "),
     })),
 );
-const selectedWorkOrderSummary = computed(() => {
-  const selected = selectedWorkOrderRecord.value;
-  if (!selected) return "";
-  return [
-    selected?.code || selected?.codigo || "OT",
-    selected?.title || selected?.titulo || "Sin título",
-    selected?.equipment_codigo || selected?.equipo_codigo || selected?.equipment_nombre || null,
-    selected?.procedimiento_nombre || selected?.plan_nombre || null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-});
-
 function resolveSucursalId(explicitSucursalId?: string | null) {
   const explicit = String(explicitSucursalId || "").trim();
   return scopedSucursalId.value || explicit || null;

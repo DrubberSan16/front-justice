@@ -333,10 +333,6 @@
           </table>
         </div>
 
-        <v-alert v-if="!form.detalles.length" type="info" variant="tonal" class="mt-3">
-          Agrega al menos un material para guardar la orden de compra.
-        </v-alert>
-
         <div class="d-flex flex-wrap justify-end mt-4 purchase-summary" style="gap: 12px;">
           <v-chip color="info" variant="tonal">Subtotal: {{ formatCurrency(orderTotals.subtotal) }}</v-chip>
           <v-chip color="warning" variant="tonal">Descuento: {{ formatCurrency(orderTotals.descuento) }}</v-chip>
