@@ -15,6 +15,21 @@ export const router = createRouter({
       component: () => import("@/views/auth/LoginView.vue"),
     },
     {
+      path: "/app/adjuntos/ot/:workOrderId/:adjuntoId",
+      name: "public-work-order-attachment",
+      alias: [
+        "/app/kpi_maintenance/work-orders/:workOrderId/adjuntos/:adjuntoId/view",
+        "/kpi_maintenance/work-orders/:workOrderId/adjuntos/:adjuntoId/view",
+      ],
+      meta: {
+        public: true,
+        layout: "auth",
+        title: "Adjunto de orden de trabajo",
+        viewFile: "views/public/PublicWorkOrderAttachmentView.vue",
+      },
+      component: () => import("@/views/public/PublicWorkOrderAttachmentView.vue"),
+    },
+    {
       path: "/app",
       meta: { layout: "app" },
       children: [

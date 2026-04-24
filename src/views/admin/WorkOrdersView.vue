@@ -2080,6 +2080,20 @@ function getFriendlyAttachmentType(attachment: any) {
 }
 
 function getAttachmentReportUrl(attachment: any) {
+  const rawUrl = String(
+    attachment?.public_page_url ||
+      attachment?.download_url ||
+      attachment?.view_url ||
+      attachment?.preview_url ||
+      "",
+  ).trim();
+  if (!rawUrl) return "";
+  if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
+  const normalizedPath = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
+  return `https://justicecompany-ec.com${normalizedPath}`;
+}
+
+function getAttachmentMediaUrl(attachment: any) {
   const rawUrl = String(attachment?.view_url || attachment?.preview_url || "").trim();
   if (!rawUrl) return "";
   if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
@@ -2090,6 +2104,7 @@ function getAttachmentReportUrl(attachment: any) {
 function buildWorkOrderAttachmentReportRow(attachment: any, compact = false) {
   const isImage = isAttachmentImage(attachment);
   const url = getAttachmentReportUrl(attachment);
+  const mediaUrl = getAttachmentMediaUrl(attachment);
   return {
     tipo_archivo: getFriendlyAttachmentType(attachment),
     origen: getAttachmentOriginLabel(attachment),
@@ -2097,7 +2112,7 @@ function buildWorkOrderAttachmentReportRow(attachment: any, compact = false) {
     visualizacion: compact ? (isImage ? "Imagen adjunta" : url || "Sin enlace") : undefined,
     vista_previa: isImage ? "Imagen adjunta" : "",
     url_visualizacion: url,
-    media_url: isImage ? url : "",
+    media_url: isImage ? mediaUrl : "",
   };
 }
 
@@ -3077,14 +3092,14 @@ async function openAttachment(item: any) {
   }
   if (!editingId.value || !item?.id) return;
   try {
-    const directUrl = item?.view_url;
+    const directUrl = item?.public_page_url || item?.view_url;
     if (directUrl) {
       window.open(directUrl, "_blank", "noopener,noreferrer");
       return;
     }
     const { data } = await api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos/${item.id}`);
     const resolved = unwrapData(data);
-    const target = resolved?.view_url || resolved?.data_url;
+    const target = resolved?.public_page_url || resolved?.view_url || resolved?.download_url || resolved?.data_url;
     if (!target) {
       ui.error("No fue posible generar la vista del adjunto.");
       return;
