@@ -5,7 +5,27 @@
         <div class="text-h6 font-weight-bold">Órdenes de trabajo</div>
         <div class="text-body-2 text-medium-emphasis">Cabeceras creadas y gestión de todo el detalle en una sola pantalla.</div>
       </div>
-      <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">Nueva OT</v-btn>
+      <div class="d-flex flex-wrap" style="gap: 8px;">
+        <v-btn
+          v-if="canAccessWorkOrderReports"
+          variant="tonal"
+          prepend-icon="mdi-file-excel"
+          :loading="isExportingListed('excel')"
+          @click="exportListedWorkOrders('excel')"
+        >
+          Excel listado
+        </v-btn>
+        <v-btn
+          v-if="canAccessWorkOrderReports"
+          variant="tonal"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="isExportingListed('pdf')"
+          @click="exportListedWorkOrders('pdf')"
+        >
+          PDF listado
+        </v-btn>
+        <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">Nueva OT</v-btn>
+      </div>
     </div>
 
     <v-row dense class="mb-2">
@@ -19,16 +39,68 @@
           clearable
         />
       </v-col>
+      <v-col cols="12" md="3">
+        <v-select
+          v-model="maintenanceKindFilter"
+          :items="maintenanceKindFilterOptions"
+          item-title="title"
+          item-value="value"
+          label="Tipo de mantenimiento"
+          variant="outlined"
+          density="compact"
+          clearable
+        />
+      </v-col>
+      <v-col cols="12" md="2">
+        <v-text-field
+          v-model="dateFromFilter"
+          type="date"
+          label="Fecha desde"
+          variant="outlined"
+          density="compact"
+        />
+      </v-col>
+      <v-col cols="12" md="2">
+        <v-text-field
+          v-model="dateToFilter"
+          type="date"
+          label="Fecha hasta"
+          variant="outlined"
+          density="compact"
+        />
+      </v-col>
+      <v-col cols="12" md="1" class="d-flex align-center justify-end">
+        <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+          <v-btn
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-filter"
+            :loading="loading"
+            @click="applyListFilters"
+          >
+            Filtrar
+          </v-btn>
+          <v-btn
+            variant="text"
+            prepend-icon="mdi-filter-off"
+            :disabled="!hasActiveListFilters"
+            @click="clearListFilters"
+          >
+            Limpiar
+          </v-btn>
+        </div>
+      </v-col>
     </v-row>
 
     <v-alert v-if="error" type="error" variant="tonal" class="mb-2">{{ error }}</v-alert>
 
     <v-data-table
+      v-model:page="tablePage"
+      v-model:items-per-page="tableItemsPerPage"
       :headers="headers"
       :items="rows"
       :loading="loading"
       loading-text="Obteniendo órdenes de trabajo..."
-      :items-per-page="20"
       class="elevation-0 table-enterprise enterprise-table"
     >
       <template #item.actions="{ item }">
@@ -802,6 +874,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { hasReportAccess } from "@/app/config/report-access";
 import {
+  buildWorkOrdersListingReport,
   buildWorkOrderReport,
   downloadReportExcel,
   downloadReportPdf,
@@ -821,6 +894,14 @@ const exportState = reactive<Record<string, boolean>>({});
 const error = ref<string | null>(null);
 const search = ref("");
 const records = ref<any[]>([]);
+const maintenanceKindFilter = ref<string | null>("");
+const dateFromFilter = ref("");
+const dateToFilter = ref("");
+const appliedMaintenanceKindFilter = ref("");
+const appliedDateFromFilter = ref("");
+const appliedDateToFilter = ref("");
+const tablePage = ref(1);
+const tableItemsPerPage = ref(20);
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
@@ -949,6 +1030,10 @@ const maintenanceKindOptions = [
   { title: "Predictivo", value: "PREDICTIVO" },
   { title: "Inspección", value: "INSPECCION" },
 ];
+const maintenanceKindFilterOptions = [
+  { title: "Todos", value: "" },
+  ...maintenanceKindOptions,
+];
 
 function normalizeWorkflowStatus(value: unknown) {
   const raw = String(value || "").trim().toUpperCase();
@@ -970,6 +1055,36 @@ function exportKey(format: "excel" | "pdf") {
 
 function isExporting(format: "excel" | "pdf") {
   return Boolean(exportState[exportKey(format)]);
+}
+
+function exportListKey(format: "excel" | "pdf") {
+  return `work-order-list:${format}`;
+}
+
+function isExportingListed(format: "excel" | "pdf") {
+  return Boolean(exportState[exportListKey(format)]);
+}
+
+function getMaintenanceKindLabel(value: unknown) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return maintenanceKindOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
+}
+
+function getWorkOrderOperationalDate(item: any) {
+  return String(
+    item?.operational_date ||
+      item?.approved_at ||
+      item?.processed_at ||
+      item?.closed_at ||
+      item?.started_at ||
+      item?.created_at ||
+      "",
+  ).trim();
+}
+
+function getWorkOrderOperationalDateLabel(item: any) {
+  const raw = getWorkOrderOperationalDate(item);
+  return raw ? formatDateTime(raw, "-") : "-";
 }
 
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
@@ -1066,6 +1181,7 @@ const headers = [
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Tipo", key: "maintenance_kind" },
+  { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
@@ -2432,6 +2548,291 @@ async function safeGetList(url: string, fallbackMessage: string) {
   }
 }
 
+async function safeGetExportList(url: string) {
+  try {
+    const { data } = await api.get(url);
+    return asArray(data);
+  } catch (e: any) {
+    if (hasApiNotImplemented(e)) {
+      return [];
+    }
+    throw e;
+  }
+}
+
+const hasActiveListFilters = computed(() =>
+  Boolean(
+    search.value.trim() ||
+      maintenanceKindFilter.value ||
+      dateFromFilter.value ||
+      dateToFilter.value ||
+      appliedMaintenanceKindFilter.value ||
+      appliedDateFromFilter.value ||
+      appliedDateToFilter.value,
+  ),
+);
+
+const currentPagedRows = computed(() => {
+  const totalRows = rows.value;
+  const perPage = Number(tableItemsPerPage.value || 20);
+  if (!Number.isFinite(perPage) || perPage <= 0) return totalRows;
+  const currentPage = Math.max(Number(tablePage.value || 1), 1);
+  const start = (currentPage - 1) * perPage;
+  return totalRows.slice(start, start + perPage);
+});
+
+function getWorkOrderExportTitle(item: any) {
+  return String(
+    item?.title ||
+      item?.titulo ||
+      item?.procedimiento_nombre ||
+      item?.plan_nombre ||
+      item?.code ||
+      item?.id ||
+      "Orden de trabajo",
+  ).trim();
+}
+
+function buildListedWorkOrderHeaderRow(item: any) {
+  return {
+    codigo: item?.code || item?.codigo || item?.id || "",
+    titulo: getWorkOrderExportTitle(item),
+    estado: workflowLabel(item?.status_workflow),
+    tipo_mantenimiento: getMaintenanceKindLabel(item?.maintenance_kind),
+    equipo: getEquipmentLabel(item) || "-",
+    compartimiento: getEquipmentComponentLabel(item) || "-",
+    procedimiento:
+      [item?.procedimiento_codigo, item?.procedimiento_nombre].filter(Boolean).join(" - ") || "-",
+    plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
+    fecha_operativa: getWorkOrderOperationalDate(item) || "",
+    creado_por: item?.created_by_label || item?.created_by || "",
+    fecha_creacion: item?.created_at || "",
+    realizado_por: item?.processed_by_label || item?.updated_by || "",
+    fecha_realizacion: item?.processed_at || item?.updated_at || "",
+    aprobado_por: item?.approved_by_label || "",
+    fecha_aprobacion: item?.approved_at || "",
+    causa: item?.causa || "",
+    accion: item?.accion || "",
+    prevencion: item?.prevencion || "",
+  };
+}
+
+function buildListedConsumoRows(order: any, consumos: any[]) {
+  const orderCode = order?.code || order?.codigo || order?.id || "";
+  const orderTitle = getWorkOrderExportTitle(order);
+  return consumos.map((item: any) => ({
+    orden_codigo: orderCode,
+    orden_titulo: orderTitle,
+    bodega:
+      item?.bodega_label ||
+      item?.bodega_nombre ||
+      warehouseNameMap.value[String(item?.bodega_id || "")] ||
+      item?.bodega_id ||
+      "-",
+    material:
+      item?.producto_label ||
+      item?.producto_nombre ||
+      productNameMap.value[String(item?.producto_id || "")] ||
+      item?.producto_id ||
+      "-",
+    reservado: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
+    emitido: toPositiveNumber(item?.cantidad_emitida),
+    pendiente: toPositiveNumber(item?.cantidad_pendiente ?? item?.cantidad),
+    costo_unitario: toPositiveNumber(item?.costo_unitario),
+    subtotal: toPositiveNumber(
+      item?.subtotal ??
+        toPositiveNumber(item?.cantidad ?? item?.cantidad_reservada) * toPositiveNumber(item?.costo_unitario),
+    ),
+    observacion: item?.observacion || "-",
+  }));
+}
+
+function buildListedIssueRows(order: any, issues: any[]) {
+  const orderCode = order?.code || order?.codigo || order?.id || "";
+  const orderTitle = getWorkOrderExportTitle(order);
+  return issues.flatMap((issue: any) => {
+    const rawItems = Array.isArray(issue?.items) ? issue.items : [];
+    return rawItems.map((detail: any) => ({
+      orden_codigo: orderCode,
+      orden_titulo: orderTitle,
+      salida: issue?.code || issue?.codigo || "Sin codigo",
+      fecha: issue?.fecha || "",
+      bodega:
+        detail?.bodega_label ||
+        detail?.bodega_nombre ||
+        warehouseNameMap.value[String(detail?.bodega_id || "")] ||
+        detail?.bodega_id ||
+        "-",
+      material:
+        detail?.producto_label ||
+        detail?.producto_nombre ||
+        productNameMap.value[String(detail?.producto_id || "")] ||
+        detail?.producto_id ||
+        "-",
+      cantidad: toPositiveNumber(detail?.cantidad),
+      costo_unitario: toPositiveNumber(detail?.costo_unitario),
+      subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
+      observacion: issue?.observacion || "-",
+    }));
+  });
+}
+
+async function fetchWorkOrderExportBundle(order: any) {
+  const workOrderId = String(order?.id || order?._raw?.id || "").trim();
+  if (!workOrderId) {
+    throw new Error("No se pudo identificar la orden de trabajo a exportar.");
+  }
+
+  const [headerRes, tasksRes, attachmentsRes, consumos, issues, history] = await Promise.all([
+    api.get(`/kpi_maintenance/work-orders/${workOrderId}`),
+    api.get(`/kpi_maintenance/work-orders/${workOrderId}/tareas`),
+    api.get(`/kpi_maintenance/work-orders/${workOrderId}/adjuntos`),
+    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/consumos`),
+    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/issue-materials`),
+    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/history`),
+  ]);
+
+  const header = { ...(order?._raw ?? order), ...(unwrapData(headerRes.data) ?? {}) };
+  const normalizedTasks = asArray(tasksRes.data).map((task: any) => ({
+    ...task,
+    _json_text:
+      task?.valor_json && typeof task.valor_json === "object"
+        ? JSON.stringify(task.valor_json, null, 2)
+        : "",
+  }));
+  await ensureTaskLabelCacheForRows(normalizedTasks);
+
+  const orderCode = header?.code || header?.codigo || header?.id || "";
+  const orderTitle = getWorkOrderExportTitle(header);
+
+  return {
+    header: buildListedWorkOrderHeaderRow(header),
+    tasks: normalizedTasks.map((item: any) => ({
+      orden_codigo: orderCode,
+      orden_titulo: orderTitle,
+      plan: getPlanLabelForTask(item),
+      tarea: getTaskLabelForTask(item),
+      tipo_captura: getFriendlyTaskCaptureType(item),
+      valor_registrado: getTaskReportValue(item),
+      observacion: item?.observacion ?? "",
+      requisitos: getTaskRequirementChips(item).join(" | "),
+    })),
+    attachments: asArray(attachmentsRes.data).map((item: any) => ({
+      orden_codigo: orderCode,
+      orden_titulo: orderTitle,
+      ...buildWorkOrderAttachmentReportRow(item),
+    })),
+    consumos: buildListedConsumoRows(header, consumos),
+    issues: buildListedIssueRows(header, issues),
+    history: history.map((item: any) => ({
+      orden_codigo: orderCode,
+      orden_titulo: orderTitle,
+      desde: workflowLabel(item?.from_status),
+      hacia: workflowLabel(item?.to_status),
+      usuario: item?.changed_by || "",
+      fecha: item?.changed_at || "",
+      nota: item?.note || "",
+    })),
+  };
+}
+
+function getAppliedDateRangeLabel() {
+  if (appliedDateFromFilter.value && appliedDateToFilter.value) {
+    return `${appliedDateFromFilter.value} al ${appliedDateToFilter.value}`;
+  }
+  if (appliedDateFromFilter.value) {
+    return `Desde ${appliedDateFromFilter.value}`;
+  }
+  if (appliedDateToFilter.value) {
+    return `Hasta ${appliedDateToFilter.value}`;
+  }
+  return "";
+}
+
+async function exportListedWorkOrders(format: "excel" | "pdf") {
+  if (!canAccessWorkOrderReports.value) {
+    ui.error("No tienes permisos para generar reportes de ordenes de trabajo.");
+    return;
+  }
+
+  const visibleRows = currentPagedRows.value.map((item: any) => item?._raw ?? item);
+  if (!visibleRows.length) {
+    ui.open("No hay ordenes visibles para exportar.", "info", 3000);
+    return;
+  }
+
+  const key = exportListKey(format);
+  exportState[key] = true;
+  error.value = null;
+
+  try {
+    await ensureCatalogsLoaded();
+    const payload = {
+      headers: [] as any[],
+      tasks: [] as any[],
+      attachments: [] as any[],
+      consumos: [] as any[],
+      issues: [] as any[],
+      history: [] as any[],
+    };
+
+    for (const row of visibleRows) {
+      const bundle = await fetchWorkOrderExportBundle(row);
+      payload.headers.push(bundle.header);
+      payload.tasks.push(...bundle.tasks);
+      payload.attachments.push(...bundle.attachments);
+      payload.consumos.push(...bundle.consumos);
+      payload.issues.push(...bundle.issues);
+      payload.history.push(...bundle.history);
+    }
+
+    const report = buildWorkOrdersListingReport({
+      periodLabel: getAppliedDateRangeLabel(),
+      maintenanceKindLabel: appliedMaintenanceKindFilter.value
+        ? getMaintenanceKindLabel(appliedMaintenanceKindFilter.value)
+        : "",
+      ...payload,
+    });
+
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (e: any) {
+    error.value = e?.response?.data?.message || e?.message || "No se pudo generar el reporte consolidado.";
+  } finally {
+    exportState[key] = false;
+  }
+}
+
+async function applyListFilters() {
+  const nextDateFrom = String(dateFromFilter.value || "").trim();
+  const nextDateTo = String(dateToFilter.value || "").trim();
+  if (nextDateFrom && nextDateTo && nextDateFrom > nextDateTo) {
+    ui.error("La fecha desde no puede ser mayor que la fecha hasta.");
+    return;
+  }
+
+  appliedMaintenanceKindFilter.value = String(maintenanceKindFilter.value || "").trim();
+  appliedDateFromFilter.value = nextDateFrom;
+  appliedDateToFilter.value = nextDateTo;
+  tablePage.value = 1;
+  await fetchWorkOrders();
+}
+
+async function clearListFilters() {
+  search.value = "";
+  maintenanceKindFilter.value = "";
+  dateFromFilter.value = "";
+  dateToFilter.value = "";
+  appliedMaintenanceKindFilter.value = "";
+  appliedDateFromFilter.value = "";
+  appliedDateToFilter.value = "";
+  tablePage.value = 1;
+  await fetchWorkOrders();
+}
+
 function normalizeTask(item: any) {
   const actividad = item?.actividad ?? item?.nombre ?? item?.id;
   const orden = item?.orden != null ? `${item.orden} - ` : "";
@@ -2473,7 +2874,17 @@ async function fetchWorkOrders() {
   loading.value = true;
   error.value = null;
   try {
-    const { data } = await api.get("/kpi_maintenance/work-orders");
+    const params: Record<string, string> = {};
+    if (appliedMaintenanceKindFilter.value) {
+      params.maintenance_kind = appliedMaintenanceKindFilter.value;
+    }
+    if (appliedDateFromFilter.value) {
+      params.fecha_desde = appliedDateFromFilter.value;
+    }
+    if (appliedDateToFilter.value) {
+      params.fecha_hasta = appliedDateToFilter.value;
+    }
+    const { data } = await api.get("/kpi_maintenance/work-orders", { params });
     records.value = asArray(data);
     workOrderCatalogRows.value = records.value;
     if (editingId.value) {
@@ -2531,8 +2942,17 @@ const rows = computed(() => {
       ...r,
       equipment_label: getEquipmentLabel(r),
       equipment_component_label: getEquipmentComponentLabel(r),
+      maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
+      operational_date: getWorkOrderOperationalDate(r),
+      operational_date_label: getWorkOrderOperationalDateLabel(r),
       _raw: r,
-      _search: JSON.stringify({ ...r, equipment_label: getEquipmentLabel(r), equipment_component_label: getEquipmentComponentLabel(r) }).toLowerCase(),
+      _search: JSON.stringify({
+        ...r,
+        equipment_label: getEquipmentLabel(r),
+        equipment_component_label: getEquipmentComponentLabel(r),
+        maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
+        operational_date_label: getWorkOrderOperationalDateLabel(r),
+      }).toLowerCase(),
     }))
     .filter((r) => !q || r._search.includes(q));
 });

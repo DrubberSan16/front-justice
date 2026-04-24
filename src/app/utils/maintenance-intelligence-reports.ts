@@ -1208,6 +1208,150 @@ export function buildWorkOrderReport(payload: {
   } satisfies ReportDefinition;
 }
 
+export function buildWorkOrdersListingReport(payload: {
+  periodLabel?: string;
+  maintenanceKindLabel?: string;
+  headers: AnyRow[];
+  tasks: AnyRow[];
+  attachments: AnyRow[];
+  consumos: AnyRow[];
+  issues: AnyRow[];
+  history: AnyRow[];
+}) {
+  const activeFilters = [
+    payload.maintenanceKindLabel ? `Tipo: ${payload.maintenanceKindLabel}` : "",
+    payload.periodLabel ? `Rango: ${payload.periodLabel}` : "",
+  ].filter(Boolean);
+
+  return {
+    fileName: `ordenes_trabajo_${formatDateForInput(new Date())}`,
+    title: "Reporte consolidado de órdenes de trabajo",
+    subtitle: activeFilters.length
+      ? `Órdenes visibles según filtros aplicados. ${activeFilters.join(" · ")}`
+      : "Órdenes visibles en el módulo al momento de la exportación.",
+    summary: [
+      { label: "Órdenes listadas", value: payload.headers.length },
+      { label: "Tareas", value: payload.tasks.length },
+      { label: "Adjuntos", value: payload.attachments.length },
+      { label: "Consumos", value: payload.consumos.length },
+      { label: "Salidas", value: payload.issues.length },
+      { label: "Movimientos históricos", value: payload.history.length },
+    ],
+    sheets: [
+      {
+        name: "Cabeceras OT",
+        rows: payload.headers,
+        note: "Cabecera y trazabilidad principal de cada orden filtrada.",
+        columns: [
+          { key: "codigo", header: "Código", width: 14 },
+          { key: "titulo", header: "Título", width: 22 },
+          { key: "estado", header: "Estado", width: 12 },
+          { key: "tipo_mantenimiento", header: "Tipo mtto", width: 12 },
+          { key: "equipo", header: "Equipo", width: 18 },
+          { key: "compartimiento", header: "Compartimiento", width: 20 },
+          { key: "procedimiento", header: "Procedimiento", width: 18 },
+          { key: "plan_operativo", header: "Plan operativo", width: 18 },
+          { key: "fecha_operativa", header: "Fecha operativa", width: 18, format: "datetime" },
+          { key: "creado_por", header: "Creado por", width: 16 },
+          { key: "fecha_creacion", header: "Fecha creación", width: 18, format: "datetime" },
+          { key: "realizado_por", header: "Realizado por", width: 16 },
+          { key: "fecha_realizacion", header: "Fecha realización", width: 18, format: "datetime" },
+          { key: "aprobado_por", header: "Aprobado por", width: 16 },
+          { key: "fecha_aprobacion", header: "Fecha aprobación", width: 18, format: "datetime" },
+          { key: "causa", header: "Causa", width: 24 },
+          { key: "accion", header: "Acción", width: 24 },
+          { key: "prevencion", header: "Prevención", width: 24 },
+        ],
+      },
+      {
+        name: "Tareas",
+        rows: payload.tasks,
+        note: "Detalle de tareas registradas por orden de trabajo.",
+        groupBy: ["orden_codigo", "orden_titulo"],
+        columns: [
+          { key: "orden_codigo", header: "Código OT", width: 14 },
+          { key: "orden_titulo", header: "Título OT", width: 20 },
+          { key: "plan", header: "Plan", width: 18 },
+          { key: "tarea", header: "Tarea", width: 28 },
+          { key: "tipo_captura", header: "Tipo captura", width: 14 },
+          { key: "valor_registrado", header: "Valor registrado", width: 28 },
+          { key: "observacion", header: "Observación", width: 20 },
+          { key: "requisitos", header: "Requisitos", width: 22 },
+        ],
+      },
+      {
+        name: "Adjuntos",
+        rows: payload.attachments,
+        note: "Las imágenes se incrustan en el reporte; los documentos o videos conservan su enlace de visualización.",
+        groupBy: ["orden_codigo", "orden_titulo"],
+        columns: [
+          { key: "orden_codigo", header: "Código OT", width: 14 },
+          { key: "orden_titulo", header: "Título OT", width: 20 },
+          { key: "tipo_archivo", header: "Tipo archivo", width: 14 },
+          { key: "origen", header: "Origen", width: 24 },
+          { key: "nombre", header: "Nombre archivo", width: 28 },
+          { key: "vista_previa", header: "Vista previa", width: 18 },
+          { key: "url_visualizacion", header: "URL visualización", width: 34 },
+        ],
+        media: {
+          imageUrlKey: "media_url",
+          previewColumnKey: "vista_previa",
+          linkUrlKey: "url_visualizacion",
+          rowHeight: 62,
+        },
+      },
+      {
+        name: "Consumos",
+        rows: payload.consumos,
+        groupBy: ["orden_codigo", "orden_titulo"],
+        columns: [
+          { key: "orden_codigo", header: "Código OT", width: 14 },
+          { key: "orden_titulo", header: "Título OT", width: 20 },
+          { key: "bodega", header: "Bodega", width: 18 },
+          { key: "material", header: "Material", width: 22 },
+          { key: "reservado", header: "Reservado", width: 12, format: "number" },
+          { key: "emitido", header: "Emitido", width: 12, format: "number" },
+          { key: "pendiente", header: "Pendiente", width: 12, format: "number" },
+          { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
+          { key: "subtotal", header: "Subtotal", width: 14, format: "currency" },
+          { key: "observacion", header: "Observación", width: 20 },
+        ],
+      },
+      {
+        name: "Salidas material",
+        rows: payload.issues,
+        groupBy: ["orden_codigo", "orden_titulo"],
+        columns: [
+          { key: "orden_codigo", header: "Código OT", width: 14 },
+          { key: "orden_titulo", header: "Título OT", width: 20 },
+          { key: "salida", header: "Salida", width: 14 },
+          { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
+          { key: "bodega", header: "Bodega", width: 18 },
+          { key: "material", header: "Material", width: 22 },
+          { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
+          { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
+          { key: "subtotal", header: "Subtotal", width: 14, format: "currency" },
+          { key: "observacion", header: "Observación", width: 20 },
+        ],
+      },
+      {
+        name: "Histórico",
+        rows: payload.history,
+        groupBy: ["orden_codigo", "orden_titulo"],
+        columns: [
+          { key: "orden_codigo", header: "Código OT", width: 14 },
+          { key: "orden_titulo", header: "Título OT", width: 20 },
+          { key: "desde", header: "Desde", width: 14 },
+          { key: "hacia", header: "Hacia", width: 14 },
+          { key: "usuario", header: "Usuario", width: 16 },
+          { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
+          { key: "nota", header: "Nota", width: 28 },
+        ],
+      },
+    ],
+  } satisfies ReportDefinition;
+}
+
 export function buildMonthlyProgrammingReport(payload: {
   periodLabel: string;
   matrixRows: AnyRow[];
