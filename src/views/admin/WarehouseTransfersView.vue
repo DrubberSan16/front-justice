@@ -131,9 +131,9 @@
             size="small"
             variant="text"
             prepend-icon="mdi-download"
-            @click="downloadGuideXml(item, 'signed')"
+            @click="downloadGuideXml(item, preferredGuideXmlKind(item))"
           >
-            XML firmado
+            {{ preferredGuideXmlLabel(item) }}
           </v-btn>
         </div>
       </template>
@@ -785,6 +785,23 @@
           v-if="generatedGuide?.id"
           variant="text"
           prepend-icon="mdi-download"
+          :disabled="guidePreviewLoading"
+          @click="downloadCurrentGuideRidePdf"
+        >
+          RIDE PDF
+        </v-btn>
+        <v-btn
+          v-if="generatedGuide?.id && generatedGuide.has_xml_authorized"
+          variant="text"
+          prepend-icon="mdi-file-code-outline"
+          @click="downloadCurrentGuideXml('authorized')"
+        >
+          XML autorizado SRI
+        </v-btn>
+        <v-btn
+          v-if="generatedGuide?.id && generatedGuide.has_xml_signed"
+          variant="text"
+          prepend-icon="mdi-download"
           @click="downloadCurrentGuideXml('signed')"
         >
           XML firmado
@@ -978,6 +995,9 @@ type GuideResponse = {
     informacionAdicional?: string | null;
     tipo?: string | null;
   }> | null;
+  has_xml_unsigned?: boolean;
+  has_xml_signed?: boolean;
+  has_xml_authorized?: boolean;
 };
 
 const ui = useUiStore();
@@ -1366,6 +1386,20 @@ function isGuideAuthorizedSummary(
 function guideActionLabel(item: TransferRow) {
   if (isGuideAuthorizedSummary(item)) return "Ver guía";
   return item.guia_remision_id ? "Regenerar guía" : "Generar guía";
+}
+
+function preferredGuideXmlKind(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+): "signed" | "authorized" {
+  return isGuideAuthorizedSummary(value) ? "authorized" : "signed";
+}
+
+function preferredGuideXmlLabel(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+) {
+  return preferredGuideXmlKind(value) === "authorized"
+    ? "XML autorizado SRI"
+    : "XML firmado";
 }
 
 function createLocalId() {
@@ -1962,19 +1996,23 @@ function closeGuideDialog() {
   selectedTransfer.value = null;
 }
 
+async function buildGuidePreviewBlob(guide: GuideResponse) {
+  return buildGuideRemisionPdfBlob({
+    guide,
+    transfer: guideContext.value.transferencia,
+    sucursal: guideContext.value.sucursal,
+    config: (guideContext.value.config ?? null) as any,
+    provider: getGuidePreviewProvider(),
+    generatedBy: getUserName(),
+  });
+}
+
 async function buildGuidePreview(guide: GuideResponse) {
   if (!guide?.id) return;
   guidePreviewLoading.value = true;
   revokeGuidePreviewUrl();
   try {
-    const blob = await buildGuideRemisionPdfBlob({
-      guide,
-      transfer: guideContext.value.transferencia,
-      sucursal: guideContext.value.sucursal,
-      config: (guideContext.value.config ?? null) as any,
-      provider: getGuidePreviewProvider(),
-      generatedBy: getUserName(),
-    });
+    const blob = await buildGuidePreviewBlob(guide);
     guidePreviewUrl.value = window.URL.createObjectURL(blob);
   } catch (error: any) {
     ui.error(error?.message || "No se pudo generar la vista previa del PDF.");
@@ -2492,7 +2530,7 @@ async function generateGuide() {
     return;
   }
   if (isCurrentGuideAuthorized.value) {
-    ui.error("La guía ya fue autorizada. Solo puedes visualizarla o descargar su XML firmado.");
+    ui.error("La guía ya fue autorizada. Solo puedes visualizarla o descargar el XML autorizado y el RIDE.");
     return;
   }
   const isRegeneration = isGuideRegenerationFlow.value;
@@ -2620,7 +2658,10 @@ async function consultGuide(item: TransferRow) {
   }
 }
 
-async function downloadGuideXml(item: TransferRow, kind: "unsigned" | "signed") {
+async function downloadGuideXml(
+  item: TransferRow,
+  kind: "unsigned" | "signed" | "authorized",
+) {
   if (!item.guia_remision_id) return;
   try {
     const response = await api.get(`/kpi_inventory/guias-remision-sri/${item.guia_remision_id}/xml`, {
@@ -2641,7 +2682,7 @@ async function downloadGuideXml(item: TransferRow, kind: "unsigned" | "signed") 
   }
 }
 
-async function downloadCurrentGuideXml(kind: "unsigned" | "signed") {
+async function downloadCurrentGuideXml(kind: "unsigned" | "signed" | "authorized") {
   if (!generatedGuide.value?.id) return;
   await downloadGuideXml(
     {
@@ -2661,6 +2702,30 @@ async function downloadCurrentGuideXml(kind: "unsigned" | "signed") {
     },
     kind,
   );
+}
+
+async function downloadCurrentGuideRidePdf() {
+  if (!generatedGuide.value?.id) return;
+  try {
+    const blob = await buildGuidePreviewBlob(generatedGuide.value);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${
+      generatedGuide.value.numero_guia ||
+      generatedGuide.value.clave_acceso ||
+      selectedTransfer.value?.codigo ||
+      "guia"
+    }-ride.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error: any) {
+    ui.error(
+      error?.message || "No se pudo descargar el RIDE en PDF.",
+    );
+  }
 }
 
 async function loadSelectedOrder(orderId: string) {
