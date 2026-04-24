@@ -119,6 +119,28 @@ function splitText(doc: any, text: string, width: number) {
   return doc.splitTextToSize(safeText(text, ""), width) as string[];
 }
 
+async function buildAccessKeyBarcodeDataUrl(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return null;
+
+  const [{ default: JsBarcode }] = await Promise.all([import("jsbarcode")]);
+  const canvas = document.createElement("canvas");
+  canvas.width = 900;
+  canvas.height = 180;
+
+  JsBarcode(canvas, digits, {
+    format: "CODE128",
+    displayValue: false,
+    margin: 0,
+    background: "#ffffff",
+    lineColor: "#111827",
+    width: 1.6,
+    height: 72,
+  });
+
+  return canvas.toDataURL("image/png");
+}
+
 function footer(doc: any, generatedBy: string) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -172,7 +194,7 @@ function drawGrayLabel(doc: any, text: string, x: number, y: number) {
 }
 
 function drawTopRightBox(doc: any, guide: GuideLike, x: number, y: number, width: number) {
-  const height = 176;
+  const height = 252;
   drawBorderBox(doc, x, y, width, height);
 
   doc.setFont("helvetica", "bold");
@@ -217,11 +239,12 @@ function drawTopRightBox(doc: any, guide: GuideLike, x: number, y: number, width
   doc.text(accessKeyLines, x + width / 2, cursorY + 14, { align: "center" });
   cursorY += 48;
 
+  const statusY = y + height - 16;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.setTextColor(17, 24, 39);
-  doc.text(`AMBIENTE: ${safeText(guide.ambiente, "PRUEBAS")}`, x + 10, cursorY);
-  doc.text(`EMISION: NORMAL`, x + width - 10, cursorY, { align: "right" });
+  doc.text(`AMBIENTE: ${safeText(guide.ambiente, "PRUEBAS")}`, x + 10, statusY);
+  doc.text(`EMISION: NORMAL`, x + width - 10, statusY, { align: "right" });
 
   return height;
 }
@@ -329,14 +352,36 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
   const gap = 16;
   const leftWidth = 250;
   const rightWidth = pageWidth - left * 2 - leftWidth - gap;
+  const barcodeDataUrl = await buildAccessKeyBarcodeDataUrl(guide.clave_acceso);
 
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), "F");
 
-  drawTopLeftBox(doc, config, left, top, leftWidth);
-  drawTopRightBox(doc, guide, left + leftWidth + gap, top, rightWidth);
+  const leftHeaderHeight = drawTopLeftBox(doc, config, left, top, leftWidth);
+  const rightHeaderHeight = drawTopRightBox(
+    doc,
+    guide,
+    left + leftWidth + gap,
+    top,
+    rightWidth,
+  );
 
-  let cursorY = top + 192;
+  if (barcodeDataUrl) {
+    const barcodeX = left + leftWidth + gap + 10;
+    const barcodeWidth = rightWidth - 20;
+    const barcodeY = top + 152;
+    doc.setFillColor(255, 255, 255);
+    doc.rect(barcodeX, barcodeY, barcodeWidth, 56, "F");
+    doc.addImage(barcodeDataUrl, "PNG", barcodeX, barcodeY, barcodeWidth, 50);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(55, 65, 81);
+    doc.text("Codigo de barras de la clave de acceso", barcodeX + barcodeWidth / 2, barcodeY + 54, {
+      align: "center",
+    });
+  }
+
+  let cursorY = top + Math.max(leftHeaderHeight, rightHeaderHeight) + 16;
   const firstSectionBottom = drawDetailSection(
     doc,
     "DATOS DEL TRANSPORTISTA",
