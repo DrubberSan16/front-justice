@@ -3,6 +3,11 @@ import { computed, ref } from "vue";
 import { api } from "@/app/http/api";
 import type { Role } from "@/app/types/roles.types";
 import { useAuthStore } from "@/app/stores/auth.store";
+import {
+  cachedGet,
+  DEFAULT_CONTEXT_CACHE_TTL_MS,
+  invalidateRequestCache,
+} from "@/app/utils/request-cache";
 
 export type CreateRoleBody = {
   nombre: string;
@@ -16,6 +21,7 @@ export type UpdateRoleBody = Partial<CreateRoleBody>;
 
 export const useRolesStore = defineStore("roles", () => {
   const auth = useAuthStore();
+  const cacheMatcher = "/kpi_security/roles";
 
   const items = ref<Role[]>([]);
   const loading = ref(false);
@@ -42,8 +48,14 @@ export const useRolesStore = defineStore("roles", () => {
     error.value = null;
 
     try {
-      const { data } = await api.get<Role[]>(
-        `/kpi_security/roles?includeDeleted=${includeDeleted ? "true" : "false"}`
+      const { data } = await cachedGet<Role[]>(
+        "/kpi_security/roles",
+        {
+          params: { includeDeleted: includeDeleted ? "true" : "false" },
+        },
+        {
+          ttlMs: DEFAULT_CONTEXT_CACHE_TTL_MS,
+        },
       );
       items.value = data ?? [];
     } catch (e: any) {
@@ -59,7 +71,11 @@ export const useRolesStore = defineStore("roles", () => {
     error.value = null;
 
     try {
-      const { data } = await api.get<Role>(`/kpi_security/roles/${id}`);
+      const { data } = await cachedGet<Role>(
+        `/kpi_security/roles/${id}`,
+        {},
+        { ttlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+      );
       return data;
     } catch (e: any) {
       error.value = e?.response?.data?.message || "No se pudo cargar el rol.";
@@ -76,6 +92,7 @@ export const useRolesStore = defineStore("roles", () => {
     try {
       const createdBy = auth.user?.nameUser || "admin";
       const { data } = await api.post<Role>("/kpi_security/roles", { ...payload, createdBy });
+      invalidateRequestCache(cacheMatcher);
       items.value = [data, ...items.value];
       return data;
     } catch (e: any) {
@@ -92,6 +109,7 @@ export const useRolesStore = defineStore("roles", () => {
 
     try {
       const { data } = await api.patch<Role>(`/kpi_security/roles/${id}`, payload);
+      invalidateRequestCache(cacheMatcher);
       items.value = items.value.map((r) => (r.id === id ? { ...r, ...data } : r));
       return data;
     } catch (e: any) {
@@ -111,6 +129,7 @@ export const useRolesStore = defineStore("roles", () => {
       const { data } = await api.delete<Role>(
         `/kpi_security/roles/${id}?deletedBy=${encodeURIComponent(deletedBy)}`
       );
+      invalidateRequestCache(cacheMatcher);
       // si el backend devuelve isDeleted=true, lo actualizamos; si no lo trae, lo quitamos
       items.value = items.value.map((r) => (r.id === id ? { ...r, ...data } : r));
       return data;

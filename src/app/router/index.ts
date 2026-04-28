@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { applyGuards } from "@/app/router/guards";
+import { useUiStore } from "@/app/stores/ui.store";
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -300,11 +301,20 @@ export const router = createRouter({
   ],
 });
 
+router.beforeEach(() => {
+  useUiStore().startRouteNavigation();
+});
+
 router.afterEach((to) => {
+  useUiStore().endRouteNavigation();
   const baseTitle = "Analisis KPI";
   document.title = to.meta?.title
     ? `${to.meta.title} | ${baseTitle}`
     : baseTitle;
+});
+
+router.onError(() => {
+  useUiStore().endRouteNavigation();
 });
 
 applyGuards(router);

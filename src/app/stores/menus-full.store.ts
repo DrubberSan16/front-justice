@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
-import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import type { MenuNodeFull } from "@/app/types/menus-full.types";
 import { canAccessDigitalTwins } from "@/app/utils/role-access";
+import { cachedGet, DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 
 type State = {
   tree: MenuNodeFull[];
@@ -24,8 +24,14 @@ export const useMenusFullStore = defineStore("menusFull", {
       this.error = null;
 
       try {
-        const { data } = await api.get<MenuNodeFull[]>(
-          `/kpi_security/menus?includeDeleted=${includeDeleted ? "true" : "false"}`
+        const { data } = await cachedGet<MenuNodeFull[]>(
+          "/kpi_security/menus",
+          {
+            params: { includeDeleted: includeDeleted ? "true" : "false" },
+          },
+          {
+            ttlMs: DEFAULT_CATALOG_CACHE_TTL_MS,
+          },
         );
         const filterTree = (nodes: MenuNodeFull[]): MenuNodeFull[] =>
           (nodes ?? [])

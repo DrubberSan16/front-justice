@@ -1112,6 +1112,7 @@ import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
   buildAgendaProgrammingReport,
   buildMonthlyProgrammingReport,
@@ -1465,7 +1466,8 @@ function createLocalId() {
 }
 
 async function listAll(endpoint: string) {
-  return listAllPages(endpoint);
+  const cacheTtlMs = endpoint.includes("/work-orders") ? 0 : DEFAULT_CATALOG_CACHE_TTL_MS;
+  return listAllPages(endpoint, {}, { cacheTtlMs });
 }
 
 function exportKey(section: "mensual" | "semanal" | "agenda", format: "excel" | "pdf") {

@@ -130,7 +130,14 @@ watch(
   async (v) => {
     if (!v) return;
 
-    await menus.fetchAll(true);
+    const tasks = [menus.fetchAll(true)];
+    if (props.role?.id) {
+      tasks.push(menuRoles.loadByRole(props.role.id));
+    } else {
+      menuRoles.reset();
+    }
+
+    await Promise.all(tasks);
     const visibleMenuIds = collectVisibleMenuIds(menus.tree);
 
     if (props.role) {
@@ -143,10 +150,8 @@ watch(
         ),
       };
 
-      await menuRoles.loadByRole(props.role.id);
       menuRoles.restrictToMenuIds(visibleMenuIds);
     } else {
-      menuRoles.reset();
       menuRoles.restrictToMenuIds(visibleMenuIds);
       form.value = {
         nombre: "",

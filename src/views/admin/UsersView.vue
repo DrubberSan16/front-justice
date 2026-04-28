@@ -236,10 +236,7 @@ onMounted(async () => {
     users.includeDeleted = false;
   }
 
-  try {
-    await roles.fetchAll(false);
-  } catch {}
-  await users.fetchAll();
+  await Promise.allSettled([roles.fetchAll(false), users.fetchAll()]);
 });
 
 watch(

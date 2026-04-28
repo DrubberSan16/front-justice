@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
-import { api } from "@/app/http/api";
 import type { MenuNode } from "@/app/types/menu.types";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { canAccessDigitalTwins, isSuperAdministrator } from "@/app/utils/role-access";
+import { cachedGet, DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 
 type MenuState = {
   tree: MenuNode[];
@@ -35,8 +35,18 @@ export const useMenuStore = defineStore("menu", {
         };
         const isSuperAdmin = isSuperAdministrator(auth.user);
         const { data } = isSuperAdmin
-          ? await api.get<any[]>(`/kpi_security/menus?includeDeleted=false`)
-          : await api.get<MenuNode[]>(`/kpi_security/menu-users/tree/by-user/${userId}`);
+          ? await cachedGet<any[]>(
+              "/kpi_security/menus",
+              {
+                params: { includeDeleted: "false" },
+              },
+              { ttlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+            )
+          : await cachedGet<MenuNode[]>(
+              `/kpi_security/menu-users/tree/by-user/${userId}`,
+              {},
+              { ttlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+            );
 
         const normalizeNode = (node: any): MenuNode => ({
           ...node,

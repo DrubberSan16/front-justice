@@ -3,6 +3,11 @@ import { computed, ref } from "vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import type { MenuNodeFull } from "@/app/types/menus-full.types";
+import {
+  cachedGet,
+  DEFAULT_CATALOG_CACHE_TTL_MS,
+  invalidateRequestCache,
+} from "@/app/utils/request-cache";
 
 type SaveMenuBody = {
   nombre: string;
@@ -16,6 +21,7 @@ type SaveMenuBody = {
 
 export const useMenusStore = defineStore("menusAdmin", () => {
   const auth = useAuthStore();
+  const cacheMatcher = "/kpi_security/menus";
 
   const tree = ref<MenuNodeFull[]>([]);
   const loading = ref(false);
@@ -46,8 +52,14 @@ export const useMenusStore = defineStore("menusAdmin", () => {
     loading.value = true;
     error.value = null;
     try {
-      const { data } = await api.get<MenuNodeFull[]>(
-        `/kpi_security/menus?includeDeleted=${includeDeleted.value ? "true" : "false"}`
+      const { data } = await cachedGet<MenuNodeFull[]>(
+        "/kpi_security/menus",
+        {
+          params: { includeDeleted: includeDeleted.value ? "true" : "false" },
+        },
+        {
+          ttlMs: DEFAULT_CATALOG_CACHE_TTL_MS,
+        },
       );
       tree.value = data ?? [];
     } catch (e: any) {
@@ -64,6 +76,7 @@ export const useMenusStore = defineStore("menusAdmin", () => {
     try {
       const createdBy = auth.user?.nameUser || "admin";
       await api.post("/kpi_security/menus", { ...payload, createdBy });
+      invalidateRequestCache(cacheMatcher);
       await fetchAll();
     } catch (e: any) {
       error.value = e?.response?.data?.message || "No se pudo crear el menú.";
@@ -79,6 +92,7 @@ export const useMenusStore = defineStore("menusAdmin", () => {
     try {
       const createdBy = auth.user?.nameUser || "admin";
       await api.patch(`/kpi_security/menus/${id}`, { ...payload, createdBy });
+      invalidateRequestCache(cacheMatcher);
       await fetchAll();
     } catch (e: any) {
       error.value = e?.response?.data?.message || "No se pudo actualizar el menú.";
@@ -94,6 +108,7 @@ export const useMenusStore = defineStore("menusAdmin", () => {
     try {
       const deletedBy = auth.user?.nameUser || "admin";
       await api.delete(`/kpi_security/menus/${id}?deletedBy=${encodeURIComponent(deletedBy)}`);
+      invalidateRequestCache(cacheMatcher);
       await fetchAll();
     } catch (e: any) {
       error.value = e?.response?.data?.message || "No se pudo eliminar el menú.";

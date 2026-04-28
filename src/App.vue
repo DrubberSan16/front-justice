@@ -1,6 +1,9 @@
 <template>
   <v-app>
     <AppSnackbar />
+    <div v-show="ui.globalLoading" class="app-global-loader">
+      <v-progress-linear indeterminate color="primary" height="4" />
+    </div>
     <AppBootLoader v-if="booting" />
     <component v-else :is="layout">
       <router-view />
@@ -42,21 +45,29 @@ watch(
 );
 
 watch(
-  () => auth.user,
-  async (user) => {
-    if (user?.id && auth.isAuthenticated) {
-      branchScope.syncFromUser(user);
-      await menu.loadMenuTree(user.id);
+  () => auth.user?.id,
+  (userId) => {
+    if (userId && auth.user && auth.isAuthenticated) {
+      branchScope.syncFromUser(auth.user);
       return;
     }
     branchScope.clear();
     menu.clear();
   },
-  { deep: true },
+  { immediate: true },
 );
 
 onMounted(async () => {
   auth.bootstrapFromStorage();
-  setTimeout(() => (booting.value = false), 250);
+  booting.value = false;
 });
 </script>
+
+<style scoped>
+.app-global-loader {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 2500;
+  pointer-events: none;
+}
+</style>

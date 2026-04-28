@@ -386,6 +386,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
 import { formatDateForInput, formatDateOnly } from "@/app/utils/date-time";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 
 type CatalogOption = { value: string; title: string };
 
@@ -743,19 +744,31 @@ async function loadOrders() {
 
 async function ensureSuppliersLoaded(force = false) {
   if (suppliersLoaded.value && !force) return;
-  suppliers.value = await listAllPages("/kpi_inventory/terceros");
+  suppliers.value = await listAllPages(
+    "/kpi_inventory/terceros",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
   suppliersLoaded.value = true;
 }
 
 async function ensureProductsLoaded(force = false) {
   if (productsLoaded.value && !force) return;
-  products.value = await listAllPages("/kpi_inventory/productos");
+  products.value = await listAllPages(
+    "/kpi_inventory/productos",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
   productsLoaded.value = true;
 }
 
 async function ensureWarehousesLoaded(force = false) {
   if (warehousesLoaded.value && !force) return;
-  warehouses.value = await listAllPages("/kpi_inventory/bodegas");
+  warehouses.value = await listAllPages(
+    "/kpi_inventory/bodegas",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
   warehousesLoaded.value = true;
 }
 

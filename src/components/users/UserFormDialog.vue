@@ -180,7 +180,6 @@
 <script setup lang="ts">
 import { computed, reactive, watch, ref } from "vue";
 import { useDisplay } from "vuetify";
-import { api } from "@/app/http/api";
 import type { User } from "@/app/types/users.types";
 
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -188,6 +187,10 @@ import { useRolesStore } from "@/app/stores/roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
 import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store";
 import { getReportAccessOptionsForUser, normalizeReportAccess } from "@/app/config/report-access";
+import {
+  cachedGet,
+  DEFAULT_CATALOG_CACHE_TTL_MS,
+} from "@/app/utils/request-cache";
 
 import { fetchMenuRolesByRole } from "@/app/services/menu-roles.service";
 import MenuPermissionsCascade from "@/components/roles/MenuPermissionsCascade.vue";
@@ -296,8 +299,10 @@ async function loadBranches() {
   branchLoading.value = true;
   branchError.value = null;
   try {
-    const { data } = await api.get<Array<{ id: string; codigo: string; nombre: string }>>(
+    const { data } = await cachedGet<Array<{ id: string; codigo: string; nombre: string }>>(
       "/kpi_security/users/sucursales/catalogo",
+      {},
+      { ttlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
     );
     branchOptions.value = (data ?? []).map((item) => ({
       title: `${item.codigo || ""} - ${item.nombre || ""}`.replace(/^\s*-\s*/, "").trim(),
@@ -319,15 +324,15 @@ watch(
   async (open) => {
     if (!open) return;
 
-    // 1) Roles
-    try { await rolesStore.fetchAll(false); } catch {}
+    // Precargas compartidas del modal
+    await Promise.allSettled([
+      rolesStore.fetchAll(false),
+      branchLoading.value ? Promise.resolve() : loadBranches(),
+      menusFull.fetchAll(true),
+    ]);
 
-    if (!branchLoading.value) {
-      await loadBranches();
-    }
 
     // 2) Menú completo (se usa para el cascade)
-    try { await menusFull.fetchAll(true); } catch {}
     const visibleMenuIds = collectVisibleMenuIds(menusFull.tree);
 
     // 3) Reset drafts

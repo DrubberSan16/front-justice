@@ -1,4 +1,4 @@
-import { api } from "@/app/http/api";
+import { cachedGet } from "@/app/utils/request-cache";
 
 export function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -24,17 +24,21 @@ export async function fetchPaginatedResource(
   options?: {
     page?: number;
     limit?: number;
+    cacheTtlMs?: number;
   },
 ) {
   const page = toPositiveInteger(options?.page, 1);
   const limit = Math.min(100, toPositiveInteger(options?.limit, 20));
-  const { data } = await api.get(endpoint, {
-    params: {
-      ...params,
-      page,
-      limit,
-    },
-  });
+  const requestParams = {
+    ...params,
+    page,
+    limit,
+  };
+  const { data } = await cachedGet(
+    endpoint,
+    { params: requestParams },
+    { ttlMs: Number(options?.cacheTtlMs ?? 0) },
+  );
 
   const rows = asArray(data);
   const pagination = getPaginationMeta(data);

@@ -844,6 +844,7 @@ import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { isSuperAdministrator } from "@/app/utils/role-access";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 
 type CatalogOption = { value: string; title: string };
 
@@ -2215,13 +2216,23 @@ async function loadPendingOrders() {
 
 async function ensureWarehousesLoaded(force = false) {
   if (warehousesLoaded.value && !force) return;
-  warehouses.value = await listAllPages("/kpi_inventory/bodegas");
+  warehouses.value = await listAllPages(
+    "/kpi_inventory/bodegas",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
   warehousesLoaded.value = true;
 }
 
 async function ensureSucursalesLoaded(force = false) {
   if (sucursalesLoaded.value && !force) return;
-  sucursales.value = (await listAllPages("/kpi_inventory/sucursales")) as SucursalRow[];
+  sucursales.value = (
+    await listAllPages(
+      "/kpi_inventory/sucursales",
+      {},
+      { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+    )
+  ) as SucursalRow[];
   sucursalesLoaded.value = true;
   if (!sriConfigForm.sucursal_id) {
     sriConfigForm.sucursal_id = String(sucursales.value[0]?.id || "");
@@ -2236,7 +2247,13 @@ async function ensurePendingOrdersLoaded(force = false) {
 
 async function ensureProductsLoaded(force = false) {
   if (productsLoaded.value && !force) return;
-  products.value = (await listAllPages("/kpi_inventory/productos")) as ProductRow[];
+  products.value = (
+    await listAllPages(
+      "/kpi_inventory/productos",
+      {},
+      { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+    )
+  ) as ProductRow[];
   productsLoaded.value = true;
 }
 

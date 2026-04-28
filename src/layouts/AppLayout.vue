@@ -79,7 +79,7 @@
 
     <v-main class="app-main">
       <v-container fluid class="app-container">
-        <router-view />
+        <router-view :key="viewRefreshKey" />
       </v-container>
     </v-main>
   </v-layout>
@@ -110,6 +110,9 @@ const isMobile = computed(() => mdAndDown.value);
 const pageTitle = computed(() => String(route.meta.title ?? "Dashboard"));
 const userDisplay = computed(() => auth.user?.nameSurname || auth.user?.email || "Sesion activa");
 const userEmail = computed(() => auth.user?.email || "Sin correo registrado");
+const viewRefreshKey = computed(
+  () => `${route.fullPath}:${branchScope.selectedSucursalId ?? "ALL"}`,
+);
 const notificationRecipients = computed(() =>
   [auth.user?.id, auth.user?.nameUser, auth.user?.email]
     .map((item) => String(item || "").trim())
@@ -144,7 +147,6 @@ onBeforeUnmount(() => {
 
 function handleSucursalChange(value: string | null) {
   branchScope.setSelectedSucursal(value);
-  window.location.reload();
 }
 
 function onLogout() {

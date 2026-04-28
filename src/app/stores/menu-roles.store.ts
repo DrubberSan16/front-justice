@@ -1,5 +1,10 @@
 import { defineStore } from "pinia";
 import { api } from "@/app/http/api";
+import {
+  cachedGet,
+  DEFAULT_CONTEXT_CACHE_TTL_MS,
+  invalidateRequestCache,
+} from "@/app/utils/request-cache";
 
 export type PermissionDraft = {
   id?: string; // existe si ya estaba guardado
@@ -61,8 +66,12 @@ export const useMenuRolesStore = defineStore("menuRoles", {
     async loadByRole(roleId: string) {
       this.reset();
 
-      const { data } = await api.get(
-        `/kpi_security/menu-roles/by-role/${roleId}?includeDeleted=true`
+      const { data } = await cachedGet(
+        `/kpi_security/menu-roles/by-role/${roleId}`,
+        {
+          params: { includeDeleted: "true" },
+        },
+        { ttlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
       );
 
       for (const item of data ?? []) {
@@ -132,6 +141,8 @@ export const useMenuRolesStore = defineStore("menuRoles", {
           });
         }
       }
+
+      invalidateRequestCache("/kpi_security/menu-roles/by-role/");
     },
   },
 });

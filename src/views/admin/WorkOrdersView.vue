@@ -873,6 +873,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { hasReportAccess } from "@/app/config/report-access";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
   buildWorkOrdersListingReport,
   buildWorkOrderReport,
@@ -1461,7 +1462,11 @@ function asArray(data: any): any[] {
 }
 
 async function listAll(endpoint: string) {
-  return listAllPages(endpoint);
+  const cacheTtlMs =
+    endpoint.includes("/work-orders") || endpoint.includes("/alertas")
+      ? 0
+      : DEFAULT_CATALOG_CACHE_TTL_MS;
+  return listAllPages(endpoint, {}, { cacheTtlMs });
 }
 
 function normalize(item: any) {

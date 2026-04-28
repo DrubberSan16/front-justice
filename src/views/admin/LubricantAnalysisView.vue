@@ -696,6 +696,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canPurgeLubricantAnalyses } from "@/app/utils/role-access";
 import { hasReportAccess } from "@/app/config/report-access";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
   buildLubricantReport,
@@ -1196,11 +1197,19 @@ async function loadCatalog(search = "") {
 }
 
 async function loadEquipments() {
-  equipments.value = await listAllPages("/kpi_maintenance/equipos");
+  equipments.value = await listAllPages(
+    "/kpi_maintenance/equipos",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
 }
 
 async function loadBrands() {
-  brands.value = await listAllPages("/kpi_inventory/marcas");
+  brands.value = await listAllPages(
+    "/kpi_inventory/marcas",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
 }
 
 async function loadAll() {

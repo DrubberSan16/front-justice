@@ -2,6 +2,11 @@ import { defineStore } from "pinia";
 import { api } from "@/app/http/api";
 import type { MenuUser, SaveMenuUserBody } from "@/app/types/menu-users.types";
 import type { MenuRole } from "@/app/types/menu-roles.types"; // ya lo tienes
+import {
+  cachedGet,
+  DEFAULT_CONTEXT_CACHE_TTL_MS,
+  invalidateRequestCache,
+} from "@/app/utils/request-cache";
 
 export type PermissionDraft = {
   id?: string;        // existe si ya estaba guardado en menu-users
@@ -84,7 +89,13 @@ export const useMenuUsersProfileStore = defineStore("menuUsersProfile", {
         this.drafts = {};
         this.original = {};
 
-        const { data } = await api.get<MenuUser[]>(ENDPOINTS.byUser(userId));
+        const { data } = await cachedGet<MenuUser[]>(
+          `/kpi_security/menu-users/by-user/${userId}`,
+          {
+            params: { includeDeleted: "true" },
+          },
+          { ttlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+        );
 
         for (const item of data ?? []) {
           const d: PermissionDraft = {
@@ -162,6 +173,7 @@ export const useMenuUsersProfileStore = defineStore("menuUsersProfile", {
         }
 
         // refresca para tener ids y snapshot original
+        invalidateRequestCache("/kpi_security/menu-users/by-user/");
         await this.loadByUser(userId);
       } catch (e: any) {
         this.error = e?.response?.data?.message || "No se pudo crear la perfilería del usuario.";
@@ -234,6 +246,7 @@ export const useMenuUsersProfileStore = defineStore("menuUsersProfile", {
         }
 
         // refresca snapshot
+        invalidateRequestCache("/kpi_security/menu-users/by-user/");
         await this.loadByUser(userId);
       } catch (e: any) {
         this.error = e?.response?.data?.message || "No se pudo sincronizar la perfilería del usuario.";

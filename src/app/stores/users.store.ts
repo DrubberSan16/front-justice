@@ -3,9 +3,15 @@ import { computed, ref } from "vue";
 import { api } from "@/app/http/api";
 import type { CreateUserRequest, UpdateUserRequest, User } from "@/app/types/users.types";
 import { useAuthStore } from "@/app/stores/auth.store";
+import {
+  cachedGet,
+  DEFAULT_CONTEXT_CACHE_TTL_MS,
+  invalidateRequestCache,
+} from "@/app/utils/request-cache";
 
 export const useUsersStore = defineStore("users", () => {
   const auth = useAuthStore();
+  const cacheMatcher = "/kpi_security/users";
 
   const items = ref<User[]>([]);
   const loading = ref(false);
@@ -47,8 +53,14 @@ export const useUsersStore = defineStore("users", () => {
     loading.value = true;
     error.value = null;
     try {
-      const { data } = await api.get<User[]>(
-        `/kpi_security/users?includeDeleted=${includeDeleted.value ? "true" : "false"}`
+      const { data } = await cachedGet<User[]>(
+        "/kpi_security/users",
+        {
+          params: { includeDeleted: includeDeleted.value ? "true" : "false" },
+        },
+        {
+          ttlMs: DEFAULT_CONTEXT_CACHE_TTL_MS,
+        },
       );
       items.value = data ?? [];
     } catch (e: any) {
@@ -65,6 +77,7 @@ export const useUsersStore = defineStore("users", () => {
     try {
       const createdBy = auth.user?.nameUser || "admin";
       const { data } = await api.post<User>("/kpi_security/users", { ...payload, createdBy });
+      invalidateRequestCache(cacheMatcher);
       items.value = [data, ...items.value];
       return data;
     } catch (e: any) {
@@ -80,6 +93,7 @@ export const useUsersStore = defineStore("users", () => {
     error.value = null;
     try {
       const { data } = await api.patch<User>(`/kpi_security/users/${id}`, payload);
+      invalidateRequestCache(cacheMatcher);
       items.value = items.value.map((u) => (u.id === id ? { ...u, ...data } : u));
       return data;
     } catch (e: any) {
@@ -98,6 +112,7 @@ export const useUsersStore = defineStore("users", () => {
       const { data } = await api.delete<User>(
         `/kpi_security/users/${id}?deletedBy=${encodeURIComponent(deletedBy)}`
       );
+      invalidateRequestCache(cacheMatcher);
       items.value = items.value.map((u) => (u.id === id ? { ...u, ...data } : u));
       return data;
     } catch (e: any) {

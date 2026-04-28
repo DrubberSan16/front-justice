@@ -1,4 +1,4 @@
-import { api } from "@/app/http/api";
+import { cachedGet } from "@/app/utils/request-cache";
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -23,7 +23,7 @@ function getPageFingerprint(rows: any[]) {
 export async function listAllPages(
   endpoint: string,
   params: Record<string, any> = {},
-  options?: { limit?: number; maxPages?: number },
+  options?: { limit?: number; maxPages?: number; cacheTtlMs?: number },
 ) {
   const out: any[] = [];
   const limit = Number(options?.limit ?? 100);
@@ -32,7 +32,12 @@ export async function listAllPages(
   const seenIds = new Set<string>();
 
   for (let page = 1; page <= maxPages; page += 1) {
-    const { data } = await api.get(endpoint, { params: { page, limit, ...params } });
+    const requestParams = { page, limit, ...params };
+    const { data } = await cachedGet(
+      endpoint,
+      { params: requestParams },
+      { ttlMs: Number(options?.cacheTtlMs ?? 0) },
+    );
     const rows = asArray(data);
     const pagination = getPaginationMeta(data);
     const totalPages = Number(
