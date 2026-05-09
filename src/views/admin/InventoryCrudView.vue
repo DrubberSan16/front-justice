@@ -100,13 +100,13 @@
             @click="openReservationDetail(item)"
           />
           <v-btn
-            v-if="canEdit"
+            v-if="canEdit && !isAutoManagedWarehouse(item)"
             icon="mdi-pencil"
             variant="text"
             @click="openEdit(item._raw ?? item)"
           />
           <v-btn
-            v-if="canDelete"
+            v-if="canDelete && !isAutoManagedWarehouse(item)"
             icon="mdi-delete"
             variant="text"
             color="error"
@@ -344,6 +344,7 @@ const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && me
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPermissions.value.isEdited);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
 const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
+const isWarehouseModule = computed(() => moduleConfig.value?.key === "bodegas");
 const isThirdPartyModule = computed(() => moduleConfig.value?.key === "terceros");
 const isProductModule = computed(() => moduleConfig.value?.key === "productos");
 const records = ref<any[]>([]);
@@ -714,6 +715,11 @@ function workflowStatusColor(value: string) {
   if (normalized === "PLANNED") return "info";
   if (normalized === "CANCELLED") return "error";
   return "secondary";
+}
+
+function isAutoManagedWarehouse(item: any) {
+  const row = item?._raw ?? item;
+  return isWarehouseModule.value && Boolean(row?.es_chatarra);
 }
 
 const headers = computed(() => {

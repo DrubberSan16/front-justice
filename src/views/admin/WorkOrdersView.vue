@@ -314,6 +314,7 @@
           <v-tab value="adjuntos">Adjuntos</v-tab>
           <v-tab v-if="showConsumosTab" value="consumos">Consumos</v-tab>
           <v-tab v-if="showMaterialsTab" value="materiales">Salida de materiales</v-tab>
+          <v-tab v-if="showScrapTab" value="scrap">Desechos / chatarra</v-tab>
           <v-tab v-if="editingId" value="history">Histórico</v-tab>
         </v-tabs>
 
@@ -688,6 +689,137 @@
             </v-data-table>
           </v-window-item>
 
+          <v-window-item value="scrap">
+            <template v-if="!isReadOnlyWorkflow">
+              <v-row dense class="pt-2">
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="scrapForm.bodega_origen_id"
+                    :items="warehouseOptions"
+                    item-title="title"
+                    item-value="value"
+                    label="Bodega origen"
+                    variant="outlined"
+                  />
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    :model-value="selectedScrapWarehouseLabel"
+                    label="Bodega chatarra destino"
+                    variant="outlined"
+                    readonly
+                    hint="Se resuelve automáticamente desde la bodega operativa seleccionada."
+                    persistent-hint
+                  />
+                </v-col>
+                <v-col cols="12">
+                  <div class="d-flex align-center justify-space-between mb-2" style="gap:8px; flex-wrap:wrap;">
+                    <div>
+                      <div class="text-subtitle-2">Material desechado</div>
+                      <div class="text-caption text-medium-emphasis">
+                        {{ scrapProductOptions.length }} de {{ scrapProductsTotal || 0 }} materiales cargados
+                      </div>
+                    </div>
+                    <div class="d-flex align-center" style="gap:8px; flex-wrap:wrap;">
+                      <v-btn
+                        v-if="scrapProductsPage < scrapProductsTotalPages"
+                        size="small"
+                        variant="text"
+                        prepend-icon="mdi-chevron-down"
+                        :loading="loadingScrapProducts"
+                        @click="loadMoreScrapProducts"
+                      >
+                        Cargar más
+                      </v-btn>
+                      <v-btn
+                        color="primary"
+                        variant="tonal"
+                        prepend-icon="mdi-plus"
+                        @click="addScrapItem"
+                      >
+                        Agregar material
+                      </v-btn>
+                    </div>
+                  </div>
+
+                  <v-row
+                    v-for="(item, index) in scrapItems"
+                    :key="`scrap-${index}`"
+                    dense
+                    class="mb-1"
+                  >
+                    <v-col cols="12" md="9">
+                      <v-autocomplete
+                        v-model="item.producto_id"
+                        :items="scrapProductOptions"
+                        item-title="title"
+                        item-value="value"
+                        label="Material desechado"
+                        variant="outlined"
+                        clearable
+                        :disabled="!scrapForm.bodega_origen_id || loadingScrapProducts"
+                        :hint="!scrapForm.bodega_origen_id ? 'Selecciona primero la bodega origen.' : ''"
+                        persistent-hint
+                      />
+                    </v-col>
+                    <v-col cols="10" md="2">
+                      <v-text-field
+                        v-model="item.cantidad"
+                        label="Cant."
+                        type="number"
+                        min="0"
+                        step="any"
+                        variant="outlined"
+                      />
+                    </v-col>
+                    <v-col cols="2" md="1" class="d-flex align-center justify-end">
+                      <v-btn
+                        icon="mdi-delete"
+                        variant="text"
+                        color="error"
+                        :disabled="scrapItems.length === 1"
+                        @click="removeScrapItem(index)"
+                      />
+                    </v-col>
+                  </v-row>
+                </v-col>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="scrapForm.observacion"
+                    label="Observación"
+                    variant="outlined"
+                  />
+                </v-col>
+              </v-row>
+              <div class="d-flex justify-end mb-3">
+                <v-btn
+                  color="primary"
+                  :loading="registeringScrap"
+                  :disabled="registeringScrap"
+                  @click="registerScrapMaterials"
+                >
+                  Enviar a chatarra
+                </v-btn>
+              </div>
+            </template>
+            <v-data-table
+              :headers="scrapHeaders"
+              :items="scrapRows"
+              :loading="loadingDetails"
+              loading-text="Obteniendo materiales enviados a chatarra..."
+              density="comfortable"
+              class="table-enterprise enterprise-table"
+              :items-per-page="5"
+            >
+              <template #bottom />
+              <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
+              <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #no-data>
+                <div class="pa-4 text-medium-emphasis">No hay materiales desechados registrados para esta orden de trabajo.</div>
+              </template>
+            </v-data-table>
+          </v-window-item>
+
           <v-window-item value="history">
             <v-list density="compact" border rounded>
               <v-list-item
@@ -846,6 +978,19 @@
           </v-expansion-panel>
 
           <v-expansion-panel>
+            <v-expansion-panel-title>Desechos / chatarra ({{ scrapRows.length }})</v-expansion-panel-title>
+            <v-expansion-panel-text>
+              <v-data-table
+                :headers="reportPreviewScrapHeaders"
+                :items="scrapRows"
+                density="compact"
+                class="table-enterprise enterprise-table"
+                :items-per-page="10"
+              />
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <v-expansion-panel>
             <v-expansion-panel-title>Histórico ({{ localHistory.length }})</v-expansion-panel-title>
             <v-expansion-panel-text>
               <v-data-table
@@ -948,6 +1093,7 @@ const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
 const localConsumos = ref<any[]>([]);
 const localIssues = ref<any[]>([]);
+const localScraps = ref<any[]>([]);
 const localHistory = ref<any[]>([]);
 
 const headerForm = reactive<any>({
@@ -991,10 +1137,19 @@ const consumoForm = reactive<any>({
 });
 
 const materialsForm = reactive<any>({ observacion: "" });
+const scrapForm = reactive<any>({
+  bodega_origen_id: "",
+  observacion: "",
+});
 
 type MaterialItemForm = {
   producto_id: string;
   bodega_id: string;
+  cantidad: string;
+};
+
+type ScrapItemForm = {
+  producto_id: string;
   cantidad: string;
 };
 
@@ -1007,6 +1162,22 @@ function newMaterialItem(): MaterialItemForm {
 }
 
 const materialItems = ref<MaterialItemForm[]>([newMaterialItem()]);
+
+function newScrapItem(): ScrapItemForm {
+  return {
+    producto_id: "",
+    cantidad: "",
+  };
+}
+
+const scrapItems = ref<ScrapItemForm[]>([newScrapItem()]);
+const scrapProductOptions = ref<any[]>([]);
+const loadingScrapProducts = ref(false);
+const scrapProductsPage = ref(1);
+const scrapProductsTotalPages = ref(1);
+const scrapProductsTotal = ref(0);
+const registeringScrap = ref(false);
+let scrapProductsRequestId = 0;
 const workflowOptions = [
   { title: "Planificada", value: "PLANNED" },
   { title: "En proceso", value: "IN_PROGRESS" },
@@ -1129,6 +1300,7 @@ const canCloseOrVoidCurrent = computed(() =>
 const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
 const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
+const showScrapTab = computed(() => !!editingId.value && isInProcess.value);
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
@@ -1252,6 +1424,25 @@ const issueHeaders = computed(() => {
   return base;
 });
 
+const scrapHeaders = computed(() => {
+  const base = [
+    { title: "Transferencia", key: "transferencia_codigo" },
+    { title: "Fecha", key: "fecha_label" },
+    { title: "Origen", key: "bodega_origen_label" },
+    { title: "Destino chatarra", key: "bodega_chatarra_label" },
+    { title: "Material", key: "producto_label" },
+    { title: "Cantidad", key: "cantidad" },
+  ];
+  if (canViewCosts.value) {
+    base.push(
+      { title: "Costo unitario", key: "costo_unitario" } as any,
+      { title: "Subtotal", key: "subtotal" } as any,
+    );
+  }
+  base.push({ title: "Observación", key: "observacion" } as any);
+  return base;
+});
+
 const currentWorkOrderAudit = computed(() => currentWorkOrderRecord.value?._raw ?? currentWorkOrderRecord.value ?? {});
 const workOrderPreviewSummary = computed(() => [
   { label: "Estado", value: workflowLabel(headerForm.status_workflow) },
@@ -1259,6 +1450,7 @@ const workOrderPreviewSummary = computed(() => [
   { label: "Adjuntos", value: attachmentRows.value.length },
   { label: "Consumos", value: consumoRows.value.length },
   { label: "Salidas", value: issueRows.value.length },
+  { label: "Desechos", value: scrapRows.value.length },
 ]);
 const workOrderPreviewMainInfo = computed(() => [
   { label: "Código", value: headerForm.code },
@@ -1316,6 +1508,21 @@ const reportPreviewIssueHeaders = computed(() => {
     { title: "Salida", key: "entrega_code" },
     { title: "Fecha", key: "fecha_label" },
     { title: "Bodega", key: "bodega_label" },
+    { title: "Material", key: "producto_label" },
+    { title: "Cantidad", key: "cantidad" },
+  ];
+  if (canViewCosts.value) {
+    base.push({ title: "Costo", key: "costo_unitario" } as any);
+    base.push({ title: "Subtotal", key: "subtotal" } as any);
+  }
+  return base;
+});
+const reportPreviewScrapHeaders = computed(() => {
+  const base = [
+    { title: "Transferencia", key: "transferencia_codigo" },
+    { title: "Fecha", key: "fecha_label" },
+    { title: "Origen", key: "bodega_origen_label" },
+    { title: "Destino chatarra", key: "bodega_chatarra_label" },
     { title: "Material", key: "producto_label" },
     { title: "Cantidad", key: "cantidad" },
   ];
@@ -1421,6 +1628,17 @@ const workOrderReportDefinition = computed(() =>
       subtotal: item?.subtotal || 0,
       observacion: item?.observacion || "",
     })),
+    scraps: scrapRows.value.map((item: any) => ({
+      transferencia: item?.transferencia_codigo || "",
+      fecha: item?.fecha_label || "",
+      bodega_origen: item?.bodega_origen_label || "",
+      bodega_chatarra: item?.bodega_chatarra_label || "",
+      material: item?.producto_label || "",
+      cantidad: item?.cantidad || 0,
+      costo_unitario: item?.costo_unitario || 0,
+      subtotal: item?.subtotal || 0,
+      observacion: item?.observacion || "",
+    })),
     history: localHistory.value.map((item: any) => ({
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
@@ -1511,6 +1729,14 @@ const productNameMap = computed(() => {
       out[key] = String(row?.producto_label || row?.producto_nombre || key);
     }
   }
+  for (const scrap of localScraps.value) {
+    const details = Array.isArray(scrap?.items) ? scrap.items : [];
+    for (const row of details) {
+      const key = String(row?.producto_id || "");
+      if (!key || out[key]) continue;
+      out[key] = String(row?.producto_label || row?.producto_nombre || key);
+    }
+  }
   return out;
 });
 
@@ -1520,6 +1746,23 @@ const warehouseNameMap = computed(() => warehouseCatalogRows.value.reduce((acc: 
   acc[key] = normalize(item).title;
   return acc;
 }, {}));
+
+const selectedScrapWarehouseLabel = computed(() => {
+  const sourceId = String(scrapForm.bodega_origen_id || "").trim();
+  if (!sourceId) return "";
+  const explicit = warehouseCatalogRows.value.find(
+    (item: any) =>
+      item?.es_chatarra && String(item?.bodega_padre_id || "") === sourceId,
+  );
+  if (explicit) {
+    return normalize(explicit).title;
+  }
+  const source = warehouseCatalogRows.value.find(
+    (item: any) => String(item?.id || "") === sourceId,
+  );
+  if (!source) return "";
+  return `${normalize(source).title} - CHATARRA`;
+});
 
 function toPositiveNumber(value: unknown) {
   const parsed = Number(value ?? 0);
@@ -1607,6 +1850,71 @@ async function loadMoreConsumoProducts() {
   await loadConsumoProducts();
 }
 
+async function loadScrapProducts(options?: { reset?: boolean }) {
+  const warehouseId = String(scrapForm.bodega_origen_id || "").trim();
+  if (!warehouseId) {
+    scrapProductOptions.value = [];
+    scrapProductsPage.value = 1;
+    scrapProductsTotalPages.value = 1;
+    scrapProductsTotal.value = 0;
+    return;
+  }
+
+  const reset = Boolean(options?.reset);
+  const pageToLoad = reset ? 1 : scrapProductsPage.value;
+  const requestId = ++scrapProductsRequestId;
+
+  loadingScrapProducts.value = true;
+  try {
+    const { data } = await api.get("/kpi_inventory/stock-bodega", {
+      params: {
+        bodega_id: warehouseId,
+        page: pageToLoad,
+        limit: 50,
+      },
+    });
+
+    if (requestId !== scrapProductsRequestId) return;
+
+    const rows = asArray(data)
+      .map(normalizeStockProductOption)
+      .filter((item: any) => item.value);
+    const pagination = data?.pagination ?? {};
+    const nextItems = reset ? [] : [...scrapProductOptions.value];
+    const seen = new Set(nextItems.map((item: any) => String(item?.value || "")));
+    for (const row of rows) {
+      const key = String(row?.value || "");
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      nextItems.push(row);
+    }
+
+    scrapProductOptions.value = nextItems;
+    scrapProductsPage.value = Number(pagination?.page || pageToLoad || 1);
+    scrapProductsTotalPages.value = Number(pagination?.totalPages || 1);
+    scrapProductsTotal.value = Number(pagination?.total || nextItems.length);
+  } catch (e: any) {
+    if (requestId === scrapProductsRequestId) {
+      scrapProductOptions.value = [];
+      scrapProductsPage.value = 1;
+      scrapProductsTotalPages.value = 1;
+      scrapProductsTotal.value = 0;
+      ui.error(e?.response?.data?.message || "No se pudieron cargar los materiales para chatarra.");
+    }
+  } finally {
+    if (requestId === scrapProductsRequestId) {
+      loadingScrapProducts.value = false;
+    }
+  }
+}
+
+async function loadMoreScrapProducts() {
+  if (loadingScrapProducts.value) return;
+  if (scrapProductsPage.value >= scrapProductsTotalPages.value) return;
+  scrapProductsPage.value += 1;
+  await loadScrapProducts();
+}
+
 function getWarehouseReservedProductOptions(warehouseId: string) {
   const warehouseKey = String(warehouseId || "");
   const grouped = new Map<string, { value: string; title: string; pending: number }>();
@@ -1661,6 +1969,38 @@ const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
   }));
 }));
 
+const scrapRows = computed(() => localScraps.value.flatMap((scrap: any) => {
+  const rawItems = Array.isArray(scrap?.items) ? scrap.items : [];
+  return rawItems.map((detail: any, index: number) => ({
+    id: `${scrap?.id || scrap?.transferencia_bodega_id || "scrap"}-${detail?.id || index}`,
+    transferencia_codigo:
+      scrap?.transferencia_codigo || scrap?.code || scrap?.codigo || "Sin código",
+    fecha_label: scrap?.fecha ? formatDateTime(scrap.fecha, "-") : "-",
+    bodega_origen_label:
+      scrap?.bodega_origen_label ||
+      warehouseNameMap.value[String(scrap?.bodega_origen_id || "")] ||
+      scrap?.bodega_origen_id ||
+      "-",
+    bodega_chatarra_label:
+      scrap?.bodega_chatarra_label ||
+      warehouseNameMap.value[String(scrap?.bodega_chatarra_id || "")] ||
+      scrap?.bodega_chatarra_id ||
+      "-",
+    producto_label:
+      detail?.producto_label ||
+      detail?.producto_nombre ||
+      productNameMap.value[String(detail?.producto_id || "")] ||
+      detail?.producto_id ||
+      "-",
+    cantidad: toPositiveNumber(detail?.cantidad),
+    costo_unitario: toPositiveNumber(detail?.costo_unitario),
+    subtotal:
+      toPositiveNumber(detail?.subtotal) ||
+      toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
+    observacion: detail?.observacion || scrap?.observacion || "-",
+  }));
+}));
+
 function resetConsumoProductIfInvalid() {
   if (!consumoForm.bodega_id) {
     consumoForm.producto_id = "";
@@ -1678,6 +2018,19 @@ function resetMaterialProductIfInvalid(index: number) {
     return;
   }
   const exists = getWarehouseReservedProductOptions(String(current.bodega_id)).some((option: any) => String(option.value) === String(current.producto_id || ""));
+  if (!exists) current.producto_id = "";
+}
+
+function resetScrapProductIfInvalid(index: number) {
+  const current = scrapItems.value[index];
+  if (!current) return;
+  if (!scrapForm.bodega_origen_id) {
+    current.producto_id = "";
+    return;
+  }
+  const exists = scrapProductOptions.value.some(
+    (option: any) => String(option?.value || "") === String(current.producto_id || ""),
+  );
   if (!exists) current.producto_id = "";
 }
 
@@ -1746,7 +2099,9 @@ async function loadCatalogs() {
     }));
     productCatalogRows.value = [];
     warehouseCatalogRows.value = bodegas;
-    warehouseOptions.value = bodegas.map(normalize);
+    warehouseOptions.value = bodegas
+      .filter((item: any) => !item?.es_chatarra)
+      .map(normalize);
     catalogsLoaded.value = true;
   } finally {
     loadingCatalogs.value = false;
@@ -2697,18 +3052,56 @@ function buildListedIssueRows(order: any, issues: any[]) {
   });
 }
 
+function buildListedScrapRows(order: any, scraps: any[]) {
+  const orderCode = order?.code || order?.codigo || order?.id || "";
+  const orderTitle = getWorkOrderExportTitle(order);
+  return scraps.flatMap((scrap: any) => {
+    const rawItems = Array.isArray(scrap?.items) ? scrap.items : [];
+    return rawItems.map((detail: any) => ({
+      orden_codigo: orderCode,
+      orden_titulo: orderTitle,
+      transferencia:
+        scrap?.transferencia_codigo || scrap?.code || scrap?.codigo || "Sin codigo",
+      fecha: scrap?.fecha || "",
+      bodega_origen:
+        scrap?.bodega_origen_label ||
+        warehouseNameMap.value[String(scrap?.bodega_origen_id || "")] ||
+        scrap?.bodega_origen_id ||
+        "-",
+      bodega_chatarra:
+        scrap?.bodega_chatarra_label ||
+        warehouseNameMap.value[String(scrap?.bodega_chatarra_id || "")] ||
+        scrap?.bodega_chatarra_id ||
+        "-",
+      material:
+        detail?.producto_label ||
+        detail?.producto_nombre ||
+        productNameMap.value[String(detail?.producto_id || "")] ||
+        detail?.producto_id ||
+        "-",
+      cantidad: toPositiveNumber(detail?.cantidad),
+      costo_unitario: toPositiveNumber(detail?.costo_unitario),
+      subtotal:
+        toPositiveNumber(detail?.subtotal) ||
+        toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
+      observacion: detail?.observacion || scrap?.observacion || "-",
+    }));
+  });
+}
+
 async function fetchWorkOrderExportBundle(order: any) {
   const workOrderId = String(order?.id || order?._raw?.id || "").trim();
   if (!workOrderId) {
     throw new Error("No se pudo identificar la orden de trabajo a exportar.");
   }
 
-  const [headerRes, tasksRes, attachmentsRes, consumos, issues, history] = await Promise.all([
+  const [headerRes, tasksRes, attachmentsRes, consumos, issues, scraps, history] = await Promise.all([
     api.get(`/kpi_maintenance/work-orders/${workOrderId}`),
     api.get(`/kpi_maintenance/work-orders/${workOrderId}/tareas`),
     api.get(`/kpi_maintenance/work-orders/${workOrderId}/adjuntos`),
     safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/consumos`),
     safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/issue-materials`),
+    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/scrap-materials`),
     safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/history`),
   ]);
 
@@ -2744,6 +3137,7 @@ async function fetchWorkOrderExportBundle(order: any) {
     })),
     consumos: buildListedConsumoRows(header, consumos),
     issues: buildListedIssueRows(header, issues),
+    scraps: buildListedScrapRows(header, scraps),
     history: history.map((item: any) => ({
       orden_codigo: orderCode,
       orden_titulo: orderTitle,
@@ -2793,6 +3187,7 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
       attachments: [] as any[],
       consumos: [] as any[],
       issues: [] as any[],
+      scraps: [] as any[],
       history: [] as any[],
     };
 
@@ -2803,6 +3198,7 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
       payload.attachments.push(...bundle.attachments);
       payload.consumos.push(...bundle.consumos);
       payload.issues.push(...bundle.issues);
+      payload.scraps.push(...bundle.scraps);
       payload.history.push(...bundle.history);
     }
 
@@ -2925,12 +3321,13 @@ async function loadDetailData() {
   loadingDetails.value = true;
   unsupportedDetailMessages.value = [];
   try {
-    const [headerRes, tasksRes, attachmentsRes, consumosRows, issuesRows, historyRes] = await Promise.all([
+    const [headerRes, tasksRes, attachmentsRes, consumosRows, issuesRows, scrapRowsResponse, historyRes] = await Promise.all([
       api.get(`/kpi_maintenance/work-orders/${editingId.value}`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/tareas`),
       api.get(`/kpi_maintenance/work-orders/${editingId.value}/adjuntos`),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, "El backend actual no expone un listado de consumos por OT; los consumos nuevos sí se registran correctamente, pero al reabrir la OT no podrán consultarse desde esta pantalla."),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, "El backend actual no expone un listado de salidas de materiales por OT; las emisiones nuevas dependen de la reserva de stock del backend."),
+      safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/scrap-materials`, "No se pudo cargar el detalle de materiales enviados a chatarra."),
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/history`, "No se pudo cargar el historial de la orden de trabajo."),
     ]);
     currentWorkOrderRecord.value = unwrapData(headerRes.data);
@@ -2947,6 +3344,7 @@ async function loadDetailData() {
     attachmentRows.value = asArray(attachmentsRes.data).map((x) => ({ ...x, _raw: x }));
     localConsumos.value = consumosRows.map((x) => ({ ...x, _raw: x }));
     localIssues.value = issuesRows.map((x) => ({ ...x, total: x.total ?? x.items?.reduce?.((acc: number, it: any) => acc + Number(it.costo_unitario || 0) * Number(it.cantidad || 0), 0) ?? null, _raw: x }));
+    localScraps.value = scrapRowsResponse.map((x) => ({ ...x, _raw: x }));
     localHistory.value = historyRes.map((x) => ({ ...x, _raw: x }));
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudieron cargar los detalles principales de la OT.");
@@ -3019,10 +3417,19 @@ function resetAllForms() {
   materialItems.value = [newMaterialItem()];
   materialsForm.observacion = "";
 
+  scrapForm.bodega_origen_id = "";
+  scrapForm.observacion = "";
+  scrapItems.value = [newScrapItem()];
+  scrapProductOptions.value = [];
+  scrapProductsPage.value = 1;
+  scrapProductsTotalPages.value = 1;
+  scrapProductsTotal.value = 0;
+
   taskRows.value = [];
   attachmentRows.value = [];
   localConsumos.value = [];
   localIssues.value = [];
+  localScraps.value = [];
   localHistory.value = [];
   taskOptions.value = [];
   unsupportedDetailMessages.value = [];
@@ -3146,6 +3553,13 @@ function openDelete(item: any) {
 }
 
 function ensureTabVisible() {
+  if (tab.value === "scrap" && !showScrapTab.value) {
+    tab.value = showMaterialsTab.value
+      ? "materiales"
+      : showConsumosTab.value
+        ? "consumos"
+        : "tareas";
+  }
   if (tab.value === "materiales" && !showMaterialsTab.value) {
     tab.value = showConsumosTab.value ? "consumos" : "tareas";
   }
@@ -3590,6 +4004,68 @@ function removeMaterialItem(index: number) {
   materialItems.value.splice(index, 1);
 }
 
+async function registerScrapMaterials() {
+  if (registeringScrap.value) return;
+  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar desechos.");
+  if (!scrapForm.bodega_origen_id) {
+    return ui.error("Debes seleccionar la bodega origen del material desechado.");
+  }
+
+  const items = scrapItems.value
+    .filter((item) => item.producto_id || item.cantidad)
+    .map((item) => ({
+      producto_id: item.producto_id,
+      cantidad: Number(item.cantidad),
+    }));
+
+  if (!items.length) {
+    return ui.error("Debes ingresar al menos un material desechado.");
+  }
+
+  const hasInvalidItem = items.some(
+    (item) =>
+      !item.producto_id || !Number.isFinite(item.cantidad) || item.cantidad <= 0,
+  );
+  if (hasInvalidItem) {
+    return ui.error("Cada material desechado debe incluir producto y cantidad mayor a 0.");
+  }
+
+  const payload = {
+    bodega_origen_id: scrapForm.bodega_origen_id,
+    items,
+    observacion: scrapForm.observacion || null,
+  };
+
+  try {
+    registeringScrap.value = true;
+    await api.post(
+      `/kpi_maintenance/work-orders/${editingId.value}/scrap-materials`,
+      payload,
+    );
+    scrapItems.value = [newScrapItem()];
+    scrapForm.observacion = "";
+    await loadDetailData();
+    ui.success("Material desechado enviado a chatarra.");
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo registrar el material desechado.");
+  } finally {
+    registeringScrap.value = false;
+  }
+}
+
+function addScrapItem() {
+  scrapItems.value.push(newScrapItem());
+}
+
+function removeScrapItem(index: number) {
+  if (scrapItems.value.length === 1) {
+    scrapItems.value[0] = newScrapItem();
+    return;
+  }
+  scrapItems.value.splice(index, 1);
+}
+
 function hasMaterialDraft() {
   if (materialsForm.observacion) return true;
   return materialItems.value.some((item) => item.producto_id || item.bodega_id || item.cantidad);
@@ -3785,6 +4261,21 @@ watch(
   () => materialItems.value.map((item) => `${item.bodega_id}|${item.producto_id}`).join(';'),
   () => {
     materialItems.value.forEach((_, index) => resetMaterialProductIfInvalid(index));
+  },
+);
+
+watch(
+  () => scrapForm.bodega_origen_id,
+  async () => {
+    scrapItems.value = [newScrapItem()];
+    await loadScrapProducts({ reset: true });
+  },
+);
+
+watch(
+  () => scrapItems.value.map((item) => item.producto_id).join(";"),
+  () => {
+    scrapItems.value.forEach((_, index) => resetScrapProductIfInvalid(index));
   },
 );
 </script>

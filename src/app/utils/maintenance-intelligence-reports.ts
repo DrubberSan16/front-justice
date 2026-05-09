@@ -1084,6 +1084,7 @@ export function buildWorkOrderReport(payload: {
   attachments: AnyRow[];
   consumos: AnyRow[];
   issues: AnyRow[];
+  scraps: AnyRow[];
   history: AnyRow[];
 }) {
   const header = payload.header || {};
@@ -1134,6 +1135,7 @@ export function buildWorkOrderReport(payload: {
       { label: "Adjuntos", value: payload.attachments.length },
       { label: "Consumos", value: payload.consumos.length },
       { label: "Salidas", value: payload.issues.length },
+      { label: "Desechos", value: payload.scraps.length },
     ],
     sheets: [
       {
@@ -1203,6 +1205,7 @@ export function buildWorkOrderReport(payload: {
       },
       { name: "Consumos", rows: payload.consumos },
       { name: "Salidas material", rows: payload.issues },
+      { name: "Desechos chatarra", rows: payload.scraps },
       { name: "Histórico", rows: payload.history },
     ],
   } satisfies ReportDefinition;
@@ -1216,6 +1219,7 @@ export function buildWorkOrdersListingReport(payload: {
   attachments: AnyRow[];
   consumos: AnyRow[];
   issues: AnyRow[];
+  scraps: AnyRow[];
   history: AnyRow[];
 }) {
   const activeFilters = [
@@ -1235,6 +1239,7 @@ export function buildWorkOrdersListingReport(payload: {
       { label: "Adjuntos", value: payload.attachments.length },
       { label: "Consumos", value: payload.consumos.length },
       { label: "Salidas", value: payload.issues.length },
+      { label: "Desechos", value: payload.scraps.length },
       { label: "Movimientos históricos", value: payload.history.length },
     ],
     sheets: [
@@ -1327,6 +1332,24 @@ export function buildWorkOrdersListingReport(payload: {
           { key: "salida", header: "Salida", width: 14 },
           { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
           { key: "bodega", header: "Bodega", width: 18 },
+          { key: "material", header: "Material", width: 22 },
+          { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
+          { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
+          { key: "subtotal", header: "Subtotal", width: 14, format: "currency" },
+          { key: "observacion", header: "Observación", width: 20 },
+        ],
+      },
+      {
+        name: "Desechos chatarra",
+        rows: payload.scraps,
+        groupBy: ["orden_codigo", "orden_titulo"],
+        columns: [
+          { key: "orden_codigo", header: "Código OT", width: 14 },
+          { key: "orden_titulo", header: "Título OT", width: 20 },
+          { key: "transferencia", header: "Transferencia", width: 16 },
+          { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
+          { key: "bodega_origen", header: "Bodega origen", width: 20 },
+          { key: "bodega_chatarra", header: "Bodega chatarra", width: 22 },
           { key: "material", header: "Material", width: 22 },
           { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
           { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
