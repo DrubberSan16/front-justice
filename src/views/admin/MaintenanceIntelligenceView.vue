@@ -94,13 +94,22 @@
             <div>
               <div class="text-subtitle-1 font-weight-bold">KPI de análisis de aceite</div>
               <div class="text-body-2 text-medium-emphasis">
-                Compara el consumo de aceites en galones por OT, equipo y rango de fechas.
+                Compara el consumo de materiales marcados como aceite por OT, equipo y rango de fechas.
               </div>
             </div>
             <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
               <v-chip label color="secondary" variant="tonal">
                 {{ oilKpi?.filters?.label || "Sin periodo" }}
               </v-chip>
+              <v-btn
+                color="secondary"
+                variant="tonal"
+                prepend-icon="mdi-chart-box-outline"
+                :disabled="!oilKpi"
+                @click="openOilDetailDialog"
+              >
+                Ver detalle
+              </v-btn>
               <v-btn
                 color="primary"
                 variant="tonal"
@@ -196,12 +205,20 @@
           />
 
           <template v-else>
-            <div class="summary-strip mb-4">
+            <v-sheet
+              class="oil-summary-card mb-4"
+              role="button"
+              tabindex="0"
+              @click="openOilDetailDialog"
+              @keydown.enter="openOilDetailDialog"
+              @keydown.space.prevent="openOilDetailDialog"
+            >
+              <div class="summary-strip">
               <v-chip label color="primary" variant="tonal">
                 {{ oilKpi?.selected_product?.label || "Sin aceite seleccionado" }}
               </v-chip>
               <v-chip label color="success" variant="tonal">
-                Total: {{ formatDetailedNumber(oilKpi?.totals?.total_cantidad) }} gal
+                Total: {{ formatDetailedNumber(oilKpi?.totals?.total_cantidad) }} {{ oilQuantityUnitLabel }}
               </v-chip>
               <v-chip label color="info" variant="tonal">
                 Órdenes: {{ oilKpi?.totals?.total_ordenes ?? 0 }}
@@ -210,13 +227,15 @@
                 Equipos: {{ oilKpi?.totals?.total_equipos ?? 0 }}
               </v-chip>
               <v-chip label color="warning" variant="tonal">
-                Promedio OT: {{ formatDetailedNumber(oilKpi?.totals?.promedio_por_orden) }} gal
+                Promedio OT: {{ formatDetailedNumber(oilKpi?.totals?.promedio_por_orden) }} {{ oilQuantityUnitLabel }}
               </v-chip>
-            </div>
+              </div>
+              <div class="text-caption text-primary mt-3">Presiona para abrir el detalle completo, gráficos ampliados y el reporte relacionado.</div>
+            </v-sheet>
 
             <div class="indicator-grid mb-4">
               <div class="indicator-tile">
-                <div class="text-caption text-medium-emphasis">Galones consumidos</div>
+                <div class="text-caption text-medium-emphasis">Consumo total</div>
                 <div class="text-h6 font-weight-bold">{{ formatDetailedNumber(oilKpi?.totals?.total_cantidad) }}</div>
                 <div class="text-caption text-medium-emphasis">Consumo total del rango</div>
               </div>
@@ -228,7 +247,7 @@
               <div class="indicator-tile">
                 <div class="text-caption text-medium-emphasis">Promedio por equipo</div>
                 <div class="text-h6 font-weight-bold">{{ formatDetailedNumber(oilKpi?.totals?.promedio_por_equipo) }}</div>
-                <div class="text-caption text-medium-emphasis">Galones promedio por equipo visible</div>
+                <div class="text-caption text-medium-emphasis">Promedio por equipo visible</div>
               </div>
               <div class="indicator-tile">
                 <div class="text-caption text-medium-emphasis">Órdenes analizadas</div>
@@ -270,7 +289,7 @@
                         <th>Fecha</th>
                         <th>OT</th>
                         <th>Equipo</th>
-                        <th>Galones</th>
+                        <th>{{ oilQuantityUnitLabel }}</th>
                         <th>Dif. anterior</th>
                         <th>Bodega</th>
                       </tr>
@@ -310,7 +329,7 @@
                       <tr>
                         <th>Equipo</th>
                         <th>Órdenes</th>
-                        <th>Galones</th>
+                        <th>{{ oilQuantityUnitLabel }}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -825,6 +844,236 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog
+    v-if="canRead && canAccessIntelligenceReports"
+    v-model="oilDetailDialog"
+    :fullscreen="isDashboardDialogFullscreen"
+    :max-width="isDashboardDialogFullscreen ? undefined : 1500"
+  >
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">Detalle de análisis de aceite</v-card-title>
+      <v-divider />
+      <v-card-text class="pt-4 section-surface">
+        <v-alert
+          v-if="oilKpiError"
+          type="warning"
+          variant="tonal"
+          class="mb-4"
+          :text="oilKpiError"
+        />
+
+        <LoadingTableState
+          v-if="oilKpiLoading"
+          message="Cargando detalle ampliado de aceite..."
+          :rows="8"
+          :columns="4"
+        />
+
+        <template v-else>
+          <div class="d-flex align-start justify-space-between intelligence-wrap mb-4">
+            <div>
+              <div class="text-h6 font-weight-bold">
+                {{ oilKpi?.selected_product?.label || "Sin aceite seleccionado" }}
+              </div>
+              <div class="text-body-2 text-medium-emphasis">
+                {{ oilKpi?.filters?.label || "Sin periodo" }}
+              </div>
+            </div>
+            <div class="summary-strip">
+              <v-chip label color="success" variant="tonal">
+                {{ formatDetailedNumber(oilKpi?.totals?.total_cantidad) }} {{ oilQuantityUnitLabel }}
+              </v-chip>
+              <v-chip label color="info" variant="tonal">
+                {{ oilKpi?.totals?.total_ordenes ?? 0 }} OT
+              </v-chip>
+              <v-chip label color="secondary" variant="tonal">
+                {{ oilKpi?.totals?.total_equipos ?? 0 }} equipos
+              </v-chip>
+              <v-chip label color="warning" variant="tonal">
+                ${{ formatDetailedNumber(oilKpi?.totals?.total_costo, 2) }}
+              </v-chip>
+            </div>
+          </div>
+
+          <div class="indicator-grid mb-4">
+            <div class="indicator-tile">
+              <div class="text-caption text-medium-emphasis">Movimientos acumulados</div>
+              <div class="text-h6 font-weight-bold">{{ oilTotalMovements }}</div>
+              <div class="text-caption text-medium-emphasis">Registros de consumo consolidados</div>
+            </div>
+            <div class="indicator-tile">
+              <div class="text-caption text-medium-emphasis">Costo promedio por {{ oilQuantityUnitLabel }}</div>
+              <div class="text-h6 font-weight-bold">${{ formatDetailedNumber(oilAverageCostPerUnit, 2) }}</div>
+              <div class="text-caption text-medium-emphasis">Costo unitario promedio del rango</div>
+            </div>
+            <div class="indicator-tile">
+              <div class="text-caption text-medium-emphasis">OT de mayor consumo</div>
+              <div class="text-h6 font-weight-bold">{{ oilPeakWorkOrder?.work_order_code || "Sin OT" }}</div>
+              <div class="text-caption text-medium-emphasis">
+                {{ oilPeakWorkOrder ? `${formatDetailedNumber(oilPeakWorkOrder.cantidad)} ${oilQuantityUnitLabel}` : "Sin información" }}
+              </div>
+            </div>
+            <div class="indicator-tile">
+              <div class="text-caption text-medium-emphasis">Bodegas impactadas</div>
+              <div class="text-h6 font-weight-bold">{{ oilWarehouseRows.length }}</div>
+              <div class="text-caption text-medium-emphasis">Bodegas con consumos visibles</div>
+            </div>
+          </div>
+
+          <v-row dense class="mb-2">
+            <v-col cols="12" lg="6">
+              <DashboardBarChartCard
+                title="Consumo por rango"
+                subtitle="Evolución del aceite seleccionado según el periodo filtrado"
+                :chip-label="`${oilTrendChartItems.length} puntos`"
+                chip-color="success"
+                :items="oilTrendChartItems"
+                empty-text="No hay consumos del aceite seleccionado dentro del rango."
+              />
+            </v-col>
+            <v-col cols="12" lg="6">
+              <DashboardBarChartCard
+                title="Consumo por equipo"
+                subtitle="Equipos que más aceite registraron en órdenes de trabajo"
+                :chip-label="`${oilEquipmentChartItems.length} equipos`"
+                chip-color="primary"
+                :items="oilEquipmentChartItems"
+                empty-text="No existen equipos con consumo de aceite en este rango."
+              />
+            </v-col>
+            <v-col cols="12" lg="6">
+              <DashboardBarChartCard
+                title="Consumo por bodega"
+                subtitle="Distribución del aceite según la bodega origen del consumo"
+                :chip-label="`${oilWarehouseChartItems.length} bodegas`"
+                chip-color="warning"
+                :items="oilWarehouseChartItems"
+                empty-text="No existen bodegas asociadas al consumo visible."
+              />
+            </v-col>
+            <v-col cols="12" lg="6">
+              <DashboardBarChartCard
+                title="Consumo por estado OT"
+                subtitle="Cómo se reparte el consumo según el estado de la orden"
+                :chip-label="`${oilStatusChartItems.length} estados`"
+                chip-color="secondary"
+                :items="oilStatusChartItems"
+                empty-text="No existen estados de OT asociados al aceite."
+              />
+            </v-col>
+          </v-row>
+
+          <v-row dense class="mb-4">
+            <v-col cols="12" lg="8">
+              <div class="text-subtitle-2 font-weight-medium mb-2">Órdenes de trabajo con detalle ampliado</div>
+              <div class="dashboard-table-shell oil-kpi-table-shell oil-kpi-table-shell--tall">
+                <v-table density="compact" class="dashboard-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>OT</th>
+                      <th>Equipo</th>
+                      <th>{{ oilQuantityUnitLabel }}</th>
+                      <th>Costo</th>
+                      <th>Mov.</th>
+                      <th>Estado</th>
+                      <th>Bodega</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in oilWorkOrderRows" :key="`${item.work_order_id}-${item.producto_id}`">
+                      <td>{{ item.fecha_referencia_label }}</td>
+                      <td>
+                        <div class="font-weight-medium">{{ item.work_order_code }}</div>
+                        <div class="text-caption text-medium-emphasis">{{ item.work_order_title }}</div>
+                      </td>
+                      <td>{{ item.equipment_label }}</td>
+                      <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
+                      <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
+                      <td>{{ item.movimientos ?? 0 }}</td>
+                      <td>{{ item.work_order_status || "Sin estado" }}</td>
+                      <td>{{ item.bodega_label }}</td>
+                    </tr>
+                    <tr v-if="!oilWorkOrderRows.length">
+                      <td colspan="8" class="text-center text-medium-emphasis py-4">
+                        No existen órdenes de trabajo con consumo de este aceite en el rango consultado.
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </div>
+            </v-col>
+
+            <v-col cols="12" lg="4">
+              <div class="text-subtitle-2 font-weight-medium mb-2">Resumen por bodega</div>
+              <div class="dashboard-table-shell oil-kpi-table-shell oil-kpi-table-shell--tall">
+                <v-table density="compact" class="dashboard-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Bodega</th>
+                      <th>OT</th>
+                      <th>{{ oilQuantityUnitLabel }}</th>
+                      <th>Costo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in oilWarehouseRows" :key="item.bodega_label">
+                      <td>{{ item.bodega_label }}</td>
+                      <td>{{ item.total_ordenes }}</td>
+                      <td class="font-weight-medium">{{ formatDetailedNumber(item.total_cantidad) }}</td>
+                      <td>${{ formatDetailedNumber(item.total_costo, 2) }}</td>
+                    </tr>
+                    <tr v-if="!oilWarehouseRows.length">
+                      <td colspan="4" class="text-center text-medium-emphasis py-4">
+                        Sin consumo agrupado por bodega.
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </div>
+            </v-col>
+          </v-row>
+
+          <v-divider class="my-4" />
+
+          <div class="d-flex align-start justify-space-between intelligence-wrap mb-4">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Reporte de lubricante relacionado</div>
+              <div class="text-body-2 text-medium-emphasis">
+                Si existe un análisis de lubricante asociado al aceite seleccionado, lo mostramos aquí con su reporte completo.
+              </div>
+            </div>
+            <div style="min-width: min(420px, 100%);">
+              <v-autocomplete
+                v-model="oilRelatedLubricantSelection"
+                :items="lubricantCatalogOptions"
+                item-title="label"
+                return-object
+                clearable
+                label="Lubricante relacionado"
+                variant="outlined"
+                density="comfortable"
+                hide-details
+                @update:model-value="handleOilLubricantSelection"
+              />
+            </div>
+          </div>
+
+          <LubricantDashboardPanel
+            :dashboard="oilRelatedDashboard"
+            :loading="oilRelatedDashboardLoading"
+            :error="oilRelatedDashboardError"
+          />
+        </template>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn variant="text" @click="oilDetailDialog = false">Cerrar</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
     </div>
 </template>
 
@@ -897,6 +1146,7 @@ const auth = useAuthStore();
 const menuStore = useMenuStore();
 const dashboardDialog = ref(false);
 const isDashboardDialogFullscreen = computed(() => mdAndDown.value);
+const oilDetailDialog = ref(false);
 const dashboardSelection = ref<AnyRow | null>(null);
 const dashboardPeriod = ref("MENSUAL");
 const dashboardFrom = ref("");
@@ -913,6 +1163,10 @@ const oilPeriod = ref("MENSUAL");
 const oilReferenceDate = ref(formatDateForInput());
 const oilCustomFrom = ref("");
 const oilCustomTo = ref("");
+const oilRelatedLubricantSelection = ref<AnyRow | null>(null);
+const oilRelatedDashboard = ref<AnyRow | null>(null);
+const oilRelatedDashboardLoading = ref(false);
+const oilRelatedDashboardError = ref<string | null>(null);
 const perms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, [
     "Inteligencia operativa",
@@ -973,6 +1227,15 @@ function parseDateValue(value: unknown) {
   if (!raw) return null;
   const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeLooseToken(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function isInSelectedPeriod(value: unknown) {
@@ -1164,6 +1427,17 @@ const oilNeedsReferenceDate = computed(() => oilPeriod.value === "SEMANAL");
 const oilCatalogOptions = computed<AnyRow[]>(() =>
   unwrap<AnyRow[]>(oilKpi.value?.catalog, []),
 );
+const oilSelectedProduct = computed<AnyRow | null>(() =>
+  unwrap<AnyRow | null>(oilKpi.value?.selected_product, null),
+);
+const oilQuantityUnitLabel = computed(() => {
+  const label =
+    oilSelectedProduct.value?.unidad_medida_abreviatura ||
+    oilSelectedProduct.value?.unidad_medida_codigo ||
+    oilSelectedProduct.value?.unidad_medida ||
+    "gal";
+  return String(label || "gal").trim();
+});
 const oilWorkOrderRows = computed<AnyRow[]>(() =>
   unwrap<AnyRow[]>(oilKpi.value?.work_orders, []),
 );
@@ -1175,7 +1449,7 @@ const oilTrendChartItems = computed<DashboardChartItem[]>(() =>
     key: item.key,
     label: item.label,
     value: Number(item.cantidad || 0),
-    valueLabel: `${formatDetailedNumber(item.cantidad)} gal`,
+    valueLabel: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
     helper: `${item.total_ordenes ?? 0} OT`,
   })),
 );
@@ -1184,10 +1458,112 @@ const oilEquipmentChartItems = computed<DashboardChartItem[]>(() =>
     key: item.equipment_id || item.equipment_label,
     label: item.equipment_label || "Sin equipo",
     value: Number(item.total_cantidad || 0),
-    valueLabel: `${formatDetailedNumber(item.total_cantidad)} gal`,
+    valueLabel: `${formatDetailedNumber(item.total_cantidad)} ${oilQuantityUnitLabel.value}`,
     helper: `${item.total_ordenes ?? 0} OT`,
   })),
 );
+const oilWarehouseRows = computed<AnyRow[]>(() => {
+  const grouped = new Map<string, AnyRow>();
+  for (const item of oilWorkOrderRows.value) {
+    const key = String(item.bodega_label || "Sin bodega");
+    const current = grouped.get(key) ?? {
+      bodega_label: key,
+      total_cantidad: 0,
+      total_costo: 0,
+      total_ordenes: 0,
+      work_order_ids: new Set<string>(),
+    };
+    current.total_cantidad += Number(item.cantidad || 0);
+    current.total_costo += Number(item.subtotal || 0);
+    current.work_order_ids.add(String(item.work_order_id || ""));
+    current.total_ordenes = current.work_order_ids.size;
+    grouped.set(key, current);
+  }
+  return [...grouped.values()]
+    .map((item) => ({
+      ...item,
+      total_cantidad: Number(item.total_cantidad.toFixed(4)),
+      total_costo: Number(item.total_costo.toFixed(2)),
+    }))
+    .sort((a, b) => b.total_cantidad - a.total_cantidad);
+});
+const oilWarehouseChartItems = computed<DashboardChartItem[]>(() =>
+  oilWarehouseRows.value.slice(0, 6).map((item: AnyRow) => ({
+    key: item.bodega_label,
+    label: item.bodega_label || "Sin bodega",
+    value: Number(item.total_cantidad || 0),
+    valueLabel: `${formatDetailedNumber(item.total_cantidad)} ${oilQuantityUnitLabel.value}`,
+    helper: `${item.total_ordenes ?? 0} OT`,
+  })),
+);
+const oilStatusRows = computed<AnyRow[]>(() => {
+  const grouped = new Map<string, AnyRow>();
+  for (const item of oilWorkOrderRows.value) {
+    const key = String(item.work_order_status || "Sin estado");
+    const current = grouped.get(key) ?? {
+      status: key,
+      total_cantidad: 0,
+      total_ordenes: 0,
+      work_order_ids: new Set<string>(),
+    };
+    current.total_cantidad += Number(item.cantidad || 0);
+    current.work_order_ids.add(String(item.work_order_id || ""));
+    current.total_ordenes = current.work_order_ids.size;
+    grouped.set(key, current);
+  }
+  return [...grouped.values()]
+    .map((item) => ({
+      ...item,
+      total_cantidad: Number(item.total_cantidad.toFixed(4)),
+    }))
+    .sort((a, b) => b.total_cantidad - a.total_cantidad);
+});
+const oilStatusChartItems = computed<DashboardChartItem[]>(() =>
+  oilStatusRows.value.map((item: AnyRow) => ({
+    key: item.status,
+    label: item.status || "Sin estado",
+    value: Number(item.total_cantidad || 0),
+    valueLabel: `${formatDetailedNumber(item.total_cantidad)} ${oilQuantityUnitLabel.value}`,
+    helper: `${item.total_ordenes ?? 0} OT`,
+  })),
+);
+const oilTotalMovements = computed(() =>
+  oilWorkOrderRows.value.reduce((acc, item) => acc + Number(item.movimientos || 0), 0),
+);
+const oilAverageCostPerUnit = computed(() => {
+  const quantity = Number(oilKpi.value?.totals?.total_cantidad || 0);
+  const totalCost = Number(oilKpi.value?.totals?.total_costo || 0);
+  return quantity > 0 ? totalCost / quantity : 0;
+});
+const oilPeakWorkOrder = computed<AnyRow | null>(() =>
+  oilWorkOrderRows.value
+    .slice()
+    .sort((a, b) => Number(b.cantidad || 0) - Number(a.cantidad || 0))[0] ?? null,
+);
+const oilLinkedLubricantCandidate = computed<AnyRow | null>(() => {
+  const product = oilSelectedProduct.value;
+  if (!product) return null;
+
+  const productCode = normalizeLooseToken(product.codigo);
+  const productName = normalizeLooseToken(product.nombre);
+  if (!productCode && !productName) return null;
+
+  return (
+    lubricantCatalogOptions.value.find(
+      (item) =>
+        productCode &&
+        normalizeLooseToken(item.lubricante_codigo) === productCode,
+    ) ??
+    lubricantCatalogOptions.value.find(
+      (item) => productName && normalizeLooseToken(item.lubricante) === productName,
+    ) ??
+    lubricantCatalogOptions.value.find((item) => {
+      const label = normalizeLooseToken(item.label);
+      return Boolean(productCode && label.includes(productCode)) || Boolean(productName && label.includes(productName));
+    }) ??
+    null
+  );
+});
 
 const operationalScheduleItems = computed(() =>
   filteredSchedules.value
@@ -1338,20 +1714,47 @@ function openCard(card: IntelligenceCard) {
   router.push({ name: card.routeName });
 }
 
-async function loadLubricantDashboard(params?: Record<string, any>) {
-  lubricantDashboardLoading.value = true;
-  lubricantDashboardError.value = null;
+function openOilDetailDialog() {
+  oilDetailDialog.value = true;
+  const candidate = oilLinkedLubricantCandidate.value;
+  if (candidate) {
+    oilRelatedLubricantSelection.value = candidate;
+    void handleOilLubricantSelection(candidate);
+    return;
+  }
+  if (oilRelatedLubricantSelection.value) {
+    void handleOilLubricantSelection(oilRelatedLubricantSelection.value);
+  }
+}
+
+async function loadLubricantDashboardInto(
+  targetDashboard: typeof lubricantDashboard,
+  targetLoading: typeof lubricantDashboardLoading,
+  targetError: typeof lubricantDashboardError,
+  params?: Record<string, any>,
+) {
+  targetLoading.value = true;
+  targetError.value = null;
   try {
     const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-lubricante/dashboard", {
       params,
     });
-    lubricantDashboard.value = unwrap(data, null);
+    targetDashboard.value = unwrap(data, null);
   } catch (e: any) {
-    lubricantDashboardError.value =
+    targetError.value =
       e?.response?.data?.message || "No se pudo cargar el dashboard de lubricantes.";
   } finally {
-    lubricantDashboardLoading.value = false;
+    targetLoading.value = false;
   }
+}
+
+async function loadLubricantDashboard(params?: Record<string, any>) {
+  await loadLubricantDashboardInto(
+    lubricantDashboard,
+    lubricantDashboardLoading,
+    lubricantDashboardError,
+    params,
+  );
 }
 
 async function handleDashboardSelection(value: AnyRow | null) {
@@ -1372,6 +1775,26 @@ async function handleDashboardSelection(value: AnyRow | null) {
 async function reloadDashboard() {
   if (!dashboardSelection.value) return;
   await handleDashboardSelection(dashboardSelection.value);
+}
+
+async function handleOilLubricantSelection(value: AnyRow | null) {
+  if (!value) {
+    oilRelatedDashboard.value = null;
+    oilRelatedDashboardError.value = null;
+    return;
+  }
+  await loadLubricantDashboardInto(
+    oilRelatedDashboard,
+    oilRelatedDashboardLoading,
+    oilRelatedDashboardError,
+    {
+      lubricante: value.lubricante,
+      marca_lubricante: value.marca_lubricante,
+      periodo: "PERSONALIZADO",
+      from: oilKpi.value?.filters?.from || undefined,
+      to: oilKpi.value?.filters?.to || undefined,
+    },
+  );
 }
 
 const generatedAtLabel = computed(() => {
@@ -1589,6 +2012,30 @@ watch([selectedYear, selectedMonth], () => {
     loadOilKpi();
   }
 });
+
+watch(
+  () => [
+    oilDetailDialog.value,
+    oilKpi.value?.filters?.from,
+    oilKpi.value?.filters?.to,
+    oilKpi.value?.selected_product_id,
+  ],
+  ([open]) => {
+    if (!open) return;
+    const candidate = oilLinkedLubricantCandidate.value;
+    if (candidate) {
+      oilRelatedLubricantSelection.value = candidate;
+      void handleOilLubricantSelection(candidate);
+      return;
+    }
+    if (oilRelatedLubricantSelection.value) {
+      void handleOilLubricantSelection(oilRelatedLubricantSelection.value);
+      return;
+    }
+    oilRelatedDashboard.value = null;
+    oilRelatedDashboardError.value = null;
+  },
+);
 </script>
 
 <style scoped>
@@ -1685,6 +2132,23 @@ watch([selectedYear, selectedMonth], () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.oil-summary-card {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--surface-border);
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.oil-summary-card:hover,
+.oil-summary-card:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(31, 75, 122, 0.35);
+  box-shadow: 0 14px 28px rgba(31, 75, 122, 0.1);
+  outline: none;
 }
 
 .dashboard-table-shell {
@@ -1790,6 +2254,10 @@ watch([selectedYear, selectedMonth], () => {
 .oil-kpi-table-shell {
   max-height: 360px;
   overflow: auto;
+}
+
+.oil-kpi-table-shell--tall {
+  max-height: 520px;
 }
 
 .h-100 {

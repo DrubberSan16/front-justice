@@ -282,6 +282,14 @@
               {{ thirdPartyLookupError }}
             </v-alert>
           </v-col>
+          <v-col v-if="productOilHint" cols="12">
+            <v-alert
+              :type="productOilHintNeedsAttention ? 'warning' : 'info'"
+              variant="tonal"
+            >
+              {{ productOilHint }}
+            </v-alert>
+          </v-col>
         </v-row>
       </v-card-text>
       <v-divider />
@@ -337,6 +345,7 @@ const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPe
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
 const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
 const isThirdPartyModule = computed(() => moduleConfig.value?.key === "terceros");
+const isProductModule = computed(() => moduleConfig.value?.key === "productos");
 const records = ref<any[]>([]);
 const loading = ref(false);
 const initialLoading = ref(false);
@@ -384,6 +393,19 @@ const reservationHeaders = [
   { title: "Estado OT", key: "work_order_status" },
   { title: "Equipo", key: "equipment_label" },
 ];
+const productOilHintNeedsAttention = computed(
+  () => isProductModule.value && dialog.value && productNameLooksLikeOil() && !Boolean(form.es_aceite),
+);
+const productOilHint = computed(() => {
+  if (!isProductModule.value || !dialog.value) return "";
+  if (productOilHintNeedsAttention.value) {
+    return "El nombre del material contiene 'aceite'. Marca el check 'Es aceite' para que este material entre en el KPI de Análisis de Aceite.";
+  }
+  if (Boolean(form.es_aceite)) {
+    return "Este material quedará disponible para el KPI de Análisis de Aceite. Si no eliges unidad manualmente, se sugerirá GALONES por default.";
+  }
+  return "";
+});
 
 function asArray(data: any): any[] {
   if (Array.isArray(data)) return data;
@@ -400,6 +422,35 @@ async function listAll(endpoint: string) {
 
 function normalizeLabel(item: any) {
   return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
+}
+
+function normalizeLooseText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function productNameLooksLikeOil() {
+  return /\baceite\b/.test(normalizeLooseText(form.nombre));
+}
+
+function findGallonsUnitOption() {
+  return (relationOptions.value.unidad_medida_id ?? []).find((option) =>
+    /\bgalones?\b|\bgal\b|\bgl\b/.test(normalizeLooseText(option.title)),
+  );
+}
+
+function syncProductOilDefaults() {
+  if (!isProductModule.value || !dialog.value) return;
+  if (!(Boolean(form.es_aceite) || productNameLooksLikeOil())) return;
+  if (String(form.unidad_medida_id || "").trim()) return;
+
+  const gallonsOption = findGallonsUnitOption();
+  if (gallonsOption) {
+    form.unidad_medida_id = gallonsOption.value;
+  }
 }
 
 function isStockBodegaLabelField(fieldKey: string) {
@@ -694,6 +745,10 @@ const rows = computed(() => {
         if (field.type === "number") {
           out[field.key] = formatNumberForDisplay(r[field.key]);
         }
+
+        if (field.type === "boolean") {
+          out[field.key] = r[field.key] ? "Si" : "No";
+        }
       }
       out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
@@ -951,6 +1006,20 @@ watch(
   () => {
     if (!dialog.value || !isThirdPartyModule.value) return;
     scheduleThirdPartyLookup(false);
+  },
+);
+
+watch(
+  () => [dialog.value, form.nombre, form.es_aceite],
+  () => {
+    syncProductOilDefaults();
+  },
+);
+
+watch(
+  () => relationOptions.value.unidad_medida_id?.length ?? 0,
+  () => {
+    syncProductOilDefaults();
   },
 );
 
