@@ -326,6 +326,7 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { resolveProductDisplayName } from "@/app/utils/product-display";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -422,6 +423,9 @@ async function listAll(endpoint: string) {
 }
 
 function normalizeLabel(item: any) {
+  if (item && Object.prototype.hasOwnProperty.call(item, "es_aceite")) {
+    return resolveProductDisplayName(item);
+  }
   return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 
@@ -755,6 +759,9 @@ const rows = computed(() => {
         if (field.type === "boolean") {
           out[field.key] = r[field.key] ? "Si" : "No";
         }
+      }
+      if (cfg.key === "productos") {
+        out.nombre = resolveProductDisplayName(r, r?.nombre ?? out.nombre);
       }
       out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;

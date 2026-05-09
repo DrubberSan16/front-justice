@@ -250,7 +250,7 @@
                 <td class="material-column">
                   <v-autocomplete
                     v-model="detail.producto_id"
-                    :items="productOptions"
+                    :items="catalogProductOptions"
                     item-title="title"
                     item-value="value"
                     label="Material"
@@ -387,6 +387,7 @@ import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
 import { formatDateForInput, formatDateOnly } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
+import { buildProductDisplayTitle } from "@/app/utils/product-display";
 
 type CatalogOption = { value: string; title: string };
 
@@ -517,6 +518,22 @@ const productOptions = computed<CatalogOption[]>(() =>
     title: `${item.codigo || ""} - ${item.nombre || item.id} · costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
   })),
 );
+
+const displayProductOptions = computed<CatalogOption[]>(() =>
+  products.value.map((item) => ({
+    value: String(item.id),
+    title: `${buildProductDisplayTitle(item)} Â· costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
+  })),
+);
+
+const catalogProductOptions = computed<CatalogOption[]>(() => {
+  void productOptions.value;
+  void displayProductOptions.value;
+  return products.value.map((item) => ({
+    value: String(item.id),
+    title: `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
+  }));
+});
 
 const tableRows = computed(() => {
   return orders.value

@@ -706,7 +706,7 @@
             <tbody>
               <tr v-for="detail in guideContext.transferencia?.detalles || []" :key="detail.id || detail.producto_id">
                 <td>{{ detail.codigo_producto || '-' }}</td>
-                <td>{{ detail.nombre_producto || '-' }}</td>
+                <td>{{ formatTransferProductLabel(detail.producto_id, detail.nombre_producto) }}</td>
                 <td>{{ formatNumber(detail.cantidad) }}</td>
               </tr>
             </tbody>
@@ -845,6 +845,10 @@ import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { isSuperAdministrator } from "@/app/utils/role-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
+import {
+  appendOilIndicator,
+  buildProductDisplayTitle,
+} from "@/app/utils/product-display";
 
 type CatalogOption = { value: string; title: string };
 
@@ -852,6 +856,7 @@ type ProductRow = {
   id: string;
   codigo?: string | null;
   nombre?: string | null;
+  es_aceite?: boolean | null;
   costo_promedio?: string | number | null;
   ultimo_costo?: string | number | null;
 };
@@ -1227,7 +1232,7 @@ const pendingOrderOptions = computed<CatalogOption[]>(() =>
 const productOptions = computed<CatalogOption[]>(() =>
   products.value.map((item) => ({
     value: String(item.id),
-    title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
+    title: buildProductDisplayTitle(item),
   })),
 );
 
@@ -1357,6 +1362,16 @@ function formatCurrency(value: unknown) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(toNumber(value));
+}
+
+function formatTransferProductLabel(productId: unknown, fallbackLabel?: unknown) {
+  const key = String(productId || "").trim();
+  const product = products.value.find((item) => String(item.id || "") === key);
+  if (!product) return String(fallbackLabel || "-");
+  return appendOilIndicator(
+    String(fallbackLabel || product.nombre || product.codigo || product.id || "-"),
+    product.es_aceite,
+  );
 }
 
 function formatDate(value: unknown) {

@@ -91,7 +91,6 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "sucursal_id", label: "Sucursal", type: "select", required: true, relation: { endpoint: "/kpi_inventory/sucursales" } },
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
-      { key: "es_aceite", label: "Es aceite", type: "boolean", required: true },
       { key: "direccion", label: "Dirección", type: "text", required: true },
       { key: "es_principal", label: "Es principal", type: "boolean", required: true },
       {
@@ -145,6 +144,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "categoria_id", label: "Categoría", type: "select", relation: { endpoint: "/kpi_inventory/categorias" } },
       { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
       { key: "unidad_medida_id", label: "Unidad de medida", type: "select", relation: { endpoint: "/kpi_inventory/unidades-medida" } },
+      { key: "es_aceite", label: "Es aceite", type: "boolean", required: true },
       { key: "sku", label: "SKU", type: "text" },
       { key: "codigo_barras", label: "Código barras", type: "text" },
       { key: "es_servicio", label: "Es servicio", type: "boolean", required: true },

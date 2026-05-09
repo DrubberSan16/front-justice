@@ -324,6 +324,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
+import { resolveProductDisplayName } from "@/app/utils/product-display";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -723,6 +724,9 @@ async function listAll(endpoint: string) {
 }
 
 function normalizeLabel(item: any) {
+  if (item && Object.prototype.hasOwnProperty.call(item, "es_aceite")) {
+    return resolveProductDisplayName(item);
+  }
   return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 

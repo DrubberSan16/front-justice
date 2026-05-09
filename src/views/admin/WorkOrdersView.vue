@@ -1026,6 +1026,10 @@ import {
   downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateTime } from "@/app/utils/date-time";
+import {
+  appendOilIndicator,
+  buildProductDisplayTitle,
+} from "@/app/utils/product-display";
 
 const ui = useUiStore();
 const { smAndDown } = useDisplay();
@@ -1688,6 +1692,9 @@ async function listAll(endpoint: string) {
 }
 
 function normalize(item: any) {
+  if (item && Object.prototype.hasOwnProperty.call(item, "es_aceite")) {
+    return { value: item.id, title: buildProductDisplayTitle(item) };
+  }
   const label = item?.nombre ?? item?.title ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
 }
@@ -1740,6 +1747,25 @@ const productNameMap = computed(() => {
   return out;
 });
 
+const productCatalogMap = computed(
+  () =>
+    new Map(
+      productCatalogRows.value.map((item: any) => [String(item?.id || ""), item]),
+    ),
+);
+
+function resolveProductLabel(productId: unknown, fallbackLabel?: unknown) {
+  const key = String(productId || "").trim();
+  const product = key ? productCatalogMap.value.get(key) : null;
+  if (product) {
+    const label = String(fallbackLabel ?? "").trim();
+    return label
+      ? appendOilIndicator(label, product?.es_aceite)
+      : buildProductDisplayTitle(product, { includeCode: false });
+  }
+  return String(fallbackLabel || key || "-");
+}
+
 const warehouseNameMap = computed(() => warehouseCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
   const key = String(item?.id || "");
   if (!key) return acc;
@@ -1771,11 +1797,13 @@ function toPositiveNumber(value: unknown) {
 
 function normalizeStockProductOption(row: any) {
   const productId = String(row?.producto_id || row?.id || "");
-  const productLabel =
+  const productLabel = resolveProductLabel(
+    productId,
     row?.producto_label ||
-    row?.producto_nombre ||
-    productNameMap.value[productId] ||
-    productId;
+      row?.producto_nombre ||
+      productNameMap.value[productId] ||
+      productId,
+  );
   const stock = toPositiveNumber(row?.stock_actual);
   return {
     value: productId,
@@ -1924,7 +1952,10 @@ function getWarehouseReservedProductOptions(warehouseId: string) {
     if (!productKey) continue;
     const current = grouped.get(productKey) ?? {
       value: productKey,
-      title: String(row?.producto_label || row?.producto_nombre || productNameMap.value[productKey] || productKey),
+      title: resolveProductLabel(
+        productKey,
+        row?.producto_label || row?.producto_nombre || productNameMap.value[productKey] || productKey,
+      ),
       pending: 0,
     };
     current.pending += toPositiveNumber(row?.cantidad_pendiente);
@@ -1943,7 +1974,10 @@ function getWarehouseReservedProductOptions(warehouseId: string) {
 
 const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   ...item,
-  producto_label: item?.producto_label || item?.producto_nombre || productNameMap.value[String(item?.producto_id || "")] || item?.producto_id || "-",
+  producto_label: resolveProductLabel(
+    item?.producto_id,
+    item?.producto_label || item?.producto_nombre || productNameMap.value[String(item?.producto_id || "")] || item?.producto_id || "-",
+  ),
   bodega_label: item?.bodega_label || item?.bodega_nombre || warehouseNameMap.value[String(item?.bodega_id || "")] || item?.bodega_id || "-",
   cantidad: toPositiveNumber(item?.cantidad),
   cantidad_reservada: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
@@ -1960,7 +1994,10 @@ const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
     id: `${issue?.id || issue?.entrega_id || 'issue'}-${detail?.id || index}`,
     entrega_code: issue?.code || issue?.codigo || "Sin código",
     fecha_label: issue?.fecha ? formatDateTime(issue.fecha, "-") : "-",
-    producto_label: detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
+    producto_label: resolveProductLabel(
+      detail?.producto_id,
+      detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
+    ),
     bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
     cantidad: toPositiveNumber(detail?.cantidad),
     costo_unitario: toPositiveNumber(detail?.costo_unitario),
@@ -1986,12 +2023,14 @@ const scrapRows = computed(() => localScraps.value.flatMap((scrap: any) => {
       warehouseNameMap.value[String(scrap?.bodega_chatarra_id || "")] ||
       scrap?.bodega_chatarra_id ||
       "-",
-    producto_label:
+    producto_label: resolveProductLabel(
+      detail?.producto_id,
       detail?.producto_label ||
-      detail?.producto_nombre ||
-      productNameMap.value[String(detail?.producto_id || "")] ||
-      detail?.producto_id ||
-      "-",
+        detail?.producto_nombre ||
+        productNameMap.value[String(detail?.producto_id || "")] ||
+        detail?.producto_id ||
+        "-",
+    ),
     cantidad: toPositiveNumber(detail?.cantidad),
     costo_unitario: toPositiveNumber(detail?.costo_unitario),
     subtotal:
@@ -3004,12 +3043,14 @@ function buildListedConsumoRows(order: any, consumos: any[]) {
       warehouseNameMap.value[String(item?.bodega_id || "")] ||
       item?.bodega_id ||
       "-",
-    material:
+    material: resolveProductLabel(
+      item?.producto_id,
       item?.producto_label ||
-      item?.producto_nombre ||
-      productNameMap.value[String(item?.producto_id || "")] ||
-      item?.producto_id ||
-      "-",
+        item?.producto_nombre ||
+        productNameMap.value[String(item?.producto_id || "")] ||
+        item?.producto_id ||
+        "-",
+    ),
     reservado: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
     emitido: toPositiveNumber(item?.cantidad_emitida),
     pendiente: toPositiveNumber(item?.cantidad_pendiente ?? item?.cantidad),
@@ -3038,12 +3079,14 @@ function buildListedIssueRows(order: any, issues: any[]) {
         warehouseNameMap.value[String(detail?.bodega_id || "")] ||
         detail?.bodega_id ||
         "-",
-      material:
+      material: resolveProductLabel(
+        detail?.producto_id,
         detail?.producto_label ||
-        detail?.producto_nombre ||
-        productNameMap.value[String(detail?.producto_id || "")] ||
-        detail?.producto_id ||
-        "-",
+          detail?.producto_nombre ||
+          productNameMap.value[String(detail?.producto_id || "")] ||
+          detail?.producto_id ||
+          "-",
+      ),
       cantidad: toPositiveNumber(detail?.cantidad),
       costo_unitario: toPositiveNumber(detail?.costo_unitario),
       subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
@@ -3073,12 +3116,14 @@ function buildListedScrapRows(order: any, scraps: any[]) {
         warehouseNameMap.value[String(scrap?.bodega_chatarra_id || "")] ||
         scrap?.bodega_chatarra_id ||
         "-",
-      material:
+      material: resolveProductLabel(
+        detail?.producto_id,
         detail?.producto_label ||
-        detail?.producto_nombre ||
-        productNameMap.value[String(detail?.producto_id || "")] ||
-        detail?.producto_id ||
-        "-",
+          detail?.producto_nombre ||
+          productNameMap.value[String(detail?.producto_id || "")] ||
+          detail?.producto_id ||
+          "-",
+      ),
       cantidad: toPositiveNumber(detail?.cantidad),
       costo_unitario: toPositiveNumber(detail?.costo_unitario),
       subtotal:

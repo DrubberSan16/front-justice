@@ -41,6 +41,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
       { key: "linea_id", label: "Linea", type: "select", relation: { endpoint: "/kpi_inventory/lineas" } },
       { key: "categoria_id", label: "Categoria", type: "select", relation: { endpoint: "/kpi_inventory/categorias" } },
       { key: "unidad_medida_id", label: "Unidad de medida", type: "select", relation: { endpoint: "/kpi_inventory/unidades-medida" } },
+      { key: "es_aceite", label: "Es aceite", type: "boolean", required: true },
       { key: "sku", label: "SKU", type: "text" },
       { key: "codigo_barras", label: "Codigo barras", type: "text" },
       { key: "es_servicio", label: "Es servicio", type: "boolean", required: true },
