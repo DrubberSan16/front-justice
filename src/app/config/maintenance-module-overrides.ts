@@ -186,6 +186,22 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
     ]);
   }
 
+  if (["equipos", "componentes-equipo", "tipo-equipo", "locations", "planes"].includes(key)) {
+    return replaceFields(
+      config,
+      cloneFields(config.fields).map((field) =>
+        field.key === "codigo"
+          ? {
+              ...field,
+              label: "Codigo autogenerado",
+              readonly: true,
+              required: false,
+            }
+          : field,
+      ),
+    );
+  }
+
   if (key === "work-order-adjuntos") {
     return replaceFields(config, [
       {

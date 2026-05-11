@@ -247,7 +247,15 @@
             </div>
             <v-row dense>
               <v-col cols="12" md="2">
-                <v-text-field v-model="component.codigo" label="Código" variant="outlined" density="compact" />
+                <v-text-field
+                  v-model="component.codigo"
+                  label="Codigo autogenerado"
+                  variant="outlined"
+                  density="compact"
+                  readonly
+                  hint="Se genera automaticamente al guardar"
+                  persistent-hint
+                />
               </v-col>
               <v-col cols="12" md="3">
                 <v-text-field v-model="component.nombre" label="Nombre corto" variant="outlined" density="compact" />
@@ -568,6 +576,21 @@ function defaultJsonValue(field: EnhancedMaintenanceField) {
 }
 
 function getAutoCodeEndpoint() {
+  if (moduleConfig.value?.key === "equipos") {
+    return "/kpi_maintenance/equipos/next-code";
+  }
+  if (moduleConfig.value?.key === "componentes-equipo") {
+    return "/kpi_maintenance/componentes/next-code";
+  }
+  if (moduleConfig.value?.key === "tipo-equipo") {
+    return "/kpi_maintenance/tipo-equipo/next-code";
+  }
+  if (moduleConfig.value?.key === "locations") {
+    return "/kpi_maintenance/locaciones/next-code";
+  }
+  if (moduleConfig.value?.key === "planes") {
+    return "/kpi_maintenance/planes/next-code";
+  }
   if (moduleConfig.value?.key === "inteligencia-procedimientos") {
     return "/kpi_maintenance/inteligencia/procedimientos/next-code";
   }
@@ -1376,6 +1399,7 @@ function validateForm() {
 
   for (const field of cfg.fields) {
     if (!field.required) continue;
+    if (isAutoCodeField(field)) continue;
     const val = field.type === "json" && !field.editor && !field.hidden ? jsonTextFields[field.key] : form[field.key];
     if (field.type === "boolean") continue;
 
