@@ -299,7 +299,14 @@
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.alerta_id" :items="alertOptions" item-title="title" item-value="value" label="Alerta" clearable variant="outlined" :disabled="isReadOnlyWorkflow || isEditingLockedFields" />
+            <v-text-field
+              :model-value="selectedAlertLabel"
+              label="Alerta relacionada"
+              variant="outlined"
+              readonly
+              hint="La alerta se genera y se vincula automáticamente al guardar la OT."
+              persistent-hint
+            />
           </v-col>
           <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
           <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
@@ -1301,7 +1308,6 @@ const equipmentOptions = ref<any[]>([]);
 const equipmentComponentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
-const alertOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
 const productCatalogRows = ref<any[]>([]);
 const warehouseCatalogRows = ref<any[]>([]);
@@ -2507,11 +2513,10 @@ function getEquipmentLabel(item: any) {
 async function loadCatalogs() {
   loadingCatalogs.value = true;
   try {
-    const [equipos, planes, procedimientos, alertas, bodegas, usuarios] = await Promise.all([
+    const [equipos, planes, procedimientos, bodegas, usuarios] = await Promise.all([
       listAll("/kpi_maintenance/equipos"),
       listAll("/kpi_maintenance/planes"),
       listAll("/kpi_maintenance/inteligencia/procedimientos"),
-      listAll("/kpi_maintenance/alertas"),
       listAll("/kpi_inventory/bodegas"),
       listAll("/kpi_security/users"),
     ]);
@@ -2520,7 +2525,7 @@ async function loadCatalogs() {
     procedureCatalog.value = procedimientos;
     procedureOptions.value = procedimientos.map(normalize);
     workOrderCatalogRows.value = records.value;
-    alertOptions.value = alertas.map((item: any) => ({
+    /* legacy manual alert catalog removed
     value: item.id,
     title: [
       item?.title || item?.tipo_alerta || item?.nombre || item?.codigo || item?.id,
@@ -2531,7 +2536,7 @@ async function loadCatalogs() {
     ]
       .filter(Boolean)
       .join(" · "),
-    }));
+    */
     productCatalogRows.value = [];
     userCatalogRows.value = usuarios;
     warehouseCatalogRows.value = bodegas;
@@ -3352,7 +3357,6 @@ function buildWorkOrderSaveBundlePayload() {
       status_workflow: normalizedWorkflow.value,
       plan_id: headerForm.plan_id || null,
       procedimiento_id: headerForm.procedimiento_id || null,
-      alerta_id: headerForm.alerta_id || null,
       blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
       blocked_reason: headerForm.blocked_reason || null,
       valor_json: {
@@ -3415,6 +3419,7 @@ function applySavedWorkOrderState(savedHeader: any) {
   headerForm.plan_id = savedHeader?.plan_id ?? headerForm.plan_id;
   headerForm.procedimiento_id = savedHeader?.procedimiento_id ?? headerForm.procedimiento_id;
   headerForm.equipo_componente_id = savedHeader?.equipo_componente_id ?? headerForm.equipo_componente_id;
+  headerForm.alerta_id = savedHeader?.alerta_id ?? headerForm.alerta_id;
   headerForm.blocked_by_work_order_id = savedHeader?.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
   headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
   taskForm.plan_id = headerForm.plan_id || "";
@@ -3596,10 +3601,22 @@ const selectedEquipmentComponentLabel = computed(() => {
 });
 
 const selectedAlertLabel = computed(() => {
-  const selected = alertOptions.value.find(
-    (item: any) => String(item?.value || "") === String(headerForm.alerta_id || ""),
-  );
-  return selected?.title || String(headerForm.alerta_id || "");
+  const linkedAlert = currentWorkOrderRecord.value ?? null;
+  const linkedLabel = String(linkedAlert?.alerta_label || "").trim();
+  if (linkedLabel) return linkedLabel;
+
+  const fallbackLabel = [
+    linkedAlert?.alerta_tipo,
+    linkedAlert?.alerta_detalle,
+    linkedAlert?.alerta_estado,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  if (fallbackLabel) return fallbackLabel;
+
+  const alertId = String(linkedAlert?.alerta_id || headerForm.alerta_id || "").trim();
+  return alertId ? `Alerta ${alertId}` : "Se generará automáticamente al guardar la OT.";
 });
 
 const selectedBlockingOrderLabel = computed(() => {
@@ -4069,6 +4086,7 @@ async function loadDetailData() {
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/history`, "No se pudo cargar el historial de la orden de trabajo."),
     ]);
     currentWorkOrderRecord.value = unwrapData(headerRes.data);
+    headerForm.alerta_id = currentWorkOrderRecord.value?.alerta_id ?? "";
     taskRows.value = asArray(tasksRes.data).map((x) => ({
       ...x,
       task_meta:
@@ -4368,7 +4386,6 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     status_workflow: normalizedWorkflow.value,
     plan_id: headerForm.plan_id || null,
     procedimiento_id: headerForm.procedimiento_id || null,
-    alerta_id: headerForm.alerta_id || null,
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
     valor_json: {
