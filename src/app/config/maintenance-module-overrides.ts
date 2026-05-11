@@ -130,7 +130,8 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         label: "Responsabilidades",
         type: "json",
         jsonMode: "array",
-        editor: "string-list",
+        editor: "relation-multi-select",
+        relation: { endpoint: "/kpi_security/users" },
         fullWidth: true,
       },
       {

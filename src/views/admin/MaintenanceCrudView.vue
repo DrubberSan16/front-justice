@@ -727,7 +727,7 @@ function normalizeLabel(item: any) {
   if (item && Object.prototype.hasOwnProperty.call(item, "es_aceite")) {
     return resolveProductDisplayName(item);
   }
-  return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
+  return item?.nameSurname ?? item?.nameUser ?? item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 
 function getRelationFields(mode: "table" | "form" = "table") {

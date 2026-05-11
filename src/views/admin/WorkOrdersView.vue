@@ -338,16 +338,26 @@
                 />
               </v-col>
               <v-col cols="12" md="4" class="d-flex align-center justify-end">
-                <v-btn
-                  color="primary"
-                  variant="tonal"
-                  prepend-icon="mdi-sync"
-                  :disabled="!headerForm.plan_id || isReadOnlyWorkflow"
-                  :loading="loadingTaskOptions"
-                  @click="syncChecklistFromTemplate"
-                >
-                  Sincronizar checklist
-                </v-btn>
+                <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+                  <v-btn
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="mdi-sync"
+                    :disabled="!headerForm.plan_id || isReadOnlyWorkflow"
+                    :loading="loadingTaskOptions"
+                    @click="syncChecklistFromTemplate"
+                  >
+                    Sincronizar checklist
+                  </v-btn>
+                  <v-btn
+                    variant="text"
+                    prepend-icon="mdi-plus"
+                    :disabled="!headerForm.plan_id || isReadOnlyWorkflow"
+                    @click="addCustomTask"
+                  >
+                    Agregar tarea
+                  </v-btn>
+                </div>
               </v-col>
             </v-row>
             <v-data-table
@@ -361,7 +371,21 @@
                 {{ getPlanLabelForTask(item._raw ?? item) }}
               </template>
               <template #item.tarea_id="{ item }">
-                <div class="font-weight-medium">{{ getTaskLabelForTask(item._raw ?? item) }}</div>
+                <div v-if="isAdditionalTask(item._raw ?? item) && !isReadOnlyWorkflow">
+                  <v-text-field
+                    :model-value="(item._raw ?? item).actividad_adicional ?? ''"
+                    label="Tarea adicional"
+                    density="compact"
+                    variant="outlined"
+                    hide-details
+                    @update:model-value="
+                      (item._raw ?? item).actividad_adicional = String($event ?? '');
+                      (item._raw ?? item).actividad = String($event ?? '');
+                      markTaskDirty(item._raw ?? item);
+                    "
+                  />
+                </div>
+                <div v-else class="font-weight-medium">{{ getTaskLabelForTask(item._raw ?? item) }}</div>
                 <div v-if="getTaskRequirementChips(item._raw ?? item).length" class="d-flex flex-wrap mt-1" style="gap: 4px;">
                   <v-chip
                     v-for="chip in getTaskRequirementChips(item._raw ?? item)"
@@ -470,6 +494,41 @@
                   >
                     Campo obligatorio
                   </div>
+                </div>
+              </template>
+              <template #item.responsables="{ item }">
+                <div class="task-responsibles-cell">
+                  <div class="text-body-2">{{ getTaskResponsiblesSummary(item._raw ?? item) }}</div>
+                  <div
+                    v-if="getTaskResponsibles(item._raw ?? item).length"
+                    class="d-flex flex-wrap mt-1"
+                    style="gap: 4px;"
+                  >
+                    <v-chip
+                      v-for="responsable in getTaskResponsibles(item._raw ?? item).slice(0, 2)"
+                      :key="`${(item._raw ?? item).id}-${responsable.user_id}`"
+                      size="x-small"
+                      variant="tonal"
+                    >
+                      {{ responsable.display_name }} · {{ formatTaskHours(responsable.horas) }} h
+                    </v-chip>
+                    <v-chip
+                      v-if="getTaskResponsibles(item._raw ?? item).length > 2"
+                      size="x-small"
+                      variant="tonal"
+                    >
+                      +{{ getTaskResponsibles(item._raw ?? item).length - 2 }}
+                    </v-chip>
+                  </div>
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    prepend-icon="mdi-account-clock"
+                    class="mt-1"
+                    @click="openTaskResponsibles(item._raw ?? item)"
+                  >
+                    {{ isReadOnlyWorkflow ? "Ver detalle" : "Gestionar" }}
+                  </v-btn>
                 </div>
               </template>
               <template #item.observacion="{ item }">
@@ -836,6 +895,117 @@
     </v-card>
   </v-dialog>
 
+  <v-dialog
+    v-model="taskResponsiblesDialog"
+    :fullscreen="isTaskResponsiblesFullscreen"
+    :max-width="isTaskResponsiblesFullscreen ? undefined : 860"
+    scrollable
+  >
+    <v-card rounded="xl">
+      <v-toolbar color="primary" density="comfortable">
+        <v-btn icon="mdi-close" @click="closeTaskResponsiblesDialog" />
+        <v-toolbar-title>
+          Responsables de tarea
+          <span class="text-body-2 ml-2">{{ taskResponsiblesTarget ? getTaskLabelForTask(taskResponsiblesTarget) : "" }}</span>
+        </v-toolbar-title>
+      </v-toolbar>
+      <v-card-text>
+        <div v-if="taskResponsiblesTarget" class="mb-4">
+          <div class="text-body-2 text-medium-emphasis">
+            {{ getTaskResponsiblesSummary(taskResponsiblesTarget) }}
+          </div>
+        </div>
+
+        <v-row v-if="!isReadOnlyWorkflow && taskResponsiblesTarget" dense class="mb-2">
+          <v-col cols="12" md="6">
+            <v-select
+              v-model="taskResponsibleForm.user_id"
+              :items="userOptions"
+              item-title="title"
+              item-value="value"
+              label="Responsable"
+              variant="outlined"
+              density="comfortable"
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field
+              v-model="taskResponsibleForm.horas"
+              label="Horas"
+              type="number"
+              min="0"
+              step="0.25"
+              variant="outlined"
+              density="comfortable"
+            />
+          </v-col>
+          <v-col cols="12" md="3" class="d-flex align-center">
+            <div class="d-flex flex-wrap" style="gap: 8px;">
+              <v-btn color="primary" variant="tonal" @click="submitTaskResponsible('add')">
+                Agregar horas
+              </v-btn>
+              <v-btn variant="text" @click="submitTaskResponsible('set')">
+                {{ taskResponsibleEditUserId ? "Actualizar total" : "Fijar total" }}
+              </v-btn>
+            </div>
+          </v-col>
+        </v-row>
+
+        <v-alert
+          v-if="!isReadOnlyWorkflow"
+          type="info"
+          variant="tonal"
+          class="mb-3"
+        >
+          Si un usuario ya tiene horas registradas, al usar "Agregar horas" se acumulan automáticamente.
+        </v-alert>
+
+        <v-data-table
+          :headers="[
+            { title: 'Responsable', key: 'display_name' },
+            { title: 'Horas', key: 'horas' },
+            { title: 'Acciones', key: 'actions', sortable: false },
+          ]"
+          :items="activeTaskResponsibles"
+          class="table-enterprise enterprise-table"
+          density="comfortable"
+          :items-per-page="5"
+        >
+          <template #bottom />
+          <template #item.horas="{ item }">
+            {{ formatTaskHours((item.raw ?? item).horas) }} h
+          </template>
+          <template #item.actions="{ item }">
+            <div class="d-flex" style="gap: 4px;">
+              <v-btn
+                v-if="!isReadOnlyWorkflow"
+                icon="mdi-pencil"
+                variant="text"
+                @click="editTaskResponsible(item.raw ?? item)"
+              />
+              <v-btn
+                v-if="!isReadOnlyWorkflow"
+                icon="mdi-delete"
+                variant="text"
+                color="error"
+                @click="removeTaskResponsible(item.raw ?? item)"
+              />
+            </div>
+          </template>
+          <template #no-data>
+            <div class="pa-4 text-medium-emphasis">
+              No hay responsables asignados en esta tarea.
+            </div>
+          </template>
+        </v-data-table>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="closeTaskResponsiblesDialog">Cerrar</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
@@ -1056,8 +1226,10 @@ const tableItemsPerPage = ref(20);
 const dialog = ref(false);
 const deleteDialog = ref(false);
 const reportPreviewDialog = ref(false);
+const taskResponsiblesDialog = ref(false);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const isReportPreviewFullscreen = computed(() => smAndDown.value);
+const isTaskResponsiblesFullscreen = computed(() => smAndDown.value);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
@@ -1088,10 +1260,17 @@ const loadingEquipmentComponents = ref(false);
 const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
 const planTaskCatalogByPlan = ref<Record<string, any[]>>({});
 const procedureCatalog = ref<any[]>([]);
+const userCatalogRows = ref<any[]>([]);
 const taskEvidenceInputKeys = ref<Record<string, number>>({});
 let catalogsPromise: Promise<void> | null = null;
 let consumoSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let consumoProductsRequestId = 0;
+const taskResponsiblesTargetId = ref("");
+const taskResponsibleForm = reactive({
+  user_id: "",
+  horas: "",
+});
+const taskResponsibleEditUserId = ref("");
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -1216,6 +1395,7 @@ function normalizeWorkflowStatus(value: unknown) {
   if (["PLANNED", "PLANIFICADA", "PLANIFICADO", "CREADA", "CREADO"].includes(raw)) return "PLANNED";
   if (["IN_PROGRESS", "IN PROGRESS", "EN PROCESO", "EN_PROCESO", "PROCESSING"].includes(raw)) return "IN_PROGRESS";
   if (["BLOCKED", "BLOQUEADA", "BLOQUEADO", "DETENIDA", "DETENIDO", "ON_HOLD"].includes(raw)) return "BLOCKED";
+  if (["CANCELLED", "CANCELED", "ANULADA", "ANULADO", "VOID", "VOIDED"].includes(raw)) return "CLOSED";
   if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
   return raw || "PLANNED";
 }
@@ -1304,7 +1484,7 @@ const canCloseOrVoidCurrent = computed(() =>
 const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
 const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
-const showScrapTab = computed(() => !!editingId.value && isInProcess.value);
+const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
@@ -1366,9 +1546,93 @@ const taskHeaders = [
   { title: "Plan", key: "plan_id" },
   { title: "Tarea", key: "tarea_id" },
   { title: "Captura", key: "captura", sortable: false },
+  { title: "Responsables", key: "responsables", sortable: false },
   { title: "Obs.", key: "observacion" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
+
+function formatTaskHours(value: unknown) {
+  const hours = Number(value ?? 0);
+  if (!Number.isFinite(hours) || hours <= 0) return "0";
+  if (Number.isInteger(hours)) return String(hours);
+  return hours.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function isAdditionalTask(task: any) {
+  return Boolean(task?.es_adicional);
+}
+
+function normalizeTaskResponsibles(values: any) {
+  const rawItems = Array.isArray(values) ? values : [];
+  const grouped = new Map<string, any>();
+
+  for (const item of rawItems) {
+    const userId = String(item?.user_id || item?.id || "").trim();
+    if (!userId) continue;
+    const catalogUser = userCatalogMap.value.get(userId);
+    const previous = grouped.get(userId);
+    const nextHoursRaw = Number(item?.horas ?? 0);
+    const nextHours =
+      Number.isFinite(nextHoursRaw) && nextHoursRaw >= 0 ? nextHoursRaw : 0;
+    grouped.set(userId, {
+      user_id: userId,
+      username:
+        String(item?.username || catalogUser?.nameUser || previous?.username || "").trim() || null,
+      display_name:
+        String(
+          item?.display_name ||
+            buildUserDisplayName(catalogUser || item) ||
+            previous?.display_name ||
+            userId,
+        ).trim() || userId,
+      horas: Number((((previous?.horas ?? 0) as number) + nextHours).toFixed(4)),
+    });
+  }
+
+  return [...grouped.values()].sort((a, b) =>
+    String(a?.display_name || "").localeCompare(String(b?.display_name || "")),
+  );
+}
+
+function getTaskResponsibles(task: any) {
+  return normalizeTaskResponsibles(task?.responsables);
+}
+
+function getTaskResponsiblesSummary(task: any) {
+  const responsables = getTaskResponsibles(task);
+  if (!responsables.length) return "Sin responsables";
+  const totalHours = responsables.reduce(
+    (acc: number, item: any) => acc + Number(item?.horas || 0),
+    0,
+  );
+  const responsibleLabel =
+    responsables.length === 1 ? "1 responsable" : `${responsables.length} responsables`;
+  return `${responsibleLabel} · ${formatTaskHours(totalHours)} h`;
+}
+
+function getTaskDefaultResponsibles() {
+  const selectedIds = Array.isArray(selectedProcedure.value?.responsabilidades)
+    ? selectedProcedure.value.responsabilidades
+    : [];
+  return normalizeTaskResponsibles(
+    selectedIds.map((userId: string) => ({
+      user_id: userId,
+      horas: 0,
+    })),
+  );
+}
+
+const taskResponsiblesTarget = computed(
+  () =>
+    taskRows.value.find(
+      (row: any) =>
+        String(row?.id || row?.tarea_id || "") === taskResponsiblesTargetId.value,
+    ) ?? null,
+);
+
+const activeTaskResponsibles = computed(() =>
+  taskResponsiblesTarget.value ? getTaskResponsibles(taskResponsiblesTarget.value) : [],
+);
 
 function parseValorJson(valorJson: unknown) {
   if (!valorJson) return {};
@@ -1484,6 +1748,7 @@ const reportPreviewTaskHeaders = [
   { title: "Tarea", key: "tarea" },
   { title: "Tipo captura", key: "tipo_captura" },
   { title: "Valor registrado", key: "valor_registrado" },
+  { title: "Responsables", key: "responsables" },
   { title: "Observación", key: "observacion" },
   { title: "Requisitos", key: "requisitos" },
 ];
@@ -1549,6 +1814,7 @@ const reportPreviewTasks = computed(() =>
     tarea: getTaskLabelForTask(item),
     tipo_captura: getFriendlyTaskCaptureType(item),
     valor_registrado: getTaskReportValue(item),
+    responsables: getTaskResponsiblesSummary(item),
     captura: [
       item?.valor_boolean != null ? (item.valor_boolean ? "Sí" : "No") : "",
       item?.valor_numeric ?? "",
@@ -1608,6 +1874,7 @@ const workOrderReportDefinition = computed(() =>
       tarea: getTaskLabelForTask(item),
       tipo_captura: getFriendlyTaskCaptureType(item),
       valor_registrado: getTaskReportValue(item),
+      responsables: getTaskResponsiblesSummary(item),
       observacion: item?.observacion ?? "",
       requisitos: getTaskRequirementChips(item).join(" | "),
     })),
@@ -1695,7 +1962,14 @@ function normalize(item: any) {
   if (item && Object.prototype.hasOwnProperty.call(item, "es_aceite")) {
     return { value: item.id, title: buildProductDisplayTitle(item) };
   }
-  const label = item?.nombre ?? item?.title ?? item?.tipo_alerta ?? item?.codigo ?? item?.id;
+  const label =
+    item?.nameSurname ??
+    item?.nameUser ??
+    item?.nombre ??
+    item?.title ??
+    item?.tipo_alerta ??
+    item?.codigo ??
+    item?.id;
   return { value: item.id, title: `${item?.codigo ? `${item.codigo} - ` : ""}${label}` };
 }
 
@@ -1710,6 +1984,26 @@ function normalizeEquipmentComponent(item: any) {
       .join(" - "),
   };
 }
+
+function buildUserDisplayName(user: any) {
+  return String(user?.nameSurname || user?.nameUser || user?.id || "Usuario").trim();
+}
+
+const userCatalogMap = computed(
+  () =>
+    new Map(
+      userCatalogRows.value.map((item: any) => [String(item?.id || ""), item]),
+    ),
+);
+
+const userOptions = computed(() =>
+  userCatalogRows.value
+    .filter((item: any) => !item?.isDeleted && String(item?.status || "ACTIVE").toUpperCase() === "ACTIVE")
+    .map((item: any) => ({
+      value: String(item?.id || ""),
+      title: buildUserDisplayName(item),
+    })),
+);
 
 const productNameMap = computed(() => {
   const out: Record<string, string> = {};
@@ -2112,12 +2406,13 @@ function getEquipmentLabel(item: any) {
 async function loadCatalogs() {
   loadingCatalogs.value = true;
   try {
-    const [equipos, planes, procedimientos, alertas, bodegas] = await Promise.all([
-    listAll("/kpi_maintenance/equipos"),
-    listAll("/kpi_maintenance/planes"),
-    listAll("/kpi_maintenance/inteligencia/procedimientos"),
-    listAll("/kpi_maintenance/alertas"),
+    const [equipos, planes, procedimientos, alertas, bodegas, usuarios] = await Promise.all([
+      listAll("/kpi_maintenance/equipos"),
+      listAll("/kpi_maintenance/planes"),
+      listAll("/kpi_maintenance/inteligencia/procedimientos"),
+      listAll("/kpi_maintenance/alertas"),
       listAll("/kpi_inventory/bodegas"),
+      listAll("/kpi_security/users"),
     ]);
     equipmentOptions.value = equipos.map(normalize);
     planOptions.value = planes.map(normalize);
@@ -2137,6 +2432,7 @@ async function loadCatalogs() {
       .join(" · "),
     }));
     productCatalogRows.value = [];
+    userCatalogRows.value = usuarios;
     warehouseCatalogRows.value = bodegas;
     warehouseOptions.value = bodegas
       .filter((item: any) => !item?.es_chatarra)
@@ -2236,7 +2532,9 @@ function getPlanLabelForTask(task: any) {
 
 function getTaskLabelForTask(task: any) {
   return (
-    task?.tarea_label
+    task?.actividad
+    || task?.actividad_adicional
+    || task?.tarea_label
     || task?.tarea_nombre
     || task?.tarea?.nombre
     || task?.task_name
@@ -2257,13 +2555,18 @@ function getTaskDetailText(task: any) {
   const meta = definition?.meta ?? task?.task_meta ?? {};
   const detail = String(meta?.detalle || "").trim();
   const fase = String(meta?.fase || "").trim();
-  return [fase, detail].filter(Boolean).join(" - ");
+  const parts = [fase, detail].filter(Boolean);
+  if (!parts.length && isAdditionalTask(task)) {
+    return "Tarea adicional registrada manualmente.";
+  }
+  return parts.join(" - ");
 }
 
 function getTaskRequirementChips(task: any) {
   const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
   const meta = definition?.meta ?? task?.task_meta ?? {};
   const chips: string[] = [];
+  if (isAdditionalTask(task)) chips.push("Adicional");
   if (definition?.required || meta?.required) chips.push("Obligatoria");
   if (meta?.requiere_permiso) chips.push("Permiso");
   if (meta?.requiere_epp) chips.push("EPP");
@@ -2518,6 +2821,7 @@ function buildWorkOrderAttachmentReportRow(attachment: any, compact = false) {
 function isTaskRequired(task: any) {
   const definition = getTaskDefinition(task?.plan_id, task?.tarea_id);
   if (typeof definition?.required === "boolean") return definition.required;
+  if (typeof task?.required === "boolean") return task.required;
   if (typeof definition?.meta?.required === "boolean") return definition.meta.required;
   if (typeof task?.task_meta?.required === "boolean") return task.task_meta.required;
   return false;
@@ -2525,6 +2829,94 @@ function isTaskRequired(task: any) {
 
 function markTaskDirty(task: any) {
   task._dirty = true;
+}
+
+function resetTaskResponsibleForm() {
+  taskResponsibleForm.user_id = "";
+  taskResponsibleForm.horas = "";
+  taskResponsibleEditUserId.value = "";
+}
+
+function openTaskResponsibles(task: any) {
+  task.responsables = getTaskResponsibles(task);
+  taskResponsiblesTargetId.value = String(task?.id || task?.tarea_id || "");
+  resetTaskResponsibleForm();
+  taskResponsiblesDialog.value = true;
+}
+
+function closeTaskResponsiblesDialog() {
+  taskResponsiblesDialog.value = false;
+  taskResponsiblesTargetId.value = "";
+  resetTaskResponsibleForm();
+}
+
+function upsertTaskResponsible(task: any, userId: string, hours: number, mode: "add" | "set") {
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) return;
+  const catalogUser = userCatalogMap.value.get(normalizedUserId);
+  const current = getTaskResponsibles(task);
+  const existing = current.find((item: any) => String(item?.user_id || "") === normalizedUserId);
+  const nextHours = mode === "set"
+    ? hours
+    : Number((Number(existing?.horas || 0) + hours).toFixed(4));
+
+  task.responsables = normalizeTaskResponsibles([
+    ...current.filter((item: any) => String(item?.user_id || "") !== normalizedUserId),
+    {
+      user_id: normalizedUserId,
+      username: catalogUser?.nameUser || existing?.username || null,
+      display_name:
+        existing?.display_name ||
+        buildUserDisplayName(catalogUser || { id: normalizedUserId }),
+      horas: nextHours,
+    },
+  ]);
+  markTaskDirty(task);
+}
+
+function submitTaskResponsible(mode: "add" | "set") {
+  const task = taskResponsiblesTarget.value;
+  if (!task) return;
+  if (isReadOnlyWorkflow.value) {
+    ui.error("La OT está cerrada y no permite edición.");
+    return;
+  }
+  const userId = String(taskResponsibleForm.user_id || "").trim();
+  const hours = Number(taskResponsibleForm.horas || 0);
+  if (!userId) {
+    ui.error("Selecciona un responsable.");
+    return;
+  }
+  if (!Number.isFinite(hours) || hours <= 0) {
+    ui.error("Las horas deben ser mayores a 0.");
+    return;
+  }
+  upsertTaskResponsible(task, userId, hours, mode);
+  resetTaskResponsibleForm();
+  ui.success(mode === "set" ? "Horas actualizadas." : "Horas agregadas.");
+}
+
+function editTaskResponsible(item: any) {
+  taskResponsibleEditUserId.value = String(item?.user_id || "");
+  taskResponsibleForm.user_id = String(item?.user_id || "");
+  taskResponsibleForm.horas = formatTaskHours(item?.horas);
+}
+
+function removeTaskResponsible(item: any) {
+  const task = taskResponsiblesTarget.value;
+  if (!task) return;
+  if (isReadOnlyWorkflow.value) {
+    ui.error("La OT está cerrada y no permite edición.");
+    return;
+  }
+  const userId = String(item?.user_id || "").trim();
+  task.responsables = getTaskResponsibles(task).filter(
+    (entry: any) => String(entry?.user_id || "") !== userId,
+  );
+  markTaskDirty(task);
+  if (taskResponsibleEditUserId.value === userId) {
+    resetTaskResponsibleForm();
+  }
 }
 
 function getTaskJsonText(task: any) {
@@ -2743,6 +3135,11 @@ function validateTaskValue(task: any) {
 
 function buildTaskPersistencePayload(task: any) {
   const fieldType = getTaskFieldType(task);
+  const isAdditional = isAdditionalTask(task);
+  const taskLabel = getTaskLabelForTask(task);
+  const activityName = String(task?.actividad_adicional ?? task?.actividad ?? "").trim();
+  const required = Boolean(task?.required ?? task?.task_meta?.required ?? false);
+  const responsibles = getTaskResponsibles(task);
   let valor_boolean: boolean | null = null;
   let valor_numeric: number | null = null;
   let valor_text: string | null = null;
@@ -2784,16 +3181,37 @@ function buildTaskPersistencePayload(task: any) {
   }
 
   if (isTaskRequired(task) && !validateTaskValue(task)) {
-    throw new Error(`Completa la captura obligatoria de la tarea ${getTaskLabelForTask(task)}.`);
+    throw new Error(`Completa la captura obligatoria de la tarea ${taskLabel}.`);
+  }
+
+  if (isAdditional && !activityName) {
+    throw new Error("Toda tarea adicional debe incluir un nombre.");
   }
 
   return {
     plan_id: task.plan_id,
-    tarea_id: task.tarea_id,
+    ...(isAdditional
+      ? {
+          es_adicional: true,
+          actividad_adicional: activityName,
+          field_type: fieldType,
+          required,
+          task_meta: {
+            ...(task?.task_meta || {}),
+            field_type: fieldType,
+            required,
+            es_adicional: true,
+            actividad: activityName,
+          },
+        }
+      : {
+          tarea_id: task.tarea_id,
+        }),
     valor_boolean,
     valor_numeric,
     valor_text,
     valor_json,
+    responsables: responsibles,
     observacion: String(task.observacion ?? "").trim() || null,
   };
 }
@@ -2808,6 +3226,57 @@ function validateTaskRowsForSave() {
     }
   }
   return true;
+}
+
+function resolveNextLocalTaskOrder() {
+  return (
+    taskRows.value.reduce((maxOrder: number, row: any) => {
+      const current = Number(row?.orden ?? row?.orden_visual ?? 0);
+      return Number.isFinite(current) && current > maxOrder ? current : maxOrder;
+    }, 0) + 1
+  );
+}
+
+function addCustomTask() {
+  if (isReadOnlyWorkflow.value) {
+    ui.error("La OT está cerrada y no permite edición.");
+    return;
+  }
+  const planId = String(headerForm.plan_id || taskForm.plan_id || selectedProcedure.value?.plan_id || "").trim();
+  if (!planId) {
+    ui.error("Debes seleccionar primero una plantilla MPG o plan operativo para agregar tareas.");
+    return;
+  }
+
+  const nextOrder = resolveNextLocalTaskOrder();
+  taskRows.value.push({
+    id: `draft-task-custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    plan_id: planId,
+    tarea_id: "",
+    es_adicional: true,
+    actividad: "",
+    actividad_adicional: "",
+    field_type: "BOOLEAN",
+    required: false,
+    task_meta: {
+      field_type: "BOOLEAN",
+      required: false,
+      es_adicional: true,
+    },
+    orden: nextOrder,
+    orden_visual: nextOrder,
+    observacion: null,
+    valor_boolean: false,
+    valor_numeric: null,
+    valor_text: "",
+    valor_json: null,
+    responsables: getTaskDefaultResponsibles(),
+    _json_text: "",
+    _dirty: true,
+    _isDraft: true,
+    _raw: null,
+  });
+  ui.success("Tarea adicional agregada.");
 }
 
 async function syncChecklistFromTemplate(showToast = true) {
@@ -2849,6 +3318,7 @@ async function syncChecklistFromTemplate(showToast = true) {
               adjuntos: [],
             }
           : null,
+      responsables: getTaskDefaultResponsibles(),
       _json_text:
         normalizeTaskFieldType(definition.field_type) === "JSON"
           ? JSON.stringify(
@@ -3172,6 +3642,7 @@ async function fetchWorkOrderExportBundle(order: any) {
       tarea: getTaskLabelForTask(item),
       tipo_captura: getFriendlyTaskCaptureType(item),
       valor_registrado: getTaskReportValue(item),
+      responsables: getTaskResponsiblesSummary(item),
       observacion: item?.observacion ?? "",
       requisitos: getTaskRequirementChips(item).join(" | "),
     })),
@@ -3378,6 +3849,11 @@ async function loadDetailData() {
     currentWorkOrderRecord.value = unwrapData(headerRes.data);
     taskRows.value = asArray(tasksRes.data).map((x) => ({
       ...x,
+      task_meta:
+        x?.task_meta && typeof x.task_meta === "object" && !Array.isArray(x.task_meta)
+          ? x.task_meta
+          : {},
+      responsables: getTaskResponsibles(x),
       _json_text:
         x?.valor_json && typeof x.valor_json === "object"
           ? JSON.stringify(x.valor_json, null, 2)
@@ -3478,6 +3954,7 @@ function resetAllForms() {
   localHistory.value = [];
   taskOptions.value = [];
   unsupportedDetailMessages.value = [];
+  closeTaskResponsiblesDialog();
   tab.value = "tareas";
 }
 
@@ -3820,7 +4297,7 @@ async function persistDraftTasks(refreshAfterSave = true) {
       const errorMessage =
         e instanceof Error
           ? e.message
-          : e?.response?.data?.message || `No se pudo guardar la tarea ${draft.tarea_id}.`;
+          : e?.response?.data?.message || `No se pudo guardar la tarea ${getTaskLabelForTask(draft)}.`;
       ui.error(errorMessage);
     }
   }
@@ -4420,6 +4897,10 @@ watch(
   min-width: 220px;
 }
 
+.task-responsibles-cell {
+  min-width: 220px;
+}
+
 .task-evidence-stack {
   display: grid;
   gap: 10px;
@@ -4438,6 +4919,10 @@ watch(
   }
 
   .capture-cell {
+    min-width: 180px;
+  }
+
+  .task-responsibles-cell {
     min-width: 180px;
   }
 }
@@ -4460,6 +4945,10 @@ watch(
   }
 
   .capture-cell {
+    min-width: 150px;
+  }
+
+  .task-responsibles-cell {
     min-width: 150px;
   }
 }
