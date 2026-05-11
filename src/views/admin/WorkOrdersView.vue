@@ -636,7 +636,6 @@
                 </div>
               </v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
-              <v-col v-if="canViewCosts" cols="12" md="2"><v-text-field v-model="consumoForm.costo_unitario" label="Costo unitario" type="number" variant="outlined" readonly /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div v-if="!isReadOnlyWorkflow" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
@@ -659,77 +658,42 @@
           </v-window-item>
 
           <v-window-item value="materiales">
-            <template v-if="!isReadOnlyWorkflow">
-              <v-row dense class="pt-2">
-                <v-col cols="12">
-                  <div class="d-flex align-center justify-space-between mb-2" style="gap:8px; flex-wrap:wrap;">
-                    <div class="text-subtitle-2">Materiales usados</div>
-                    <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addMaterialItem">
-                      Agregar material
-                    </v-btn>
-                  </div>
-
-                  <v-row
-                    v-for="(item, index) in materialItems"
-                    :key="`material-${index}`"
-                    dense
-                    class="mb-1"
-                  >
-                    <v-col cols="12" md="5">
-                      <v-select
-                        v-model="item.bodega_id"
-                        :items="warehouseOptions"
-                        item-title="title"
-                        item-value="value"
-                        label="Bodega"
-                        variant="outlined"
-                      />
-                    </v-col>
-                    <v-col cols="12" md="5">
-                      <v-select
-                        v-model="item.producto_id"
-                        :items="getWarehouseReservedProductOptions(item.bodega_id)"
-                        item-title="title"
-                        item-value="value"
-                        label="Material"
-                        :disabled="!item.bodega_id"
-                        variant="outlined"
-                      />
-                    </v-col>
-                    <v-col cols="10" md="1">
-                      <v-text-field
-                        v-model="item.cantidad"
-                        label="Cant."
-                        type="number"
-                        min="0"
-                        step="any"
-                        variant="outlined"
-                      />
-                    </v-col>
-                    <v-col cols="2" md="1" class="d-flex align-center justify-end">
-                      <v-btn
-                        icon="mdi-delete"
-                        variant="text"
-                        color="error"
-                        :disabled="materialItems.length === 1"
-                        @click="removeMaterialItem(index)"
-                      />
-                    </v-col>
-                  </v-row>
-                </v-col>
-                <v-col cols="12"><v-text-field v-model="materialsForm.observacion" label="Observación" variant="outlined" /></v-col>
-              </v-row>
-              <div class="d-flex justify-end mb-3">
+            <div class="text-body-2 text-medium-emphasis pt-2 mb-3">
+              Se listan los materiales reservados en consumos. La salida real solo se puede registrar cuando la OT está en proceso y nunca puede exceder lo reservado pendiente.
+            </div>
+            <v-data-table
+              :headers="materialReservationHeaders"
+              :items="materialReservationRows"
+              :loading="loadingDetails"
+              loading-text="Obteniendo consumos reservados..."
+              density="comfortable"
+              class="table-enterprise enterprise-table mb-4"
+              :items-per-page="5"
+            >
+              <template #bottom />
+              <template #item.actions="{ item }">
                 <v-btn
                   color="primary"
-                  :loading="issuingMaterials"
-                  :disabled="issuingMaterials"
-                  @click="issueMaterials"
+                  size="small"
+                  variant="tonal"
+                  prepend-icon="mdi-package-variant-closed"
+                  :disabled="
+                    !canRegisterRealIssue ||
+                    toPositiveNumber((item.raw ?? item).cantidad_pendiente) <= 0 ||
+                    issuingMaterials
+                  "
+                  @click="openMaterialIssueDialog(item.raw ?? item)"
                 >
-                  Guardar salida de materiales
+                  Registrar salida real
                 </v-btn>
-              </div>
-            </template>
+              </template>
+              <template #no-data>
+                <div class="pa-4 text-medium-emphasis">
+                  No hay consumos reservados para esta orden de trabajo.
+                </div>
+              </template>
+            </v-data-table>
+            <div class="text-subtitle-2 mb-2">Salidas reales registradas</div>
             <v-data-table
               :headers="issueHeaders"
               :items="issueRows"
@@ -1006,6 +970,100 @@
     </v-card>
   </v-dialog>
 
+  <v-dialog
+    v-model="materialIssueDialog"
+    :fullscreen="isMaterialIssueDialogFullscreen"
+    :max-width="isMaterialIssueDialogFullscreen ? undefined : 640"
+    scrollable
+  >
+    <v-card rounded="xl">
+      <v-toolbar color="primary" density="comfortable">
+        <v-btn icon="mdi-close" @click="closeMaterialIssueDialog" />
+        <v-toolbar-title>Registrar salida real</v-toolbar-title>
+      </v-toolbar>
+      <v-card-text>
+        <template v-if="materialIssueTarget">
+          <v-row dense class="mb-2">
+            <v-col cols="12" md="6">
+              <v-text-field
+                :model-value="materialIssueTarget.bodega_label || '-'"
+                label="Bodega"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                :model-value="materialIssueTarget.producto_label || '-'"
+                label="Material"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field
+                :model-value="formatTaskHours(materialIssueTarget.cantidad_reservada)"
+                label="Reservado"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field
+                :model-value="formatTaskHours(materialIssueTarget.cantidad_emitida)"
+                label="Emitido"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col cols="12" md="4">
+              <v-text-field
+                :model-value="formatTaskHours(materialIssueTarget.cantidad_pendiente)"
+                label="Pendiente"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+          </v-row>
+          <v-row dense>
+            <v-col cols="12" md="4">
+              <v-text-field
+                v-model="materialIssueForm.cantidad"
+                label="Cantidad de salida"
+                type="number"
+                min="0"
+                step="any"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12" md="8">
+              <v-text-field
+                v-model="materialIssueForm.observacion"
+                label="Observación"
+                variant="outlined"
+              />
+            </v-col>
+          </v-row>
+          <v-alert type="info" variant="tonal" class="mt-2">
+            Si este material ya tuvo una salida registrada, puedes volver a registrar otra cantidad siempre que aún exista reserva pendiente.
+          </v-alert>
+        </template>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="closeMaterialIssueDialog">Cancelar</v-btn>
+        <v-btn
+          color="primary"
+          :loading="issuingMaterials"
+          :disabled="issuingMaterials || !canRegisterRealIssue"
+          @click="submitMaterialIssue"
+        >
+          Registrar
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
@@ -1227,9 +1285,11 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const reportPreviewDialog = ref(false);
 const taskResponsiblesDialog = ref(false);
+const materialIssueDialog = ref(false);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const isReportPreviewFullscreen = computed(() => smAndDown.value);
 const isTaskResponsiblesFullscreen = computed(() => smAndDown.value);
+const isMaterialIssueDialogFullscreen = computed(() => smAndDown.value);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
 const tab = ref("tareas");
@@ -1271,6 +1331,11 @@ const taskResponsibleForm = reactive({
   horas: "",
 });
 const taskResponsibleEditUserId = ref("");
+const materialIssueTarget = ref<any | null>(null);
+const materialIssueForm = reactive({
+  cantidad: "",
+  observacion: "",
+});
 
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -1318,33 +1383,15 @@ const consumoForm = reactive<any>({
   costo_unitario: "",
   observacion: "",
 });
-
-const materialsForm = reactive<any>({ observacion: "" });
 const scrapForm = reactive<any>({
   bodega_origen_id: "",
   observacion: "",
 });
 
-type MaterialItemForm = {
-  producto_id: string;
-  bodega_id: string;
-  cantidad: string;
-};
-
 type ScrapItemForm = {
   producto_id: string;
   cantidad: string;
 };
-
-function newMaterialItem(): MaterialItemForm {
-  return {
-    producto_id: "",
-    bodega_id: "",
-    cantidad: "",
-  };
-}
-
-const materialItems = ref<MaterialItemForm[]>([newMaterialItem()]);
 
 function newScrapItem(): ScrapItemForm {
   return {
@@ -1482,9 +1529,12 @@ const canCloseOrVoidCurrent = computed(() =>
   editingId.value ? canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) : true,
 );
 const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
-const showConsumosTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
+const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
+const canRegisterRealIssue = computed(
+  () => !!editingId.value && isInProcess.value && !isReadOnlyWorkflow.value,
+);
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
@@ -1692,6 +1742,21 @@ const issueHeaders = computed(() => {
     );
   }
   base.push({ title: "Observación", key: "observacion" } as any);
+  return base;
+});
+
+const materialReservationHeaders = computed(() => {
+  const base = [
+    { title: "Bodega", key: "bodega_label" },
+    { title: "Material", key: "producto_label" },
+    { title: "Reservado", key: "cantidad_reservada" },
+    { title: "Emitido", key: "cantidad_emitida" },
+    { title: "Pendiente", key: "cantidad_pendiente" },
+    { title: "Observación", key: "observacion" },
+  ];
+  if (canRegisterRealIssue.value) {
+    base.push({ title: "Acciones", key: "actions", sortable: false } as any);
+  }
   return base;
 });
 
@@ -2114,12 +2179,17 @@ function normalizeStockProductOption(row: any) {
       productNameMap.value[productId] ||
       productId,
   );
-  const stock = toPositiveNumber(row?.stock_actual);
+  const stock = toPositiveNumber(row?.stock_disponible ?? row?.stock_actual);
+  const activeReserved = toPositiveNumber(row?.cantidad_reservada_activa);
   return {
     value: productId,
-    title: `${productLabel} - Stock: ${stock}`,
+    title:
+      `${productLabel} - Disponible: ${stock}` +
+      (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
     label: String(productLabel || productId),
-    stock_actual: stock,
+    stock_actual: toPositiveNumber(row?.stock_actual),
+    stock_disponible: stock,
+    cantidad_reservada_activa: activeReserved,
   };
 }
 
@@ -2253,35 +2323,6 @@ async function loadMoreScrapProducts() {
   await loadScrapProducts();
 }
 
-function getWarehouseReservedProductOptions(warehouseId: string) {
-  const warehouseKey = String(warehouseId || "");
-  const grouped = new Map<string, { value: string; title: string; pending: number }>();
-  for (const row of consumoRows.value) {
-    if (String(row?.bodega_id || "") !== warehouseKey) continue;
-    const productKey = String(row?.producto_id || "");
-    if (!productKey) continue;
-    const current = grouped.get(productKey) ?? {
-      value: productKey,
-      title: resolveProductLabel(
-        productKey,
-        row?.producto_label || row?.producto_nombre || productNameMap.value[productKey] || productKey,
-      ),
-      pending: 0,
-    };
-    current.pending += toPositiveNumber(row?.cantidad_pendiente);
-    grouped.set(productKey, current);
-  }
-  const reservedOptions = [...grouped.values()]
-    .filter((item) => item.pending > 0)
-    .map((item) => ({
-      value: item.value,
-      title: `${item.title} - Reservado pendiente: ${item.pending}`,
-    }))
-    .sort((a, b) => String(a.title).localeCompare(String(b.title)));
-
-  return reservedOptions;
-}
-
 const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   ...item,
   producto_label: resolveProductLabel(
@@ -2297,6 +2338,61 @@ const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   subtotal: toPositiveNumber(item?.subtotal ?? (toPositiveNumber(item?.cantidad) * toPositiveNumber(item?.costo_unitario))),
   observacion: item?.observacion || "-",
 })));
+
+const materialReservationRows = computed(() => {
+  const grouped = new Map<string, any>();
+  for (const row of consumoRows.value) {
+    const productoId = String(row?.producto_id || "").trim();
+    const bodegaId = String(row?.bodega_id || "").trim();
+    if (!productoId || !bodegaId) continue;
+    const key = `${bodegaId}|${productoId}`;
+    const current =
+      grouped.get(key) ??
+      {
+        id: key,
+        producto_id: productoId,
+        bodega_id: bodegaId,
+        producto_label: row?.producto_label || "-",
+        bodega_label: row?.bodega_label || "-",
+        cantidad_reservada: 0,
+        cantidad_emitida: 0,
+        cantidad_pendiente: 0,
+        _observaciones: [] as string[],
+      };
+    current.cantidad_reservada = Math.max(
+      current.cantidad_reservada,
+      toPositiveNumber(row?.cantidad_reservada ?? row?.cantidad),
+    );
+    current.cantidad_emitida = Math.max(
+      current.cantidad_emitida,
+      toPositiveNumber(row?.cantidad_emitida),
+    );
+    current.cantidad_pendiente = Math.max(
+      current.cantidad_pendiente,
+      toPositiveNumber(row?.cantidad_pendiente ?? row?.cantidad),
+    );
+    const observation = String(row?.observacion || "").trim();
+    if (
+      observation &&
+      observation !== "-" &&
+      !current._observaciones.includes(observation)
+    ) {
+      current._observaciones.push(observation);
+    }
+    grouped.set(key, current);
+  }
+
+  return [...grouped.values()]
+    .map((item) => ({
+      ...item,
+      observacion: item._observaciones.join(" | ") || "-",
+    }))
+    .sort((a, b) =>
+      `${a.bodega_label} ${a.producto_label}`.localeCompare(
+        `${b.bodega_label} ${b.producto_label}`,
+      ),
+    );
+});
 
 const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
   const rawItems = Array.isArray(issue?.items) ? issue.items : [];
@@ -2357,17 +2453,6 @@ function resetConsumoProductIfInvalid() {
   }
   const exists = consumoProductOptions.value.some((option: any) => String(option.value) === String(consumoForm.producto_id || ""));
   if (!exists) consumoForm.producto_id = "";
-}
-
-function resetMaterialProductIfInvalid(index: number) {
-  const current = materialItems.value[index];
-  if (!current) return;
-  if (!current.bodega_id) {
-    current.producto_id = "";
-    return;
-  }
-  const exists = getWarehouseReservedProductOptions(String(current.bodega_id)).some((option: any) => String(option.value) === String(current.producto_id || ""));
-  if (!exists) current.producto_id = "";
 }
 
 function resetScrapProductIfInvalid(index: number) {
@@ -3254,13 +3339,6 @@ function buildDraftAttachmentPersistencePayload(attachment: any) {
 
 function buildWorkOrderSaveBundlePayload() {
   const { generatedTitle, generatedType } = buildAutoHeaderValues();
-  const validMaterialItems = materialItems.value
-    .filter((item) => item.producto_id && item.bodega_id && item.cantidad && Number(item.cantidad) > 0)
-    .map((item) => ({
-      producto_id: item.producto_id,
-      bodega_id: item.bodega_id,
-      cantidad: Number(item.cantidad),
-    }));
   const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad);
 
   const payload: Record<string, any> = {
@@ -3318,13 +3396,6 @@ function buildWorkOrderSaveBundlePayload() {
         ? { costo_unitario: Number(consumoForm.costo_unitario) }
         : {}),
       observacion: consumoForm.observacion || null,
-    };
-  }
-
-  if (validMaterialItems.length) {
-    payload.salida_materiales_pendiente = {
-      items: validMaterialItems,
-      observacion: materialsForm.observacion || null,
     };
   }
 
@@ -4085,9 +4156,10 @@ function resetAllForms() {
   consumoProductsPage.value = 1;
   consumoProductsTotalPages.value = 1;
   consumoProductsTotal.value = 0;
-
-  materialItems.value = [newMaterialItem()];
-  materialsForm.observacion = "";
+  materialIssueTarget.value = null;
+  materialIssueForm.cantidad = "";
+  materialIssueForm.observacion = "";
+  materialIssueDialog.value = false;
 
   scrapForm.bodega_origen_id = "";
   scrapForm.observacion = "";
@@ -4253,9 +4325,6 @@ async function prepareClose() {
   }
   closingFlow.value = true;
   headerForm.status_workflow = "CLOSED";
-  if (!materialItems.value.length) {
-    materialItems.value = [newMaterialItem()];
-  }
   tab.value = showMaterialsTab.value ? "materiales" : "consumos";
 }
 
@@ -4424,14 +4493,6 @@ async function saveAll() {
       return;
     }
 
-    const validMaterialItems = materialItems.value
-      .filter((item) => item.producto_id && item.bodega_id && item.cantidad && Number(item.cantidad) > 0);
-    const hasMaterialFields = hasMaterialDraft();
-    if (hasMaterialFields && !validMaterialItems.length && !materialsForm.observacion) {
-      ui.error("La salida de materiales requiere al menos un item completo con bodega, material y cantidad.");
-      return;
-    }
-
     const payload = buildWorkOrderSaveBundlePayload();
     const response = editingId.value
       ? await api.patch(
@@ -4452,10 +4513,6 @@ async function saveAll() {
       consumoForm.cantidad = "";
       consumoForm.costo_unitario = "";
       consumoForm.observacion = "";
-    }
-    if (payload.salida_materiales_pendiente) {
-      materialItems.value = [newMaterialItem()];
-      materialsForm.observacion = "";
     }
     await fetchWorkOrders();
     await loadDetailData();
@@ -4666,37 +4723,64 @@ async function createConsumo() {
   }
 }
 
-async function issueMaterials() {
+function openMaterialIssueDialog(item: any) {
+  if (!canRegisterRealIssue.value) {
+    ui.error("La salida real de materiales solo se puede registrar cuando la OT está en proceso.");
+    return;
+  }
+  materialIssueTarget.value = item;
+  materialIssueForm.cantidad = "";
+  materialIssueForm.observacion = "";
+  materialIssueDialog.value = true;
+}
+
+function closeMaterialIssueDialog() {
+  materialIssueDialog.value = false;
+  materialIssueTarget.value = null;
+  materialIssueForm.cantidad = "";
+  materialIssueForm.observacion = "";
+}
+
+async function submitMaterialIssue() {
   if (issuingMaterials.value) return;
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
-  if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
+  if (!canRegisterRealIssue.value) {
+    return ui.error("La salida real de materiales solo se puede registrar cuando la OT está en proceso.");
+  }
+  if (!editingId.value) {
+    return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
+  }
+  const target = materialIssueTarget.value;
+  if (!target?.producto_id || !target?.bodega_id) {
+    return ui.error("No se encontró el consumo reservado seleccionado.");
+  }
 
-  const items = materialItems.value
-    .filter((item) => item.producto_id || item.bodega_id || item.cantidad)
-    .map((item) => ({
-      producto_id: item.producto_id,
-      bodega_id: item.bodega_id,
-      cantidad: Number(item.cantidad),
-    }));
+  const quantity = Number(materialIssueForm.cantidad || 0);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return ui.error("La cantidad de salida debe ser mayor a 0.");
+  }
 
-  if (!items.length) return ui.error("Debes ingresar al menos un item.");
-
-  const hasInvalidItem = items.some((item) => !item.producto_id || !item.bodega_id || !Number.isFinite(item.cantidad) || item.cantidad <= 0);
-  if (hasInvalidItem) {
-    return ui.error("Cada item debe incluir bodega, material y cantidad mayor a 0.");
+  const pending = toPositiveNumber(target?.cantidad_pendiente);
+  if (quantity > pending) {
+    return ui.error(`La salida real no puede superar lo reservado pendiente (${pending}).`);
   }
 
   const payload = {
-    items,
-    observacion: materialsForm.observacion || null,
+    items: [
+      {
+        producto_id: target.producto_id,
+        bodega_id: target.bodega_id,
+        cantidad: quantity,
+      },
+    ],
+    observacion: materialIssueForm.observacion || null,
   };
 
   try {
     issuingMaterials.value = true;
     await api.post(`/kpi_maintenance/work-orders/${editingId.value}/issue-materials`, payload);
-    materialItems.value = [newMaterialItem()];
-    materialsForm.observacion = "";
     closingFlow.value = false;
+    closeMaterialIssueDialog();
     await loadDetailData();
     ui.success("Salida de materiales registrada.");
   } catch (e: any) {
@@ -4704,18 +4788,6 @@ async function issueMaterials() {
   } finally {
     issuingMaterials.value = false;
   }
-}
-
-function addMaterialItem() {
-  materialItems.value.push(newMaterialItem());
-}
-
-function removeMaterialItem(index: number) {
-  if (materialItems.value.length === 1) {
-    materialItems.value[0] = newMaterialItem();
-    return;
-  }
-  materialItems.value.splice(index, 1);
 }
 
 async function registerScrapMaterials() {
@@ -4779,12 +4851,6 @@ function removeScrapItem(index: number) {
   }
   scrapItems.value.splice(index, 1);
 }
-
-function hasMaterialDraft() {
-  if (materialsForm.observacion) return true;
-  return materialItems.value.some((item) => item.producto_id || item.bodega_id || item.cantidad);
-}
-
 
 async function confirmDelete() {
   if (!deletingId.value) return;
@@ -4968,13 +5034,6 @@ watch(
     consumoSearchTimer = setTimeout(() => {
       void loadConsumoProducts({ reset: true, search: value });
     }, 300);
-  },
-);
-
-watch(
-  () => materialItems.value.map((item) => `${item.bodega_id}|${item.producto_id}`).join(';'),
-  () => {
-    materialItems.value.forEach((_, index) => resetMaterialProductIfInvalid(index));
   },
 );
 
