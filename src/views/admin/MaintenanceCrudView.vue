@@ -720,6 +720,15 @@ function getItemEndpoint(recordId: string) {
 }
 
 async function listAll(endpoint: string) {
+  const normalizedEndpoint = String(endpoint || "").trim();
+  if (normalizedEndpoint === "/kpi_security/users") {
+    const rows = await listAllPages(normalizedEndpoint, { includeDeleted: false });
+    return rows.filter(
+      (item: any) =>
+        !item?.isDeleted &&
+        String(item?.status || "ACTIVE").trim().toUpperCase() === "ACTIVE",
+    );
+  }
   return listAllPages(endpoint);
 }
 

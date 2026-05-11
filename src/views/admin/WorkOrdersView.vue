@@ -1951,11 +1951,24 @@ function asArray(data: any): any[] {
 }
 
 async function listAll(endpoint: string) {
+  const normalizedEndpoint = String(endpoint || "").trim();
   const cacheTtlMs =
-    endpoint.includes("/work-orders") || endpoint.includes("/alertas")
+    normalizedEndpoint.includes("/work-orders") || normalizedEndpoint.includes("/alertas")
       ? 0
       : DEFAULT_CATALOG_CACHE_TTL_MS;
-  return listAllPages(endpoint, {}, { cacheTtlMs });
+  const params =
+    normalizedEndpoint === "/kpi_security/users"
+      ? { includeDeleted: false }
+      : {};
+  const rows = await listAllPages(normalizedEndpoint, params, { cacheTtlMs });
+  if (normalizedEndpoint === "/kpi_security/users") {
+    return rows.filter(
+      (item: any) =>
+        !item?.isDeleted &&
+        String(item?.status || "ACTIVE").trim().toUpperCase() === "ACTIVE",
+    );
+  }
+  return rows;
 }
 
 function normalize(item: any) {
