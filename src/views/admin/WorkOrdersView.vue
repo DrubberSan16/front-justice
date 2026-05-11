@@ -1574,17 +1574,20 @@ function normalizeTaskResponsibles(values: any) {
     const nextHoursRaw = Number(item?.horas ?? 0);
     const nextHours =
       Number.isFinite(nextHoursRaw) && nextHoursRaw >= 0 ? nextHoursRaw : 0;
+    const catalogDisplayName = buildUserDisplayName(catalogUser);
+    const itemDisplayName = String(item?.display_name || "").trim();
+    const previousDisplayName = String(previous?.display_name || "").trim();
+    const resolvedDisplayName =
+      catalogDisplayName ||
+      (itemDisplayName && itemDisplayName !== userId ? itemDisplayName : "") ||
+      (previousDisplayName && previousDisplayName !== userId ? previousDisplayName : "") ||
+      buildUserDisplayName(item) ||
+      userId;
     grouped.set(userId, {
       user_id: userId,
       username:
         String(item?.username || catalogUser?.nameUser || previous?.username || "").trim() || null,
-      display_name:
-        String(
-          item?.display_name ||
-            buildUserDisplayName(catalogUser || item) ||
-            previous?.display_name ||
-            userId,
-        ).trim() || userId,
+      display_name: resolvedDisplayName,
       horas: Number((((previous?.horas ?? 0) as number) + nextHours).toFixed(4)),
     });
   }
@@ -3146,7 +3149,10 @@ function validateTaskValue(task: any) {
   return true;
 }
 
-function buildTaskPersistencePayload(task: any) {
+function buildTaskPersistencePayload(
+  task: any,
+  options?: { preserveDraftAttachmentRefs?: boolean },
+) {
   const fieldType = getTaskFieldType(task);
   const isAdditional = isAdditionalTask(task);
   const taskLabel = getTaskLabelForTask(task);
@@ -3175,6 +3181,12 @@ function buildTaskPersistencePayload(task: any) {
         evidencias_requeridas: getTaskEvidenceRequirements(task),
         adjuntos: getTaskEvidenceEntries(task).map((attachment: any) => ({
           attachment_id: attachment?.attachment_id || null,
+          ...(options?.preserveDraftAttachmentRefs
+            ? {
+                draft_attachment_id:
+                  attachment?.draft_attachment_id || null,
+              }
+            : {}),
           evidence_kind: normalizeEvidenceKind(attachment?.evidence_kind),
           nombre: attachment?.nombre || null,
           mime_type: attachment?.mime_type || null,
@@ -3227,6 +3239,132 @@ function buildTaskPersistencePayload(task: any) {
     responsables: responsibles,
     observacion: String(task.observacion ?? "").trim() || null,
   };
+}
+
+function buildDraftAttachmentPersistencePayload(attachment: any) {
+  return {
+    temp_id: String(attachment?.id || "").trim() || null,
+    tipo: attachment?.tipo || "EVIDENCIA",
+    nombre: attachment?.nombre || "",
+    contenido_base64: attachment?.contenido_base64 || "",
+    mime_type: attachment?.mime_type || null,
+    meta: attachment?.meta || null,
+  };
+}
+
+function buildWorkOrderSaveBundlePayload() {
+  const { generatedTitle, generatedType } = buildAutoHeaderValues();
+  const validMaterialItems = materialItems.value
+    .filter((item) => item.producto_id && item.bodega_id && item.cantidad && Number(item.cantidad) > 0)
+    .map((item) => ({
+      producto_id: item.producto_id,
+      bodega_id: item.bodega_id,
+      cantidad: Number(item.cantidad),
+    }));
+  const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad);
+
+  const payload: Record<string, any> = {
+    header: {
+      code: headerForm.code || null,
+      type: generatedType,
+      title: generatedTitle,
+      equipment_id: headerForm.equipment_id || null,
+      equipo_componente_id: headerForm.equipo_componente_id || null,
+      maintenance_kind: headerForm.maintenance_kind || null,
+      status_workflow: normalizedWorkflow.value,
+      plan_id: headerForm.plan_id || null,
+      procedimiento_id: headerForm.procedimiento_id || null,
+      alerta_id: headerForm.alerta_id || null,
+      blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
+      blocked_reason: headerForm.blocked_reason || null,
+      valor_json: {
+        causa: headerForm.causa || "",
+        accion: headerForm.accion || "",
+        prevencion: headerForm.prevencion || "",
+      },
+    },
+  };
+
+  const draftAttachments = attachmentRows.value
+    .filter((row) => row?._isDraft)
+    .map((row) => buildDraftAttachmentPersistencePayload(row));
+  if (draftAttachments.length) {
+    payload.adjuntos_nuevos = draftAttachments;
+  }
+
+  const editedTasks = taskRows.value
+    .filter((row) => !row?._isDraft && row?._dirty)
+    .map((row) => ({
+      id: row.id,
+      ...buildTaskPersistencePayload(row, { preserveDraftAttachmentRefs: true }),
+    }));
+  if (editedTasks.length) {
+    payload.tareas_editadas = editedTasks;
+  }
+
+  const newTasks = taskRows.value
+    .filter((row) => row?._isDraft)
+    .map((row) => buildTaskPersistencePayload(row, { preserveDraftAttachmentRefs: true }));
+  if (newTasks.length) {
+    payload.tareas_nuevas = newTasks;
+  }
+
+  if (hasCompleteConsumo) {
+    payload.consumo_pendiente = {
+      producto_id: consumoForm.producto_id,
+      bodega_id: consumoForm.bodega_id,
+      cantidad: Number(consumoForm.cantidad),
+      ...(consumoForm.costo_unitario
+        ? { costo_unitario: Number(consumoForm.costo_unitario) }
+        : {}),
+      observacion: consumoForm.observacion || null,
+    };
+  }
+
+  if (validMaterialItems.length) {
+    payload.salida_materiales_pendiente = {
+      items: validMaterialItems,
+      observacion: materialsForm.observacion || null,
+    };
+  }
+
+  return payload;
+}
+
+function applySavedWorkOrderState(savedHeader: any) {
+  currentWorkOrderRecord.value = savedHeader;
+  const assignedId = savedHeader?.id ?? savedHeader?._raw?.id ?? null;
+  const assignedCode = String(savedHeader?.code || "").trim();
+  if (assignedId) {
+    editingId.value = assignedId;
+  }
+  if (assignedCode) {
+    headerForm.code = assignedCode;
+  }
+  headerForm.plan_id = savedHeader?.plan_id ?? headerForm.plan_id;
+  headerForm.procedimiento_id = savedHeader?.procedimiento_id ?? headerForm.procedimiento_id;
+  headerForm.equipo_componente_id = savedHeader?.equipo_componente_id ?? headerForm.equipo_componente_id;
+  headerForm.blocked_by_work_order_id = savedHeader?.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
+  headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
+  taskForm.plan_id = headerForm.plan_id || "";
+}
+
+function resolveWorkOrderSaveErrorMessage(error: any) {
+  const status = Number(error?.response?.status || 0);
+  const rawMessage = String(error?.response?.data?.message || error?.message || "").trim();
+
+  if (
+    status === 413 ||
+    /request too large|payload too large|entity too large/i.test(rawMessage)
+  ) {
+    return "Hubo un error al guardar la orden de trabajo. El contenido enviado supera el tamaño permitido.";
+  }
+
+  if ((status === 400 || status === 404 || status === 409) && rawMessage) {
+    return `Hubo un error al guardar la orden de trabajo: ${rawMessage}`;
+  }
+
+  return "Hubo un error al guardar la orden de trabajo. No se aplicaron cambios.";
 }
 
 function validateTaskRowsForSave() {
@@ -3866,7 +4004,7 @@ async function loadDetailData() {
         x?.task_meta && typeof x.task_meta === "object" && !Array.isArray(x.task_meta)
           ? x.task_meta
           : {},
-      responsables: getTaskResponsibles(x),
+      responsables: Array.isArray(x?.responsables) ? x.responsables : [],
       _json_text:
         x?.valor_json && typeof x.valor_json === "object"
           ? JSON.stringify(x.valor_json, null, 2)
@@ -4238,10 +4376,32 @@ async function saveAll() {
   if (savingHeader.value) return;
   savingHeader.value = true;
   try {
-    const headerSaved = await saveHeader(false, false);
-    if (!headerSaved || !editingId.value) return;
+    if (!canPersistHeader.value) return;
+    if (
+      editingId.value &&
+      normalizedWorkflow.value === "CLOSED" &&
+      !canCloseOrVoidCurrent.value &&
+      !isClosed.value
+    ) {
+      ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
+      return;
+    }
+    if (!headerForm.equipment_id) {
+      ui.error("Equipo es obligatorio.");
+      return;
+    }
+    if (!headerForm.procedimiento_id && !headerForm.plan_id) {
+      ui.error("Debes seleccionar una plantilla MPG para la OT.");
+      return;
+    }
+    if (!headerForm.maintenance_kind) {
+      ui.error("Tipo mantenimiento es obligatorio.");
+      return;
+    }
+    if (!editingId.value && !headerForm.code) {
+      await assignNextWorkOrderCode();
+    }
 
-    const actions: Array<() => Promise<void>> = [];
     await syncChecklistFromTemplate(false);
     if (!validateTaskRowsForSave()) {
       return;
@@ -4263,9 +4423,6 @@ async function saveAll() {
       ui.error("Para registrar un consumo debes completar bodega, material y cantidad.");
       return;
     }
-    if (hasCompleteConsumo) {
-      actions.push(createConsumo);
-    }
 
     const validMaterialItems = materialItems.value
       .filter((item) => item.producto_id && item.bodega_id && item.cantidad && Number(item.cantidad) > 0);
@@ -4274,24 +4431,41 @@ async function saveAll() {
       ui.error("La salida de materiales requiere al menos un item completo con bodega, material y cantidad.");
       return;
     }
-    if (validMaterialItems.length) {
-      actions.push(issueMaterials);
+
+    const payload = buildWorkOrderSaveBundlePayload();
+    const response = editingId.value
+      ? await api.patch(
+          `/kpi_maintenance/work-orders/${editingId.value}/save-bundle`,
+          payload,
+        )
+      : await api.post("/kpi_maintenance/work-orders/save-bundle", payload);
+    const { data } = response;
+    const savedHeader = unwrapData(data);
+    applySavedWorkOrderState(savedHeader);
+    if (headerForm.plan_id) {
+      await loadTaskOptionsByPlan(String(headerForm.plan_id));
     }
 
-    for (const run of actions) {
-      await run();
+    if (payload.consumo_pendiente) {
+      consumoForm.producto_id = "";
+      consumoForm.bodega_id = "";
+      consumoForm.cantidad = "";
+      consumoForm.costo_unitario = "";
+      consumoForm.observacion = "";
     }
-
-    await persistDraftAttachments();
-    await persistEditedTasks(false);
-    await persistDraftTasks(false);
-
+    if (payload.salida_materiales_pendiente) {
+      materialItems.value = [newMaterialItem()];
+      materialsForm.observacion = "";
+    }
     await fetchWorkOrders();
     await loadDetailData();
     if (normalizedWorkflow.value === "CLOSED") {
       closingFlow.value = false;
     }
     ensureTabVisible();
+    ui.success(`Orden de trabajo ${headerForm.code || ""} guardada con exito.`.trim());
+  } catch (e: any) {
+    ui.error(resolveWorkOrderSaveErrorMessage(e));
   } finally {
     savingHeader.value = false;
   }
@@ -4396,6 +4570,11 @@ function replaceDraftAttachmentReferencesInTasks(draftAttachmentId: string, save
     }
   }
 }
+
+void saveHeader;
+void persistDraftTasks;
+void persistEditedTasks;
+void persistDraftAttachments;
 
 async function deleteTask(item: any) {
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
