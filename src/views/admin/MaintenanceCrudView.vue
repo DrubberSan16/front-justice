@@ -580,13 +580,13 @@ function getAutoCodeEndpoint() {
     return "/kpi_maintenance/equipos/next-code";
   }
   if (moduleConfig.value?.key === "componentes-equipo") {
-    return "/kpi_maintenance/componentes/next-code";
+    return "/kpi_maintenance/componentes/code/next";
   }
   if (moduleConfig.value?.key === "tipo-equipo") {
     return "/kpi_maintenance/tipo-equipo/next-code";
   }
   if (moduleConfig.value?.key === "locations") {
-    return "/kpi_maintenance/locaciones/next-code";
+    return "/kpi_maintenance/locaciones/code/next";
   }
   if (moduleConfig.value?.key === "planes") {
     return "/kpi_maintenance/planes/next-code";
