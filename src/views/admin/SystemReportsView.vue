@@ -159,7 +159,24 @@
                 density="compact"
                 :items-per-page="10"
                 class="table-enterprise enterprise-table mt-4"
-              />
+              >
+                <template #item.responsables="{ item }">
+                  <div class="responsibles-inline-table">
+                    <template v-if="getReportResponsablesLines(resolveDataTableRow(item)).length">
+                      <div
+                        v-for="(line, index) in getReportResponsablesLines(resolveDataTableRow(item))"
+                        :key="`${resolveDataTableRow(item).work_order_code || 'row'}-${index}`"
+                        class="responsibles-inline-row"
+                      >
+                        {{ line }}
+                      </div>
+                    </template>
+                    <span v-else>
+                      {{ resolveDataTableRow(item).responsables || "" }}
+                    </span>
+                  </div>
+                </template>
+              </v-data-table>
             </v-window-item>
           </v-window>
         </template>
@@ -315,6 +332,27 @@ function formatResponsibleMetaItem(item: AnyRow) {
   return Number.isFinite(hours) ? `${label} (${formatNumber(hours, 2)} h)` : label;
 }
 
+function buildResponsablesLines(row: AnyRow, value: unknown) {
+  const meta = Array.isArray(row?.responsables_meta) ? row.responsables_meta : [];
+  if (meta.length) {
+    return meta.map((item: AnyRow) => formatResponsibleMetaItem(item)).filter(Boolean);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        item && typeof item === "object"
+          ? formatResponsibleMetaItem(item as AnyRow)
+          : resolveResponsibleLabel(item),
+      )
+      .filter(Boolean);
+  }
+  const normalizedText = normalizeResponsablesText(value);
+  return normalizedText
+    .split("|")
+    .map((segment) => String(segment || "").trim())
+    .filter(Boolean);
+}
+
 function normalizeResponsablesText(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
@@ -334,21 +372,7 @@ function normalizeResponsablesText(value: unknown) {
 }
 
 function normalizeResponsablesValue(row: AnyRow, value: unknown) {
-  const meta = Array.isArray(row?.responsables_meta) ? row.responsables_meta : [];
-  if (meta.length) {
-    return meta.map((item: AnyRow) => formatResponsibleMetaItem(item)).join(" | ");
-  }
-  if (Array.isArray(value)) {
-    return value
-      .map((item) =>
-        item && typeof item === "object"
-          ? formatResponsibleMetaItem(item as AnyRow)
-          : resolveResponsibleLabel(item),
-      )
-      .filter(Boolean)
-      .join(" | ");
-  }
-  return normalizeResponsablesText(value);
+  return buildResponsablesLines(row, value).join(" | ");
 }
 
 function normalizeResponsableValue(row: AnyRow, value: unknown) {
@@ -361,6 +385,7 @@ function normalizeResponsableValue(row: AnyRow, value: unknown) {
 function normalizeReportRow(row: AnyRow) {
   const normalized = { ...(row || {}) };
   if (Object.prototype.hasOwnProperty.call(normalized, "responsables")) {
+    normalized._responsables_lines = buildResponsablesLines(normalized, normalized.responsables);
     normalized.responsables = normalizeResponsablesValue(normalized, normalized.responsables);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "responsable")) {
@@ -369,6 +394,18 @@ function normalizeReportRow(row: AnyRow) {
   delete normalized.responsables_meta;
   delete normalized.user_id;
   return normalized;
+}
+
+function resolveDataTableRow(item: AnyRow) {
+  return (item?.raw ?? item?._raw ?? item) as AnyRow;
+}
+
+function getReportResponsablesLines(item: AnyRow) {
+  return Array.isArray(item?._responsables_lines)
+    ? item._responsables_lines
+        .map((line) => String(line || "").trim())
+        .filter(Boolean)
+    : [];
 }
 
 function formatSummaryValue(label: string, value: unknown) {
@@ -560,6 +597,7 @@ const HIDDEN_FIELDS = new Set([
   "producto_id",
   "user_id",
   "responsables_meta",
+  "_responsables_lines",
   "period_key",
   "is_maintenance",
 ]);
@@ -783,5 +821,20 @@ onMounted(() => {
 
 .system-tabs {
   border-bottom: 1px solid rgba(115, 149, 202, 0.14);
+}
+
+.responsibles-inline-table {
+  min-width: 220px;
+  display: grid;
+  gap: 4px;
+}
+
+.responsibles-inline-row {
+  padding: 6px 8px;
+  border: 1px solid rgba(115, 149, 202, 0.22);
+  border-radius: 8px;
+  background: rgba(19, 29, 45, 0.88);
+  line-height: 1.3;
+  white-space: normal;
 }
 </style>
