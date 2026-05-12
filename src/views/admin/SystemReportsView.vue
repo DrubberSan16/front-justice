@@ -284,16 +284,16 @@ const SECTION_DEFS = [
   {
     key: "horas_trabajadas",
     title: "Horas trabajadas",
-    subtitle: "Cantidad de horas registradas por OT, responsable o agrupaciÃ³n seleccionada.",
+    subtitle: "Cantidad de horas registradas por OT, responsable o agrupación seleccionada.",
   },
   {
     key: "costo_mantenimiento",
     title: "Costo de mantenimiento",
-    subtitle: "Valor total de materiales utilizados en ordenes de trabajo tipo mantenimiento.",
+    subtitle: "Valor total de materiales utilizados en órdenes de trabajo tipo mantenimiento.",
   },
   {
     key: "responsables_ot",
-    title: "QuiÃ©nes trabajaron",
+    title: "Quiénes trabajaron",
     subtitle: "Responsables con horas registradas por orden de trabajo.",
   },
   {
@@ -309,19 +309,21 @@ const SECTION_DEFS = [
   {
     key: "inventario_consumido",
     title: "Inventario consumido",
-    subtitle: "Materiales usados en todas las ordenes de trabajo segÃºn la agrupaciÃ³n activa.",
+    subtitle: "Materiales usados en todas las órdenes de trabajo según la agrupación activa.",
   },
 ];
 
 const FIELD_LABELS: Record<string, string> = {
   fecha_referencia: "Fecha",
   periodo: "Periodo",
-  work_order_code: "OT",
+  work_order_code: "Código OT",
   work_order_title: "Titulo OT",
   work_order_status: "Estado OT",
   work_order_type: "Tipo OT",
   maintenance_kind: "Clase mtto",
   equipment_label: "Equipo",
+  equipment_name: "Nombre equipo",
+  plan_name: "Plan Name",
   procedure_label: "Plantilla",
   bodega_label: "Bodega",
   consumo_bodegas: "Bodegas consumo",
@@ -332,16 +334,90 @@ const FIELD_LABELS: Record<string, string> = {
   bodegas: "Bodegas",
   material_label: "Material",
   total_horas: "Horas",
-  total_responsables: "Responsables",
+  total_responsables: "Cantidad responsables",
   total_ordenes: "OT",
   total_items: "Registros",
   total_materiales: "Materiales",
+  materiales: "Materiales",
   total_cantidad: "Cantidad",
   total_costo: "Costo total",
   total_stock: "Stock actual",
   costo_unitario: "Costo unitario",
   costo_unitario_promedio: "Costo unitario promedio",
   total_costo_inventario: "Costo inventario",
+};
+
+const SECTION_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
+  horas_trabajadas: {
+    OT: [
+      "work_order_code",
+      "work_order_status",
+      "work_order_type",
+      "fecha_referencia",
+      "equipment_name",
+      "plan_name",
+      "bodega_label",
+      "total_horas",
+      "total_responsables",
+      "responsables",
+    ],
+  },
+  costo_mantenimiento: {
+    OT: [
+      "work_order_code",
+      "work_order_status",
+      "work_order_type",
+      "fecha_referencia",
+      "equipment_name",
+      "plan_name",
+      "bodega_label",
+      "total_costo",
+      "total_cantidad",
+      "materiales",
+    ],
+  },
+  responsables_ot: {
+    OT: [
+      "work_order_code",
+      "work_order_status",
+      "work_order_type",
+      "fecha_referencia",
+      "equipment_name",
+      "plan_name",
+      "bodega_label",
+      "total_horas",
+      "total_responsables",
+      "responsables",
+    ],
+  },
+  repuestos_cambiados: {
+    OT: [
+      "work_order_code",
+      "work_order_status",
+      "work_order_type",
+      "fecha_referencia",
+      "equipment_name",
+      "plan_name",
+      "bodega_label",
+      "material_label",
+      "total_cantidad",
+      "total_costo",
+    ],
+  },
+  inventario_consumido: {
+    OT: [
+      "work_order_code",
+      "work_order_status",
+      "work_order_type",
+      "fecha_referencia",
+      "equipment_name",
+      "plan_name",
+      "bodega_label",
+      "material_label",
+      "total_cantidad",
+      "total_costo",
+    ],
+  },
 };
 
 const HIDDEN_FIELDS = new Set([
@@ -390,26 +466,32 @@ function formatCellValue(key: string, value: unknown) {
   return String(value);
 }
 
-function buildHeaders(rows: AnyRow[]) {
+function buildVisibleKeys(rows: AnyRow[], preferredKeys?: string[]) {
   const keySet = new Set<string>();
   for (const row of rows) {
     for (const key of Object.keys(row || {})) {
       if (!HIDDEN_FIELDS.has(key)) keySet.add(key);
     }
   }
-  const keys = Array.from(keySet);
+  if (preferredKeys?.length) {
+    return preferredKeys.filter((key) => keySet.has(key));
+  }
+  return Array.from(keySet);
+}
+
+function buildHeaders(rows: AnyRow[], preferredKeys?: string[]) {
+  const keys = buildVisibleKeys(rows, preferredKeys);
   return keys.map((key) => ({
     title: FIELD_LABELS[key] ?? prettifyKey(key),
     key,
   }));
 }
 
-function buildDisplayRows(rows: AnyRow[]) {
+function buildDisplayRows(rows: AnyRow[], preferredKeys?: string[]) {
+  const keys = buildVisibleKeys(rows, preferredKeys);
   return rows.map((row) =>
     Object.fromEntries(
-      Object.entries(row || {})
-        .filter(([key]) => !HIDDEN_FIELDS.has(key))
-        .map(([key, value]) => [key, formatCellValue(key, value)]),
+      keys.map((key) => [key, formatCellValue(key, (row || {})[key])]),
     ),
   );
 }
@@ -418,12 +500,17 @@ const reportSections = computed(() =>
   SECTION_DEFS.map((section) => {
     const source = reportPayload.value?.reports?.[section.key] ?? {};
     const rawRows = Array.isArray(source?.rows) ? source.rows : [];
-    const groupBy = String(source?.group_by || reportPayload.value?.filters?.group_by || "OT");
+    const groupBy = String(
+      source?.group_by || reportPayload.value?.filters?.group_by || "OT",
+    )
+      .trim()
+      .toUpperCase();
+    const preferredKeys = SECTION_COLUMN_OVERRIDES[section.key]?.[groupBy];
     return {
       ...section,
       rawRows,
-      displayRows: buildDisplayRows(rawRows),
-      headers: buildHeaders(rawRows),
+      displayRows: buildDisplayRows(rawRows, preferredKeys),
+      headers: buildHeaders(rawRows, preferredKeys),
       groupLabel: `Agrupado por ${groupBy}`,
     };
   }),

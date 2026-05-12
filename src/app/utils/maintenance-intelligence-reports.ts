@@ -1455,7 +1455,7 @@ export function buildSystemReportsReport(payload: {
     title: "Reportes del sistema",
     subtitle: activeFilters.length
       ? activeFilters.join(" · ")
-      : "Consolidado general de ordenes de trabajo e inventario.",
+      : "Consolidado general de órdenes de trabajo e inventario.",
     summary: payload.summary ?? [],
     sheets: [
       {
@@ -1463,14 +1463,14 @@ export function buildSystemReportsReport(payload: {
         rows: Array.isArray(reports.horas_trabajadas?.rows)
           ? reports.horas_trabajadas.rows
           : [],
-        note: "Horas registradas por orden, responsable o agrupacion seleccionada.",
+        note: "Horas registradas por orden, responsable o agrupación seleccionada.",
       },
       {
         name: "Costo mantenimiento",
         rows: Array.isArray(reports.costo_mantenimiento?.rows)
           ? reports.costo_mantenimiento.rows
           : [],
-        note: "Costo total de materiales usados en ordenes de mantenimiento.",
+        note: "Costo total de materiales usados en órdenes de mantenimiento.",
       },
       {
         name: "Responsables OT",
@@ -1491,14 +1491,14 @@ export function buildSystemReportsReport(payload: {
         rows: Array.isArray(reports.repuestos_cambiados?.rows)
           ? reports.repuestos_cambiados.rows
           : [],
-        note: "Materiales utilizados en equipos para ordenes de mantenimiento.",
+        note: "Materiales utilizados en equipos para órdenes de mantenimiento.",
       },
       {
         name: "Inventario consumido",
         rows: Array.isArray(reports.inventario_consumido?.rows)
           ? reports.inventario_consumido.rows
           : [],
-        note: "Consumo consolidado de materiales por bodega, OT o agrupacion activa.",
+        note: "Consumo consolidado de materiales por bodega, OT o agrupación activa.",
       },
     ],
   } satisfies ReportDefinition;
