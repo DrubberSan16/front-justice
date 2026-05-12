@@ -176,6 +176,8 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { listAllPages } from "@/app/utils/list-all-pages";
+import { DEFAULT_CONTEXT_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
   currentDateInputValue,
   formatDateForInput,
@@ -194,6 +196,8 @@ const menuStore = useMenuStore();
 const loading = ref(false);
 const error = ref<string | null>(null);
 const reportPayload = ref<AnyRow | null>(null);
+const userCatalogRows = ref<AnyRow[]>([]);
+const userCatalogLoaded = ref(false);
 const exportState = reactive<Record<string, boolean>>({});
 const activeTab = ref("horas_trabajadas");
 
@@ -239,6 +243,13 @@ function unwrap<T = any>(payload: any, fallback: T): T {
   return (payload?.data ?? payload ?? fallback) as T;
 }
 
+const userCatalogMap = computed(
+  () =>
+    new Map(
+      userCatalogRows.value.map((item) => [String(item?.id || "").trim(), item] as const),
+    ),
+);
+
 const warehouseOptions = computed<AnyRow[]>(() =>
   Array.isArray(reportPayload.value?.catalogs?.bodegas)
     ? reportPayload.value.catalogs.bodegas
@@ -260,6 +271,106 @@ function formatNumber(value: unknown, digits = 2) {
   }).format(numeric);
 }
 
+function isUuidLike(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return false;
+  return (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalized,
+    ) || /^[0-9a-f]{32}$/i.test(normalized)
+  );
+}
+
+function buildUserDisplayName(user: AnyRow | null | undefined) {
+  const label = String(user?.nameSurname || user?.nameUser || user?.email || "").trim();
+  if (label) return label;
+  const fallbackId = String(user?.id || "").trim();
+  return fallbackId && !isUuidLike(fallbackId) ? fallbackId : "Usuario asignado";
+}
+
+function resolveResponsibleLabel(value: unknown, userId?: unknown) {
+  const normalizedUserId = String(userId ?? "").trim();
+  if (normalizedUserId) {
+    const catalogUser = userCatalogMap.value.get(normalizedUserId);
+    if (catalogUser) return buildUserDisplayName(catalogUser);
+  }
+
+  const raw = String(value ?? "").trim();
+  if (raw && !isUuidLike(raw)) return raw;
+
+  if (raw) {
+    const catalogUser = userCatalogMap.value.get(raw);
+    if (catalogUser) return buildUserDisplayName(catalogUser);
+  }
+
+  return "Usuario asignado";
+}
+
+function formatResponsibleMetaItem(item: AnyRow) {
+  const label = resolveResponsibleLabel(
+    item?.display_name ?? item?.nameSurname ?? item?.username ?? item?.user_id,
+    item?.user_id,
+  );
+  const hours = Number(item?.horas);
+  return Number.isFinite(hours) ? `${label} (${formatNumber(hours, 2)} h)` : label;
+}
+
+function normalizeResponsablesText(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  return raw
+    .split("|")
+    .map((segment) => {
+      const chunk = String(segment || "").trim();
+      if (!chunk) return "";
+      const match = chunk.match(/^(.*?)(\s*\([^()]+\))$/);
+      const labelSegment = match?.[1] ? match[1].trim() : chunk;
+      const suffix = match?.[2] ?? "";
+      const label = resolveResponsibleLabel(labelSegment);
+      return `${label}${suffix}`;
+    })
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function normalizeResponsablesValue(row: AnyRow, value: unknown) {
+  const meta = Array.isArray(row?.responsables_meta) ? row.responsables_meta : [];
+  if (meta.length) {
+    return meta.map((item: AnyRow) => formatResponsibleMetaItem(item)).join(" | ");
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        item && typeof item === "object"
+          ? formatResponsibleMetaItem(item as AnyRow)
+          : resolveResponsibleLabel(item),
+      )
+      .filter(Boolean)
+      .join(" | ");
+  }
+  return normalizeResponsablesText(value);
+}
+
+function normalizeResponsableValue(row: AnyRow, value: unknown) {
+  if (value && typeof value === "object") {
+    return formatResponsibleMetaItem(value as AnyRow);
+  }
+  return resolveResponsibleLabel(value, row?.user_id);
+}
+
+function normalizeReportRow(row: AnyRow) {
+  const normalized = { ...(row || {}) };
+  if (Object.prototype.hasOwnProperty.call(normalized, "responsables")) {
+    normalized.responsables = normalizeResponsablesValue(normalized, normalized.responsables);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "responsable")) {
+    normalized.responsable = normalizeResponsableValue(normalized, normalized.responsable);
+  }
+  delete normalized.responsables_meta;
+  delete normalized.user_id;
+  return normalized;
+}
+
 function formatSummaryValue(label: string, value: unknown) {
   const normalizedLabel = String(label || "").toLowerCase();
   if (normalizedLabel.includes("costo")) {
@@ -279,6 +390,26 @@ const summaryCards = computed(() =>
     }),
   ),
 );
+
+const normalizedReportPayload = computed<AnyRow | null>(() => {
+  if (!reportPayload.value) return null;
+  const reports = Object.fromEntries(
+    Object.entries(reportPayload.value?.reports ?? {}).map(([key, section]) => {
+      const rawRows = Array.isArray((section as AnyRow)?.rows) ? (section as AnyRow).rows : [];
+      return [
+        key,
+        {
+          ...(section as AnyRow),
+          rows: rawRows.map((row: AnyRow) => normalizeReportRow(row)),
+        },
+      ];
+    }),
+  );
+  return {
+    ...reportPayload.value,
+    reports,
+  };
+});
 
 const SECTION_DEFS = [
   {
@@ -428,6 +559,7 @@ const HIDDEN_FIELDS = new Set([
   "bodega_id",
   "producto_id",
   "user_id",
+  "responsables_meta",
   "period_key",
   "is_maintenance",
 ]);
@@ -498,10 +630,10 @@ function buildDisplayRows(rows: AnyRow[], preferredKeys?: string[]) {
 
 const reportSections = computed(() =>
   SECTION_DEFS.map((section) => {
-    const source = reportPayload.value?.reports?.[section.key] ?? {};
+    const source = normalizedReportPayload.value?.reports?.[section.key] ?? {};
     const rawRows = Array.isArray(source?.rows) ? source.rows : [];
     const groupBy = String(
-      source?.group_by || reportPayload.value?.filters?.group_by || "OT",
+      source?.group_by || normalizedReportPayload.value?.filters?.group_by || "OT",
     )
       .trim()
       .toUpperCase();
@@ -546,6 +678,27 @@ async function loadReports() {
   }
 }
 
+async function loadUserCatalog(force = false) {
+  if (userCatalogLoaded.value && !force) return;
+  try {
+    const rows = await listAllPages(
+      "/kpi_security/users",
+      { includeDeleted: false },
+      { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+    );
+    userCatalogRows.value = Array.isArray(rows)
+      ? rows.filter(
+          (item: AnyRow) =>
+            !item?.isDeleted &&
+            String(item?.status || "ACTIVE").trim().toUpperCase() === "ACTIVE",
+        )
+      : [];
+    userCatalogLoaded.value = true;
+  } catch {
+    userCatalogRows.value = [];
+  }
+}
+
 function clearFilters() {
   filters.from = startOfMonthInput();
   filters.to = currentDateInputValue();
@@ -563,12 +716,15 @@ function isExporting(format: "excel" | "pdf") {
 }
 
 async function exportReports(format: "excel" | "pdf") {
-  if (!reportPayload.value) return;
+  if (!normalizedReportPayload.value) return;
   const key = exportKey(format);
   exportState[key] = true;
   error.value = null;
   try {
-    const report = buildSystemReportsReport(reportPayload.value);
+    if (!userCatalogLoaded.value) {
+      await loadUserCatalog();
+    }
+    const report = buildSystemReportsReport(normalizedReportPayload.value);
     if (format === "excel") {
       await downloadReportExcel(report);
     } else {
@@ -582,7 +738,7 @@ async function exportReports(format: "excel" | "pdf") {
 }
 
 onMounted(() => {
-  void loadReports();
+  void Promise.allSettled([loadUserCatalog(), loadReports()]);
 });
 </script>
 
