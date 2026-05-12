@@ -203,6 +203,12 @@ export const router = createRouter({
           meta: { title: "Inteligencia Operativa", viewFile: "views/admin/MaintenanceIntelligenceView.vue" },
         },
         {
+          path: "reportes-sistema",
+          name: "reportes-sistema",
+          component: () => import("@/views/admin/SystemReportsView.vue"),
+          meta: { title: "Reportes del sistema", viewFile: "views/admin/SystemReportsView.vue" },
+        },
+        {
           path: "gemelos-digitales",
           name: "gemelos-digitales",
           component: () => import("@/views/admin/DigitalTwinsView.vue"),

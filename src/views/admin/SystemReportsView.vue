@@ -1,0 +1,544 @@
+<template>
+  <div class="system-reports-page">
+    <v-alert v-if="!canRead" type="warning" variant="tonal">
+      No tienes permisos para visualizar este mÃ³dulo.
+    </v-alert>
+
+    <v-alert v-else-if="!canAccessSystemReports" type="warning" variant="tonal">
+      No tienes permisos para acceder a este reporte.
+    </v-alert>
+
+    <template v-else>
+      <v-card rounded="xl" class="pa-5 enterprise-surface hero-card">
+        <div class="d-flex align-center justify-space-between hero-wrap">
+          <div>
+            <div class="text-h6 font-weight-bold">Reportes del sistema</div>
+            <div class="text-body-2 text-medium-emphasis">
+              Consolida horas trabajadas, costos de mantenimiento, responsables, stock valorizado e inventario consumido en una sola vista.
+            </div>
+          </div>
+          <div class="d-flex align-center hero-actions">
+            <v-chip label color="primary" variant="tonal">
+              {{ generatedAtLabel }}
+            </v-chip>
+            <v-btn
+              color="secondary"
+              variant="tonal"
+              prepend-icon="mdi-file-excel"
+              :loading="isExporting('excel')"
+              :disabled="!reportPayload"
+              @click="exportReports('excel')"
+            >
+              Excel
+            </v-btn>
+            <v-btn
+              color="secondary"
+              variant="tonal"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="isExporting('pdf')"
+              :disabled="!reportPayload"
+              @click="exportReports('pdf')"
+            >
+              PDF
+            </v-btn>
+            <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="loadReports">
+              Actualizar
+            </v-btn>
+          </div>
+        </div>
+
+        <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
+
+        <v-row dense class="mt-4">
+          <v-col cols="12" md="3">
+            <v-text-field
+              v-model="filters.from"
+              type="date"
+              label="Desde"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-text-field
+              v-model="filters.to"
+              type="date"
+              label="Hasta"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="filters.bodega_id"
+              :items="warehouseOptions"
+              item-title="label"
+              item-value="id"
+              label="Bodega"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+              clearable
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
+              v-model="filters.group_by"
+              :items="groupOptions"
+              item-title="title"
+              item-value="value"
+              label="Agrupar por"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            />
+          </v-col>
+        </v-row>
+
+        <div class="d-flex align-center filter-actions mt-4">
+          <v-btn color="primary" prepend-icon="mdi-filter-outline" :loading="loading" @click="loadReports">
+            Aplicar filtros
+          </v-btn>
+          <v-btn variant="text" @click="clearFilters">
+            Limpiar
+          </v-btn>
+        </div>
+      </v-card>
+
+      <v-row dense class="mt-2">
+        <v-col v-for="card in summaryCards" :key="card.label" cols="12" sm="6" xl="2">
+          <v-card rounded="lg" variant="outlined" class="pa-4 summary-card h-100">
+            <div class="text-caption text-medium-emphasis">{{ card.label }}</div>
+            <div class="text-h5 font-weight-bold mt-2">{{ card.valueLabel }}</div>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <v-card rounded="xl" class="pa-5 enterprise-surface mt-4">
+        <LoadingTableState
+          v-if="loading"
+          message="Generando reportes del sistema..."
+          :rows="6"
+          :columns="6"
+        />
+
+        <template v-else>
+          <v-tabs v-model="activeTab" color="primary" class="system-tabs">
+            <v-tab v-for="section in reportSections" :key="section.key" :value="section.key">
+              {{ section.title }} ({{ section.rawRows.length }})
+            </v-tab>
+          </v-tabs>
+
+          <v-window v-model="activeTab" class="mt-4">
+            <v-window-item v-for="section in reportSections" :key="section.key" :value="section.key">
+              <div class="d-flex align-center justify-space-between section-head">
+                <div>
+                  <div class="text-subtitle-1 font-weight-bold">{{ section.title }}</div>
+                  <div class="text-body-2 text-medium-emphasis">{{ section.subtitle }}</div>
+                </div>
+                <v-chip label color="secondary" variant="tonal">
+                  {{ section.groupLabel }}
+                </v-chip>
+              </div>
+
+              <v-alert
+                v-if="!section.rawRows.length"
+                type="info"
+                variant="tonal"
+                class="mt-4"
+              >
+                No hay datos para este reporte con los filtros actuales.
+              </v-alert>
+
+              <v-data-table
+                v-else
+                :headers="section.headers"
+                :items="section.displayRows"
+                density="compact"
+                :items-per-page="10"
+                class="table-enterprise enterprise-table mt-4"
+              />
+            </v-window-item>
+          </v-window>
+        </template>
+      </v-card>
+    </template>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from "vue";
+import { api } from "@/app/http/api";
+import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
+import LoadingTableState from "@/components/ui/LoadingTableState.vue";
+import { hasReportAccess } from "@/app/config/report-access";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import {
+  currentDateInputValue,
+  formatDateForInput,
+  formatDateTime,
+} from "@/app/utils/date-time";
+import {
+  buildSystemReportsReport,
+  downloadReportExcel,
+  downloadReportPdf,
+} from "@/app/utils/maintenance-intelligence-reports";
+
+type AnyRow = Record<string, any>;
+
+const auth = useAuthStore();
+const menuStore = useMenuStore();
+const loading = ref(false);
+const error = ref<string | null>(null);
+const reportPayload = ref<AnyRow | null>(null);
+const exportState = reactive<Record<string, boolean>>({});
+const activeTab = ref("horas_trabajadas");
+
+function startOfMonthInput() {
+  const now = new Date();
+  return formatDateForInput(new Date(now.getFullYear(), now.getMonth(), 1));
+}
+
+const filters = reactive({
+  from: startOfMonthInput(),
+  to: currentDateInputValue(),
+  bodega_id: "",
+  group_by: "OT",
+});
+
+const groupOptions = [
+  { title: "OT", value: "OT" },
+  { title: "Bodega", value: "BODEGA" },
+  { title: "Equipo", value: "EQUIPO" },
+  { title: "Responsable", value: "RESPONSABLE" },
+  { title: "Material", value: "MATERIAL" },
+  { title: "Mes", value: "MES" },
+];
+
+const perms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, [
+    "Reportes del sistema",
+    "Reportes sistema",
+    "Reportes globales",
+    "Sistema reportes",
+  ]),
+);
+const canRead = computed(() => perms.value.isReaded);
+const canAccessSystemReports = computed(() => {
+  const allowedReports = auth.user?.effectiveReportes ?? auth.user?.reportes;
+  return (
+    hasReportAccess(allowedReports, "reportes_sistema") ||
+    hasReportAccess(allowedReports, "inteligencia_operativa")
+  );
+});
+
+function unwrap<T = any>(payload: any, fallback: T): T {
+  return (payload?.data ?? payload ?? fallback) as T;
+}
+
+const warehouseOptions = computed<AnyRow[]>(() =>
+  Array.isArray(reportPayload.value?.catalogs?.bodegas)
+    ? reportPayload.value.catalogs.bodegas
+    : [],
+);
+
+const generatedAtLabel = computed(() =>
+  reportPayload.value?.generated_at
+    ? formatDateTime(reportPayload.value.generated_at, "Sin sincronizar")
+    : "Sin sincronizar",
+);
+
+function formatNumber(value: unknown, digits = 2) {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric)) return "0";
+  return new Intl.NumberFormat("es-EC", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  }).format(numeric);
+}
+
+function formatSummaryValue(label: string, value: unknown) {
+  const normalizedLabel = String(label || "").toLowerCase();
+  if (normalizedLabel.includes("costo")) {
+    return `$${formatNumber(value, 2)}`;
+  }
+  if (normalizedLabel.includes("hora")) {
+    return `${formatNumber(value, 2)} h`;
+  }
+  return formatNumber(value, 4);
+}
+
+const summaryCards = computed(() =>
+  (Array.isArray(reportPayload.value?.summary) ? reportPayload.value?.summary : []).map(
+    (item: AnyRow) => ({
+      label: String(item?.label || "Indicador"),
+      valueLabel: formatSummaryValue(String(item?.label || ""), item?.value),
+    }),
+  ),
+);
+
+const SECTION_DEFS = [
+  {
+    key: "horas_trabajadas",
+    title: "Horas trabajadas",
+    subtitle: "Cantidad de horas registradas por OT, responsable o agrupaciÃ³n seleccionada.",
+  },
+  {
+    key: "costo_mantenimiento",
+    title: "Costo de mantenimiento",
+    subtitle: "Valor total de materiales utilizados en ordenes de trabajo tipo mantenimiento.",
+  },
+  {
+    key: "responsables_ot",
+    title: "QuiÃ©nes trabajaron",
+    subtitle: "Responsables con horas registradas por orden de trabajo.",
+  },
+  {
+    key: "costo_inventario",
+    title: "Costo del inventario",
+    subtitle: "Snapshot actual del inventario valorizado por bodega o material.",
+  },
+  {
+    key: "repuestos_cambiados",
+    title: "Repuestos cambiados",
+    subtitle: "Materiales utilizados en equipos para cada OT de mantenimiento.",
+  },
+  {
+    key: "inventario_consumido",
+    title: "Inventario consumido",
+    subtitle: "Materiales usados en todas las ordenes de trabajo segÃºn la agrupaciÃ³n activa.",
+  },
+];
+
+const FIELD_LABELS: Record<string, string> = {
+  fecha_referencia: "Fecha",
+  periodo: "Periodo",
+  work_order_code: "OT",
+  work_order_title: "Titulo OT",
+  work_order_status: "Estado OT",
+  work_order_type: "Tipo OT",
+  maintenance_kind: "Clase mtto",
+  equipment_label: "Equipo",
+  procedure_label: "Plantilla",
+  bodega_label: "Bodega",
+  consumo_bodegas: "Bodegas consumo",
+  responsable: "Responsable",
+  responsables: "Responsables",
+  ordenes_trabajo: "Ordenes trabajo",
+  equipos: "Equipos",
+  bodegas: "Bodegas",
+  material_label: "Material",
+  total_horas: "Horas",
+  total_responsables: "Responsables",
+  total_ordenes: "OT",
+  total_items: "Registros",
+  total_materiales: "Materiales",
+  total_cantidad: "Cantidad",
+  total_costo: "Costo total",
+  total_stock: "Stock actual",
+  costo_unitario: "Costo unitario",
+  costo_unitario_promedio: "Costo unitario promedio",
+  total_costo_inventario: "Costo inventario",
+};
+
+const HIDDEN_FIELDS = new Set([
+  "work_order_id",
+  "equipment_id",
+  "plan_id",
+  "procedure_id",
+  "bodega_id",
+  "producto_id",
+  "user_id",
+  "period_key",
+  "is_maintenance",
+]);
+
+function prettifyKey(key: string) {
+  return String(key || "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function looksLikeDate(value: unknown) {
+  const raw = String(value ?? "").trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(raw);
+}
+
+function formatCellValue(key: string, value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  if (Array.isArray(value)) return value.join(" | ");
+  if (typeof value === "boolean") return value ? "Si" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  if (looksLikeDate(value) && /fecha/i.test(key)) {
+    const raw = String(value);
+    return raw.includes("T") ? formatDateTime(raw, raw) : raw.slice(0, 10);
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && String(value).trim() !== "") {
+    if (/costo|valor/i.test(key)) return `$${formatNumber(numeric, 2)}`;
+    if (/hora/i.test(key)) return `${formatNumber(numeric, 2)} h`;
+    return formatNumber(
+      numeric,
+      /ordenes|items|materiales|responsables/i.test(key) ? 0 : 4,
+    );
+  }
+  return String(value);
+}
+
+function buildHeaders(rows: AnyRow[]) {
+  const keySet = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row || {})) {
+      if (!HIDDEN_FIELDS.has(key)) keySet.add(key);
+    }
+  }
+  const keys = Array.from(keySet);
+  return keys.map((key) => ({
+    title: FIELD_LABELS[key] ?? prettifyKey(key),
+    key,
+  }));
+}
+
+function buildDisplayRows(rows: AnyRow[]) {
+  return rows.map((row) =>
+    Object.fromEntries(
+      Object.entries(row || {})
+        .filter(([key]) => !HIDDEN_FIELDS.has(key))
+        .map(([key, value]) => [key, formatCellValue(key, value)]),
+    ),
+  );
+}
+
+const reportSections = computed(() =>
+  SECTION_DEFS.map((section) => {
+    const source = reportPayload.value?.reports?.[section.key] ?? {};
+    const rawRows = Array.isArray(source?.rows) ? source.rows : [];
+    const groupBy = String(source?.group_by || reportPayload.value?.filters?.group_by || "OT");
+    return {
+      ...section,
+      rawRows,
+      displayRows: buildDisplayRows(rawRows),
+      headers: buildHeaders(rawRows),
+      groupLabel: `Agrupado por ${groupBy}`,
+    };
+  }),
+);
+
+async function loadReports() {
+  if (!canRead.value || !canAccessSystemReports.value) {
+    reportPayload.value = null;
+    return;
+  }
+  if (filters.from && filters.to && filters.from > filters.to) {
+    error.value = "La fecha desde no puede ser mayor que la fecha hasta.";
+    return;
+  }
+
+  loading.value = true;
+  error.value = null;
+  try {
+    const { data } = await api.get("/kpi_maintenance/inteligencia/reportes-sistema", {
+      params: {
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+        bodega_id: filters.bodega_id || undefined,
+        group_by: filters.group_by || undefined,
+      },
+    });
+    reportPayload.value = unwrap<AnyRow | null>(data, null);
+  } catch (e: any) {
+    error.value =
+      e?.response?.data?.message || "No se pudieron generar los reportes del sistema.";
+  } finally {
+    loading.value = false;
+  }
+}
+
+function clearFilters() {
+  filters.from = startOfMonthInput();
+  filters.to = currentDateInputValue();
+  filters.bodega_id = "";
+  filters.group_by = "OT";
+  void loadReports();
+}
+
+function exportKey(format: "excel" | "pdf") {
+  return `system-reports:${format}`;
+}
+
+function isExporting(format: "excel" | "pdf") {
+  return Boolean(exportState[exportKey(format)]);
+}
+
+async function exportReports(format: "excel" | "pdf") {
+  if (!reportPayload.value) return;
+  const key = exportKey(format);
+  exportState[key] = true;
+  error.value = null;
+  try {
+    const report = buildSystemReportsReport(reportPayload.value);
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (e: any) {
+    error.value = e?.message || "No se pudo exportar el reporte.";
+  } finally {
+    exportState[key] = false;
+  }
+}
+
+onMounted(() => {
+  void loadReports();
+});
+</script>
+
+<style scoped>
+.system-reports-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hero-card {
+  background:
+    radial-gradient(circle at top right, rgba(73, 141, 255, 0.18), transparent 30%),
+    linear-gradient(135deg, rgba(14, 24, 39, 0.98), rgba(12, 18, 30, 0.98));
+}
+
+.hero-wrap {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.hero-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.summary-card {
+  border-color: rgba(115, 149, 202, 0.22);
+  background:
+    linear-gradient(180deg, rgba(21, 30, 47, 0.95), rgba(14, 22, 36, 0.95));
+}
+
+.section-head {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.system-tabs {
+  border-bottom: 1px solid rgba(115, 149, 202, 0.14);
+}
+</style>

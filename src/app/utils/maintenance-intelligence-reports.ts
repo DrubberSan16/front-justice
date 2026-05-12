@@ -1432,3 +1432,74 @@ export function buildAgendaProgrammingReport(payload: {
     ],
   } satisfies ReportDefinition;
 }
+
+export function buildSystemReportsReport(payload: {
+  filters?: AnyRow | null;
+  summary?: ReportSummaryItem[];
+  reports?: Record<string, AnyRow>;
+}) {
+  const filters = payload.filters ?? {};
+  const reports = payload.reports ?? {};
+  const from = String(filters.from || "").trim();
+  const to = String(filters.to || "").trim();
+  const bodegaLabel = String(filters.bodega_label || "").trim();
+  const groupBy = String(filters.group_by || "OT").trim();
+  const activeFilters = [
+    from && to ? `Rango: ${from} a ${to}` : "",
+    bodegaLabel ? `Bodega: ${bodegaLabel}` : "",
+    groupBy ? `Agrupado por: ${groupBy}` : "",
+  ].filter(Boolean);
+
+  return {
+    fileName: `reportes_sistema_${formatDateForInput(new Date())}`,
+    title: "Reportes del sistema",
+    subtitle: activeFilters.length
+      ? activeFilters.join(" · ")
+      : "Consolidado general de ordenes de trabajo e inventario.",
+    summary: payload.summary ?? [],
+    sheets: [
+      {
+        name: "Horas trabajadas",
+        rows: Array.isArray(reports.horas_trabajadas?.rows)
+          ? reports.horas_trabajadas.rows
+          : [],
+        note: "Horas registradas por orden, responsable o agrupacion seleccionada.",
+      },
+      {
+        name: "Costo mantenimiento",
+        rows: Array.isArray(reports.costo_mantenimiento?.rows)
+          ? reports.costo_mantenimiento.rows
+          : [],
+        note: "Costo total de materiales usados en ordenes de mantenimiento.",
+      },
+      {
+        name: "Responsables OT",
+        rows: Array.isArray(reports.responsables_ot?.rows)
+          ? reports.responsables_ot.rows
+          : [],
+        note: "Responsables con horas registradas por orden de trabajo.",
+      },
+      {
+        name: "Costo inventario",
+        rows: Array.isArray(reports.costo_inventario?.rows)
+          ? reports.costo_inventario.rows
+          : [],
+        note: "Snapshot actual valorizado del inventario por bodega o material.",
+      },
+      {
+        name: "Repuestos cambiados",
+        rows: Array.isArray(reports.repuestos_cambiados?.rows)
+          ? reports.repuestos_cambiados.rows
+          : [],
+        note: "Materiales utilizados en equipos para ordenes de mantenimiento.",
+      },
+      {
+        name: "Inventario consumido",
+        rows: Array.isArray(reports.inventario_consumido?.rows)
+          ? reports.inventario_consumido.rows
+          : [],
+        note: "Consumo consolidado de materiales por bodega, OT o agrupacion activa.",
+      },
+    ],
+  } satisfies ReportDefinition;
+}

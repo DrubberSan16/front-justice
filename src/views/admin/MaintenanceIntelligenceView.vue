@@ -1860,6 +1860,15 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     accent: "linear-gradient(135deg, rgba(69,88,216,0.18), rgba(157,176,255,0.06))",
   },
   {
+    key: "reportes-sistema",
+    label: "Reportes sistema",
+    value: 6,
+    helper: "Horas, costos, responsables e inventario en una sola vista",
+    icon: "mdi-chart-box-multiple-outline",
+    accent: "linear-gradient(135deg, rgba(18,160,123,0.18), rgba(127,232,196,0.06))",
+    routeName: "reportes-sistema",
+  },
+  {
     key: "eventos",
     label: "Eventos KPI",
     value: summary.kpis?.eventos_proceso ?? 0,
