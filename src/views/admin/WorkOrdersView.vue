@@ -1563,7 +1563,11 @@ const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || 
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const canRegisterRealIssue = computed(
-  () => !!editingId.value && persistedWorkflow.value === "IN_PROGRESS" && !isReadOnlyWorkflow.value,
+  () =>
+    !!editingId.value &&
+    normalizedWorkflow.value === "IN_PROGRESS" &&
+    persistedWorkflow.value === "IN_PROGRESS" &&
+    !isReadOnlyWorkflow.value,
 );
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
