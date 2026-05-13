@@ -685,7 +685,7 @@
                   variant="tonal"
                   prepend-icon="mdi-package-variant-closed"
                   :disabled="
-                    !canRegisterRealIssue ||
+                    isReadOnlyWorkflow ||
                     toPositiveNumber((item.raw ?? item).cantidad_pendiente) <= 0 ||
                     issuingMaterials
                   "
@@ -1788,7 +1788,7 @@ const materialReservationHeaders = computed(() => {
     { title: "Pendiente", key: "cantidad_pendiente" },
     { title: "Observación", key: "observacion" },
   ];
-  if (canRegisterRealIssue.value) {
+  if (showMaterialsTab.value && !isReadOnlyWorkflow.value) {
     base.push({ title: "Acciones", key: "actions", sortable: false } as any);
   }
   return base;
