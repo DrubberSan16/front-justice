@@ -3440,6 +3440,10 @@ function resolveWorkOrderSaveErrorMessage(error: any) {
     return `Hubo un error al guardar la orden de trabajo: ${rawMessage}`;
   }
 
+  if (rawMessage && !/internal server error/i.test(rawMessage)) {
+    return `Hubo un error al guardar la orden de trabajo: ${rawMessage}`;
+  }
+
   return "Hubo un error al guardar la orden de trabajo. No se aplicaron cambios.";
 }
 

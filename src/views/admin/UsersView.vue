@@ -73,11 +73,12 @@
     </v-alert>
 
     <v-data-table
+      v-model:page="tablePage"
+      v-model:items-per-page="itemsPerPage"
       :headers="headers"
       :items="users.filtered"
       :loading="users.loading"
       loading-text="Obteniendo usuarios..."
-      :items-per-page="itemsPerPage"
       class="elevation-0 enterprise-table users-table"
     >
       <template #item.status="{ item }">
@@ -128,18 +129,25 @@
 
       <template #bottom>
         <div class="responsive-header px-2 py-2">
-          <div class="text-caption text-medium-emphasis">
-            Total: {{ users.filtered.length }}
+          <div class="text-caption text-medium-emphasis users-table__summary">
+            Mostrando {{ pageFrom }}-{{ pageTo }} de {{ filteredTotal }} usuarios
           </div>
 
-          <div class="responsive-actions">
+          <div class="responsive-actions users-table__footer">
             <v-select
               v-model="itemsPerPage"
               :items="[5, 10, 20, 50]"
-              label="Por pagina"
+              label="Por página"
               variant="outlined"
               density="compact"
               style="max-width: 140px;"
+              hide-details
+            />
+            <v-pagination
+              v-model="tablePage"
+              :length="pageCount"
+              :total-visible="7"
+              density="comfortable"
             />
           </div>
         </div>
@@ -190,6 +198,7 @@ const ui = useUiStore();
 const menuUsersProfile = useMenuUsersProfileStore();
 
 const itemsPerPage = ref(10);
+const tablePage = ref(1);
 
 const headers = computed(() => [
   { title: "Usuario", key: "nameUser" },
@@ -229,6 +238,18 @@ const formDialog = ref(false);
 const deleteDialog = ref(false);
 const selectedUser = ref<User | null>(null);
 const busy = ref(false);
+const filteredTotal = computed(() => users.filtered.length);
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(filteredTotal.value / Math.max(1, Number(itemsPerPage.value || 10)))),
+);
+const pageFrom = computed(() => {
+  if (!filteredTotal.value) return 0;
+  return (tablePage.value - 1) * Number(itemsPerPage.value || 10) + 1;
+});
+const pageTo = computed(() => {
+  if (!filteredTotal.value) return 0;
+  return Math.min(filteredTotal.value, tablePage.value * Number(itemsPerPage.value || 10));
+});
 
 onMounted(async () => {
   if (!canRead.value) return;
@@ -247,9 +268,32 @@ watch(
       return;
     }
     if (value === previous || !canRead.value) return;
+    tablePage.value = 1;
     await users.fetchAll();
   },
 );
+
+watch(
+  [
+    () => users.search,
+    () => users.statusFilter,
+    () => users.roleFilter,
+    () => users.includeDeleted,
+  ],
+  () => {
+    tablePage.value = 1;
+  },
+);
+
+watch([filteredTotal, itemsPerPage], () => {
+  const maxPage = pageCount.value;
+  if (tablePage.value > maxPage) {
+    tablePage.value = maxPage;
+  }
+  if (tablePage.value < 1) {
+    tablePage.value = 1;
+  }
+});
 
 function formatSucursales(
   rows?: Array<{ id: string; codigo: string; nombre: string }>,
@@ -387,7 +431,23 @@ async function onConfirmDelete() {
   gap: 12px;
 }
 
+.users-table__summary {
+  min-width: 220px;
+}
+
+.users-table__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 960px) {
+  .users-table__footer {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .users-table :deep(.v-data-table-footer__items-per-page),
   .users-table :deep(.v-data-table-footer__pagination) {
     width: 100%;
