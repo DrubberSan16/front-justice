@@ -1519,6 +1519,12 @@ const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
 const isBlocked = computed(() => normalizedWorkflow.value === "BLOCKED");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
+const persistedWorkflow = computed(() =>
+  normalizeWorkflowStatus(currentWorkOrderRecord.value?.status_workflow || ""),
+);
+const hasPendingInProcessSave = computed(
+  () => !!editingId.value && normalizedWorkflow.value === "IN_PROGRESS" && persistedWorkflow.value !== "IN_PROGRESS",
+);
 function currentUserId() {
   return String(auth.user?.id || auth.userId || "").trim();
 }
@@ -1557,7 +1563,7 @@ const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || 
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const canRegisterRealIssue = computed(
-  () => !!editingId.value && isInProcess.value && !isReadOnlyWorkflow.value,
+  () => !!editingId.value && persistedWorkflow.value === "IN_PROGRESS" && !isReadOnlyWorkflow.value,
 );
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
@@ -3442,6 +3448,9 @@ function applySavedWorkOrderState(savedHeader: any) {
   if (assignedCode) {
     headerForm.code = assignedCode;
   }
+  headerForm.status_workflow = normalizeWorkflowStatus(
+    savedHeader?.status_workflow ?? headerForm.status_workflow,
+  );
   headerForm.plan_id = savedHeader?.plan_id ?? headerForm.plan_id;
   headerForm.procedimiento_id = savedHeader?.procedimiento_id ?? headerForm.procedimiento_id;
   headerForm.equipo_componente_id = savedHeader?.equipo_componente_id ?? headerForm.equipo_componente_id;
@@ -4116,6 +4125,9 @@ async function loadDetailData() {
       safeGetList(`/kpi_maintenance/work-orders/${editingId.value}/history`, "No se pudo cargar el historial de la orden de trabajo."),
     ]);
     currentWorkOrderRecord.value = unwrapData(headerRes.data);
+    headerForm.status_workflow = normalizeWorkflowStatus(
+      currentWorkOrderRecord.value?.status_workflow ?? headerForm.status_workflow,
+    );
     headerForm.alerta_id = currentWorkOrderRecord.value?.alerta_id ?? "";
     taskRows.value = asArray(tasksRes.data).map((x) => ({
       ...x,
@@ -4463,6 +4475,9 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
 
     if (savedHeader) {
       currentWorkOrderRecord.value = savedHeader;
+      headerForm.status_workflow = normalizeWorkflowStatus(
+        savedHeader?.status_workflow ?? headerForm.status_workflow,
+      );
       headerForm.plan_id = savedHeader.plan_id ?? headerForm.plan_id;
       headerForm.procedimiento_id = savedHeader.procedimiento_id ?? headerForm.procedimiento_id;
       headerForm.equipo_componente_id = savedHeader.equipo_componente_id ?? headerForm.equipo_componente_id;
@@ -4772,7 +4787,11 @@ async function createConsumo() {
 
 function openMaterialIssueDialog(item: any) {
   if (!canRegisterRealIssue.value) {
-    ui.error("La salida real de materiales solo se puede registrar cuando la OT está en proceso.");
+    ui.error(
+      hasPendingInProcessSave.value
+        ? "Guarda primero la OT con estado En proceso para registrar la salida real de materiales."
+        : "La salida real de materiales solo se puede registrar cuando la OT está en proceso.",
+    );
     return;
   }
   materialIssueTarget.value = item;
@@ -4792,7 +4811,11 @@ async function submitMaterialIssue() {
   if (issuingMaterials.value) return;
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!canRegisterRealIssue.value) {
-    return ui.error("La salida real de materiales solo se puede registrar cuando la OT está en proceso.");
+    return ui.error(
+      hasPendingInProcessSave.value
+        ? "Guarda primero la OT con estado En proceso para registrar la salida real de materiales."
+        : "La salida real de materiales solo se puede registrar cuando la OT está en proceso.",
+    );
   }
   if (!editingId.value) {
     return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
