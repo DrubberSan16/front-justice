@@ -619,7 +619,7 @@
                   no-filter
                   :disabled="!consumoForm.bodega_id || loadingCatalogs"
                   :loading="loadingConsumoProducts"
-                  hint="Se cargan materiales por bodega a medida que los necesites."
+                  :hint="consumoProductHint"
                   persistent-hint
                 />
                 <div
@@ -666,7 +666,7 @@
 
           <v-window-item value="materiales">
             <div class="text-body-2 text-medium-emphasis pt-2 mb-3">
-              Se listan los materiales reservados en consumos. La salida real solo se puede registrar cuando la OT está en proceso y nunca puede exceder lo reservado pendiente.
+              {{ materialIssueHelperText }}
             </div>
             <v-data-table
               :headers="materialReservationHeaders"
@@ -1436,6 +1436,7 @@ const maintenanceKindOptions = [
   { title: "Correctivo", value: "CORRECTIVO" },
   { title: "Preventivo", value: "PREVENTIVO" },
   { title: "Predictivo", value: "PREDICTIVO" },
+  { title: "Cebada", value: "CEBADA" },
   { title: "Inspección", value: "INSPECCION" },
 ];
 const maintenanceKindFilterOptions = [
@@ -1474,8 +1475,12 @@ function isExportingListed(format: "excel" | "pdf") {
   return Boolean(exportState[exportListKey(format)]);
 }
 
+function normalizeMaintenanceKindValue(value: unknown) {
+  return String(value || "").trim().toUpperCase();
+}
+
 function getMaintenanceKindLabel(value: unknown) {
-  const normalized = String(value || "").trim().toUpperCase();
+  const normalized = normalizeMaintenanceKindValue(value);
   return maintenanceKindOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
 }
 
@@ -1497,6 +1502,19 @@ function getWorkOrderOperationalDateLabel(item: any) {
 }
 
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
+const requiresOilProductsForCurrentWorkOrder = computed(
+  () => normalizeMaintenanceKindValue(headerForm.maintenance_kind) === "CEBADA",
+);
+const consumoProductHint = computed(() =>
+  requiresOilProductsForCurrentWorkOrder.value
+    ? "Para OT de tipo Cebada solo se listan materiales marcados como aceite en la bodega seleccionada."
+    : "Se cargan materiales por bodega a medida que los necesites.",
+);
+const materialIssueHelperText = computed(() =>
+  requiresOilProductsForCurrentWorkOrder.value
+    ? "Se listan los materiales con check de aceite reservados en consumos. La salida real solo se puede registrar cuando la OT está en proceso y nunca puede exceder lo reservado pendiente."
+    : "Se listan los materiales reservados en consumos. La salida real solo se puede registrar cuando la OT está en proceso y nunca puede exceder lo reservado pendiente.",
+);
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
 const isBlocked = computed(() => normalizedWorkflow.value === "BLOCKED");
@@ -1593,7 +1611,7 @@ const headers = [
   { title: "Equipo", key: "equipment_label" },
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
-  { title: "Tipo", key: "maintenance_kind" },
+  { title: "Tipo", key: "maintenance_kind_label" },
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -2178,13 +2196,15 @@ function toPositiveNumber(value: unknown) {
 
 function normalizeStockProductOption(row: any) {
   const productId = String(row?.producto_id || row?.id || "");
-  const productLabel = resolveProductLabel(
-    productId,
+  const baseLabel = String(
     row?.producto_label ||
       row?.producto_nombre ||
       productNameMap.value[productId] ||
       productId,
-  );
+  ).trim();
+  const productLabel = row && Object.prototype.hasOwnProperty.call(row, "es_aceite")
+    ? appendOilIndicator(baseLabel, row?.es_aceite)
+    : resolveProductLabel(productId, baseLabel);
   const stock = toPositiveNumber(row?.stock_disponible ?? row?.stock_actual);
   const activeReserved = toPositiveNumber(row?.cantidad_reservada_activa);
   return {
@@ -2193,6 +2213,7 @@ function normalizeStockProductOption(row: any) {
       `${productLabel} - Disponible: ${stock}` +
       (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
     label: String(productLabel || productId),
+    es_aceite: Boolean(row?.es_aceite),
     stock_actual: toPositiveNumber(row?.stock_actual),
     stock_disponible: stock,
     cantidad_reservada_activa: activeReserved,
@@ -2222,6 +2243,7 @@ async function loadConsumoProducts(options?: { reset?: boolean; search?: string 
         search: searchValue || undefined,
         page: pageToLoad,
         limit: 50,
+        es_aceite: requiresOilProductsForCurrentWorkOrder.value ? true : undefined,
       },
     });
 
@@ -2360,6 +2382,7 @@ const materialReservationRows = computed(() => {
         bodega_id: bodegaId,
         producto_label: row?.producto_label || "-",
         bodega_label: row?.bodega_label || "-",
+        es_aceite: Boolean(row?.es_aceite),
         cantidad_reservada: 0,
         cantidad_emitida: 0,
         cantidad_pendiente: 0,
@@ -2389,6 +2412,9 @@ const materialReservationRows = computed(() => {
   }
 
   return [...grouped.values()]
+    .filter((item) =>
+      requiresOilProductsForCurrentWorkOrder.value ? Boolean(item?.es_aceite) : true,
+    )
     .map((item) => ({
       ...item,
       observacion: item._observaciones.join(" | ") || "-",
@@ -5026,6 +5052,25 @@ watch(
       taskForm.tarea_id = "";
     }
     await loadTaskOptionsByPlan(nextPlan);
+  },
+);
+
+watch(
+  () => headerForm.maintenance_kind,
+  async (value, previousValue) => {
+    if (
+      normalizeMaintenanceKindValue(value) ===
+      normalizeMaintenanceKindValue(previousValue)
+    ) {
+      return;
+    }
+    if (consumoForm.bodega_id) {
+      consumoForm.producto_id = "";
+      consumoProductSearch.value = "";
+      await loadConsumoProducts({ reset: true, search: "" });
+      resetConsumoProductIfInvalid();
+      await syncConsumoUnitCost();
+    }
   },
 );
 
