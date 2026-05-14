@@ -690,10 +690,10 @@
               <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Última ejecución fecha" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="Última ejecución horas" variant="outlined" />
+              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="1" label="Última ejecución horas" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.proxima_horas" type="number" step="0.01" label="Hora objetivo" variant="outlined" />
+              <v-text-field v-model="form.proxima_horas" type="number" step="1" label="Hora objetivo" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field :model-value="programacionSourceMode" label="Modo de programación" variant="outlined" readonly />
@@ -1267,6 +1267,8 @@ const monthlyCell = reactive<any>({
 });
 const savingMonthlyCell = ref(false);
 const savingMonthlyPalette = ref(false);
+const hydratingProgramacionForm = ref(false);
+const programacionWorkOrderSelectionToken = ref(0);
 const monthlyPaletteForm = reactive<Record<string, string>>({
   MPG: "#F4DD6B",
   HORAS_PROGRAMADAS: "#F4DD6B",
@@ -1626,16 +1628,189 @@ watch(selectedMonthlyId, async (value) => {
   await loadSelectedMonthly(value);
 });
 
+function numericOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstPositiveNumber(...values: unknown[]) {
+  for (const value of values) {
+    const parsed = numericOrNull(value);
+    if (parsed !== null && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+function formatHourInput(value: unknown) {
+  const parsed = numericOrNull(value);
+  if (parsed === null) return "";
+  if (Number.isInteger(parsed)) return String(parsed);
+  return String(Number(parsed.toFixed(2))).replace(",", ".");
+}
+
+function normalizePayload(value: any) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return {};
+  }
+}
+
+function extractWorkOrderExecutionHours(workOrder: any) {
+  const payload = normalizePayload(workOrder?.valor_json || workOrder?.payload_json);
+  return numericOrNull(workOrder?.ultima_ejecucion_horas)
+    ?? numericOrNull(workOrder?.proxima_horas)
+    ?? numericOrNull(workOrder?.horometro_cierre)
+    ?? numericOrNull(workOrder?.horometro_final)
+    ?? numericOrNull(workOrder?.horometro_actual)
+    ?? numericOrNull(workOrder?.equipment_horometro_actual)
+    ?? numericOrNull(payload?.ultima_ejecucion_horas)
+    ?? numericOrNull(payload?.proxima_horas)
+    ?? numericOrNull(payload?.horometro_cierre)
+    ?? numericOrNull(payload?.horometro_final)
+    ?? numericOrNull(payload?.horometro_actual)
+    ?? numericOrNull(payload?.horometro_programado)
+    ?? null;
+}
+
+function extractWorkOrderExecutionDate(workOrder: any) {
+  return String(
+    workOrder?.closed_at
+      || workOrder?.updated_at
+      || workOrder?.scheduled_end
+      || workOrder?.created_at
+      || "",
+  ).slice(0, 10);
+}
+
+function sortByMostRecent(a: any, b: any) {
+  const aTime = new Date(a?.closed_at || a?.updated_at || a?.scheduled_end || a?.created_at || 0).getTime();
+  const bTime = new Date(b?.closed_at || b?.updated_at || b?.scheduled_end || b?.created_at || 0).getTime();
+  return bTime - aTime;
+}
+
+function selectedPlanProcedure(planId?: string | null) {
+  const normalizedPlanId = String(planId || form.plan_id || "").trim();
+  if (!normalizedPlanId) return null;
+  return procedureCatalog.value.find((item: any) =>
+    [
+      item?.plan_id,
+      item?.plan_mantenimiento_id,
+      item?.plan?.id,
+      item?.plan_operativo_id,
+    ].some((value) => String(value || "").trim() === normalizedPlanId),
+  ) ?? null;
+}
+
+function resolveTemplateFrequencyHours(workOrder?: any | null) {
+  const procedure = selectedProcedure.value || selectedPlanProcedure(workOrder?.plan_id);
+  return firstPositiveNumber(
+    workOrder?.frecuencia_horas,
+    workOrder?.plan_frecuencia_horas,
+    workOrder?.plan_frecuencia_valor,
+    workOrder?.frecuencia_valor,
+    workOrder?.payload_json?.frecuencia_horas,
+    procedure?.frecuencia_horas,
+    procedure?.frecuencia_valor,
+    procedure?.plan?.frecuencia_valor,
+  );
+}
+
+function syncProgramacionTargetHours(frequency = resolveTemplateFrequencyHours(selectedWorkOrder.value)) {
+  const lastHours = numericOrNull(form.ultima_ejecucion_horas);
+  if (lastHours === null || frequency <= 0) return;
+  form.proxima_horas = formatHourInput(Number((lastHours + frequency).toFixed(2)));
+}
+
+async function resolvePreviousExecutionForSelection(
+  equipmentId: string,
+  currentWorkOrderId: string,
+  planId?: string | null,
+) {
+  const normalizedEquipmentId = String(equipmentId || "").trim();
+  const normalizedPlanId = String(planId || "").trim();
+  const normalizedWorkOrderId = String(currentWorkOrderId || "").trim();
+  if (!normalizedEquipmentId) return null;
+
+  const existingProgramaciones = agendaRows.value
+    .filter((item: any) =>
+      String(item?.equipo_id || "").trim() === normalizedEquipmentId
+      && (!normalizedPlanId || String(item?.plan_id || "").trim() === normalizedPlanId)
+      && String(item?.work_order_id || "").trim() !== normalizedWorkOrderId
+      && numericOrNull(item?.ultima_ejecucion_horas) !== null,
+    )
+    .sort(sortByMostRecent);
+  const existing = existingProgramaciones[0];
+  if (existing) {
+    return {
+      hours: numericOrNull(existing.ultima_ejecucion_horas),
+      date: String(existing.ultima_ejecucion_fecha || existing.updated_at || existing.created_at || "").slice(0, 10),
+    };
+  }
+
+  const previousOrders = workOrderCatalog.value
+    .filter((item: any) =>
+      String(item?.equipment_id || "").trim() === normalizedEquipmentId
+      && String(item?.id || "").trim() !== normalizedWorkOrderId
+      && (!normalizedPlanId || String(item?.plan_id || "").trim() === normalizedPlanId)
+      && normalizeWorkflowStatus(item?.status_workflow) === "CLOSED",
+    )
+    .sort(sortByMostRecent);
+
+  for (const order of previousOrders) {
+    const directHours = extractWorkOrderExecutionHours(order);
+    if (directHours !== null) {
+      return { hours: directHours, date: extractWorkOrderExecutionDate(order) };
+    }
+    const taskHours = await resolveWorkOrderTaskHours(String(order.id || ""));
+    if (taskHours > 0) {
+      return { hours: taskHours, date: extractWorkOrderExecutionDate(order) };
+    }
+  }
+  return null;
+}
+
 watch(
   () => form.work_order_id,
-  (value) => {
+  async (value) => {
     const selected = workOrderCatalog.value.find(
       (item: any) => String(item?.id || "") === String(value || ""),
     );
     if (!selected) return;
+    const token = programacionWorkOrderSelectionToken.value + 1;
+    programacionWorkOrderSelectionToken.value = token;
     form.equipo_id = selected.equipment_id || form.equipo_id;
-    form.procedimiento_id = selected.procedimiento_id || form.procedimiento_id;
     form.plan_id = selected.plan_id || form.plan_id;
+    form.procedimiento_id =
+      selected.procedimiento_id ||
+      selectedPlanProcedure(form.plan_id)?.id ||
+      "";
+    if (hydratingProgramacionForm.value) return;
+
+    const frequency = resolveTemplateFrequencyHours(selected);
+    const previous = await resolvePreviousExecutionForSelection(
+      String(form.equipo_id || ""),
+      String(selected.id || ""),
+      String(form.plan_id || ""),
+    );
+    if (programacionWorkOrderSelectionToken.value !== token) return;
+
+    if (previous?.hours !== null && previous?.hours !== undefined) {
+      form.ultima_ejecucion_horas = formatHourInput(previous.hours);
+    } else if (form.ultima_ejecucion_horas === "") {
+      const equipment = equipmentCatalog.value.find(
+        (item: any) => String(item?.id || "") === String(form.equipo_id || ""),
+      );
+      const currentHours = numericOrNull(equipment?.horometro_actual);
+      if (currentHours !== null) form.ultima_ejecucion_horas = formatHourInput(currentHours);
+    }
+    if (!form.ultima_ejecucion_fecha && previous?.date) {
+      form.ultima_ejecucion_fecha = previous.date;
+    }
+    syncProgramacionTargetHours(frequency);
   },
 );
 
@@ -1902,8 +2077,71 @@ const monthlyDisplayDetails = computed(() =>
       : [],
 );
 
+function formatMonthlyHoursLabel(value: unknown) {
+  const formatted = formatHourInput(value);
+  return formatted ? `${formatted} h` : "";
+}
+
+const dynamicMonthlyProgramacionDetails = computed(() => {
+  const period = String(selectedMonthlyPeriod.value || "").trim();
+  if (!period) return [];
+  const importedProgramacionIds = new Set(
+    monthlyDisplayDetails.value
+      .map((item: any) => String(item?.programacion_id || "").trim())
+      .filter(Boolean),
+  );
+
+  return agendaRows.value
+    .filter((item: any) => {
+      const date = String(item?.proxima_fecha || "").slice(0, 10);
+      if (!date.startsWith(period)) return false;
+      const id = String(item?.id || "").trim();
+      return !id || !importedProgramacionIds.has(id);
+    })
+    .map((item: any) => {
+      const scheduledHours =
+        numericOrNull(item?.proxima_horas) !== null &&
+        numericOrNull(item?.ultima_ejecucion_horas) !== null
+          ? Number((Number(item.proxima_horas) - Number(item.ultima_ejecucion_horas)).toFixed(2))
+          : null;
+      const frequencyHours = firstPositiveNumber(
+        item?.frecuencia_valor,
+        item?.frecuencia_horas,
+        item?.payload_json?.frecuencia_horas,
+        scheduledHours,
+      );
+      return {
+        id: `programacion-${item.id}`,
+        programacion_id: item.id,
+        equipo_id: item.equipo_id,
+        equipo_codigo: item.equipo_codigo,
+        equipo_nombre: item.equipo_nombre,
+        fecha_programada: String(item.proxima_fecha || "").slice(0, 10),
+        valor_crudo: formatMonthlyHoursLabel(frequencyHours),
+        valor_normalizado: frequencyHours,
+        tipo_mantenimiento: item.procedimiento_nombre || item.plan_nombre || "Programación",
+        plan_id: item.plan_id,
+        procedimiento_id: item.procedimiento_id,
+        payload_json: {
+          ...(item.payload_json || {}),
+          fuente_programacion: "DINAMICA",
+          frecuencia_horas: frequencyHours || null,
+          total_horas_agendadas: frequencyHours || null,
+          horometro_ultimo: item.ultima_ejecucion_horas ?? null,
+          horometro_programado: item.proxima_horas ?? null,
+          work_order_id: item.work_order_id ?? item.payload_json?.work_order_id ?? null,
+          work_order_code: item.work_order_code ?? item.payload_json?.work_order_code ?? null,
+          color_key: item.payload_json?.color_key || "SINCRONIZADO",
+        },
+      };
+    });
+});
+
 const monthlyFilteredDetails = computed(() => {
-  const details = monthlyDisplayDetails.value;
+  const details = [
+    ...monthlyDisplayDetails.value,
+    ...dynamicMonthlyProgramacionDetails.value,
+  ];
   if (!selectedMonthlyPeriod.value) return details;
   return details.filter((item: any) => String(item.fecha_programada || "").startsWith(selectedMonthlyPeriod.value || ""));
 });
@@ -2523,6 +2761,10 @@ const selectedProcedure = computed(() =>
   procedureCatalog.value.find((item) => String(item.id) === String(form.procedimiento_id || "")) ?? null,
 );
 
+const selectedWorkOrder = computed(() =>
+  workOrderCatalog.value.find((item: any) => String(item?.id || "") === String(form.work_order_id || "")) ?? null,
+);
+
 const resolvedPlanLabel = computed(() => {
   if (form.plan_id) return form.plan_id;
   if (!selectedProcedure.value) return "Se generará al guardar";
@@ -2530,9 +2772,17 @@ const resolvedPlanLabel = computed(() => {
 });
 
 const selectedProcedureFrequency = computed(() => {
-  const frequency = Number(selectedProcedure.value?.frecuencia_horas || 0);
+  const frequency = resolveTemplateFrequencyHours(selectedWorkOrder.value);
   return frequency > 0 ? `${frequency} horas` : "Según configuración de plantilla";
 });
+
+watch(
+  () => [form.ultima_ejecucion_horas, form.plan_id, form.procedimiento_id],
+  () => {
+    if (hydratingProgramacionForm.value) return;
+    syncProgramacionTargetHours();
+  },
+);
 
 function resetForm() {
   editingId.value = null;
@@ -2768,8 +3018,8 @@ function openCreateFromMonthlyDetail(item: any) {
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
   form.proxima_fecha = item.fecha_programada || "";
-  form.ultima_ejecucion_horas = item.payload_json?.horometro_ultimo ?? "";
-  form.proxima_horas = item.payload_json?.horometro_programado ?? "";
+  form.ultima_ejecucion_horas = formatHourInput(item.payload_json?.horometro_ultimo);
+  form.proxima_horas = formatHourInput(item.payload_json?.horometro_programado);
   programacionSourceMode.value = "CALENDARIO";
   programacionSourceOrigin.value = "MENSUAL_IMPORT";
   programacionSourceDocument.value = selectedMonthly.value?.documento_origen || null;
@@ -2789,6 +3039,7 @@ function openCreateFromMonthlyDetail(item: any) {
 
 function openEdit(item: any) {
   if (!canEdit.value) return;
+  hydratingProgramacionForm.value = true;
   editingId.value = item.id;
   programacionSourceMode.value = String(item.modo_programacion || "DINAMICA").toUpperCase() === "CALENDARIO" ? "CALENDARIO" : "DINAMICA";
   programacionSourceOrigin.value = String(item.origen_programacion || "MANUAL");
@@ -2804,11 +3055,14 @@ function openEdit(item: any) {
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
   form.ultima_ejecucion_fecha = item.ultima_ejecucion_fecha || "";
-  form.ultima_ejecucion_horas = item.ultima_ejecucion_horas ?? "";
+  form.ultima_ejecucion_horas = formatHourInput(item.ultima_ejecucion_horas);
   form.proxima_fecha = item.proxima_fecha || "";
-  form.proxima_horas = item.proxima_horas ?? "";
+  form.proxima_horas = formatHourInput(item.proxima_horas);
   form.activo = item.activo !== false;
   dialog.value = true;
+  window.setTimeout(() => {
+    hydratingProgramacionForm.value = false;
+  }, 0);
 }
 
 async function handleAgendaItemClick(item: AgendaCalendarItem) {
