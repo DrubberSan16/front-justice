@@ -458,8 +458,8 @@
                           <div class="weekly-activity__title">{{ item.actividad }}</div>
                           <div class="text-caption text-medium-emphasis">
                             {{ item.tipo_proceso || "OPERACION" }}
-                            <span v-if="item.equipo_codigo"> ? {{ item.equipo_codigo }}</span>
-                            <span v-if="item.payload_json?.monthly_work_order?.work_order_code"> ? {{ item.payload_json.monthly_work_order.work_order_code }}</span>
+                            <span v-if="item.equipo_codigo"> · {{ item.equipo_codigo }}</span>
+                            <span v-if="item.payload_json?.monthly_work_order?.work_order_code"> · {{ item.payload_json.monthly_work_order.work_order_code }}</span>
                           </div>
                         </button>
                         <button type="button" class="weekly-add-button" @click="openSelectedWeeklyCell(slot.key, day.date)">
@@ -623,7 +623,7 @@
     <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 760">
       <v-card rounded="xl">
         <v-card-title class="text-subtitle-1 font-weight-bold">
-          {{ editingId ? "Editar programaci?n" : "Nueva programaci?n" }}
+          {{ editingId ? "Editar programación" : "Nueva programación" }}
         </v-card-title>
         <v-divider />
         <v-card-text class="pt-4">
@@ -687,16 +687,16 @@
               <v-text-field :model-value="selectedProcedureFrequency" label="Frecuencia de plantilla" variant="outlined" readonly />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="?ltima ejecuci?n fecha" variant="outlined" />
+              <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Última ejecución fecha" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="?ltima ejecuci?n horas" variant="outlined" />
+              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="0.01" label="Última ejecución horas" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="form.proxima_horas" type="number" step="0.01" label="Hora objetivo" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field :model-value="programacionSourceMode" label="Modo de programaci?n" variant="outlined" readonly />
+              <v-text-field :model-value="programacionSourceMode" label="Modo de programación" variant="outlined" readonly />
             </v-col>
           </v-row>
         </v-card-text>
@@ -773,7 +773,7 @@
               />
             </v-col>
             <v-col cols="12">
-              <v-textarea v-model="monthlyCell.observacion" rows="3" label="Observaci?n" variant="outlined" />
+              <v-textarea v-model="monthlyCell.observacion" rows="3" label="Observación" variant="outlined" />
             </v-col>
           </v-row>
         </v-card-text>
@@ -831,7 +831,7 @@
         <v-card-text class="pt-4">
           <v-row dense>
             <v-col cols="12" md="3">
-              <v-text-field v-model="weeklyEditor.codigo" label="C?digo" variant="outlined" readonly />
+              <v-text-field v-model="weeklyEditor.codigo" label="Código" variant="outlined" readonly />
             </v-col>
             <v-col cols="12" md="3">
               <v-text-field
@@ -859,7 +859,7 @@
               />
             </v-col>
             <v-col cols="12" md="4">
-              <v-text-field v-model="weeklyEditor.locacion" label="Locaci?n" variant="outlined" />
+              <v-text-field v-model="weeklyEditor.locacion" label="Locación" variant="outlined" />
             </v-col>
             <v-col cols="12" md="4">
               <v-text-field v-model="weeklyEditor.referencia_orden" label="Referencia de orden" variant="outlined" />
@@ -930,7 +930,7 @@
                             <div class="weekly-activity__title">{{ item.actividad }}</div>
                             <div class="text-caption text-medium-emphasis">
                               {{ item.tipo_proceso || "OPERACION" }}
-                              <span v-if="item.equipo_codigo"> ? {{ item.equipo_codigo }}</span>
+                              <span v-if="item.equipo_codigo"> · {{ item.equipo_codigo }}</span>
                             </div>
                           </div>
                           <div class="d-flex" style="gap: 2px;">
@@ -1392,7 +1392,7 @@ const monthlyWorkOrderOptions = computed(() =>
         item?.status_workflow || null,
       ]
         .filter(Boolean)
-        .join(" Â· "),
+        .join(" · "),
     })),
 );
 const loadingMonthlyWorkOrderHours = ref(false);
