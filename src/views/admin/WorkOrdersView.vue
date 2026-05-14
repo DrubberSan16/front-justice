@@ -1957,8 +1957,95 @@ const reportPreviewHistory = computed(() =>
   })),
 );
 
+function normalizeHistoryStatus(value: unknown) {
+  return normalizeWorkflowStatus(value);
+}
+
+function getHistoryUser(item: any) {
+  return String(item?.changed_by || item?.usuario || item?.user || "").trim();
+}
+
+function getHistoryDate(item: any) {
+  return item?.changed_at || item?.fecha || item?.date || "";
+}
+
+function isCancellationHistory(item: any) {
+  const text = `${item?.note || ""} ${item?.to_status || ""}`.toUpperCase();
+  return /CANCEL|ANUL|VOID/.test(text);
+}
+
+function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
+  const sortedHistory = [...(historyRows || [])].sort((a: any, b: any) => {
+    const aTime = new Date(getHistoryDate(a) || 0).getTime();
+    const bTime = new Date(getHistoryDate(b) || 0).getTime();
+    return aTime - bTime;
+  });
+  const plannedHistory =
+    sortedHistory.find((item: any) => normalizeHistoryStatus(item?.to_status) === "PLANNED") ||
+    sortedHistory[0] ||
+    null;
+  const processedHistory =
+    sortedHistory.find((item: any) => normalizeHistoryStatus(item?.to_status) === "IN_PROGRESS") ||
+    sortedHistory.find((item: any) => isCancellationHistory(item)) ||
+    null;
+  const approvedHistory =
+    [...sortedHistory]
+      .reverse()
+      .find((item: any) => normalizeHistoryStatus(item?.to_status) === "CLOSED" || isCancellationHistory(item)) ||
+    null;
+
+  return {
+    creado_por:
+      header?.created_by_label ||
+      header?.created_by_name ||
+      header?.created_by_username ||
+      header?.created_by ||
+      getHistoryUser(plannedHistory) ||
+      "",
+    fecha_creacion:
+      header?.created_at ||
+      getHistoryDate(plannedHistory) ||
+      "",
+    realizado_por:
+      header?.processed_by_label ||
+      header?.processed_by_name ||
+      header?.processed_by_username ||
+      getHistoryUser(processedHistory) ||
+      header?.updated_by ||
+      "",
+    fecha_realizacion:
+      header?.processed_at ||
+      getHistoryDate(processedHistory) ||
+      header?.started_at ||
+      "",
+    aprobado_por:
+      header?.approved_by_label ||
+      header?.approved_by_name ||
+      header?.approved_by_username ||
+      getHistoryUser(approvedHistory) ||
+      "",
+    fecha_aprobacion:
+      header?.approved_at ||
+      getHistoryDate(approvedHistory) ||
+      header?.closed_at ||
+      "",
+    accion_aprobacion:
+      header?.approval_action ||
+      (approvedHistory
+        ? isCancellationHistory(approvedHistory)
+          ? "CANCELADA"
+          : workflowLabel(approvedHistory?.to_status)
+        : ""),
+  };
+}
+
 const workOrderReportDefinition = computed(() =>
-  buildWorkOrderReport({
+  {
+    const traceability = resolveWorkOrderTraceability(
+      currentWorkOrderAudit.value,
+      localHistory.value,
+    );
+    return buildWorkOrderReport({
     header: {
       code: headerForm.code,
       status_workflow: workflowLabel(headerForm.status_workflow),
@@ -1973,13 +2060,7 @@ const workOrderReportDefinition = computed(() =>
       causa: headerForm.causa,
       accion: headerForm.accion,
       prevencion: headerForm.prevencion,
-      creado_por: currentWorkOrderAudit.value?.created_by_label || currentWorkOrderAudit.value?.created_by || "",
-      fecha_creacion: currentWorkOrderAudit.value?.created_at || "",
-      realizado_por: currentWorkOrderAudit.value?.processed_by_label || currentWorkOrderAudit.value?.updated_by || "",
-      fecha_realizacion: currentWorkOrderAudit.value?.processed_at || currentWorkOrderAudit.value?.updated_at || "",
-      aprobado_por: currentWorkOrderAudit.value?.approved_by_label || "",
-      fecha_aprobacion: currentWorkOrderAudit.value?.approved_at || "",
-      accion_aprobacion: currentWorkOrderAudit.value?.approval_action || "",
+      ...traceability,
     },
     tasks: taskRows.value.map((item: any) => ({
       plan: getPlanLabelForTask(item),
@@ -2029,7 +2110,8 @@ const workOrderReportDefinition = computed(() =>
       nota: item?.note || "",
       fecha: item?.changed_at || "",
     })),
-  }),
+  });
+  }
 );
 
 async function exportWorkOrder(format: "excel" | "pdf") {
@@ -3769,7 +3851,8 @@ function getWorkOrderExportTitle(item: any) {
   ).trim();
 }
 
-function buildListedWorkOrderHeaderRow(item: any) {
+function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
+  const traceability = resolveWorkOrderTraceability(item, historyRows);
   return {
     codigo: item?.code || item?.codigo || item?.id || "",
     titulo: getWorkOrderExportTitle(item),
@@ -3781,12 +3864,12 @@ function buildListedWorkOrderHeaderRow(item: any) {
       [item?.procedimiento_codigo, item?.procedimiento_nombre].filter(Boolean).join(" - ") || "-",
     plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
     fecha_operativa: getWorkOrderOperationalDate(item) || "",
-    creado_por: item?.created_by_label || item?.created_by || "",
-    fecha_creacion: item?.created_at || "",
-    realizado_por: item?.processed_by_label || item?.updated_by || "",
-    fecha_realizacion: item?.processed_at || item?.updated_at || "",
-    aprobado_por: item?.approved_by_label || "",
-    fecha_aprobacion: item?.approved_at || "",
+    creado_por: traceability.creado_por,
+    fecha_creacion: traceability.fecha_creacion,
+    realizado_por: traceability.realizado_por,
+    fecha_realizacion: traceability.fecha_realizacion,
+    aprobado_por: traceability.aprobado_por,
+    fecha_aprobacion: traceability.fecha_aprobacion,
     causa: item?.causa || "",
     accion: item?.accion || "",
     prevencion: item?.prevencion || "",
@@ -3926,7 +4009,7 @@ async function fetchWorkOrderExportBundle(order: any) {
   const orderTitle = getWorkOrderExportTitle(header);
 
   return {
-    header: buildListedWorkOrderHeaderRow(header),
+    header: buildListedWorkOrderHeaderRow(header, history),
     tasks: normalizedTasks.map((item: any) => ({
       orden_codigo: orderCode,
       orden_titulo: orderTitle,
