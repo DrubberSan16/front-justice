@@ -396,7 +396,6 @@
             <div class="summary-strip">
               <v-chip size="small" label color="primary" variant="tonal">Unidades: {{ latestDailyUnits.length }}</v-chip>
               <v-chip size="small" label color="warning" variant="tonal">Combustible: {{ latestDailyFuel.length }}</v-chip>
-              <v-chip size="small" label color="error" variant="tonal">Componentes: {{ latestDailyComponents.length }}</v-chip>
             </div>
             <div class="dashboard-table-shell">
               <v-table density="compact" class="dashboard-mini-table">
@@ -1051,18 +1050,11 @@ const processIndicatorCards = computed(() => [
     value: intelligenceSummary.value?.kpis?.eventos_proceso ?? 0,
     helper: "Notificaciones por proceso principal",
   },
-  {
-    key: "componentes_monitoreados",
-    label: "Componentes monitoreados",
-    value: intelligenceSummary.value?.kpis?.componentes_monitoreados ?? 0,
-    helper: "Indicador dinamico desde reporte diario",
-  },
 ]);
 
 const latestDailyReport = computed(() => filteredDailyReports.value[0] ?? null);
 const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 4));
 const latestDailyFuel = computed(() => (latestDailyReport.value?.combustibles ?? []).slice(0, 3));
-const latestDailyComponents = computed(() => (latestDailyReport.value?.componentes ?? []).slice(0, 3));
 
 const latestWeeklySchedule = computed(() => filteredWeeklySchedules.value[0] ?? null);
 const latestWeeklyActivities = computed(() =>

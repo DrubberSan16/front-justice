@@ -14,7 +14,7 @@
         <div>
           <div class="text-h6 font-weight-bold">Inteligencia operativa de mantenimiento</div>
           <div class="text-body-2 text-medium-emphasis">
-            Consolida procedimientos MPG, analisis de lubricante, cronogramas, reportes diarios y eventos KPI con indicadores dinamicos por componente.
+            Consolida procedimientos MPG, analisis de lubricante, cronogramas, reportes diarios y eventos KPI.
           </div>
         </div>
         <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
@@ -368,7 +368,7 @@
       <v-col cols="12" md="6" xl="4">
         <DashboardBarChartCard
           title="Presion operativa"
-          subtitle="Backlog, eventos y monitoreo critico"
+          subtitle="Backlog y eventos operativos"
           :chip-label="`${processIndicatorRows.length} KPI`"
           chip-color="warning"
           :items="processPressureChartItems"
@@ -594,7 +594,7 @@
           <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
             <div>
               <div class="text-subtitle-1 font-weight-bold">Reporte diario de operacion</div>
-              <div class="text-body-2 text-medium-emphasis">Disponibilidad, MPG, combustible y componente por jornada.</div>
+              <div class="text-body-2 text-medium-emphasis">Disponibilidad, MPG y combustible por jornada.</div>
             </div>
             <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
               <v-chip label color="success" variant="tonal">{{ filteredDailyReports.length }} reportes</v-chip>
@@ -611,7 +611,6 @@
               <v-chip label color="secondary" variant="tonal">{{ latestDailyReport.turno || "Sin turno" }}</v-chip>
               <v-chip label color="success" variant="tonal">Unidades: {{ latestDailyReport.unidades?.length ?? 0 }}</v-chip>
               <v-chip label color="warning" variant="tonal">Combustible: {{ latestDailyReport.combustibles?.length ?? 0 }}</v-chip>
-              <v-chip label color="error" variant="tonal">Componentes: {{ latestDailyReport.componentes?.length ?? 0 }}</v-chip>
               <v-chip label color="primary" variant="tonal">Programado: {{ operationScheduleSummary.days }} días</v-chip>
               <v-chip label color="secondary" variant="tonal">Actividades: {{ operationScheduleSummary.activities }}</v-chip>
               <v-chip label color="info" variant="tonal">Horas: {{ operationScheduleSummary.hoursLabel }}</v-chip>
@@ -684,28 +683,6 @@
                   </v-table>
                 </div>
 
-                <div class="text-subtitle-2 font-weight-medium mb-2">Componentes asociados</div>
-                <div class="dashboard-table-shell">
-                  <v-table density="compact" class="dashboard-mini-table">
-                  <thead>
-                    <tr>
-                      <th>Equipo</th>
-                      <th>Componente</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="component in latestDailyComponents" :key="component.id">
-                      <td>{{ component.equipo_codigo }}</td>
-                      <td>{{ component.tipo_componente }}</td>
-                      <td>{{ component.estado || "Sin estado" }}</td>
-                    </tr>
-                    <tr v-if="!latestDailyComponents.length">
-                      <td colspan="3" class="text-center text-medium-emphasis py-3">Sin cambios de componente.</td>
-                    </tr>
-                  </tbody>
-                  </v-table>
-                </div>
               </v-col>
             </v-row>
           </div>
@@ -1126,7 +1103,6 @@ type SummaryState = {
   kpis?: Record<string, number>;
   process_breakdown?: Array<{ tipo_proceso: string; total: number }>;
   recent_events?: AnyRow[];
-  component_highlights?: AnyRow[];
 };
 
 const loading = ref(false);
@@ -1286,7 +1262,6 @@ function resetState() {
   summary.kpis = {};
   summary.process_breakdown = [];
   summary.recent_events = [];
-  summary.component_highlights = [];
   procedures.value = [];
   analyses.value = [];
   schedules.value = [];
@@ -1431,12 +1406,7 @@ const oilSelectedProduct = computed<AnyRow | null>(() =>
   unwrap<AnyRow | null>(oilKpi.value?.selected_product, null),
 );
 const oilQuantityUnitLabel = computed(() => {
-  const label =
-    oilSelectedProduct.value?.unidad_medida_abreviatura ||
-    oilSelectedProduct.value?.unidad_medida_codigo ||
-    oilSelectedProduct.value?.unidad_medida ||
-    "gal";
-  return String(label || "gal").trim();
+  return "gal";
 });
 const oilWorkOrderRows = computed<AnyRow[]>(() =>
   unwrap<AnyRow[]>(oilKpi.value?.work_orders, []),
@@ -1836,14 +1806,6 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
     accent: "linear-gradient(135deg, rgba(162,69,216,0.18), rgba(221,156,255,0.06))",
   },
   {
-    key: "componentes",
-    label: "Componentes criticos",
-    value: summary.kpis?.componentes_monitoreados ?? 0,
-    helper: "Indicador dinamico desde reporte diario y KPI",
-    icon: "mdi-engine-outline",
-    accent: "linear-gradient(135deg, rgba(225,122,0,0.18), rgba(255,202,106,0.06))",
-  },
-  {
     key: "reportes",
     label: "Reportes diarios",
     value: operationScheduleSummary.value.days,
@@ -1896,12 +1858,6 @@ const processIndicatorRows = computed(() => [
     label: "Eventos de proceso",
     value: summary.kpis?.eventos_proceso ?? 0,
     helper: "Notificaciones emitidas por flujo principal",
-  },
-  {
-    key: "componentes",
-    label: "Componentes monitoreados",
-    value: summary.kpis?.componentes_monitoreados ?? 0,
-    helper: "Turbos, inyectores y conjuntos mayores",
   },
 ]);
 
@@ -1974,7 +1930,6 @@ const analysisPreview = computed(() => filteredAnalyses.value.slice(0, 6));
 const latestDailyReport = computed(() => filteredDailyReports.value[0] ?? null);
 const latestDailyUnits = computed(() => (latestDailyReport.value?.unidades ?? []).slice(0, 6));
 const latestDailyFuel = computed(() => (latestDailyReport.value?.combustibles ?? []).slice(0, 4));
-const latestDailyComponents = computed(() => (latestDailyReport.value?.componentes ?? []).slice(0, 4));
 
 const latestSchedule = computed(() => filteredSchedules.value[0] ?? null);
 const scheduleWeek = computed(() => {

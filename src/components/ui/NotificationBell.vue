@@ -19,7 +19,7 @@
       <v-card-text class="pa-0">
         <v-list density="compact" lines="two" style="max-height: 420px; overflow: auto;">
           <v-list-item
-            v-for="item in store.items"
+            v-for="item in store.unreadItems"
             :key="item.id"
             :title="item.title"
             :subtitle="buildSubtitle(item)"
@@ -37,7 +37,7 @@
             </template>
           </v-list-item>
           <v-list-item
-            v-if="!store.items.length && !store.loading"
+            v-if="!store.unreadItems.length && !store.loading"
             title="Sin notificaciones"
             subtitle="Todavía no hay eventos recientes."
           />

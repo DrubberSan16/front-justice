@@ -49,6 +49,9 @@ export const useNotificationsStore = defineStore("notifications", () => {
   const unreadCount = computed(
     () => items.value.filter((item) => String(item.status || "").toUpperCase() !== "READ").length,
   );
+  const unreadItems = computed(() =>
+    items.value.filter((item) => String(item.status || "").toUpperCase() !== "READ"),
+  );
 
   function sortItems() {
     items.value.sort((a, b) => {
@@ -60,6 +63,10 @@ export const useNotificationsStore = defineStore("notifications", () => {
   }
 
   function upsert(item: NotificationItem) {
+    if (String(item.status || "").toUpperCase() === "READ") {
+      items.value = items.value.filter((current) => current.id !== item.id);
+      return;
+    }
     const index = items.value.findIndex((current) => current.id === item.id);
     if (index >= 0) items.value[index] = { ...items.value[index], ...item };
     else items.value.unshift(item);
@@ -71,12 +78,15 @@ export const useNotificationsStore = defineStore("notifications", () => {
     loading.value = true;
     try {
       const { data } = await api.get("/kpi_notification/notifications/in-app", {
+        meta: { skipGlobalLoading: true },
         params: {
           limit: 20,
           recipient: recipientFilter || undefined,
+          status: "NEW",
         },
-      });
-      items.value = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+      } as any);
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+      items.value = rows.filter((item: NotificationItem) => String(item?.status || "").toUpperCase() !== "READ");
       sortItems();
     } finally {
       loading.value = false;
@@ -147,11 +157,12 @@ export const useNotificationsStore = defineStore("notifications", () => {
         recipient: recipientFilter || undefined,
       },
     });
-    items.value = items.value.map((item) => ({ ...item, status: "READ" }));
+    items.value = [];
   }
 
   return {
     items,
+    unreadItems,
     loading,
     connected,
     unreadCount,

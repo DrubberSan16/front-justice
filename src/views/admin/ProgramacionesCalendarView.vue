@@ -459,6 +459,7 @@
                           <div class="text-caption text-medium-emphasis">
                             {{ item.tipo_proceso || "OPERACION" }}
                             <span v-if="item.equipo_codigo"> ? {{ item.equipo_codigo }}</span>
+                            <span v-if="item.payload_json?.monthly_work_order?.work_order_code"> ? {{ item.payload_json.monthly_work_order.work_order_code }}</span>
                           </div>
                         </button>
                         <button type="button" class="weekly-add-button" @click="openSelectedWeeklyCell(slot.key, day.date)">
@@ -728,6 +729,28 @@
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field v-model="monthlyCell.fecha_programada" type="date" label="Fecha programada" variant="outlined" />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-autocomplete
+                v-model="monthlyCell.work_order_id"
+                :items="monthlyWorkOrderOptions"
+                item-title="title"
+                item-value="value"
+                label="Orden de trabajo"
+                variant="outlined"
+                clearable
+                :loading="loadingMonthlyWorkOrderHours"
+                hint="Al seleccionar una OT, el mensual usa el total de horas registradas en sus tareas."
+                persistent-hint
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                :model-value="monthlyCellTotalHoursLabel"
+                label="Total horas OT"
+                variant="outlined"
+                readonly
+              />
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field
@@ -1235,6 +1258,8 @@ const monthlyCell = reactive<any>({
   programacion_mensual_id: "",
   equipo_id: "",
   equipo_codigo: "",
+  work_order_id: "",
+  total_horas_ot: null,
   fecha_programada: "",
   valor_crudo: "",
   procedimiento_id: "",
@@ -1325,6 +1350,14 @@ const monthlyPaletteFields = [
 const currentRoleName = computed(() =>
   String(auth.user?.role?.nombre || "").trim().toUpperCase(),
 );
+function normalizeWorkflowStatus(value: unknown) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (["PLANNED", "PLANIFICADA", "PLANIFICADO", "CREADA", "CREADO"].includes(raw)) return "PLANNED";
+  if (["IN_PROGRESS", "IN PROGRESS", "EN_PROCESO", "EN PROCESO", "PROCESSING"].includes(raw)) return "IN_PROGRESS";
+  if (["BLOCKED", "BLOQUEADA", "BLOQUEADO"].includes(raw)) return "BLOCKED";
+  if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
+  return raw;
+}
 const workOrderOptions = computed(() =>
   workOrderCatalog.value
     .filter((item: any) => {
@@ -1344,6 +1377,30 @@ const workOrderOptions = computed(() =>
         .join(" · "),
     })),
 );
+const monthlyWorkOrderOptions = computed(() =>
+  workOrderCatalog.value
+    .filter((item: any) => {
+      const selectedEquipmentId = String(monthlyCell.equipo_id || "").trim();
+      if (selectedEquipmentId && String(item?.equipment_id || "") !== selectedEquipmentId) return false;
+      return ["PLANNED", "IN_PROGRESS"].includes(normalizeWorkflowStatus(item?.status_workflow));
+    })
+    .map((item: any) => ({
+      value: item.id,
+      title: [
+        item?.code || item?.codigo || item?.id,
+        item?.title || item?.titulo || item?.plan_nombre || null,
+        item?.status_workflow || null,
+      ]
+        .filter(Boolean)
+        .join(" Â· "),
+    })),
+);
+const loadingMonthlyWorkOrderHours = ref(false);
+const monthlyWorkOrderHoursCache = ref<Record<string, number>>({});
+const monthlyCellTotalHoursLabel = computed(() => {
+  const hours = Number(monthlyCell.total_horas_ot ?? 0);
+  return Number.isFinite(hours) && hours > 0 ? `${hours.toFixed(2)} h` : "0.00 h";
+});
 function resolveSucursalId(explicitSucursalId?: string | null) {
   const explicit = String(explicitSucursalId || "").trim();
   return scopedSucursalId.value || explicit || null;
@@ -1579,6 +1636,53 @@ watch(
     form.equipo_id = selected.equipment_id || form.equipo_id;
     form.procedimiento_id = selected.procedimiento_id || form.procedimiento_id;
     form.plan_id = selected.plan_id || form.plan_id;
+  },
+);
+
+async function resolveWorkOrderTaskHours(workOrderId: string) {
+  const id = String(workOrderId || "").trim();
+  if (!id) return 0;
+  if (monthlyWorkOrderHoursCache.value[id] != null) {
+    return monthlyWorkOrderHoursCache.value[id];
+  }
+  loadingMonthlyWorkOrderHours.value = true;
+  try {
+    const { data } = await api.get(`/kpi_maintenance/work-orders/${id}/tareas`);
+    const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    const total = rows.reduce((acc: number, task: any) => {
+      const responsables = Array.isArray(task?.responsables) ? task.responsables : [];
+      const responsibleHours = responsables.reduce(
+        (sum: number, responsable: any) => sum + Number(responsable?.horas || 0),
+        0,
+      );
+      return acc + (responsibleHours || Number(task?.horas || task?.duracion_horas || 0));
+    }, 0);
+    const normalized = Number(Number.isFinite(total) ? total.toFixed(2) : 0);
+    monthlyWorkOrderHoursCache.value = { ...monthlyWorkOrderHoursCache.value, [id]: normalized };
+    return normalized;
+  } finally {
+    loadingMonthlyWorkOrderHours.value = false;
+  }
+}
+
+watch(
+  () => monthlyCell.work_order_id,
+  async (value) => {
+    const selected = workOrderCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(value || ""),
+    );
+    if (selected?.equipment_id && !monthlyCell.equipo_id) {
+      monthlyCell.equipo_id = selected.equipment_id;
+    }
+    if (!value) {
+      monthlyCell.total_horas_ot = null;
+      return;
+    }
+    const hours = await resolveWorkOrderTaskHours(String(value));
+    monthlyCell.total_horas_ot = hours;
+    if (hours > 0) {
+      monthlyCell.valor_crudo = `${hours.toFixed(2)} h`;
+    }
   },
 );
 
@@ -2480,6 +2584,8 @@ function resetMonthlyCell() {
   monthlyCell.programacion_mensual_id = selectedMonthly.value?.id || "";
   monthlyCell.equipo_id = "";
   monthlyCell.equipo_codigo = "";
+  monthlyCell.work_order_id = "";
+  monthlyCell.total_horas_ot = null;
   monthlyCell.fecha_programada = selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date());
   monthlyCell.valor_crudo = "";
   monthlyCell.procedimiento_id = "";
@@ -2518,6 +2624,8 @@ function openMonthlyCellEdit(item: any) {
   monthlyCell.programacion_mensual_id = item.programacion_mensual_id || selectedMonthly.value?.id || "";
   monthlyCell.equipo_id = item.equipo_id || findEquipmentByCode(item.equipo_codigo || "")?.id || "";
   monthlyCell.equipo_codigo = item.equipo_codigo || "";
+  monthlyCell.work_order_id = item.payload_json?.work_order_id || "";
+  monthlyCell.total_horas_ot = item.payload_json?.total_horas_ot ?? item.payload_json?.horas_programadas ?? null;
   monthlyCell.fecha_programada = item.fecha_programada || "";
   monthlyCell.valor_crudo = item.valor_crudo || "";
   monthlyCell.procedimiento_id = item.procedimiento_id || "";
@@ -2591,6 +2699,8 @@ async function saveMonthlyCell() {
       observacion: monthlyCell.observacion || undefined,
       payload_json: {
         ...buildAuditPayload(Boolean(monthlyCell.id)),
+        work_order_id: monthlyCell.work_order_id || null,
+        total_horas_ot: monthlyCell.total_horas_ot ?? null,
       },
     };
     if (monthlyCell.id) {

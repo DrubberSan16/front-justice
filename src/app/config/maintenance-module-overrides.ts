@@ -93,7 +93,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
           { value: "PREVENTIVO", title: "Preventivo" },
           { value: "PREDICTIVO", title: "Predictivo" },
           { value: "CORRECTIVO", title: "Correctivo" },
-          { value: "CEBADA", title: "Cebada" },
+          { value: "CEBADO", title: "Cebado" },
           { value: "RUTINARIO", title: "Rutinario" },
         ],
       },

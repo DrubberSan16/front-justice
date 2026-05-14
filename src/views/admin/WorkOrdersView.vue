@@ -241,7 +241,7 @@
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptions" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow" />
+            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorCreateMode" />
           </v-col>
           <v-col cols="12" md="4">
             <v-autocomplete
@@ -1436,7 +1436,7 @@ const maintenanceKindOptions = [
   { title: "Correctivo", value: "CORRECTIVO" },
   { title: "Preventivo", value: "PREVENTIVO" },
   { title: "Predictivo", value: "PREDICTIVO" },
-  { title: "Cebada", value: "CEBADA" },
+  { title: "Cebado", value: "CEBADO" },
   { title: "Inspección", value: "INSPECCION" },
 ];
 const maintenanceKindFilterOptions = [
@@ -1503,11 +1503,11 @@ function getWorkOrderOperationalDateLabel(item: any) {
 
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
 const requiresOilProductsForCurrentWorkOrder = computed(
-  () => normalizeMaintenanceKindValue(headerForm.maintenance_kind) === "CEBADA",
+  () => normalizeMaintenanceKindValue(headerForm.maintenance_kind) === "CEBADO",
 );
 const consumoProductHint = computed(() =>
   requiresOilProductsForCurrentWorkOrder.value
-    ? "Para OT de tipo Cebada solo se listan materiales marcados como aceite en la bodega seleccionada."
+    ? "Para OT de tipo Cebado solo se listan materiales marcados como aceite en la bodega seleccionada."
     : "Se cargan materiales por bodega a medida que los necesites.",
 );
 const materialIssueHelperText = computed(() =>
@@ -1578,9 +1578,20 @@ const workflowOptionsForCurrent = computed(() => {
 });
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
+const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
+const isOperatorRole = computed(() => currentRoleName.value === "OPERADOR");
+const isOperatorCreateMode = computed(() => isOperatorRole.value && !editingId.value);
+const maintenanceKindOptionsForCurrentUser = computed(() =>
+  isOperatorCreateMode.value
+    ? maintenanceKindOptions.filter((item) => item.value === "CEBADO")
+    : maintenanceKindOptions,
+);
 const blockingWorkOrderOptions = computed(() =>
   workOrderCatalogRows.value
-    .filter((item: any) => String(item?.id || "") !== String(editingId.value || ""))
+    .filter((item: any) => {
+      if (String(item?.id || "") === String(editingId.value || "")) return false;
+      return ["PLANNED", "IN_PROGRESS"].includes(normalizeWorkflowStatus(item?.status_workflow));
+    })
     .map((item: any) => ({
       value: item.id,
       title: [
@@ -1600,7 +1611,6 @@ const blockingAlertText = computed(() => {
   const blockerLabel = selected?.title || "la OT anexada seleccionada";
   return `${headerForm.code || "Esta OT"} esta bloqueada hasta culminar ${blockerLabel}${headerForm.blocked_reason ? ` · Motivo: ${headerForm.blocked_reason}` : ""}.`;
 });
-const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
 const closeRestrictionText = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value) return "";
@@ -4189,7 +4199,7 @@ function resetAllForms() {
   headerForm.title = "";
   headerForm.equipment_id = "";
   headerForm.equipo_componente_id = "";
-  headerForm.maintenance_kind = "CORRECTIVO";
+  headerForm.maintenance_kind = isOperatorRole.value ? "CEBADO" : "CORRECTIVO";
   headerForm.status_workflow = "PLANNED";
   headerForm.procedimiento_id = "";
   headerForm.plan_id = "";
@@ -4253,6 +4263,9 @@ async function openCreate() {
   resetAllForms();
   dialog.value = true;
   await ensureCatalogsLoaded();
+  if (isOperatorRole.value) {
+    headerForm.maintenance_kind = "CEBADO";
+  }
   await assignNextWorkOrderCode();
 }
 
@@ -4414,6 +4427,9 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
   if (!headerForm.maintenance_kind) {
     ui.error("Tipo mantenimiento es obligatorio.");
     return false;
+  }
+  if (!editingId.value && isOperatorRole.value) {
+    headerForm.maintenance_kind = "CEBADO";
   }
 
   if (!editingId.value && !headerForm.code) {
