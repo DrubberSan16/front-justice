@@ -930,6 +930,8 @@
                             <div class="weekly-activity__title">{{ item.actividad }}</div>
                             <div class="text-caption text-medium-emphasis">
                               {{ item.tipo_proceso || "OPERACION" }}
+                              <span v-if="item.work_order_id"> · {{ resolveWeeklyItemWorkOrderLabel(item) }}</span>
+                              <span v-if="numericOrNull(item.horas_asignadas)"> · {{ formatMonthlyHoursLabel(item.horas_asignadas) }}</span>
                               <span v-if="item.equipo_codigo"> · {{ item.equipo_codigo }}</span>
                             </div>
                           </div>
@@ -984,6 +986,20 @@
             </v-col>
             <v-col cols="12">
               <v-text-field v-model="weeklyCell.actividad" label="Actividad" variant="outlined" />
+            </v-col>
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="weeklyCell.work_order_id"
+                :items="weeklyCellWorkOrderOptions"
+                item-title="title"
+                item-value="value"
+                label="Orden de trabajo a ejecutar"
+                variant="outlined"
+                clearable
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field v-model="weeklyCell.horas_asignadas" type="number" step="0.01" min="0" label="Horas asignadas" variant="outlined" />
             </v-col>
             <v-col cols="12" md="6">
               <v-select v-model="weeklyCell.tipo_proceso" :items="weeklyProcessOptions" label="Tipo de proceso" variant="outlined" />
@@ -1247,6 +1263,8 @@ const weeklyCell = reactive<any>({
   slot_key: "",
   fecha_actividad: "",
   dia_semana: "",
+  work_order_id: "",
+  horas_asignadas: "",
   actividad: "",
   tipo_proceso: "OPERACION",
   responsable_area: "",
@@ -1397,6 +1415,63 @@ const monthlyWorkOrderOptions = computed(() =>
         .join(" · "),
     })),
 );
+function maintenanceKindLabel(value: unknown) {
+  const normalized = String(value || "").trim().toUpperCase();
+  const labels: Record<string, string> = {
+    CORRECTIVO: "Correctivo",
+    PREVENTIVO: "Preventivo",
+    PREDICTIVO: "Predictivo",
+    CEBADO: "Cebado",
+  };
+  return labels[normalized] || normalized || "Sin tipo";
+}
+
+function resolveWorkOrderOptionTitle(item: any) {
+  return [
+    item?.code || item?.codigo || item?.id,
+    maintenanceKindLabel(item?.maintenance_kind || item?.tipo_mantenimiento),
+    item?.title || item?.titulo || item?.plan_nombre || null,
+    item?.equipment_codigo || item?.equipo_codigo || item?.equipment_nombre || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function resolveMonthlyWorkOrdersForDate(date: string) {
+  const targetDate = String(date || "").slice(0, 10);
+  if (!targetDate) return [];
+  const byId = new Map<string, any>();
+  for (const item of monthlyFilteredDetails.value) {
+    const itemDate = String(item?.fecha_programada || "").slice(0, 10);
+    if (itemDate !== targetDate) continue;
+    const workOrderId = String(item?.payload_json?.work_order_id || item?.work_order_id || "").trim();
+    if (!workOrderId) continue;
+    const catalog = workOrderCatalog.value.find((row: any) => String(row?.id || "") === workOrderId);
+    byId.set(workOrderId, {
+      ...(catalog || {}),
+      id: workOrderId,
+      code: catalog?.code || item?.payload_json?.work_order_code || item?.work_order_code || workOrderId,
+      title: catalog?.title || item?.payload_json?.work_order_title || item?.work_order_title || item?.valor_crudo || "",
+      maintenance_kind: catalog?.maintenance_kind || item?.maintenance_kind || item?.tipo_mantenimiento,
+      equipment_id: catalog?.equipment_id || item?.equipo_id,
+      equipment_codigo: catalog?.equipment_codigo || item?.equipo_codigo,
+      equipo_codigo: catalog?.equipo_codigo || item?.equipo_codigo,
+    });
+  }
+  return [...byId.values()];
+}
+
+const weeklyCellWorkOrderOptions = computed(() => {
+  const monthlyWorkOrders = resolveMonthlyWorkOrdersForDate(weeklyCell.fecha_actividad);
+  const source = monthlyWorkOrders.length
+    ? monthlyWorkOrders
+    : workOrderCatalog.value.filter((item: any) => normalizeWorkflowStatus(item?.status_workflow) === "PLANNED");
+  return source.map((item: any) => ({
+    value: item.id,
+    title: resolveWorkOrderOptionTitle(item),
+  }));
+});
+
 const loadingMonthlyWorkOrderHours = ref(false);
 const monthlyWorkOrderHoursCache = ref<Record<string, number>>({});
 const monthlyCellTotalHoursLabel = computed(() => {
@@ -1857,6 +1932,23 @@ watch(
     monthlyCell.total_horas_ot = hours;
     if (hours > 0) {
       monthlyCell.valor_crudo = `${hours.toFixed(2)} h`;
+    }
+  },
+);
+
+watch(
+  () => weeklyCell.work_order_id,
+  (value) => {
+    const selected = workOrderCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(value || ""),
+    );
+    if (!selected) return;
+    weeklyCell.equipo_codigo =
+      selected.equipment_codigo ||
+      selected.equipo_codigo ||
+      weeklyCell.equipo_codigo;
+    if (!weeklyCell.actividad) {
+      weeklyCell.actividad = selected.title || selected.titulo || selected.plan_nombre || "";
     }
   },
 );
@@ -3437,12 +3529,32 @@ function getWeeklyEditorItems(slotKey: string, date: string) {
   return weeklyEditorItems.value.filter((item) => item.slot_key === slotKey && item.fecha_actividad === date);
 }
 
+function resolveWeeklyItemWorkOrderLabel(item: any) {
+  const id = String(item?.work_order_id || "").trim();
+  if (!id) return "";
+  const order = workOrderCatalog.value.find((row: any) => String(row?.id || "") === id);
+  return order?.code || order?.codigo || item?.work_order_code || id;
+}
+
+function calculateWeeklySlotHours(slotKey: string) {
+  const slot = weeklyEditorSlots.value.find((item) => item.key === slotKey);
+  const start = String(slot?.hora_inicio || slotKey.split("-")[0] || "").slice(0, 5);
+  const end = String(slot?.hora_fin || slotKey.split("-")[1] || "").slice(0, 5);
+  const [startHour = 0, startMinute = 0] = start.split(":").map(Number);
+  const [endHour = 0, endMinute = 0] = end.split(":").map(Number);
+  const duration = (endHour * 60 + endMinute - (startHour * 60 + startMinute)) / 60;
+  return Number(Math.max(duration, 0).toFixed(2));
+}
+
 function openWeeklyCell(slotKey: string, date: string, item?: any) {
   if (item ? !canEdit.value : !canCreate.value) return;
+  const monthlyWorkOrders = resolveMonthlyWorkOrdersForDate(date);
   weeklyCell.local_id = item?.local_id || "";
   weeklyCell.slot_key = slotKey;
   weeklyCell.fecha_actividad = date;
   weeklyCell.dia_semana = item?.dia_semana || resolveWeekDayLabel(date);
+  weeklyCell.work_order_id = item?.work_order_id || (monthlyWorkOrders.length === 1 ? monthlyWorkOrders[0].id : "");
+  weeklyCell.horas_asignadas = formatHourInput(item?.horas_asignadas ?? calculateWeeklySlotHours(slotKey));
   weeklyCell.actividad = item?.actividad || "";
   weeklyCell.tipo_proceso = item?.tipo_proceso || "OPERACION";
   weeklyCell.responsable_area = item?.responsable_area || "";
@@ -3484,12 +3596,18 @@ async function saveWeeklyCell() {
     ui.error("Debes ingresar la actividad del bloque semanal.");
     return;
   }
+  if (!weeklyCell.work_order_id) {
+    ui.error("Debes seleccionar la orden de trabajo que se ejecutará.");
+    return;
+  }
   const payload = {
     local_id: weeklyCell.local_id || createLocalId(),
     slot_key: weeklyCell.slot_key,
     fecha_actividad: weeklyCell.fecha_actividad,
     dia_semana: weeklyCell.dia_semana || resolveWeekDayLabel(weeklyCell.fecha_actividad),
     actividad: weeklyCell.actividad.trim(),
+    work_order_id: weeklyCell.work_order_id || "",
+    horas_asignadas: numericOrNull(weeklyCell.horas_asignadas) ?? calculateWeeklySlotHours(weeklyCell.slot_key),
     tipo_proceso: weeklyCell.tipo_proceso || "OPERACION",
     responsable_area: weeklyCell.responsable_area?.trim() || "",
     equipo_codigo: weeklyCell.equipo_codigo?.trim() || "",
@@ -3514,6 +3632,11 @@ function removeWeeklyItem(localId: string) {
 
 function computeWeeklyDailyHours(details: any[]) {
   return details.reduce((acc: Record<string, number>, item) => {
+    const assignedHours = numericOrNull(item.horas_asignadas);
+    if (assignedHours !== null && assignedHours > 0) {
+      acc[item.fecha_actividad] = Number(((acc[item.fecha_actividad] ?? 0) + assignedHours).toFixed(2));
+      return acc;
+    }
     const [startHour = 0, startMinute = 0] = String(item.hora_inicio || "")
       .slice(0, 5)
       .split(":")
@@ -3562,11 +3685,13 @@ function loadWeeklyEditorFromSchedule(schedule: any) {
   weeklyEditorAnchorDate.value = schedule.fecha_inicio || formatDate(new Date());
   for (const detail of Array.isArray(schedule.detalles) ? schedule.detalles : []) {
     const slotKey = ensureWeeklySlot(detail.hora_inicio || "07:00", detail.hora_fin || "08:00");
-    weeklyEditorItems.value.push({
+  weeklyEditorItems.value.push({
       local_id: detail.id || createLocalId(),
       slot_key: slotKey,
       fecha_actividad: detail.fecha_actividad,
       dia_semana: detail.dia_semana,
+      work_order_id: detail.work_order_id || "",
+      horas_asignadas: detail.horas_asignadas ?? detail.duracion_horas ?? "",
       actividad: detail.actividad,
       tipo_proceso: detail.tipo_proceso || "OPERACION",
       responsable_area: detail.responsable_area || "",
@@ -3608,6 +3733,8 @@ async function saveWeeklyEditor() {
       hora_fin: normalizeTimeInput(slot?.hora_fin || "08:00"),
       tipo_proceso: item.tipo_proceso || "OPERACION",
       actividad: item.actividad,
+      work_order_id: item.work_order_id || undefined,
+      horas_asignadas: numericOrNull(item.horas_asignadas) ?? undefined,
       responsable_area: item.responsable_area || undefined,
       equipo_codigo: item.equipo_codigo || undefined,
       observacion: item.observacion || undefined,
@@ -3685,6 +3812,8 @@ async function persistWeeklyEditor(options?: { showToast?: boolean }) {
       hora_fin: normalizeTimeInput(slot?.hora_fin || "08:00"),
       tipo_proceso: item.tipo_proceso || "OPERACION",
       actividad: item.actividad,
+      work_order_id: item.work_order_id || undefined,
+      horas_asignadas: numericOrNull(item.horas_asignadas) ?? undefined,
       responsable_area: item.responsable_area || undefined,
       equipo_codigo: item.equipo_codigo || undefined,
       observacion: item.observacion || undefined,

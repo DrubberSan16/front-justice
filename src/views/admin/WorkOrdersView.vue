@@ -166,13 +166,13 @@
           Completar información
         </v-btn>
         <v-btn
-          v-if="editingId && isInProcess && canEdit && canCloseOrVoidCurrent"
+          v-if="editingId && (isCreated || isInProcess) && canEdit && canCloseOrVoidCurrent"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-lock-check-outline"
           @click="prepareClose"
         >
-          Cerrar OT
+          Finalizar OT
         </v-btn>
         <v-btn
           v-if="canPersistHeader"
@@ -1542,6 +1542,7 @@ function normalizeOwnerName(value: unknown) {
 function canCloseOrVoidWorkOrder(item: any) {
   const row = item?._raw ?? item;
   if (!row) return false;
+  if (currentRoleName.value.includes("ADMIN")) return true;
   if (typeof row?.can_close_or_void === "boolean") {
     return row.can_close_or_void;
   }
