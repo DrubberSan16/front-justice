@@ -610,8 +610,9 @@
                 v-model="guideForm.proveedor_identificacion"
                 label="RUC proveedor"
                 variant="outlined"
+                maxlength="13"
                 :loading="guideProviderLookupLoading"
-                hint="Al completar 13 dígitos se consultará el SRI."
+                hint="Debe tener 13 dígitos."
                 persistent-hint
               />
             </v-col>
@@ -652,8 +653,12 @@
           <v-col cols="12" md="2">
             <v-text-field
               v-model="guideForm.identificacion_transportista"
-              label="RUC/Cédula transportista"
-              variant="outlined"                            
+              :label="transportIdentificationLabel"
+              variant="outlined"
+              :maxlength="transportIdentificationMaxLength"
+              :hint="transportIdentificationHint"
+              persistent-hint
+              :readonly="guideForm.tipo_identificacion_transportista === '07'"
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -1152,6 +1157,7 @@ const headers = [
 
 const environmentOptions = ["PRUEBAS", "PRODUCCION"];
 const yesNoOptions = ["SI", "NO"];
+const CONSUMER_FINAL_IDENTIFICATION = "9999999999999";
 const transportIdTypeOptions = [
   { title: "RUC (04)", value: "04" },
   { title: "Cédula (05)", value: "05" },
@@ -1184,6 +1190,33 @@ const guideStatusVariant = computed(() => {
   ) return "error";
   return "info";
 });
+const transportIdentificationLabel = computed(() => {
+  if (guideForm.tipo_identificacion_transportista === "05") {
+    return "Cédula transportista";
+  }
+  if (guideForm.tipo_identificacion_transportista === "06") {
+    return "Pasaporte transportista";
+  }
+  if (guideForm.tipo_identificacion_transportista === "07") {
+    return "Identificación consumidor final";
+  }
+  return "RUC transportista";
+});
+const transportIdentificationHint = computed(() => {
+  if (guideForm.tipo_identificacion_transportista === "05") {
+    return "Debe tener 10 dígitos.";
+  }
+  if (guideForm.tipo_identificacion_transportista === "06") {
+    return "Ingresa el pasaporte según documento, hasta 13 caracteres.";
+  }
+  if (guideForm.tipo_identificacion_transportista === "07") {
+    return "Se completa automáticamente con el valor por defecto.";
+  }
+  return "Debe tener 13 dígitos.";
+});
+const transportIdentificationMaxLength = computed(() =>
+  guideForm.tipo_identificacion_transportista === "05" ? 10 : 13,
+);
 const isGuideRegenerationFlow = computed(() =>
   Boolean(
     generatedGuide.value?.id ||
@@ -1458,6 +1491,43 @@ function normalizeRuc(value: unknown) {
     .slice(0, 13);
 }
 
+function normalizeIdentificationByType(type: unknown, value: unknown) {
+  const normalizedType = String(type ?? "").trim();
+  const text = String(value ?? "").trim().toUpperCase();
+  if (normalizedType === "04") {
+    return text.replace(/\D/g, "").slice(0, 13);
+  }
+  if (normalizedType === "05") {
+    return text.replace(/\D/g, "").slice(0, 10);
+  }
+  if (normalizedType === "06") {
+    return text.replace(/\s+/g, "").slice(0, 13);
+  }
+  if (normalizedType === "07") {
+    return CONSUMER_FINAL_IDENTIFICATION;
+  }
+  return text.slice(0, 13);
+}
+
+function getIdentificationRequirementLabel(type: unknown) {
+  const normalizedType = String(type ?? "").trim();
+  if (normalizedType === "05") return "la cédula del transportista";
+  if (normalizedType === "06") return "el pasaporte del transportista";
+  if (normalizedType === "07") return "la identificación de consumidor final";
+  return "el RUC del transportista";
+}
+
+function isTransportIdentificationValid(type: unknown, value: unknown) {
+  const normalizedType = String(type ?? "").trim();
+  const text = String(value ?? "").trim();
+  const digits = text.replace(/\D/g, "");
+  if (normalizedType === "04") return digits.length === 13;
+  if (normalizedType === "05") return digits.length === 10;
+  if (normalizedType === "06") return text.length > 0 && text.length <= 13;
+  if (normalizedType === "07") return text === CONSUMER_FINAL_IDENTIFICATION;
+  return false;
+}
+
 function normalizeSpecialTaxpayerResolution(value: unknown) {
   return String(value ?? "")
     .replace(/\D/g, "")
@@ -1553,6 +1623,10 @@ function inferGuideTransportIdentification() {
 }
 
 function applyGuideTransportInference() {
+  if (guideForm.tipo_identificacion_transportista === "07") {
+    guideForm.identificacion_transportista = CONSUMER_FINAL_IDENTIFICATION;
+    return;
+  }
   const inferred = inferGuideTransportIdentification();
   if (inferred && !String(guideForm.identificacion_transportista || "").trim()) {
     guideForm.identificacion_transportista = inferred;
@@ -2601,7 +2675,16 @@ async function generateGuide() {
     return;
   }
   if (!guideForm.identificacion_transportista) {
-    ui.error("Completa el RUC o cédula del transportista para generar la guía.");
+    ui.error(`Completa ${getIdentificationRequirementLabel(guideForm.tipo_identificacion_transportista)} para generar la guía.`);
+    return;
+  }
+  if (
+    !isTransportIdentificationValid(
+      guideForm.tipo_identificacion_transportista,
+      guideForm.identificacion_transportista,
+    )
+  ) {
+    ui.error(`Verifica ${getIdentificationRequirementLabel(guideForm.tipo_identificacion_transportista)} según el tipo seleccionado.`);
     return;
   }
   const inferredTransportType = inferGuideIdentificationType(
@@ -2965,6 +3048,47 @@ watch(
     const normalized = normalizeSpecialTaxpayerResolution(value);
     if (normalized !== value) {
       sriConfigForm.contribuyente_especial = normalized;
+    }
+  },
+);
+
+watch(
+  () => guideForm.tipo_identificacion_transportista,
+  (value, previous) => {
+    if (!guideDialog.value) return;
+    const current = String(guideForm.identificacion_transportista || "").trim();
+    if (
+      previous === "07" &&
+      value !== "07" &&
+      current === CONSUMER_FINAL_IDENTIFICATION
+    ) {
+      guideForm.identificacion_transportista = "";
+      return;
+    }
+    const normalized = normalizeIdentificationByType(
+      value,
+      guideForm.identificacion_transportista,
+    );
+    if (normalized !== guideForm.identificacion_transportista) {
+      guideForm.identificacion_transportista = normalized;
+      return;
+    }
+    if (value === "07" && !current) {
+      guideForm.identificacion_transportista = CONSUMER_FINAL_IDENTIFICATION;
+    }
+  },
+);
+
+watch(
+  () => guideForm.identificacion_transportista,
+  (value) => {
+    if (!guideDialog.value) return;
+    const normalized = normalizeIdentificationByType(
+      guideForm.tipo_identificacion_transportista,
+      value,
+    );
+    if (normalized !== value) {
+      guideForm.identificacion_transportista = normalized;
     }
   },
 );
