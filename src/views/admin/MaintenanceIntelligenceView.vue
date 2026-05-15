@@ -181,7 +181,8 @@
             <v-col cols="12" lg="3">
               <div class="text-caption text-medium-emphasis mb-1">Referencia del filtro</div>
               <div class="oil-kpi-filter-hint">
-                <span v-if="oilPeriod === 'MENSUAL'">Usa el año y mes superiores: {{ selectedPeriodLabel }}</span>
+                <span v-if="oilPeriod === 'DIARIO'">Usa la fecha de referencia para concentrar el análisis del día.</span>
+                <span v-else-if="oilPeriod === 'MENSUAL'">Usa el año y mes superiores: {{ selectedPeriodLabel }}</span>
                 <span v-else-if="oilPeriod === 'ANUAL'">Usa el año superior: {{ selectedYear }}</span>
                 <span v-else-if="oilPeriod === 'SEMANAL'">Semana operacional desde la fecha elegida.</span>
                 <span v-else>Rango exacto definido manualmente.</span>
@@ -275,6 +276,29 @@
                   chip-color="primary"
                   :items="oilEquipmentChartItems"
                   empty-text="No existen equipos con consumo de aceite en este rango."
+                />
+              </v-col>
+            </v-row>
+
+            <v-row dense class="mb-2">
+              <v-col cols="12" lg="6">
+                <DashboardBarChartCard
+                  title="Costo por rango"
+                  subtitle="Evolución del costo del aceite según el periodo filtrado"
+                  :chip-label="`${oilCostTrendChartItems.length} puntos`"
+                  chip-color="warning"
+                  :items="oilCostTrendChartItems"
+                  empty-text="No hay costos asociados al aceite seleccionado dentro del rango."
+                />
+              </v-col>
+              <v-col cols="12" lg="6">
+                <DashboardBarChartCard
+                  title="OT por rango"
+                  subtitle="Cantidad de órdenes con consumo del aceite en cada fecha"
+                  :chip-label="`${oilOrdersTrendChartItems.length} puntos`"
+                  chip-color="secondary"
+                  :items="oilOrdersTrendChartItems"
+                  empty-text="No hay órdenes registradas para este aceite en el rango."
                 />
               </v-col>
             </v-row>
@@ -939,6 +963,26 @@
                 empty-text="No existen estados de OT asociados al aceite."
               />
             </v-col>
+            <v-col cols="12" lg="6">
+              <DashboardBarChartCard
+                title="Costo por rango"
+                subtitle="Comportamiento del costo del aceite según el periodo filtrado"
+                :chip-label="`${oilCostTrendChartItems.length} puntos`"
+                chip-color="warning"
+                :items="oilCostTrendChartItems"
+                empty-text="No hay costos asociados al aceite seleccionado dentro del rango."
+              />
+            </v-col>
+            <v-col cols="12" lg="6">
+              <DashboardBarChartCard
+                title="OT por rango"
+                subtitle="Cantidad de órdenes con consumo del aceite en cada fecha"
+                :chip-label="`${oilOrdersTrendChartItems.length} puntos`"
+                chip-color="info"
+                :items="oilOrdersTrendChartItems"
+                empty-text="No hay órdenes registradas para este aceite en el rango."
+              />
+            </v-col>
           </v-row>
 
           <v-row dense class="mb-4">
@@ -1164,7 +1208,10 @@ const dashboardPeriodOptions = [
   { value: "ANUAL", title: "Anual" },
   { value: "PERSONALIZADO", title: "Personalizado" },
 ];
-const oilPeriodOptions = dashboardPeriodOptions;
+const oilPeriodOptions = [
+  { value: "DIARIO", title: "Diario" },
+  ...dashboardPeriodOptions,
+];
 
 const monthOptions = [
   { value: 1, title: "Enero" },
@@ -1398,7 +1445,9 @@ const filteredDailyReports = computed(() =>
 );
 
 const oilUsesCustomRange = computed(() => oilPeriod.value === "PERSONALIZADO");
-const oilNeedsReferenceDate = computed(() => oilPeriod.value === "SEMANAL");
+const oilNeedsReferenceDate = computed(() =>
+  oilPeriod.value === "DIARIO" || oilPeriod.value === "SEMANAL",
+);
 const oilCatalogOptions = computed<AnyRow[]>(() =>
   unwrap<AnyRow[]>(oilKpi.value?.catalog, []),
 );
@@ -1421,6 +1470,24 @@ const oilTrendChartItems = computed<DashboardChartItem[]>(() =>
     value: Number(item.cantidad || 0),
     valueLabel: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
     helper: `${item.total_ordenes ?? 0} OT`,
+  })),
+);
+const oilCostTrendChartItems = computed<DashboardChartItem[]>(() =>
+  unwrap<AnyRow[]>(oilKpi.value?.statistics?.cost_trend, []).map((item: AnyRow) => ({
+    key: item.key,
+    label: item.label,
+    value: Number(item.costo || 0),
+    valueLabel: `$${formatDetailedNumber(item.costo, 2)}`,
+    helper: `${item.total_ordenes ?? 0} OT`,
+  })),
+);
+const oilOrdersTrendChartItems = computed<DashboardChartItem[]>(() =>
+  unwrap<AnyRow[]>(oilKpi.value?.statistics?.orders_trend, []).map((item: AnyRow) => ({
+    key: item.key,
+    label: item.label,
+    value: Number(item.total_ordenes || 0),
+    valueLabel: `${item.total_ordenes ?? 0} OT`,
+    helper: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
   })),
 );
 const oilEquipmentChartItems = computed<DashboardChartItem[]>(() =>

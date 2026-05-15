@@ -300,12 +300,43 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field
+              v-model="headerForm.horometro_actual"
+              label="Horometro actual"
+              variant="outlined"
+              type="number"
+              min="0"
+              step="0.01"
+              :disabled="isReadOnlyWorkflow"
+              :hint="selectedEquipmentHorometroHint"
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
+              :model-value="resolvedHorasARealizarLabel"
+              label="Horas a realizar"
+              variant="outlined"
+              readonly
+              hint="Se toma automaticamente desde la plantilla MPG seleccionada."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
               :model-value="selectedAlertLabel"
               label="Alerta relacionada"
               variant="outlined"
               readonly
               hint="La alerta se genera y se vincula automáticamente al guardar la OT."
               persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
+              :model-value="resolvedHorometroProyectadoLabel"
+              label="Horometro proyectado"
+              variant="outlined"
+              readonly
             />
           </v-col>
           <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
@@ -1305,6 +1336,7 @@ const unsupportedDetailMessages = ref<string[]>([]);
 const currentWorkOrderRecord = ref<any | null>(null);
 
 const equipmentOptions = ref<any[]>([]);
+const equipmentCatalogRows = ref<any[]>([]);
 const equipmentComponentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
@@ -1366,6 +1398,9 @@ const headerForm = reactive<any>({
   causa: "",
   accion: "",
   prevencion: "",
+  horometro_actual: "",
+  horas_a_realizar: "",
+  horometro_proyectado: "",
 });
 
 const taskForm = reactive<any>({
@@ -1744,6 +1779,29 @@ function parseValorJson(valorJson: unknown) {
     }
   }
   return {};
+}
+
+function parseNullableNumber(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function toEditableNumber(value: unknown) {
+  const numeric = parseNullableNumber(value);
+  if (numeric == null) return "";
+  return String(Number(numeric.toFixed(2)));
+}
+
+function formatDecimalValue(value: unknown) {
+  const numeric = parseNullableNumber(value);
+  if (numeric == null) return "";
+  return new Intl.NumberFormat("es-EC", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(numeric);
 }
 
 const attachmentHeaders = [
@@ -2649,6 +2707,7 @@ async function loadCatalogs() {
       listAll("/kpi_inventory/bodegas"),
       listAll("/kpi_security/users"),
     ]);
+    equipmentCatalogRows.value = equipos;
     equipmentOptions.value = equipos.map(normalize);
     planOptions.value = planes.map(normalize);
     procedureCatalog.value = procedimientos;
@@ -3492,6 +3551,9 @@ function buildWorkOrderSaveBundlePayload() {
         causa: headerForm.causa || "",
         accion: headerForm.accion || "",
         prevencion: headerForm.prevencion || "",
+        horometro_actual: resolvedHorometroActual.value,
+        horas_a_realizar: resolvedHorasARealizar.value,
+        horometro_proyectado: resolvedHorometroProyectado.value,
       },
     },
   };
@@ -3537,6 +3599,7 @@ function buildWorkOrderSaveBundlePayload() {
 
 function applySavedWorkOrderState(savedHeader: any) {
   currentWorkOrderRecord.value = savedHeader;
+  const savedValorJson = parseValorJson(savedHeader?.valor_json);
   const assignedId = savedHeader?.id ?? savedHeader?._raw?.id ?? null;
   const assignedCode = String(savedHeader?.code || "").trim();
   if (assignedId) {
@@ -3554,6 +3617,15 @@ function applySavedWorkOrderState(savedHeader: any) {
   headerForm.alerta_id = savedHeader?.alerta_id ?? headerForm.alerta_id;
   headerForm.blocked_by_work_order_id = savedHeader?.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
   headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
+  headerForm.horometro_actual = toEditableNumber(
+    savedHeader?.horometro_actual ?? savedValorJson?.horometro_actual,
+  );
+  headerForm.horas_a_realizar = toEditableNumber(
+    savedHeader?.horas_a_realizar ?? savedValorJson?.horas_a_realizar ?? savedValorJson?.horas_plantilla,
+  );
+  headerForm.horometro_proyectado = toEditableNumber(
+    savedHeader?.horometro_proyectado ?? savedValorJson?.horometro_proyectado,
+  );
   taskForm.plan_id = headerForm.plan_id || "";
 }
 
@@ -3714,6 +3786,77 @@ const selectedProcedure = computed(
       (item: any) => String(item?.id || "") === String(headerForm.procedimiento_id || ""),
     ) ?? null,
 );
+
+const selectedEquipmentRecord = computed(
+  () =>
+    equipmentCatalogRows.value.find(
+      (item: any) => String(item?.id || "") === String(headerForm.equipment_id || ""),
+    ) ?? null,
+);
+
+const resolvedHorasARealizar = computed(() => {
+  const explicit = parseNullableNumber(headerForm.horas_a_realizar);
+  if (explicit != null) return Number(explicit.toFixed(2));
+  const fromProcedure = parseNullableNumber(selectedProcedure.value?.frecuencia_horas);
+  return fromProcedure != null ? Number(fromProcedure.toFixed(2)) : null;
+});
+
+const resolvedHorometroActual = computed(() => {
+  const explicit = parseNullableNumber(headerForm.horometro_actual);
+  if (explicit != null) return Number(explicit.toFixed(2));
+  const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
+  return fromEquipment != null ? Number(fromEquipment.toFixed(2)) : null;
+});
+
+const resolvedHorometroProyectado = computed(() => {
+  const current = resolvedHorometroActual.value;
+  const hours = resolvedHorasARealizar.value;
+  if (current == null || hours == null) {
+    const persisted = parseNullableNumber(headerForm.horometro_proyectado);
+    return persisted != null ? Number(persisted.toFixed(2)) : null;
+  }
+  return Number((current + hours).toFixed(2));
+});
+
+const resolvedHorasARealizarLabel = computed(() =>
+  resolvedHorasARealizar.value != null
+    ? `${formatDecimalValue(resolvedHorasARealizar.value)} h`
+    : "Sin horas configuradas",
+);
+
+const resolvedHorometroProyectadoLabel = computed(() =>
+  resolvedHorometroProyectado.value != null
+    ? formatDecimalValue(resolvedHorometroProyectado.value)
+    : "Sin calculo",
+);
+
+const selectedEquipmentHorometroHint = computed(() => {
+  const equipmentHorometro = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
+  if (equipmentHorometro != null) {
+    return `Horometro registrado del equipo: ${formatDecimalValue(equipmentHorometro)}`;
+  }
+  return "Ingresa el horometro actual para calcular la proyeccion de la OT.";
+});
+
+const requiresHorometroCapture = computed(() =>
+  resolvedHorasARealizar.value != null
+  || parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
+);
+
+function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
+  const preserveCurrent = Boolean(options?.preserveCurrent);
+  const procedureHours = parseNullableNumber(selectedProcedure.value?.frecuencia_horas);
+  headerForm.horas_a_realizar = toEditableNumber(procedureHours);
+
+  if (!preserveCurrent) {
+    const currentInput = parseNullableNumber(headerForm.horometro_actual);
+    if (currentInput == null) {
+      headerForm.horometro_actual = toEditableNumber(selectedEquipmentRecord.value?.horometro_actual);
+    }
+  }
+
+  headerForm.horometro_proyectado = toEditableNumber(resolvedHorometroProyectado.value);
+}
 
 const selectedProcedureLabel = computed(
   () =>
@@ -4293,6 +4436,9 @@ function resetAllForms() {
   headerForm.causa = "";
   headerForm.accion = "";
   headerForm.prevencion = "";
+  headerForm.horometro_actual = "";
+  headerForm.horas_a_realizar = "";
+  headerForm.horometro_proyectado = "";
 
   taskForm.plan_id = "";
   taskForm.tarea_id = "";
@@ -4377,9 +4523,19 @@ async function openEdit(item: any) {
   headerForm.causa = headerValorJson?.causa ?? "";
   headerForm.accion = headerValorJson?.accion ?? "";
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
+  headerForm.horometro_actual = toEditableNumber(
+    item?.horometro_actual ?? headerValorJson?.horometro_actual,
+  );
+  headerForm.horas_a_realizar = toEditableNumber(
+    item?.horas_a_realizar ?? headerValorJson?.horas_a_realizar ?? headerValorJson?.horas_plantilla,
+  );
+  headerForm.horometro_proyectado = toEditableNumber(
+    item?.horometro_proyectado ?? headerValorJson?.horometro_proyectado,
+  );
   dialog.value = true;
   await ensureCatalogsLoaded();
   await loadEquipmentComponents(String(headerForm.equipment_id || ""));
+  syncWorkOrderHorometerFields({ preserveCurrent: true });
   await loadDetailData();
   if (!isReadOnlyWorkflow.value) {
     await syncChecklistFromTemplate(false);
@@ -4512,6 +4668,10 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     ui.error("Tipo mantenimiento es obligatorio.");
     return false;
   }
+  if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
+    ui.error("Debes ingresar el horometro actual para calcular la OT.");
+    return false;
+  }
   if (!editingId.value && isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
@@ -4538,6 +4698,9 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
       causa: headerForm.causa || "",
       accion: headerForm.accion || "",
       prevencion: headerForm.prevencion || "",
+      horometro_actual: resolvedHorometroActual.value,
+      horas_a_realizar: resolvedHorasARealizar.value,
+      horometro_proyectado: resolvedHorometroProyectado.value,
     },
   };
 
@@ -4578,16 +4741,7 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     }
 
     if (savedHeader) {
-      currentWorkOrderRecord.value = savedHeader;
-      headerForm.status_workflow = normalizeWorkflowStatus(
-        savedHeader?.status_workflow ?? headerForm.status_workflow,
-      );
-      headerForm.plan_id = savedHeader.plan_id ?? headerForm.plan_id;
-      headerForm.procedimiento_id = savedHeader.procedimiento_id ?? headerForm.procedimiento_id;
-      headerForm.equipo_componente_id = savedHeader.equipo_componente_id ?? headerForm.equipo_componente_id;
-      headerForm.blocked_by_work_order_id = savedHeader.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
-      headerForm.blocked_reason = savedHeader.blocked_reason ?? headerForm.blocked_reason;
-      taskForm.plan_id = headerForm.plan_id || "";
+      applySavedWorkOrderState(savedHeader);
       if (headerForm.plan_id) {
         await loadTaskOptionsByPlan(String(headerForm.plan_id));
       }
@@ -4631,6 +4785,10 @@ async function saveAll() {
     }
     if (!headerForm.maintenance_kind) {
       ui.error("Tipo mantenimiento es obligatorio.");
+      return;
+    }
+    if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
+      ui.error("Debes ingresar el horometro actual para calcular la OT.");
       return;
     }
     if (!editingId.value && !headerForm.code) {
@@ -5130,6 +5288,7 @@ watch(
     if (suggestedComponentId && !headerForm.equipo_componente_id) {
       headerForm.equipo_componente_id = suggestedComponentId;
     }
+    syncWorkOrderHorometerFields({ preserveCurrent: true });
     if (editingId.value) return;
     headerForm.plan_id = selected?.plan_id ? String(selected.plan_id) : "";
     taskForm.plan_id = headerForm.plan_id || "";
@@ -5166,6 +5325,10 @@ watch(
         headerForm.equipo_componente_id = suggestedComponentId;
       }
     }
+    if (!editingId.value || !String(headerForm.horometro_actual || "").trim()) {
+      headerForm.horometro_actual = toEditableNumber(selectedEquipmentRecord.value?.horometro_actual);
+    }
+    syncWorkOrderHorometerFields({ preserveCurrent: true });
   },
 );
 
@@ -5179,6 +5342,13 @@ watch(
       taskForm.tarea_id = "";
     }
     await loadTaskOptionsByPlan(nextPlan);
+  },
+);
+
+watch(
+  () => headerForm.horometro_actual,
+  () => {
+    syncWorkOrderHorometerFields({ preserveCurrent: true });
   },
 );
 

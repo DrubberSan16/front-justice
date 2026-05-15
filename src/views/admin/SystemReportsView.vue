@@ -85,6 +85,19 @@
           </v-col>
           <v-col cols="12" md="3">
             <v-select
+              v-model="filters.equipment_id"
+              :items="equipmentOptions"
+              item-title="label"
+              item-value="id"
+              label="Equipo"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+              clearable
+            />
+          </v-col>
+          <v-col cols="12" md="3">
+            <v-select
               v-model="filters.group_by"
               :items="groupOptions"
               item-title="title"
@@ -227,6 +240,7 @@ const filters = reactive({
   from: startOfMonthInput(),
   to: currentDateInputValue(),
   bodega_id: "",
+  equipment_id: "",
   group_by: "OT",
 });
 
@@ -270,6 +284,12 @@ const userCatalogMap = computed(
 const warehouseOptions = computed<AnyRow[]>(() =>
   Array.isArray(reportPayload.value?.catalogs?.bodegas)
     ? reportPayload.value.catalogs.bodegas
+    : [],
+);
+
+const equipmentOptions = computed<AnyRow[]>(() =>
+  Array.isArray(reportPayload.value?.catalogs?.equipos)
+    ? reportPayload.value.catalogs.equipos
     : [],
 );
 
@@ -479,6 +499,11 @@ const SECTION_DEFS = [
     title: "Inventario consumido",
     subtitle: "Materiales usados en todas las órdenes de trabajo según la agrupación activa.",
   },
+  {
+    key: "top_materiales_utilizados",
+    title: "Top 10 materiales",
+    subtitle: "Materiales más usados en las órdenes del rango consultado.",
+  },
 ];
 
 const FIELD_LABELS: Record<string, string> = {
@@ -495,6 +520,9 @@ const FIELD_LABELS: Record<string, string> = {
   procedure_label: "Plantilla",
   bodega_label: "Bodega",
   consumo_bodegas: "Bodegas consumo",
+  horometro_actual_ot: "Horometro actual",
+  horas_a_realizar_ot: "Horas a realizar",
+  horometro_proyectado_ot: "Horometro proyectado",
   responsable: "Responsable",
   responsables: "Responsables",
   ordenes_trabajo: "Ordenes trabajo",
@@ -525,6 +553,9 @@ const SECTION_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "equipment_name",
       "plan_name",
       "bodega_label",
+      "horometro_actual_ot",
+      "horas_a_realizar_ot",
+      "horometro_proyectado_ot",
       "total_horas",
       "total_responsables",
       "responsables",
@@ -539,6 +570,9 @@ const SECTION_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "equipment_name",
       "plan_name",
       "bodega_label",
+      "horometro_actual_ot",
+      "horas_a_realizar_ot",
+      "horometro_proyectado_ot",
       "total_costo",
       "total_cantidad",
       "materiales",
@@ -553,6 +587,9 @@ const SECTION_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "equipment_name",
       "plan_name",
       "bodega_label",
+      "horometro_actual_ot",
+      "horas_a_realizar_ot",
+      "horometro_proyectado_ot",
       "total_horas",
       "total_responsables",
       "responsables",
@@ -567,6 +604,9 @@ const SECTION_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "equipment_name",
       "plan_name",
       "bodega_label",
+      "horometro_actual_ot",
+      "horas_a_realizar_ot",
+      "horometro_proyectado_ot",
       "material_label",
       "total_cantidad",
       "total_costo",
@@ -581,6 +621,9 @@ const SECTION_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "equipment_name",
       "plan_name",
       "bodega_label",
+      "horometro_actual_ot",
+      "horas_a_realizar_ot",
+      "horometro_proyectado_ot",
       "material_label",
       "total_cantidad",
       "total_costo",
@@ -704,6 +747,7 @@ async function loadReports() {
         from: filters.from || undefined,
         to: filters.to || undefined,
         bodega_id: filters.bodega_id || undefined,
+        equipment_id: filters.equipment_id || undefined,
         group_by: filters.group_by || undefined,
       },
     });
@@ -741,6 +785,7 @@ function clearFilters() {
   filters.from = startOfMonthInput();
   filters.to = currentDateInputValue();
   filters.bodega_id = "";
+  filters.equipment_id = "";
   filters.group_by = "OT";
   void loadReports();
 }
