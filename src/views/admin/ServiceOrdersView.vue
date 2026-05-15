@@ -7,10 +7,7 @@
     <div class="responsive-header mb-4">
       <div>
         <div class="text-h6 font-weight-bold">Órdenes de servicio</div>
-        <div class="text-body-2 text-medium-emphasis">
-          Genera órdenes de servicio con el formato del documento RJCTI y solo permite
-          materiales marcados como servicio.
-        </div>
+       
       </div>
       <div class="d-flex flex-wrap" style="gap: 8px;">
         <v-chip
@@ -112,9 +109,7 @@
               v-model="form.codigo"
               readonly
               label="Código"
-              variant="outlined"
-              hint="Si lo dejas vacío, el sistema lo genera con formato RJCTI-AÑO-A0000001."
-              persistent-hint
+              variant="outlined"              
             />
           </v-col>
           <v-col cols="12" md="3">
