@@ -369,29 +369,23 @@
   >
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
-        Configuración SRI por sucursal
+        Configuracion SRI global
       </v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
-          <v-col cols="12" md="5">
-            <v-select
-              v-model="sriConfigForm.sucursal_id"
-              :items="sucursalOptions"
-              item-title="title"
-              item-value="value"
-              label="Sucursal"
-              variant="outlined"
-              :loading="sriConfigLoading"
-            />
-          </v-col>
-          <v-col cols="12" md="3">
+          <v-col cols="12" md="4">
             <v-select
               v-model="sriConfigForm.ambiente_default"
               :items="environmentOptions"
               label="Ambiente por defecto"
               variant="outlined"
             />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-alert type="info" variant="tonal">
+              Esta configuracion se aplica para todas las sucursales.
+            </v-alert>
           </v-col>
           <v-col cols="12" md="2">
             <v-text-field v-model="sriConfigForm.estab" label="Estab" variant="outlined" maxlength="3" />
@@ -1083,7 +1077,6 @@ const serverTotalItems = ref(0);
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
-const sucursales = ref<SucursalRow[]>([]);
 const products = ref<ProductRow[]>([]);
 const stockRows = ref<StockRow[]>([]);
 const warehousesLoaded = ref(false);
@@ -1091,7 +1084,6 @@ const productsLoaded = ref(false);
 const pendingOrdersLoaded = ref(false);
 const stockRowsLoaded = ref(false);
 const stockRowsLoading = ref(false);
-const sucursalesLoaded = ref(false);
 const selectedTransfer = ref<TransferRow | null>(null);
 const sriCertificateFile = ref<File | null>(null);
 const sriCertificatePassword = ref("");
@@ -1214,13 +1206,6 @@ const selectedOrder = ref<PurchaseOrderRow | null>(null);
 
 const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
   warehouses.value.map((item) => ({
-    value: String(item.id),
-    title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
-  })),
-);
-
-const sucursalOptions = computed<CatalogOption[]>(() =>
-  sucursales.value.map((item) => ({
     value: String(item.id),
     title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
   })),
@@ -2306,21 +2291,6 @@ async function ensureWarehousesLoaded(force = false) {
   warehousesLoaded.value = true;
 }
 
-async function ensureSucursalesLoaded(force = false) {
-  if (sucursalesLoaded.value && !force) return;
-  sucursales.value = (
-    await listAllPages(
-      "/kpi_inventory/sucursales",
-      {},
-      { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
-    )
-  ) as SucursalRow[];
-  sucursalesLoaded.value = true;
-  if (!sriConfigForm.sucursal_id) {
-    sriConfigForm.sucursal_id = String(sucursales.value[0]?.id || "");
-  }
-}
-
 async function ensurePendingOrdersLoaded(force = false) {
   if (pendingOrdersLoaded.value && !force) return;
   await loadPendingOrders();
@@ -2400,11 +2370,8 @@ async function openSriConfigDialog() {
   resetSriSignatureUploadForm();
   clearSriSignatureMeta();
   try {
-    await ensureSucursalesLoaded();
     await Promise.all([
-      sriConfigForm.sucursal_id
-        ? loadConfigForSucursal(sriConfigForm.sucursal_id)
-        : Promise.resolve(),
+      loadGlobalSriConfig(),
       canManageSriSignature.value
         ? loadGlobalSriSignature()
         : Promise.resolve(),
@@ -2426,13 +2393,11 @@ async function loadGlobalSriSignature() {
   sriConfigMeta.cert_valid_to = String(payload.cert_valid_to || "");
 }
 
-async function loadConfigForSucursal(sucursalId: string) {
+async function loadGlobalSriConfig() {
   resetSriConfigForm();
-  sriConfigForm.sucursal_id = sucursalId;
-  if (!sucursalId) return;
   sriConfigHydrating.value = true;
   try {
-    const { data } = await api.get(`/kpi_inventory/guias-remision-sri/config/sucursal/${sucursalId}`);
+    const { data } = await api.get("/kpi_inventory/guias-remision-sri/config");
     const payload = data?.data ?? data;
     if (!payload) return;
     sriConfigForm.ambiente_default = String(payload.ambiente_default || "PRUEBAS");
@@ -2468,7 +2433,7 @@ async function loadConfigForSucursal(sucursalId: string) {
 }
 
 async function saveSriConfig() {
-  if (!sriConfigForm.sucursal_id) {
+  if (false) {
     ui.error("Debes seleccionar una sucursal para la configuración SRI.");
     return;
   }
@@ -2490,14 +2455,15 @@ async function saveSriConfig() {
   }
   sriConfigSaving.value = true;
   try {
+    const { sucursal_id: _ignoredSucursalId, ...globalSriConfigForm } = sriConfigForm;
     await api.post("/kpi_inventory/guias-remision-sri/config", {
-      ...sriConfigForm,
+      ...globalSriConfigForm,
       contribuyente_especial: normalizedSpecialTaxpayerResolution,
       created_by: getUserName(),
       updated_by: getUserName(),
     });
 
-    await loadConfigForSucursal(sriConfigForm.sucursal_id);
+    await loadGlobalSriConfig();
     ui.success("Configuración SRI guardada correctamente.");
   } catch (error: any) {
     ui.error(
@@ -2978,14 +2944,6 @@ watch(
 );
 
 watch(
-  () => sriConfigForm.sucursal_id,
-  (sucursalId, prev) => {
-    if (!sucursalId || sucursalId === prev || !sriConfigDialog.value) return;
-    void loadConfigForSucursal(String(sucursalId));
-  },
-);
-
-watch(
   () => sriConfigForm.ruc,
   (value) => {
     if (!sriConfigDialog.value) return;
@@ -3175,4 +3133,5 @@ onBeforeUnmount(() => {
   background: white;
 }
 </style>
+
 
