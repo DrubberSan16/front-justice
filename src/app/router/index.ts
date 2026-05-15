@@ -92,6 +92,15 @@ export const router = createRouter({
           },
         },
         {
+          path: "ordenes-servicio",
+          name: "ordenes-servicio",
+          component: () => import("@/views/admin/ServiceOrdersView.vue"),
+          meta: {
+            title: "Ordenes de servicio",
+            viewFile: "views/admin/ServiceOrdersView.vue",
+          },
+        },
+        {
           path: "transferencias-bodega",
           name: "transferencias-bodega",
           component: () => import("@/views/admin/WarehouseTransfersView.vue"),

@@ -71,6 +71,7 @@ const routeCategoryMap = new Map<string, string>([
   ["stock-bodega", "Inventario"],
   ["kardex", "Inventario"],
   ["ordenes-compra", "Inventario"],
+  ["ordenes-servicio", "Inventario"],
   ["transferencias-bodega", "Inventario"],
   ["sucursales", "Inventario"],
   ["bodegas", "Inventario"],
@@ -646,6 +647,76 @@ const manualOverrides: Record<string, ManualOverride> = {
       "OC guardada y lista para transferencia o seguimiento documental.",
     ],
     relatedRoutes: ["transferencias-bodega", "stock-bodega", "kardex"],
+  },
+  "ordenes-servicio": {
+    routeName: "ordenes-servicio",
+    title: "Ordenes de servicio",
+    category: "Inventario",
+    summary:
+      "Genera ordenes de servicio con formato RJCTI, emisor interno y detalle limitado a materiales marcados como servicio.",
+    purpose:
+      "Sirve para solicitar servicios a terceros con trazabilidad de quien emite, a quien va dirigido y el detalle economico del documento.",
+    prerequisites: [
+      "Debe existir el tercero destinatario.",
+      "Los materiales del detalle deben tener activo el check Es servicio.",
+      "El usuario emisor debe estar activo.",
+    ],
+    flow: [
+      {
+        id: "cabecera",
+        title: "Completa PARA, DE y datos del documento",
+        description:
+          "Selecciona el destinatario, el usuario activo que emite la orden, la fecha, el lugar de entrega y la forma de pago.",
+        fields: ["Codigo", "Fecha", "Para", "De", "Lugar de entrega", "Forma de pago"],
+        checks: [
+          "El campo De solo debe mostrar usuarios activos.",
+          "El codigo debe mantener el formato RJCTI-AÑO-SECUENCIA.",
+        ],
+      },
+      {
+        id: "detalle",
+        title: "Agrega solo servicios al detalle",
+        description:
+          "Selecciona materiales marcados como servicio y registra cantidad, precio unitario, descuento e IVA por cada item.",
+        fields: ["Servicio", "Cantidad", "P. unit.", "Desc.", "IVA %"],
+        checks: [
+          "No deben aparecer materiales sin el check Es servicio.",
+          "Valida cantidades y descuentos antes de guardar.",
+        ],
+      },
+      {
+        id: "salida",
+        title: "Guarda y genera el documento",
+        description:
+          "Al guardar, el sistema consolida subtotales, leyenda del total y permite descargar el PDF con el formato del Excel base.",
+        fields: ["Guardar orden", "Descargar PDF"],
+        checks: [
+          "Revisa el PDF final antes de compartirlo con el proveedor.",
+        ],
+      },
+    ],
+    extraFields: [
+      { key: "codigo", label: "Codigo", type: "Texto", required: false, note: "Se autogenera con formato RJCTI-AÑO-SECUENCIA." },
+      { key: "fecha_emision", label: "Fecha", type: "Fecha", required: true, note: "Fecha mostrada en el documento." },
+      { key: "proveedor_id", label: "Para", type: "Select", required: true, note: "Tercero destinatario de la orden de servicio." },
+      { key: "emitido_por_user_id", label: "De", type: "Select", required: true, note: "Usuario activo que emite el documento." },
+      { key: "lugar_entrega", label: "Lugar de entrega", type: "Texto", required: false, note: "Ubicacion donde se requiere el servicio." },
+      { key: "forma_pago", label: "Forma de pago", type: "Texto", required: false, note: "Condicion pactada con el proveedor." },
+      { key: "detalles", label: "Detalle de servicios", type: "Tabla", required: true, note: "Solo admite materiales con Es servicio." },
+    ],
+    tips: [
+      "Marca correctamente los materiales de servicio desde Materiales para que aparezcan en este modulo.",
+    ],
+    warnings: [
+      "No uses este modulo para materiales fisicos comunes; el detalle debe quedar reservado a servicios.",
+    ],
+    checklist: [
+      "Destinatario seleccionado.",
+      "Usuario emisor activo seleccionado.",
+      "Detalle compuesto solo por servicios.",
+      "PDF revisado antes de enviarlo.",
+    ],
+    relatedRoutes: ["productos", "terceros", "ordenes-compra"],
   },
   "transferencias-bodega": {
     routeName: "transferencias-bodega",
