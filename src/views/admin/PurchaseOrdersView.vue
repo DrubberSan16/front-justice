@@ -512,15 +512,19 @@ const warehouseOptions = computed<CatalogOption[]>(() =>
   })),
 );
 
+const purchaseProducts = computed(() =>
+  products.value.filter((item) => !item?.es_servicio),
+);
+
 const productOptions = computed<CatalogOption[]>(() =>
-  products.value.map((item) => ({
+  purchaseProducts.value.map((item) => ({
     value: String(item.id),
     title: `${item.codigo || ""} - ${item.nombre || item.id} · costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
   })),
 );
 
 const displayProductOptions = computed<CatalogOption[]>(() =>
-  products.value.map((item) => ({
+  purchaseProducts.value.map((item) => ({
     value: String(item.id),
     title: `${buildProductDisplayTitle(item)} Â· costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
   })),
@@ -529,7 +533,7 @@ const displayProductOptions = computed<CatalogOption[]>(() =>
 const catalogProductOptions = computed<CatalogOption[]>(() => {
   void productOptions.value;
   void displayProductOptions.value;
-  return products.value.map((item) => ({
+  return purchaseProducts.value.map((item) => ({
     value: String(item.id),
     title: `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
   }));
@@ -726,7 +730,9 @@ function removeDetail(localId: string) {
 }
 
 function handleDetailProductChange(detail: OrderDetailForm) {
-  const product = products.value.find((item) => String(item.id) === String(detail.producto_id));
+  const product = purchaseProducts.value.find(
+    (item) => String(item.id) === String(detail.producto_id),
+  );
   if (!product) return;
   detail.costo_unitario = String(product.costo_promedio || product.ultimo_costo || 0);
   if (!detail.iva_porcentaje) {
