@@ -384,7 +384,7 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-alert type="info" variant="tonal">
-              Esta configuracion se aplica para todas las sucursales.
+              Configuración global para guías de remisión.
             </v-alert>
           </v-col>
           <v-col cols="12" md="2">
@@ -574,9 +574,7 @@
                 >
                   {{ guideEnvironment }}
                 </v-chip>
-                <span class="text-body-2 text-medium-emphasis">
-                  Se usa por defecto desde configuraci&oacute;n.
-                </span>
+                
               </div>
             </div>
           </v-col>
@@ -595,9 +593,7 @@
               v-model="guideForm.dir_partida"
               label="Dirección partida"
               variant="outlined"
-              readonly
-              hint="Se toma automáticamente desde la bodega origen."
-              persistent-hint
+              readonly              
             />
           </v-col>
           <v-col cols="12" md="6">
@@ -605,9 +601,7 @@
               v-model="guideForm.dir_destinatario"
               label="Dirección destinatario"
               variant="outlined"
-              readonly
-              hint="Se toma automáticamente desde la bodega destino."
-              persistent-hint
+              readonly              
             />
           </v-col>
           <template v-if="!hasGuideSupplierFromOrder">
@@ -659,9 +653,7 @@
             <v-text-field
               v-model="guideForm.identificacion_transportista"
               label="RUC/Cédula transportista"
-              variant="outlined"
-              hint="Si coincide con destinatario, proveedor o emisor se completará automáticamente."
-              persistent-hint
+              variant="outlined"                            
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -704,10 +696,7 @@
 
         <div class="d-flex align-center justify-space-between mt-4 mb-2" style="gap: 8px; flex-wrap: wrap;">
           <div>
-            <div class="text-subtitle-1 font-weight-bold">Detalle incluido en la guía</div>
-            <div class="text-body-2 text-medium-emphasis">
-              Se toma directamente de la transferencia registrada en inventario.
-            </div>
+            <div class="text-subtitle-1 font-weight-bold">Detalle incluido en la guía</div>            
           </div>
         </div>
 
@@ -2627,8 +2616,13 @@ async function generateGuide() {
   ) {
     guideForm.tipo_identificacion_transportista = inferredTransportType;
   }
-  if (!guideForm.identificacion_destinatario || !guideForm.razon_social_destinatario || !guideForm.dir_destinatario) {
-    ui.error("Completa los datos del destinatario de la guía.");
+  if (
+    !guideForm.identificacion_destinatario ||
+    !guideForm.razon_social_destinatario ||
+    !guideForm.dir_destinatario ||
+    !guideForm.cod_estab_destino
+  ) {
+    ui.error("Completa los datos obligatorios del destinatario de la guía.");
     return;
   }
   if (
