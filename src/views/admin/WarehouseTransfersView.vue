@@ -463,6 +463,14 @@
               persistent-hint
             />
           </v-col>
+          <v-col
+            cols="12"
+            v-if="sriConfigSpecialTaxpayerEnabled && sriConfigMeta.special_taxpayer_reported && !sriConfigForm.contribuyente_especial"
+          >
+            <v-alert type="info" variant="tonal">
+              El SRI reporta al emisor como contribuyente especial, pero no devolvio una resolucion numerica valida. La guia solo enviara este dato cuando exista ese codigo.
+            </v-alert>
+          </v-col>
           <v-col cols="12" md="4">
             <v-text-field v-model="sriConfigForm.info_adicional_email" label="Email adicional" variant="outlined" />
           </v-col>
@@ -951,6 +959,7 @@ type SriConfigMeta = {
   certificate_filename?: string | null;
   cert_subject?: string | null;
   cert_valid_to?: string | null;
+  special_taxpayer_reported?: boolean;
 };
 
 type GuideDetailRow = {
@@ -1481,6 +1490,12 @@ function normalizeSpecialTaxpayerResolution(value: unknown) {
     .slice(0, 5);
 }
 
+function isSpecialTaxpayerReported(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return Boolean(normalized) && normalized !== "NO";
+}
+
 function normalizeGuideEnvironment(value: unknown) {
   return String(value ?? "").trim().toUpperCase() === "PRODUCCION"
     ? "PRODUCCION"
@@ -1619,6 +1634,7 @@ function clearSriSignatureMeta() {
   sriConfigMeta.certificate_filename = "";
   sriConfigMeta.cert_subject = "";
   sriConfigMeta.cert_valid_to = "";
+  sriConfigMeta.special_taxpayer_reported = false;
 }
 
 function resetSriSignatureUploadForm() {
@@ -1627,7 +1643,10 @@ function resetSriSignatureUploadForm() {
 }
 
 function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | undefined) {
-  if (!payload) return;
+  if (!payload) {
+    sriConfigMeta.special_taxpayer_reported = false;
+    return { hasSpecialTaxpayer: false, hasResolution: false };
+  }
   const ruc = normalizeRuc(payload.ruc);
   const razonSocial = String(payload.razon_social || "").trim();
   const nombreComercial = String(
@@ -1637,7 +1656,10 @@ function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | unde
     payload.obligado_contabilidad || "NO",
   ).trim();
   const contribuyenteEspecial = normalizeSpecialTaxpayerResolution(
-    payload.contribuyente_especial,
+    payload.contribuyente_especial_codigo || payload.contribuyente_especial,
+  );
+  const hasSpecialTaxpayer = isSpecialTaxpayerReported(
+    payload.es_contribuyente_especial ?? payload.contribuyente_especial,
   );
 
   if (ruc) {
@@ -1650,13 +1672,22 @@ function applySriTaxpayerAutofill(payload: Record<string, unknown> | null | unde
     sriConfigForm.nombre_comercial = nombreComercial;
   }
   sriConfigForm.obligado_contabilidad = obligadoContabilidad || "NO";
-  sriConfigSpecialTaxpayerEnabled.value = Boolean(contribuyenteEspecial);
-  sriConfigForm.contribuyente_especial = contribuyenteEspecial;
+  sriConfigMeta.special_taxpayer_reported = hasSpecialTaxpayer;
+  sriConfigSpecialTaxpayerEnabled.value = hasSpecialTaxpayer || Boolean(contribuyenteEspecial);
+  if (contribuyenteEspecial) {
+    sriConfigForm.contribuyente_especial = contribuyenteEspecial;
+  } else if (!hasSpecialTaxpayer) {
+    sriConfigForm.contribuyente_especial = "";
+  }
   sriConfigForm.dir_matriz = String(payload.dir_matriz || sriConfigForm.dir_matriz || "");
   sriConfigForm.dir_establecimiento = String(
     payload.dir_establecimiento || sriConfigForm.dir_establecimiento || sriConfigForm.dir_matriz || "",
   );
   sriConfigForm.estab = String(payload.estab || sriConfigForm.estab || "001");
+  return {
+    hasSpecialTaxpayer,
+    hasResolution: Boolean(contribuyenteEspecial),
+  };
 }
 
 async function lookupSriTaxpayerByRuc(
@@ -1677,10 +1708,12 @@ async function lookupSriTaxpayerByRuc(
       },
     );
     const payload = (data?.data ?? data) as Record<string, unknown> | null;
-    applySriTaxpayerAutofill(payload);
+    const autofillResult = applySriTaxpayerAutofill(payload);
     lastSriLookedUpRuc.value = normalizedRuc;
     sriTaxpayerLookupMessage.value =
-      "Datos tributarios y direcciones cargados desde el SRI.";
+      autofillResult.hasSpecialTaxpayer && !autofillResult.hasResolution
+        ? "Datos tributarios cargados desde el SRI. Se detecto contribuyente especial sin resolucion numerica para enviar en la guia."
+        : "Datos tributarios y direcciones cargados desde el SRI.";
   } catch (error: any) {
     lastSriLookedUpRuc.value = "";
     sriTaxpayerLookupError.value =
@@ -1986,6 +2019,7 @@ function resetSriConfigForm() {
   sriConfigForm.dir_partida_default = "";
   sriConfigForm.info_adicional_email = "";
   sriConfigForm.info_adicional_telefono = "";
+  sriConfigMeta.special_taxpayer_reported = false;
 }
 
 function resetGuideForm() {
@@ -2410,10 +2444,13 @@ async function loadConfigForSucursal(sucursalId: string) {
     sriConfigForm.estab = String(payload.estab || "001");
     sriConfigForm.pto_emi = String(payload.pto_emi || "001");
     sriConfigForm.contribuyente_especial = normalizeSpecialTaxpayerResolution(
-      payload.contribuyente_especial,
+      payload.contribuyente_especial_codigo || payload.contribuyente_especial,
+    );
+    sriConfigMeta.special_taxpayer_reported = isSpecialTaxpayerReported(
+      payload.es_contribuyente_especial ?? payload.contribuyente_especial,
     );
     sriConfigSpecialTaxpayerEnabled.value = Boolean(
-      sriConfigForm.contribuyente_especial,
+      sriConfigMeta.special_taxpayer_reported || sriConfigForm.contribuyente_especial,
     );
     sriConfigForm.obligado_contabilidad = String(payload.obligado_contabilidad || "NO");
     sriConfigForm.dir_partida_default = String(payload.dir_partida_default || "");
