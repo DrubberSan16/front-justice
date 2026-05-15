@@ -561,7 +561,22 @@
           </v-col>
 
           <v-col cols="12" md="3">
-            <v-select v-model="guideForm.ambiente" :items="environmentOptions" label="Ambiente SRI" variant="outlined" />
+            <div class="d-flex flex-column justify-center h-100">
+              <div class="text-caption text-medium-emphasis mb-2">Ambiente SRI configurado</div>
+              <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+                <v-chip
+                  label
+                  variant="tonal"
+                  prepend-icon="mdi-server-security"
+                  :color="guideEnvironmentChipColor"
+                >
+                  {{ guideEnvironment }}
+                </v-chip>
+                <span class="text-body-2 text-medium-emphasis">
+                  Se usa por defecto desde configuraci&oacute;n.
+                </span>
+              </div>
+            </div>
           </v-col>
           <v-col cols="12" md="3">
             <v-text-field v-model="guideForm.fecha_emision" type="date" label="Fecha emisión" variant="outlined" />
@@ -1289,6 +1304,18 @@ const isCurrentGuideAuthorized = computed(() =>
       selectedTransfer.value,
   ),
 );
+const guideEnvironment = computed(() =>
+  normalizeGuideEnvironment(
+    generatedGuide.value?.ambiente ||
+      (guideContext.value.guia_existente as Record<string, unknown> | null)?.ambiente ||
+      (guideContext.value.draft as Record<string, unknown> | null)?.ambiente ||
+      (guideContext.value.config as Record<string, unknown> | null)?.ambiente_default ||
+      guideForm.ambiente,
+  ),
+);
+const guideEnvironmentChipColor = computed(() =>
+  guideEnvironment.value === "PRODUCCION" ? "success" : "warning",
+);
 
 function toNumber(value: unknown) {
   const parsed = Number(String(value ?? "").replace(/,/g, "."));
@@ -1452,6 +1479,12 @@ function normalizeSpecialTaxpayerResolution(value: unknown) {
   return String(value ?? "")
     .replace(/\D/g, "")
     .slice(0, 5);
+}
+
+function normalizeGuideEnvironment(value: unknown) {
+  return String(value ?? "").trim().toUpperCase() === "PRODUCCION"
+    ? "PRODUCCION"
+    : "PRUEBAS";
 }
 
 function normalizeComparableText(value: unknown) {
@@ -2501,7 +2534,10 @@ async function openGuideDialog(item: TransferRow) {
         : "";
     guideRecipientLookupHydrating.value = true;
     guideProviderLookupHydrating.value = true;
-    guideForm.ambiente = String(draft.ambiente || "PRUEBAS");
+    guideForm.ambiente = normalizeGuideEnvironment(
+      draft.ambiente ||
+        (payload?.config as Record<string, unknown> | null)?.ambiente_default,
+    );
     guideForm.fecha_emision = String(
       regenerationDate || draft.fecha_emision || formatDateForInput(),
     );
@@ -2603,6 +2639,7 @@ async function generateGuide() {
   try {
     const { data } = await api.post(`/kpi_inventory/guias-remision-sri/transfer/${selectedTransfer.value.id}/generate`, {
       ...guideForm,
+      ambiente: guideEnvironment.value,
       proveedor_identificacion: guideForm.proveedor_identificacion,
       proveedor_razon_social: guideForm.proveedor_razon_social,
       proveedor_nombre_comercial: guideForm.proveedor_nombre_comercial,
