@@ -61,6 +61,12 @@ const estadoOperativoEquipoOptions = [
   { value: "BLOQUEADA", title: "Bloqueada" },
 ];
 
+const intervaloServicioEquipoOptions = [
+  { value: "DIAS", title: "Dias" },
+  { value: "SEMANAS", title: "Semanas" },
+  { value: "ANIOS", title: "Anios" },
+];
+
 export const equipoComponenteCategoriaOptions = [
   { value: "MOTOR", title: "Motor" },
   { value: "GENERACION", title: "Generacion" },
@@ -203,6 +209,11 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "criticidad", label: "Criticidad", type: "select", options: criticidadEquipoOptions },
       { key: "estado_operativo", label: "Estado operativo", type: "select", options: estadoOperativoEquipoOptions },
       { key: "horometro_actual", label: "Horómetro actual", type: "number" },
+      { key: "es_servicio", label: "Equipo con mantenimiento por tiempo", type: "boolean" },
+      { key: "intervalo_mantenimiento_valor", label: "Intervalo de mantenimiento", type: "number" },
+      { key: "intervalo_mantenimiento_unidad", label: "Unidad del intervalo", type: "select", options: intervaloServicioEquipoOptions },
+      { key: "ultimo_servicio_fecha", label: "Ultimo servicio registrado", type: "date", readonly: true },
+      { key: "proximo_servicio_fecha", label: "Proximo servicio estimado", type: "date", readonly: true },
     ],
   },
   {

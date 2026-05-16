@@ -65,6 +65,32 @@
         {{ formatCurrency(item.total) }}
       </template>
 
+      <template #item.equipos_label="{ item }">
+        <div class="d-flex flex-wrap" style="gap: 4px;">
+          <v-chip
+            v-for="equipment in normalizeEquipmentLabels(item.equipos_label)"
+            :key="`${item.id}-${equipment}`"
+            size="x-small"
+            variant="tonal"
+            color="secondary"
+          >
+            {{ equipment }}
+          </v-chip>
+          <span v-if="!normalizeEquipmentLabels(item.equipos_label).length" class="text-medium-emphasis">-</span>
+        </div>
+      </template>
+
+      <template #item.servicio_realizado="{ item }">
+        <div class="d-flex align-center justify-center">
+          <v-checkbox-btn
+            :model-value="Boolean(item.servicio_realizado)"
+            color="success"
+            :disabled="!canEdit || Boolean(item.servicio_realizado)"
+            @update:model-value="toggleServicePerformed(item, $event)"
+          />
+        </div>
+      </template>
+
       <template #item.actions="{ item }">
         <div class="responsive-actions">
           <v-btn
@@ -139,6 +165,22 @@
               item-value="value"
               label="De"
               variant="outlined"
+            />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-autocomplete
+              v-model="form.equipo_ids"
+              :items="equipmentOptions"
+              item-title="title"
+              item-value="value"
+              label="Equipos atendidos"
+              variant="outlined"
+              multiple
+              chips
+              closable-chips
+              clearable
+              hint="Estos equipos se usan para detener las alertas de mantenimiento por tiempo cuando marques el servicio como realizado."
+              persistent-hint
             />
           </v-col>
           <v-col cols="12" md="3">
@@ -360,6 +402,8 @@ type ServiceOrderRow = {
   lugar_entrega?: string | null;
   estado?: string | null;
   total?: string | number | null;
+  equipos_label?: string[] | null;
+  servicio_realizado?: boolean;
 };
 
 const ui = useUiStore();
@@ -401,16 +445,19 @@ const orders = ref<ServiceOrderRow[]>([]);
 const suppliers = ref<any[]>([]);
 const products = ref<any[]>([]);
 const users = ref<any[]>([]);
+const equipments = ref<any[]>([]);
 const deletingOrder = ref<ServiceOrderRow | null>(null);
 const suppliersLoaded = ref(false);
 const productsLoaded = ref(false);
 const usersLoaded = ref(false);
+const equipmentsLoaded = ref(false);
 
 const form = reactive({
   codigo: "",
   fecha_emision: formatDateForInput(),
   proveedor_id: "",
   emitido_por_user_id: "",
+  equipo_ids: [] as string[],
   lugar_entrega: "",
   forma_pago: "A CONVENIR",
   observacion: "",
@@ -424,7 +471,9 @@ const headers = [
   { title: "De", key: "emitido_por_nombre" },
   { title: "Lugar entrega", key: "lugar_entrega" },
   { title: "Estado", key: "estado" },
+  { title: "Equipos", key: "equipos_label", sortable: false },
   { title: "Total", key: "total" },
+  { title: "Servicio realizado", key: "servicio_realizado", sortable: false, align: "center" as const },
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
@@ -439,6 +488,13 @@ const userOptions = computed<CatalogOption[]>(() =>
   users.value.map((item) => ({
     value: String(item.id || item.nameUser || item.email || item.nameSurname || ""),
     title: getActiveUserDisplayName(item),
+  })),
+);
+
+const equipmentOptions = computed<CatalogOption[]>(() =>
+  equipments.value.map((item) => ({
+    value: String(item.id),
+    title: [item.codigo, item.nombre_real || item.nombre].filter(Boolean).join(" - "),
   })),
 );
 
@@ -580,9 +636,16 @@ function getActiveUserDisplayName(item: any) {
   return String(item?.nameSurname || item?.nameUser || item?.email || item?.id || "").trim();
 }
 
+function normalizeEquipmentLabels(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+}
+
 function orderStateColor(value: string | null | undefined) {
   const normalized = String(value || "").toUpperCase();
   if (normalized === "ANULADA") return "error";
+  if (normalized === "SERVICIO_REALIZADO") return "success";
   return "info";
 }
 
@@ -607,6 +670,7 @@ function resetForm() {
   form.fecha_emision = formatDateForInput();
   form.proveedor_id = "";
   form.emitido_por_user_id = getCurrentUserCatalogId();
+  form.equipo_ids = [];
   form.lugar_entrega = "";
   form.forma_pago = "A CONVENIR";
   form.observacion = "";
@@ -689,11 +753,22 @@ async function ensureUsersLoaded(force = false) {
   usersLoaded.value = true;
 }
 
+async function ensureEquipmentsLoaded(force = false) {
+  if (equipmentsLoaded.value && !force) return;
+  equipments.value = await listAllPages(
+    "/kpi_maintenance/equipos",
+    {},
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
+  equipmentsLoaded.value = true;
+}
+
 async function loadCatalogs() {
   await Promise.all([
     ensureSuppliersLoaded(),
     ensureProductsLoaded(),
     ensureUsersLoaded(),
+    ensureEquipmentsLoaded(),
   ]);
 }
 
@@ -757,6 +832,11 @@ async function openEdit(item: ServiceOrderRow) {
     form.fecha_emision = String(order.fecha_emision || "").slice(0, 10);
     form.proveedor_id = String(order.proveedor_id || "");
     form.emitido_por_user_id = String(order.emitido_por_user_id || "");
+    form.equipo_ids = Array.isArray(order.equipos)
+      ? order.equipos
+          .map((equipment: any) => String(equipment.equipo_id || equipment.id || ""))
+          .filter(Boolean)
+      : [];
     form.lugar_entrega = String(order.lugar_entrega || "");
     form.forma_pago = String(order.forma_pago || "");
     form.observacion = String(order.observacion || "");
@@ -833,6 +913,7 @@ function buildPayload() {
     moneda: "USD",
     created_by: getUserName(),
     updated_by: getUserName(),
+    equipo_ids: form.equipo_ids,
     detalles: form.detalles.map((detail) => ({
       producto_id: detail.producto_id,
       cantidad: toNumber(detail.cantidad),
@@ -875,6 +956,31 @@ async function saveOrder() {
       error?.response?.data?.message ||
         error?.message ||
         "No se pudo guardar la orden de servicio.",
+    );
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function toggleServicePerformed(item: ServiceOrderRow, value: boolean | null) {
+  if (!value || !item?.id || item.servicio_realizado) return;
+  if (!canEdit.value) {
+    ui.error("No tienes permisos para marcar el servicio realizado.");
+    return;
+  }
+
+  saving.value = true;
+  try {
+    await api.patch(`/kpi_inventory/ordenes-servicio/${item.id}/servicio-realizado`, {
+      servicio_realizado: true,
+    });
+    ui.success("La orden de servicio se marco como realizada.");
+    await loadOrders();
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo marcar la orden como servicio realizado.",
     );
   } finally {
     saving.value = false;

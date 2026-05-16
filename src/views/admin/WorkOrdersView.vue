@@ -1667,6 +1667,26 @@ function currentUserName() {
     .toLowerCase();
 }
 
+function buildWorkOrderAuditPayload(isEditing: boolean) {
+  return {
+    actor_user_id: auth.user?.id || null,
+    actor_username: auth.user?.nameUser || (auth.user as any)?.username || null,
+    actor_name: auth.user?.nameSurname || auth.user?.nameUser || null,
+    actor_email: auth.user?.email || null,
+    actor_role: auth.user?.role?.nombre || null,
+    created_by_user_id: isEditing ? undefined : auth.user?.id || null,
+    created_by_username: isEditing
+      ? undefined
+      : auth.user?.nameUser || (auth.user as any)?.username || null,
+    created_by_name: isEditing
+      ? undefined
+      : auth.user?.nameSurname || auth.user?.nameUser || null,
+    created_by_email: isEditing ? undefined : auth.user?.email || null,
+    updated_by: auth.user?.nameUser || (auth.user as any)?.username || null,
+    updated_by_email: auth.user?.email || null,
+  };
+}
+
 function normalizeOwnerName(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
@@ -1677,10 +1697,21 @@ function canCloseOrVoidWorkOrder(item: any) {
   if (currentRoleName.value.includes("ADMIN")) return true;
   const userId = currentUserId();
   const userName = currentUserName();
-  const ownerIds = [String(row?.requested_by || "").trim()].filter(Boolean);
+  const payload = parseValorJson(row?.valor_json);
+  const ownerIds = [
+    String(row?.requested_by || "").trim(),
+    String(row?.created_by_user_id || "").trim(),
+    String(payload?.created_by_user_id || "").trim(),
+    String(payload?.actor_user_id || "").trim(),
+    String(payload?.requested_by_user_id || "").trim(),
+  ].filter(Boolean);
   const ownerNames = [
     normalizeOwnerName(row?.created_by),
     normalizeOwnerName(row?.created_by_username),
+    normalizeOwnerName(payload?.created_by_username),
+    normalizeOwnerName(payload?.actor_username),
+    normalizeOwnerName(payload?.created_by),
+    normalizeOwnerName(payload?.updated_by),
     normalizeOwnerName(row?.linked_programacion_owner),
   ].filter(Boolean);
   const isOwner =
@@ -4881,6 +4912,7 @@ async function saveHeader(
       horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       horometro_proyectado: resolvedHorometroProyectado.value,
+      ...buildWorkOrderAuditPayload(false),
     },
   };
 
@@ -4894,6 +4926,10 @@ async function saveHeader(
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
     valor_json: createPayload.valor_json,
+  };
+  updatePayload.valor_json = {
+    ...createPayload.valor_json,
+    ...buildWorkOrderAuditPayload(true),
   };
 
   if (manageLoading) savingHeader.value = true;

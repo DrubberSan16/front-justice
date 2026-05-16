@@ -1214,7 +1214,23 @@ function pruneWarehouseDependentSelections() {
   }
 }
 
-const visibleFields = computed(() => (moduleConfig.value?.fields ?? []).filter((field) => !field.hidden));
+const visibleFields = computed(() =>
+  (moduleConfig.value?.fields ?? []).filter((field) => {
+    if (field.hidden) return false;
+    if (props.moduleKey !== "equipos") return true;
+    if (
+      [
+        "intervalo_mantenimiento_valor",
+        "intervalo_mantenimiento_unidad",
+        "ultimo_servicio_fecha",
+        "proximo_servicio_fecha",
+      ].includes(field.key)
+    ) {
+      return Boolean(form.es_servicio);
+    }
+    return true;
+  }),
+);
 
 const headers = computed(() => {
   const cfg = moduleConfig.value;
@@ -1373,6 +1389,14 @@ function sanitizePayload() {
   }
 
   if (props.moduleKey === "equipos") {
+    payload.created_by = editingId.value ? undefined : auth.user?.nameUser || auth.user?.nameSurname || null;
+    payload.updated_by = auth.user?.nameUser || auth.user?.nameSurname || null;
+    if (!payload.es_servicio) {
+      payload.intervalo_mantenimiento_valor = null;
+      payload.intervalo_mantenimiento_unidad = null;
+      payload.ultimo_servicio_fecha = null;
+      payload.proximo_servicio_fecha = null;
+    }
     payload.componentes = selectedEquipmentComponentRows.value
       .map((component, index) => ({
         id: String(component?.id || "").trim() || undefined,
@@ -1423,6 +1447,17 @@ function validateForm() {
   }
 
   if (props.moduleKey === "equipos") {
+    if (form.es_servicio) {
+      const intervalValue = Number(form.intervalo_mantenimiento_valor || 0);
+      if (!(intervalValue > 0)) {
+        ui.error("Debes indicar un intervalo de mantenimiento valido para el equipo de servicio.");
+        return false;
+      }
+      if (!String(form.intervalo_mantenimiento_unidad || "").trim()) {
+        ui.error("Debes seleccionar la unidad del intervalo para el equipo de servicio.");
+        return false;
+      }
+    }
     if (!selectedEquipmentComponentRows.value.length) {
       ui.error("Debes registrar al menos un compartimiento oficial para el equipo.");
       return false;
