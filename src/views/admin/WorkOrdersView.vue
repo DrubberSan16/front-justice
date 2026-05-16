@@ -103,6 +103,30 @@
       loading-text="Obteniendo órdenes de trabajo..."
       class="elevation-0 table-enterprise enterprise-table"
     >
+      <template #item.status_workflow="{ item }">
+        <v-chip
+          size="small"
+          variant="tonal"
+          :color="getWorkflowChipColor((item._raw ?? item)?.status_workflow)"
+        >
+          {{ workflowLabel((item._raw ?? item)?.status_workflow) }}
+        </v-chip>
+      </template>
+      <template #item.emergency_label="{ item }">
+        <v-chip
+          size="small"
+          variant="tonal"
+          :color="getEmergencyChipColor((item._raw ?? item)?.is_emergency)"
+        >
+          {{ parseBooleanFlag((item._raw ?? item)?.is_emergency) ? "Emergente" : "Normal" }}
+        </v-chip>
+      </template>
+      <template #item.horometro_actual="{ item }">
+        {{ formatDecimalValue((item._raw ?? item)?.horometro_actual ?? (item._raw ?? item)?.valor_json?.horometro_actual) || "-" }}
+      </template>
+      <template #item.horometro_proyectado="{ item }">
+        {{ formatDecimalValue((item._raw ?? item)?.horometro_proyectado ?? (item._raw ?? item)?.valor_json?.horometro_proyectado) || "-" }}
+      </template>
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
           <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
@@ -1554,6 +1578,14 @@ function workflowLabel(value: unknown) {
   return workflowOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
 }
 
+function getWorkflowChipColor(value: unknown) {
+  const normalized = normalizeWorkflowStatus(value);
+  if (normalized === "IN_PROGRESS") return "info";
+  if (normalized === "BLOCKED") return "warning";
+  if (normalized === "CLOSED") return "success";
+  return "secondary";
+}
+
 function exportKey(format: "excel" | "pdf") {
   return `work-order:${format}`;
 }
@@ -1577,6 +1609,10 @@ function normalizeMaintenanceKindValue(value: unknown) {
 function getMaintenanceKindLabel(value: unknown) {
   const normalized = normalizeMaintenanceKindValue(value);
   return maintenanceKindOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
+}
+
+function getEmergencyChipColor(value: unknown) {
+  return parseBooleanFlag(value) ? "error" : "primary";
 }
 
 function getWorkOrderOperationalDate(item: any) {
@@ -1722,12 +1758,13 @@ const headers = [
   { title: "Code", key: "code" },
   { title: "Type", key: "type" },
   { title: "Title", key: "title" },
-  { title: "ID", key: "id" },
   { title: "Equipo", key: "equipment_label" },
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Tipo", key: "maintenance_kind_label" },
   { title: "Clase", key: "emergency_label" },
+  { title: "Horometro actual", key: "horometro_actual" },
+  { title: "Horometro proyectado", key: "horometro_proyectado" },
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
