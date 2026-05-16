@@ -728,7 +728,22 @@
               />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="monthlyCell.fecha_programada" type="date" label="Fecha programada" variant="outlined" />
+              <v-text-field
+                v-if="!canReprogramMonthlyCell"
+                v-model="monthlyCell.fecha_programada"
+                type="date"
+                label="Fecha programada"
+                variant="outlined"
+              />
+              <v-text-field
+                v-else
+                :model-value="monthlyCell.fecha_programada"
+                label="Fecha programada"
+                variant="outlined"
+                readonly
+                hint="La fecha mensual solo puede cambiarse desde el flujo de reprogramación."
+                persistent-hint
+              />
             </v-col>
             <v-col cols="12" md="6">
               <v-autocomplete
@@ -779,9 +794,65 @@
         </v-card-text>
         <v-divider />
         <v-card-actions class="pa-4">
+          <v-btn
+            v-if="canReprogramMonthlyCell"
+            variant="tonal"
+            color="secondary"
+            prepend-icon="mdi-calendar-refresh"
+            @click="openMonthlyReprogramDialog"
+          >
+            Reprogramar
+          </v-btn>
           <v-spacer />
           <v-btn variant="text" @click="monthlyCellDialog = false">Cancelar</v-btn>
           <v-btn v-if="canPersistMonthlyCell" color="primary" :loading="savingMonthlyCell" @click="saveMonthlyCell">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="monthlyReprogramDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 640">
+      <v-card rounded="xl">
+        <v-card-title class="text-subtitle-1 font-weight-bold">
+          Reprogramar bloque mensual
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          <v-row dense>
+            <v-col cols="12" md="6">
+              <v-text-field
+                :model-value="monthlyReprogram.current_date"
+                label="Fecha actual"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="monthlyReprogram.new_date"
+                type="date"
+                label="Nueva fecha"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col cols="12">
+              <v-textarea
+                v-model="monthlyReprogram.reason"
+                rows="4"
+                label="Observación de reprogramación"
+                hint="Indica por qué se mueve la fecha del mantenimiento mensual."
+                persistent-hint
+                variant="outlined"
+              />
+            </v-col>
+          </v-row>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="monthlyReprogramDialog = false">Cancelar</v-btn>
+          <v-btn color="primary" :loading="savingMonthlyReprogram" @click="saveMonthlyReprogram">
+            Guardar reprogramación
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1242,6 +1313,7 @@ const weeklyCellPersistDirect = ref(false);
 const weeklyEditorDialog = ref(false);
 const weeklyCellDialog = ref(false);
 const monthlyCellDialog = ref(false);
+const monthlyReprogramDialog = ref(false);
 const monthlyPaletteDialog = ref(false);
 const weeklyEditorAnchorDate = ref(formatDate(new Date()));
 const weeklyProcessOptions = ["OPERACION", "MPG", "SSA", "MIXTO"];
@@ -1283,7 +1355,14 @@ const monthlyCell = reactive<any>({
   procedimiento_id: "",
   observacion: "",
 });
+const monthlyReprogram = reactive({
+  detail_id: "",
+  current_date: "",
+  new_date: "",
+  reason: "",
+});
 const savingMonthlyCell = ref(false);
+const savingMonthlyReprogram = ref(false);
 const savingMonthlyPalette = ref(false);
 const hydratingProgramacionForm = ref(false);
 const programacionWorkOrderSelectionToken = ref(0);
@@ -1478,6 +1557,9 @@ const monthlyCellTotalHoursLabel = computed(() => {
   const hours = Number(monthlyCell.total_horas_ot ?? 0);
   return Number.isFinite(hours) && hours > 0 ? `${hours.toFixed(2)} h` : "0.00 h";
 });
+const canReprogramMonthlyCell = computed(
+  () => canEdit.value && Boolean(monthlyCell.id && monthlyCell.programacion_mensual_id),
+);
 function resolveSucursalId(explicitSucursalId?: string | null) {
   const explicit = String(explicitSucursalId || "").trim();
   return scopedSucursalId.value || explicit || null;
@@ -2934,6 +3016,23 @@ function resetMonthlyCell() {
   monthlyCell.observacion = "";
 }
 
+function resetMonthlyReprogram() {
+  monthlyReprogram.detail_id = "";
+  monthlyReprogram.current_date = "";
+  monthlyReprogram.new_date = "";
+  monthlyReprogram.reason = "";
+}
+
+async function refreshMonthlyPlanningViews() {
+  await Promise.all([
+    loadMonthlyImports(),
+    selectedMonthlyId.value ? loadSelectedMonthly(selectedMonthlyId.value) : Promise.resolve(),
+    loadAgendaRows(),
+  ]);
+  monthlyImportDetailCache.value = {};
+  await loadAgendaMonthContext();
+}
+
 function openMonthlyCellCreate(date: string, row?: any) {
   if (!canCreate.value) return;
   if (!selectedMonthly.value?.id) {
@@ -2947,6 +3046,7 @@ function openMonthlyCellCreate(date: string, row?: any) {
     return;
   }
   resetMonthlyCell();
+  resetMonthlyReprogram();
   monthlyCell.fecha_programada = date;
   monthlyCell.programacion_mensual_id = selectedMonthly.value.id;
   if (row?.equipo_id) {
@@ -2962,6 +3062,7 @@ function openMonthlyCellCreate(date: string, row?: any) {
 function openMonthlyCellEdit(item: any) {
   if (!canEdit.value) return;
   resetMonthlyCell();
+  resetMonthlyReprogram();
   monthlyCell.id = item.id;
   monthlyCell.programacion_mensual_id = item.programacion_mensual_id || selectedMonthly.value?.id || "";
   monthlyCell.equipo_id = item.equipo_id || findEquipmentByCode(item.equipo_codigo || "")?.id || "";
@@ -2973,6 +3074,15 @@ function openMonthlyCellEdit(item: any) {
   monthlyCell.procedimiento_id = item.procedimiento_id || "";
   monthlyCell.observacion = item.observacion || "";
   monthlyCellDialog.value = true;
+}
+
+function openMonthlyReprogramDialog() {
+  if (!canReprogramMonthlyCell.value) return;
+  resetMonthlyReprogram();
+  monthlyReprogram.detail_id = String(monthlyCell.id || "");
+  monthlyReprogram.current_date = String(monthlyCell.fecha_programada || "");
+  monthlyReprogram.new_date = String(monthlyCell.fecha_programada || "");
+  monthlyReprogramDialog.value = true;
 }
 
 async function openWeeklyEditorEditById(id: string) {
@@ -3053,17 +3163,53 @@ async function saveMonthlyCell() {
       ui.success("Bloque mensual creado.");
     }
     monthlyCellDialog.value = false;
-    await Promise.all([
-      loadMonthlyImports(),
-      selectedMonthlyId.value ? loadSelectedMonthly(selectedMonthlyId.value) : Promise.resolve(),
-      loadAgendaRows(),
-    ]);
-    monthlyImportDetailCache.value = {};
-    await loadAgendaMonthContext();
+    await refreshMonthlyPlanningViews();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo guardar el bloque mensual.");
   } finally {
     savingMonthlyCell.value = false;
+  }
+}
+
+async function saveMonthlyReprogram() {
+  if (!canReprogramMonthlyCell.value) return;
+  if (!monthlyReprogram.detail_id) {
+    ui.error("No se encontró el bloque mensual a reprogramar.");
+    return;
+  }
+  if (!monthlyReprogram.new_date) {
+    ui.error("Debes seleccionar la nueva fecha de reprogramación.");
+    return;
+  }
+  if (String(monthlyReprogram.new_date || "") === String(monthlyReprogram.current_date || "")) {
+    ui.error("Debes seleccionar una fecha distinta a la actual para reprogramar.");
+    return;
+  }
+  if (!String(monthlyReprogram.reason || "").trim()) {
+    ui.error("Debes indicar la observación del porqué se hace la reprogramación.");
+    return;
+  }
+
+  savingMonthlyReprogram.value = true;
+  try {
+    await api.patch(
+      `/kpi_maintenance/programaciones/mensuales/detalles/${monthlyReprogram.detail_id}/reprogramacion`,
+      {
+        fecha_programada: monthlyReprogram.new_date,
+        observacion_reprogramacion: String(monthlyReprogram.reason || "").trim(),
+        payload_json: {
+          ...buildAuditPayload(true),
+        },
+      },
+    );
+    ui.success("Bloque mensual reprogramado.");
+    monthlyReprogramDialog.value = false;
+    monthlyCellDialog.value = false;
+    await refreshMonthlyPlanningViews();
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo reprogramar el bloque mensual.");
+  } finally {
+    savingMonthlyReprogram.value = false;
   }
 }
 
