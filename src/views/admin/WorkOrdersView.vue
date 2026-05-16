@@ -1463,6 +1463,7 @@ const localConsumos = ref<any[]>([]);
 const localIssues = ref<any[]>([]);
 const localScraps = ref<any[]>([]);
 const localHistory = ref<any[]>([]);
+const persistedHeaderSnapshot = ref("");
 
 const headerForm = reactive<any>({
   code: "",
@@ -4536,6 +4537,7 @@ async function loadDetailData() {
     localIssues.value = issuesRows.map((x) => ({ ...x, total: x.total ?? x.items?.reduce?.((acc: number, it: any) => acc + Number(it.costo_unitario || 0) * Number(it.cantidad || 0), 0) ?? null, _raw: x }));
     localScraps.value = scrapRowsResponse.map((x) => ({ ...x, _raw: x }));
     localHistory.value = historyRes.map((x) => ({ ...x, _raw: x }));
+    syncPersistedWorkOrderHeaderSnapshot();
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudieron cargar los detalles principales de la OT.");
   } finally {
@@ -4629,6 +4631,7 @@ function resetAllForms() {
   localIssues.value = [];
   localScraps.value = [];
   localHistory.value = [];
+  persistedHeaderSnapshot.value = "";
   taskOptions.value = [];
   unsupportedDetailMessages.value = [];
   closeTaskResponsiblesDialog();
@@ -4799,7 +4802,11 @@ async function prepareClose() {
   tab.value = showMaterialsTab.value ? "materiales" : "consumos";
 }
 
-async function saveHeader(manageLoading = true, refreshAfterSave = true) {
+async function saveHeader(
+  manageLoading = true,
+  refreshAfterSave = true,
+  showToast = true,
+) {
   if (!canPersistHeader.value) return false;
   if (
     editingId.value &&
@@ -4882,7 +4889,9 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     if (editingId.value) {
       const { data } = await api.patch(`/kpi_maintenance/work-orders/${editingId.value}`, updatePayload);
       savedHeader = unwrapData(data);
-      ui.success("Cabecera OT actualizada.");
+      if (showToast) {
+        ui.success("Cabecera OT actualizada.");
+      }
     } else {
       const requestedCode = String(headerForm.code || "").trim();
       const { data } = await api.post("/kpi_maintenance/work-orders", createPayload);
@@ -4897,13 +4906,14 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
       if (createdId) editingId.value = createdId;
       if (codeWasReassigned && assignedCode) {
         ui.open(`Su número de orden fue actualizado a ${assignedCode}.`, "warning", 5500);
-      } else {
+      } else if (showToast) {
         ui.success("Cabecera OT creada.");
       }
     }
 
     if (savedHeader) {
       applySavedWorkOrderState(savedHeader);
+      syncPersistedWorkOrderHeaderSnapshot();
       if (headerForm.plan_id) {
         await loadTaskOptionsByPlan(String(headerForm.plan_id));
       }
@@ -4920,6 +4930,38 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
   } finally {
     if (manageLoading) savingHeader.value = false;
   }
+}
+
+function buildWorkOrderHeaderComparableState() {
+  return JSON.stringify({
+    maintenance_kind: headerForm.maintenance_kind || null,
+    is_emergency: Boolean(headerForm.is_emergency),
+    emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
+    status_workflow: normalizedWorkflow.value,
+    procedimiento_id: headerForm.procedimiento_id || null,
+    equipo_componente_id: headerForm.equipo_componente_id || null,
+    blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
+    blocked_reason: headerForm.blocked_reason || null,
+    valor_json: {
+      causa: headerForm.causa || "",
+      accion: headerForm.accion || "",
+      prevencion: headerForm.prevencion || "",
+      horometro_actual: resolvedHorometroActual.value,
+      horas_a_realizar: resolvedHorasARealizar.value,
+      horometro_proyectado: resolvedHorometroProyectado.value,
+    },
+  });
+}
+
+function syncPersistedWorkOrderHeaderSnapshot() {
+  persistedHeaderSnapshot.value = editingId.value
+    ? buildWorkOrderHeaderComparableState()
+    : "";
+}
+
+function hasWorkOrderHeaderChanges() {
+  if (!editingId.value) return true;
+  return buildWorkOrderHeaderComparableState() !== persistedHeaderSnapshot.value;
 }
 
 
@@ -4983,6 +5025,55 @@ async function saveAll() {
       return;
     }
 
+    if (editingId.value) {
+      const headerChanged = hasWorkOrderHeaderChanges();
+      const hasDraftAttachments = attachmentRows.value.some((row) => row?._isDraft);
+      const hasEditedTasks = taskRows.value.some((row) => !row?._isDraft && row?._dirty);
+      const hasDraftTasks = taskRows.value.some((row) => row?._isDraft);
+      const hasPendingConsumo = hasCompleteConsumo;
+      const hasAnyChange =
+        headerChanged ||
+        hasDraftAttachments ||
+        hasEditedTasks ||
+        hasDraftTasks ||
+        hasPendingConsumo;
+
+      if (!hasAnyChange) {
+        ui.open("No hay cambios pendientes por guardar en esta OT.", "info", 3000);
+        return;
+      }
+
+      if (headerChanged) {
+        const saved = await saveHeader(false, false, false);
+        if (!saved) return;
+      }
+      if (hasDraftAttachments) {
+        await persistDraftAttachments(false, true);
+      }
+      if (hasEditedTasks) {
+        await persistEditedTasks(false, true);
+      }
+      if (hasDraftTasks) {
+        await persistDraftTasks(false, true);
+      }
+      if (hasPendingConsumo) {
+        await createConsumo({
+          refreshAfterSave: false,
+          showToast: false,
+          throwOnError: true,
+        });
+      }
+
+      await fetchWorkOrders();
+      await loadDetailData();
+      if (normalizedWorkflow.value === "CLOSED") {
+        closingFlow.value = false;
+      }
+      ensureTabVisible();
+      ui.success(`Orden de trabajo ${headerForm.code || ""} actualizada con exito.`.trim());
+      return;
+    }
+
     const payload = buildWorkOrderSaveBundlePayload();
     const response = editingId.value
       ? await api.patch(
@@ -5018,7 +5109,7 @@ async function saveAll() {
   }
 }
 
-async function persistDraftTasks(refreshAfterSave = true) {
+async function persistDraftTasks(refreshAfterSave = true, throwOnError = false) {
   if (!editingId.value) return;
   const drafts = taskRows.value.filter((row) => row?._isDraft);
   for (const draft of drafts) {
@@ -5032,6 +5123,9 @@ async function persistDraftTasks(refreshAfterSave = true) {
         e instanceof Error
           ? e.message
           : e?.response?.data?.message || `No se pudo guardar la tarea ${getTaskLabelForTask(draft)}.`;
+      if (throwOnError) {
+        throw new Error(errorMessage);
+      }
       ui.error(errorMessage);
     }
   }
@@ -5040,7 +5134,7 @@ async function persistDraftTasks(refreshAfterSave = true) {
   }
 }
 
-async function persistEditedTasks(refreshAfterSave = true) {
+async function persistEditedTasks(refreshAfterSave = true, throwOnError = false) {
   const editedRows = taskRows.value.filter((row) => !row?._isDraft && row?._dirty);
   for (const row of editedRows) {
     try {
@@ -5054,6 +5148,9 @@ async function persistEditedTasks(refreshAfterSave = true) {
         e instanceof Error
           ? e.message
           : e?.response?.data?.message || `No se pudo actualizar la tarea ${row.id}.`;
+      if (throwOnError) {
+        throw new Error(errorMessage);
+      }
       ui.error(errorMessage);
     }
   }
@@ -5062,7 +5159,7 @@ async function persistEditedTasks(refreshAfterSave = true) {
   }
 }
 
-async function persistDraftAttachments() {
+async function persistDraftAttachments(refreshAfterSave = false, throwOnError = false) {
   if (!editingId.value) return;
   const drafts = attachmentRows.value.filter((row) => row?._isDraft);
   for (const draft of drafts) {
@@ -5086,8 +5183,16 @@ async function persistDraftAttachments() {
       );
       replaceDraftAttachmentReferencesInTasks(String(draft.id), savedAttachment);
     } catch (e: any) {
-      ui.error(e?.response?.data?.message || `No se pudo guardar el adjunto ${draft.nombre}.`);
+      const errorMessage =
+        e?.response?.data?.message || `No se pudo guardar el adjunto ${draft.nombre}.`;
+      if (throwOnError) {
+        throw new Error(errorMessage);
+      }
+      ui.error(errorMessage);
     }
+  }
+  if (refreshAfterSave && drafts.length) {
+    await loadDetailData();
   }
 }
 
@@ -5184,12 +5289,19 @@ async function deleteAttachment(item: any) {
   }
 }
 
-async function createConsumo() {
+async function createConsumo(options?: {
+  refreshAfterSave?: boolean;
+  showToast?: boolean;
+  throwOnError?: boolean;
+}) {
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
   if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad) {
     return ui.error("Bodega, material y cantidad son obligatorios.");
   }
+  const refreshAfterSave = options?.refreshAfterSave ?? true;
+  const showToast = options?.showToast ?? true;
+  const throwOnError = options?.throwOnError ?? false;
 
   const payload = {
     producto_id: consumoForm.producto_id,
@@ -5206,10 +5318,19 @@ async function createConsumo() {
     consumoForm.cantidad = "";
     consumoForm.costo_unitario = "";
     consumoForm.observacion = "";
-    await loadDetailData();
-    ui.success("Consumo registrado.");
+    if (refreshAfterSave) {
+      await loadDetailData();
+    }
+    if (showToast) {
+      ui.success("Consumo registrado.");
+    }
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo registrar el consumo.");
+    const errorMessage =
+      e?.response?.data?.message || "No se pudo registrar el consumo.";
+    if (throwOnError) {
+      throw new Error(errorMessage);
+    }
+    ui.error(errorMessage);
   }
 }
 

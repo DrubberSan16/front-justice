@@ -40,6 +40,11 @@ api.interceptors.request.use((config) => {
     config.headers["X-Role-Name"] = auth.user.role.nombre;
   }
 
+  if (auth.user?.id) {
+    config.headers = config.headers ?? {};
+    config.headers["X-User-Id"] = auth.user.id;
+  }
+
   if (auth.user?.email) {
     config.headers = config.headers ?? {};
     config.headers["X-User-Email"] = auth.user.email;
