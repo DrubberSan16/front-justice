@@ -2080,9 +2080,13 @@ watch(
 }
 
 .kpi-card {
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--surface-border);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-soft) 96%, white 4%),
+      color-mix(in srgb, var(--surface-soft) 82%, transparent)
+    ),
     var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
   overflow: hidden;
   position: relative;
@@ -2099,8 +2103,8 @@ watch(
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.12);
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 8px rgba(var(--v-theme-primary), 0.16);
 }
 
 .intelligence-kpi--clickable {
@@ -2111,8 +2115,8 @@ watch(
 .intelligence-kpi--clickable:hover,
 .intelligence-kpi--clickable:focus-visible {
   transform: translateY(-2px);
-  border-color: rgba(31, 75, 122, 0.35);
-  box-shadow: 0 14px 28px rgba(31, 75, 122, 0.12);
+  border-color: rgba(var(--v-theme-primary), 0.3);
+  box-shadow: 0 14px 28px rgba(var(--v-theme-primary), 0.12);
   outline: none;
 }
 
@@ -2177,8 +2181,8 @@ watch(
 .oil-summary-card:hover,
 .oil-summary-card:focus-visible {
   transform: translateY(-1px);
-  border-color: rgba(31, 75, 122, 0.35);
-  box-shadow: 0 14px 28px rgba(31, 75, 122, 0.1);
+  border-color: rgba(var(--v-theme-primary), 0.3);
+  box-shadow: 0 14px 28px rgba(var(--v-theme-primary), 0.1);
   outline: none;
 }
 

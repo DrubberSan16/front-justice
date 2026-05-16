@@ -241,7 +241,7 @@
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorCreateMode" />
+            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorRole" />
           </v-col>
           <v-col cols="12" md="4">
             <v-autocomplete
@@ -882,6 +882,44 @@
           </v-window-item>
 
           <v-window-item value="history">
+            <v-card variant="outlined" rounded="lg" class="pa-3 mb-3">
+              <div class="d-flex flex-wrap align-center justify-space-between" style="gap: 8px;">
+                <div>
+                  <div class="text-subtitle-2">Cronologia de horometro</div>
+                  <div class="text-body-2 text-medium-emphasis">
+                    Seguimiento del horometro actual y proyectado registrado en esta orden.
+                  </div>
+                </div>
+                <v-chip size="small" color="primary" variant="tonal">
+                  {{ normalizedHorometerTimelineEntries.length }} evento{{ normalizedHorometerTimelineEntries.length === 1 ? "" : "s" }}
+                </v-chip>
+              </div>
+              <v-timeline
+                v-if="normalizedHorometerTimelineEntries.length"
+                density="compact"
+                side="end"
+                truncate-line="both"
+                class="mt-3"
+              >
+                <v-timeline-item
+                  v-for="(item, i) in normalizedHorometerTimelineEntries"
+                  :key="`horometer-${i}`"
+                  dot-color="primary"
+                  size="small"
+                >
+                  <div class="text-body-2 font-weight-medium">
+                    {{ item.note || "Movimiento de horometro" }}
+                  </div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ workflowLabel(item.to_status) }}
+                    <span v-if="item.changed_at"> · {{ formatDateTime(item.changed_at, "") }}</span>
+                  </div>
+                </v-timeline-item>
+              </v-timeline>
+              <div v-else class="text-body-2 text-medium-emphasis mt-3">
+                Aun no hay cambios de horometro registrados para esta orden.
+              </div>
+            </v-card>
             <v-list density="compact" border rounded>
               <v-list-item
                 v-for="(item, i) in localHistory"
@@ -1616,9 +1654,8 @@ const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
 const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const isOperatorRole = computed(() => currentRoleName.value === "OPERADOR");
-const isOperatorCreateMode = computed(() => isOperatorRole.value && !editingId.value);
 const maintenanceKindOptionsForCurrentUser = computed(() =>
-  isOperatorCreateMode.value
+  isOperatorRole.value
     ? maintenanceKindOptions.filter((item) => item.value === "CEBADO")
     : maintenanceKindOptions,
 );
@@ -2789,6 +2826,13 @@ function getSuggestedProcedureComponentId(procedure: any) {
   return String(match?.value || "");
 }
 
+function getMotorEquipmentComponentId() {
+  const match = equipmentComponentOptions.value.find((option: any) =>
+    String(option?.title || "").trim().toUpperCase().includes("MOTOR"),
+  );
+  return String(match?.value || "");
+}
+
 function getEquipmentComponentLabel(item: any) {
   const selected = equipmentComponentOptions.value.find(
     (option: any) => String(option?.value || "") === String(item?.equipo_componente_id || ""),
@@ -3905,6 +3949,25 @@ const selectedBlockingOrderLabel = computed(() => {
   return selected?.title || String(headerForm.blocked_by_work_order_id || "");
 });
 
+const horometerTimelineEntries = computed(() =>
+  localHistory.value.filter((item: any) =>
+    /hor[oó]metro/i.test(String(item?.note || "")),
+  ),
+);
+
+const normalizedHorometerTimelineEntries = computed(() =>
+  (() => {
+    const normalizedMatches = localHistory.value.filter((item: any) =>
+      String(item?.note || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .includes("horometro"),
+    );
+    return normalizedMatches.length ? normalizedMatches : horometerTimelineEntries.value;
+  })(),
+);
+
 const resolvedOperationalPlanLabel = computed(() => {
   if (headerForm.plan_id) return getSelectedPlanLabel(headerForm.plan_id);
   if (!headerForm.procedimiento_id) return "Se generara al guardar";
@@ -4510,7 +4573,9 @@ async function openEdit(item: any) {
   headerForm.title = item.title ?? item.titulo ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
   headerForm.equipo_componente_id = item.equipo_componente_id ?? "";
-  headerForm.maintenance_kind = item.maintenance_kind ?? "CORRECTIVO";
+  headerForm.maintenance_kind = isOperatorRole.value
+    ? "CEBADO"
+    : (item.maintenance_kind ?? "CORRECTIVO");
   const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
   headerForm.status_workflow = initialWorkflow;
   headerForm.procedimiento_id = item.procedimiento_id ?? "";
@@ -4672,7 +4737,7 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     ui.error("Debes ingresar el horometro actual para calcular la OT.");
     return false;
   }
-  if (!editingId.value && isOperatorRole.value) {
+  if (isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
 
@@ -5284,7 +5349,9 @@ watch(
     const selected = procedureCatalog.value.find(
       (item: any) => String(item?.id || "") === String(procedimientoId || ""),
     );
-    const suggestedComponentId = getSuggestedProcedureComponentId(selected);
+    const suggestedComponentId = isOperatorRole.value
+      ? getMotorEquipmentComponentId()
+      : getSuggestedProcedureComponentId(selected);
     if (suggestedComponentId && !headerForm.equipo_componente_id) {
       headerForm.equipo_componente_id = suggestedComponentId;
     }
@@ -5320,7 +5387,9 @@ watch(
       const selected = procedureCatalog.value.find(
         (item: any) => String(item?.id || "") === String(headerForm.procedimiento_id || ""),
       );
-      const suggestedComponentId = getSuggestedProcedureComponentId(selected);
+      const suggestedComponentId = isOperatorRole.value
+        ? getMotorEquipmentComponentId()
+        : getSuggestedProcedureComponentId(selected);
       if (suggestedComponentId) {
         headerForm.equipo_componente_id = suggestedComponentId;
       }

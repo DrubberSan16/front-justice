@@ -834,8 +834,13 @@ onMounted(() => {
 
 .hero-card {
   background:
-    radial-gradient(circle at top right, rgba(73, 141, 255, 0.18), transparent 30%),
-    linear-gradient(135deg, rgba(14, 24, 39, 0.98), rgba(12, 18, 30, 0.98));
+    radial-gradient(circle at top right, rgba(73, 141, 255, 0.16), transparent 32%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--surface-soft) 92%, rgb(var(--v-theme-primary)) 8%),
+      color-mix(in srgb, var(--surface-soft) 98%, transparent)
+    );
+  border: 1px solid var(--surface-border);
 }
 
 .hero-wrap {
@@ -854,9 +859,13 @@ onMounted(() => {
 }
 
 .summary-card {
-  border-color: rgba(115, 149, 202, 0.22);
+  border-color: var(--surface-border);
   background:
-    linear-gradient(180deg, rgba(21, 30, 47, 0.95), rgba(14, 22, 36, 0.95));
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-soft) 96%, rgb(var(--v-theme-primary)) 4%),
+      color-mix(in srgb, var(--surface-soft) 90%, transparent)
+    );
 }
 
 .section-head {
@@ -876,9 +885,9 @@ onMounted(() => {
 
 .responsibles-inline-row {
   padding: 6px 8px;
-  border: 1px solid rgba(115, 149, 202, 0.22);
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: rgba(19, 29, 45, 0.88);
+  background: color-mix(in srgb, var(--surface-soft) 86%, transparent);
   line-height: 1.3;
   white-space: normal;
 }
