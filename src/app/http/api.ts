@@ -40,6 +40,22 @@ api.interceptors.request.use((config) => {
     config.headers["X-Role-Name"] = auth.user.role.nombre;
   }
 
+  if (auth.user?.email) {
+    config.headers = config.headers ?? {};
+    config.headers["X-User-Email"] = auth.user.email;
+  }
+
+  if (auth.user?.nameUser) {
+    config.headers = config.headers ?? {};
+    config.headers["X-User-Name"] = auth.user.nameUser;
+  }
+
+  if (auth.user?.nameSurname || auth.user?.nameUser) {
+    config.headers = config.headers ?? {};
+    config.headers["X-User-Display-Name"] =
+      auth.user.nameSurname || auth.user.nameUser;
+  }
+
   const method = String(config.method || "get").toUpperCase();
   if (method && branchScope.effectiveSelectedSucursalId) {
     config.headers = config.headers ?? {};
