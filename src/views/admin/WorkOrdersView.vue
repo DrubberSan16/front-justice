@@ -1675,17 +1675,24 @@ function canCloseOrVoidWorkOrder(item: any) {
   const row = item?._raw ?? item;
   if (!row) return false;
   if (currentRoleName.value.includes("ADMIN")) return true;
-  if (typeof row?.can_close_or_void === "boolean") {
-    return row.can_close_or_void;
-  }
   const userId = currentUserId();
   const userName = currentUserName();
   const ownerIds = [String(row?.requested_by || "").trim()].filter(Boolean);
   const ownerNames = [
     normalizeOwnerName(row?.created_by),
+    normalizeOwnerName(row?.created_by_username),
     normalizeOwnerName(row?.linked_programacion_owner),
   ].filter(Boolean);
-  return (!!userId && ownerIds.includes(userId)) || (!!userName && ownerNames.includes(userName));
+  const isOwner =
+    (!!userId && ownerIds.includes(userId)) ||
+    (!!userName && ownerNames.includes(userName));
+  if (typeof row?.can_close_or_void === "boolean") {
+    return row.can_close_or_void;
+  }
+  if (isOperatorRole.value) {
+    return normalizeMaintenanceKindValue(row?.maintenance_kind) === "CEBADO" && isOwner;
+  }
+  return isOwner;
 }
 
 const canCloseOrVoidCurrent = computed(() =>
@@ -1746,6 +1753,12 @@ const blockingAlertText = computed(() => {
 const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
 const closeRestrictionText = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value) return "";
+  if (isOperatorRole.value) {
+    if (normalizeMaintenanceKindValue(currentWorkOrderRecord.value?.maintenance_kind ?? headerForm.maintenance_kind) !== "CEBADO") {
+      return "El perfil operador solo puede finalizar ordenes de trabajo de tipo Cebado creadas por el mismo.";
+    }
+    return "Solo el operador que creo esta orden de trabajo de tipo Cebado puede finalizarla.";
+  }
   const owner =
     String(
       currentWorkOrderRecord.value?.linked_programacion_owner ||
