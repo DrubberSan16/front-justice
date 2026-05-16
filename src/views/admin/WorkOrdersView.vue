@@ -269,6 +269,7 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-switch
+              v-if="!editingId"
               v-model="headerForm.is_emergency"
               color="warning"
               inset
@@ -276,15 +277,28 @@
               :disabled="isReadOnlyWorkflow"
               hide-details="auto"
             />
+            <div v-else class="d-flex flex-column" style="gap: 6px;">
+              <div class="text-caption text-medium-emphasis">Clase de orden</div>
+              <div>
+                <v-chip
+                  size="small"
+                  variant="tonal"
+                  :color="getEmergencyChipColor(headerForm.is_emergency)"
+                >
+                  {{ resolvedEmergencyOrderLabel }}
+                </v-chip>
+              </div>
+            </div>
           </v-col>
           <v-col v-if="headerForm.is_emergency" cols="12" md="8">
             <v-textarea
               v-model="headerForm.emergency_reason"
-              label="Por que es orden emergente"
+              :label="editingId ? 'Motivo de emergencia' : 'Por que es orden emergente'"
               variant="outlined"
               rows="2"
               auto-grow
-              :disabled="isReadOnlyWorkflow"
+              :disabled="isReadOnlyWorkflow || Boolean(editingId)"
+              :readonly="Boolean(editingId)"
             />
           </v-col>
           <v-col cols="12" md="4">
@@ -4873,7 +4887,7 @@ async function saveHeader(
     ui.error("Tipo mantenimiento es obligatorio.");
     return false;
   }
-  if (headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
+  if (!editingId.value && headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
     ui.error("Debes indicar por que la orden es emergente.");
     return false;
   }
@@ -4918,8 +4932,6 @@ async function saveHeader(
 
   const updatePayload = {
     maintenance_kind: headerForm.maintenance_kind || null,
-    is_emergency: Boolean(headerForm.is_emergency),
-    emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
     equipo_componente_id: headerForm.equipo_componente_id || null,
@@ -4984,8 +4996,6 @@ async function saveHeader(
 function buildWorkOrderHeaderComparableState() {
   return JSON.stringify({
     maintenance_kind: headerForm.maintenance_kind || null,
-    is_emergency: Boolean(headerForm.is_emergency),
-    emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
     equipo_componente_id: headerForm.equipo_componente_id || null,
@@ -5040,7 +5050,7 @@ async function saveAll() {
       ui.error("Tipo mantenimiento es obligatorio.");
       return;
     }
-    if (headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
+    if (!editingId.value && headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
       ui.error("Debes indicar por que la orden es emergente.");
       return;
     }
