@@ -244,6 +244,26 @@
             <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorRole" />
           </v-col>
           <v-col cols="12" md="4">
+            <v-switch
+              v-model="headerForm.is_emergency"
+              color="warning"
+              inset
+              :label="headerForm.is_emergency ? 'Orden emergente' : 'Orden normal'"
+              :disabled="isReadOnlyWorkflow"
+              hide-details="auto"
+            />
+          </v-col>
+          <v-col v-if="headerForm.is_emergency" cols="12" md="8">
+            <v-textarea
+              v-model="headerForm.emergency_reason"
+              label="Por que es orden emergente"
+              variant="outlined"
+              rows="2"
+              auto-grow
+              :disabled="isReadOnlyWorkflow"
+            />
+          </v-col>
+          <v-col cols="12" md="4">
             <v-autocomplete
               v-model="headerForm.blocked_by_work_order_id"
               :items="blockingWorkOrderOptions"
@@ -1187,7 +1207,7 @@
           <div>
             <div class="text-h6 font-weight-bold">{{ headerForm.code || "Orden de trabajo" }}</div>
             <div class="text-body-2 text-medium-emphasis">
-              {{ [selectedEquipmentLabel, selectedEquipmentComponentLabel, headerForm.maintenance_kind].filter(Boolean).join(" · ") || "Sin contexto operativo" }}
+              {{ [selectedEquipmentLabel, selectedEquipmentComponentLabel, headerForm.maintenance_kind, resolvedEmergencyOrderLabel].filter(Boolean).join(" · ") || "Sin contexto operativo" }}
             </div>
           </div>
           <div class="d-flex flex-wrap" style="gap: 8px;">
@@ -1427,6 +1447,8 @@ const headerForm = reactive<any>({
   equipment_id: "",
   equipo_componente_id: "",
   maintenance_kind: "CORRECTIVO",
+  is_emergency: false,
+  emergency_reason: "",
   status_workflow: "PLANNED",
   procedimiento_id: "",
   plan_id: "",
@@ -1705,6 +1727,7 @@ const headers = [
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Tipo", key: "maintenance_kind_label" },
+  { title: "Clase", key: "emergency_label" },
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -1826,6 +1849,13 @@ function parseNullableNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function parseBooleanFlag(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return false;
+  return ["true", "1", "si", "sí", "yes", "y", "on"].includes(normalized);
+}
+
 function toEditableNumber(value: unknown) {
   const numeric = parseNullableNumber(value);
   if (numeric == null) return "";
@@ -1933,6 +1963,8 @@ const workOrderPreviewMainInfo = computed(() => [
   { label: "Equipo", value: selectedEquipmentLabel.value },
   { label: "Compartimiento", value: selectedEquipmentComponentLabel.value },
   { label: "Tipo de mantenimiento", value: headerForm.maintenance_kind },
+  { label: "Clase de orden", value: resolvedEmergencyOrderLabel.value },
+  { label: "Motivo emergencia", value: headerForm.is_emergency ? headerForm.emergency_reason : "" },
   { label: "Procedimiento", value: selectedProcedureLabel.value },
   { label: "Plan operativo", value: resolvedOperationalPlanLabel.value },
   { label: "Alerta", value: selectedAlertLabel.value },
@@ -2148,6 +2180,8 @@ const workOrderReportDefinition = computed(() =>
       equipment_label: selectedEquipmentLabel.value,
       equipment_component_label: selectedEquipmentComponentLabel.value,
       maintenance_kind: headerForm.maintenance_kind,
+      emergency_label: resolvedEmergencyOrderLabel.value,
+      emergency_reason: headerForm.is_emergency ? headerForm.emergency_reason : "",
       procedimiento: selectedProcedureLabel.value,
       plan_operativo: resolvedOperationalPlanLabel.value,
       alerta: selectedAlertLabel.value,
@@ -3586,6 +3620,8 @@ function buildWorkOrderSaveBundlePayload() {
       equipment_id: headerForm.equipment_id || null,
       equipo_componente_id: headerForm.equipo_componente_id || null,
       maintenance_kind: headerForm.maintenance_kind || null,
+      is_emergency: Boolean(headerForm.is_emergency),
+      emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
       status_workflow: normalizedWorkflow.value,
       plan_id: headerForm.plan_id || null,
       procedimiento_id: headerForm.procedimiento_id || null,
@@ -3659,6 +3695,8 @@ function applySavedWorkOrderState(savedHeader: any) {
   headerForm.procedimiento_id = savedHeader?.procedimiento_id ?? headerForm.procedimiento_id;
   headerForm.equipo_componente_id = savedHeader?.equipo_componente_id ?? headerForm.equipo_componente_id;
   headerForm.alerta_id = savedHeader?.alerta_id ?? headerForm.alerta_id;
+  headerForm.is_emergency = parseBooleanFlag(savedHeader?.is_emergency ?? headerForm.is_emergency);
+  headerForm.emergency_reason = headerForm.is_emergency ? String(savedHeader?.emergency_reason || "") : "";
   headerForm.blocked_by_work_order_id = savedHeader?.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
   headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
   headerForm.horometro_actual = toEditableNumber(
@@ -3949,6 +3987,10 @@ const selectedBlockingOrderLabel = computed(() => {
   return selected?.title || String(headerForm.blocked_by_work_order_id || "");
 });
 
+const resolvedEmergencyOrderLabel = computed(() =>
+  headerForm.is_emergency ? "Orden emergente" : "Orden normal",
+);
+
 const horometerTimelineEntries = computed(() =>
   localHistory.value.filter((item: any) =>
     /hor[oó]metro/i.test(String(item?.note || "")),
@@ -4065,6 +4107,8 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
     titulo: getWorkOrderExportTitle(item),
     estado: workflowLabel(item?.status_workflow),
     tipo_mantenimiento: getMaintenanceKindLabel(item?.maintenance_kind),
+    clase_orden: parseBooleanFlag(item?.is_emergency) ? "Orden emergente" : "Orden normal",
+    motivo_emergencia: item?.emergency_reason || "",
     equipo: getEquipmentLabel(item) || "-",
     compartimiento: getEquipmentComponentLabel(item) || "-",
     procedimiento:
@@ -4433,6 +4477,8 @@ async function loadDetailData() {
       currentWorkOrderRecord.value?.status_workflow ?? headerForm.status_workflow,
     );
     headerForm.alerta_id = currentWorkOrderRecord.value?.alerta_id ?? "";
+    headerForm.is_emergency = parseBooleanFlag(currentWorkOrderRecord.value?.is_emergency);
+    headerForm.emergency_reason = headerForm.is_emergency ? String(currentWorkOrderRecord.value?.emergency_reason || "") : "";
     taskRows.value = asArray(tasksRes.data).map((x) => ({
       ...x,
       task_meta:
@@ -4468,6 +4514,7 @@ const rows = computed(() => {
       equipment_label: getEquipmentLabel(r),
       equipment_component_label: getEquipmentComponentLabel(r),
       maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
+      emergency_label: parseBooleanFlag(r?.is_emergency) ? "Emergente" : "Normal",
       operational_date: getWorkOrderOperationalDate(r),
       operational_date_label: getWorkOrderOperationalDateLabel(r),
       _raw: r,
@@ -4476,6 +4523,7 @@ const rows = computed(() => {
         equipment_label: getEquipmentLabel(r),
         equipment_component_label: getEquipmentComponentLabel(r),
         maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
+        emergency_label: parseBooleanFlag(r?.is_emergency) ? "Emergente" : "Normal",
         operational_date_label: getWorkOrderOperationalDateLabel(r),
       }).toLowerCase(),
     }))
@@ -4494,6 +4542,8 @@ function resetAllForms() {
   headerForm.procedimiento_id = "";
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
+  headerForm.is_emergency = false;
+  headerForm.emergency_reason = "";
   headerForm.blocked_by_work_order_id = "";
   headerForm.blocked_reason = "";
   headerForm.causa = "";
@@ -4582,6 +4632,8 @@ async function openEdit(item: any) {
   headerForm.plan_id = item.plan_id ?? "";
   taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
+  headerForm.is_emergency = parseBooleanFlag(item?.is_emergency);
+  headerForm.emergency_reason = headerForm.is_emergency ? String(item?.emergency_reason || "") : "";
   headerForm.blocked_by_work_order_id = item.blocked_by_work_order_id ?? "";
   headerForm.blocked_reason = item.blocked_reason ?? "";
   const headerValorJson = parseValorJson(item?.valor_json);
@@ -4733,6 +4785,10 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     ui.error("Tipo mantenimiento es obligatorio.");
     return false;
   }
+  if (headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
+    ui.error("Debes indicar por que la orden es emergente.");
+    return false;
+  }
   if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
     ui.error("Debes ingresar el horometro actual para calcular la OT.");
     return false;
@@ -4754,6 +4810,8 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
     equipment_id: headerForm.equipment_id,
     equipo_componente_id: headerForm.equipo_componente_id || null,
     maintenance_kind: headerForm.maintenance_kind || null,
+    is_emergency: Boolean(headerForm.is_emergency),
+    emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
     status_workflow: normalizedWorkflow.value,
     plan_id: headerForm.plan_id || null,
     procedimiento_id: headerForm.procedimiento_id || null,
@@ -4771,6 +4829,8 @@ async function saveHeader(manageLoading = true, refreshAfterSave = true) {
 
   const updatePayload = {
     maintenance_kind: headerForm.maintenance_kind || null,
+    is_emergency: Boolean(headerForm.is_emergency),
+    emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
     equipo_componente_id: headerForm.equipo_componente_id || null,
@@ -4850,6 +4910,10 @@ async function saveAll() {
     }
     if (!headerForm.maintenance_kind) {
       ui.error("Tipo mantenimiento es obligatorio.");
+      return;
+    }
+    if (headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
+      ui.error("Debes indicar por que la orden es emergente.");
       return;
     }
     if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
@@ -5418,6 +5482,15 @@ watch(
   () => headerForm.horometro_actual,
   () => {
     syncWorkOrderHorometerFields({ preserveCurrent: true });
+  },
+);
+
+watch(
+  () => headerForm.is_emergency,
+  (value) => {
+    if (!value) {
+      headerForm.emergency_reason = "";
+    }
   },
 );
 
