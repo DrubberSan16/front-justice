@@ -218,6 +218,12 @@ export const router = createRouter({
           meta: { title: "Reportes del sistema", viewFile: "views/admin/SystemReportsView.vue" },
         },
         {
+          path: "reporte-diario",
+          name: "reporte-diario",
+          component: () => import("@/views/admin/DailyOperationsReportView.vue"),
+          meta: { title: "Reporte diario", viewFile: "views/admin/DailyOperationsReportView.vue" },
+        },
+        {
           path: "gemelos-digitales",
           name: "gemelos-digitales",
           component: () => import("@/views/admin/DigitalTwinsView.vue"),

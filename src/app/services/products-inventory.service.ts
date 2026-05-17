@@ -17,11 +17,14 @@ type StockRow = {
   bodega_id: string;
   producto_id: string;
   stock_actual: string;
+  stock_fisico?: string;
   stock_min_bodega: string;
   stock_max_bodega: string;
   stock_min_global: string;
   stock_contenedores: string;
   costo_promedio_bodega: string;
+  diferencia?: number;
+  es_usado?: boolean;
 };
 
 type MovementType = "INGRESO" | "SALIDA";
@@ -163,11 +166,13 @@ export async function performManualMovement(payload: {
       bodega_id: payload.bodegaId,
       producto_id: payload.productoId,
       stock_actual: String(Math.max(stockNuevo, 0)),
+      stock_fisico: String(Math.max(stockNuevo, 0)),
       stock_min_bodega: "0",
       stock_max_bodega: "0",
       stock_min_global: "0",
       stock_contenedores: "0",
       costo_promedio_bodega: String(payload.costoUnitario),
+      es_usado: false,
     });
 
     await registerMovementAndKardex({
@@ -187,6 +192,7 @@ export async function performManualMovement(payload: {
 
   await api.patch(`/kpi_inventory/stock-bodega/${current.id}`, {
     stock_actual: String(stockNuevo),
+    stock_fisico: String(parseNumber(current.stock_fisico, stockAnterior) + signedQty),
     costo_promedio_bodega: String(payload.costoUnitario),
   });
 
@@ -356,17 +362,20 @@ export async function bulkUpsertFromRows(rows: Record<string, any>[], userName: 
         bodega_id: bodega.id,
         producto_id: producto.id,
         stock_actual: String(stock),
+        stock_fisico: String(stock),
         stock_min_bodega: String(stockMinBodega),
         stock_max_bodega: String(stockMaxBodega),
         stock_min_global: String(stockMin),
         stock_contenedores: String(stockContenedores),
         costo_promedio_bodega: String(costoPromedio),
+        es_usado: false,
       });
       stockRow = data;
       stocks.push(data);
     } else {
       await api.patch(`/kpi_inventory/stock-bodega/${stockRow.id}`, {
         stock_actual: String(stock),
+        stock_fisico: String(stock),
         stock_min_bodega: String(stockMinBodega),
         stock_max_bodega: String(stockMaxBodega),
         stock_min_global: String(stockMin),

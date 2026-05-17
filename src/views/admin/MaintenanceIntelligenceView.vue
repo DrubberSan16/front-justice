@@ -278,6 +278,16 @@
                   empty-text="No existen equipos con consumo de aceite en este rango."
                 />
               </v-col>
+              <v-col cols="12" lg="12">
+                <DashboardBarChartCard
+                  title="Consumo por OT ejecutada"
+                  subtitle="Ordenes de trabajo del rango con su total consumido del aceite seleccionado"
+                  :chip-label="`${oilWorkOrderChartItems.length} OT`"
+                  chip-color="info"
+                  :items="oilWorkOrderChartItems"
+                  empty-text="No existen ordenes ejecutadas con consumo para este aceite en el rango."
+                />
+              </v-col>
             </v-row>
 
             <v-row dense class="mb-2">
@@ -1489,6 +1499,19 @@ const oilOrdersTrendChartItems = computed<DashboardChartItem[]>(() =>
     valueLabel: `${item.total_ordenes ?? 0} OT`,
     helper: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
   })),
+);
+const oilWorkOrderChartItems = computed<DashboardChartItem[]>(() =>
+  oilWorkOrderRows.value
+    .slice()
+    .sort((left, right) => Number(right.cantidad || 0) - Number(left.cantidad || 0))
+    .slice(0, 8)
+    .map((item: AnyRow) => ({
+      key: item.work_order_id || item.work_order_code,
+      label: item.work_order_code || "OT",
+      value: Number(item.cantidad || 0),
+      valueLabel: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
+      helper: item.equipment_label || item.fecha_referencia_label || "",
+    })),
 );
 const oilEquipmentChartItems = computed<DashboardChartItem[]>(() =>
   oilEquipmentRows.value.slice(0, 6).map((item: AnyRow) => ({

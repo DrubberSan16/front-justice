@@ -252,6 +252,14 @@
               clearable
               variant="outlined"
             />
+            <v-switch
+              v-else-if="isStockMaterialConditionField(field)"
+              v-model="form[field.key]"
+              color="primary"
+              inset
+              :label="form[field.key] ? 'Material usado' : 'Material nuevo'"
+              hide-details
+            />
             <v-checkbox
               v-else-if="field.type === 'boolean'"
               v-model="form[field.key]"
@@ -270,11 +278,12 @@
             <v-text-field
               v-else
               v-model="form[field.key]"
-              :type="field.type === 'number' ? 'number' : 'text'"
+              :type="field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'"
               :label="field.label"
               :hint="field.required ? 'Obligatorio' : ''"
               persistent-hint
               variant="outlined"
+              :readonly="Boolean(field.readonly)"
             />
           </v-col>
           <v-col v-if="isThirdPartyModule && thirdPartyLookupError" cols="12">
@@ -441,6 +450,11 @@ function productNameLooksLikeOil() {
   return /\baceite\b/.test(normalizeLooseText(form.nombre));
 }
 
+function toSafeNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function findGallonsUnitOption() {
   return (relationOptions.value.unidad_medida_id ?? []).find((option) =>
     /\bgalones?\b|\bgal\b|\bgl\b/.test(normalizeLooseText(option.title)),
@@ -460,6 +474,10 @@ function syncProductOilDefaults() {
 
 function isStockBodegaLabelField(fieldKey: string) {
   return fieldKey === "producto_id" || fieldKey === "bodega_id";
+}
+
+function isStockMaterialConditionField(field: MaintenanceField) {
+  return isStockBodegaModule.value && field.key === "es_usado";
 }
 
 function getRelationFields(mode: "table" | "form" = "table") {
@@ -554,6 +572,15 @@ function clearThirdPartyLookupTimer() {
   if (!thirdPartyLookupTimer) return;
   clearTimeout(thirdPartyLookupTimer);
   thirdPartyLookupTimer = null;
+}
+
+function syncStockDifference() {
+  if (!isStockBodegaModule.value) return;
+  form.diferencia = String(
+    Number(
+      (toSafeNumber(form.stock_actual) - toSafeNumber(form.stock_fisico)).toFixed(6),
+    ),
+  );
 }
 
 function applyThirdPartySriAutofill(payload: Record<string, any> | null | undefined) {
@@ -686,6 +713,7 @@ function resetForm() {
     else if (field.type === "number") form[field.key] = "0";
     else form[field.key] = "";
   }
+  syncStockDifference();
 }
 
 function getSelectOptions(field: MaintenanceField) {
@@ -756,8 +784,11 @@ const rows = computed(() => {
           out[field.key] = formatNumberForDisplay(r[field.key]);
         }
 
-        if (field.type === "boolean") {
-          out[field.key] = r[field.key] ? "Si" : "No";
+      if (field.type === "boolean") {
+          out[field.key] =
+            cfg.key === "stock-bodega" && field.key === "es_usado"
+              ? (r[field.key] ? "Usado" : "Nuevo")
+              : (r[field.key] ? "Si" : "No");
         }
       }
       if (cfg.key === "productos") {
@@ -774,6 +805,7 @@ function sanitizePayload() {
   if (!cfg) return payload;
 
   for (const field of cfg.fields) {
+    if (field.sendInPayload === false) continue;
     let val = form[field.key];
     if (field.type === "number") {
       val = val === "" || val === null || val === undefined ? "0" : String(val);
@@ -802,6 +834,7 @@ function validateForm() {
   if (!cfg) return false;
 
   for (const field of cfg.fields) {
+    if (field.sendInPayload === false) continue;
     if (!field.required) continue;
     const val = form[field.key];
     if (field.type === "boolean") continue;
@@ -1050,6 +1083,14 @@ watch(
   () => {
     serverPage.value = 1;
     scheduleServerFetch();
+  },
+);
+
+watch(
+  () => [dialog.value, isStockBodegaModule.value, form.stock_actual, form.stock_fisico],
+  () => {
+    if (!dialog.value || !isStockBodegaModule.value) return;
+    syncStockDifference();
   },
 );
 
