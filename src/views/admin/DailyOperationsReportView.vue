@@ -14,7 +14,7 @@
           <div>
             <div class="text-h6 font-weight-bold">Reporte diario</div>
             <div class="text-body-2 text-medium-emphasis">
-              Consolida entradas y salidas de materiales del dia, junto con las ordenes generadas y cerradas.
+              Consolida entradas y salidas de materiales del dia, junto con las ordenes pendientes y cerradas.
             </div>
           </div>
           <div class="d-flex align-center hero-actions">
@@ -95,7 +95,7 @@
         <template v-else>
           <v-tabs v-model="activeTab" color="primary" class="system-tabs">
             <v-tab value="movimientos">Movimientos ({{ movementRows.length }})</v-tab>
-            <v-tab value="creadas">OT generadas ({{ createdRows.length }})</v-tab>
+            <v-tab value="pendientes">OT pendientes ({{ pendingRows.length }})</v-tab>
             <v-tab value="cerradas">OT cerradas ({{ closedRows.length }})</v-tab>
           </v-tabs>
 
@@ -130,10 +130,10 @@
               </v-data-table>
             </v-window-item>
 
-            <v-window-item value="creadas">
+            <v-window-item value="pendientes">
               <v-data-table
                 :headers="workOrderHeaders"
-                :items="createdRows"
+                :items="pendingRows"
                 density="compact"
                 :items-per-page="10"
                 class="table-enterprise enterprise-table"
@@ -147,8 +147,8 @@
                   {{ formatDateTime(item.fecha_evento, "-") }}
                 </template>
                 <template #bottom>
-                  <div v-if="!createdRows.length" class="pa-4 text-medium-emphasis">
-                    No se generaron ordenes de trabajo en la fecha consultada.
+                  <div v-if="!pendingRows.length" class="pa-4 text-medium-emphasis">
+                    No hay ordenes de trabajo pendientes en la fecha consultada.
                   </div>
                 </template>
               </v-data-table>
@@ -262,9 +262,11 @@ const movementRows = computed<AnyRow[]>(() =>
   Array.isArray(reportPayload.value?.movements) ? reportPayload.value.movements : [],
 );
 
-const createdRows = computed<AnyRow[]>(() =>
-  Array.isArray(reportPayload.value?.work_orders_created)
-    ? reportPayload.value.work_orders_created
+const pendingRows = computed<AnyRow[]>(() =>
+  Array.isArray(reportPayload.value?.work_orders_pending)
+    ? reportPayload.value.work_orders_pending
+    : Array.isArray(reportPayload.value?.work_orders_created)
+      ? reportPayload.value.work_orders_created
     : [],
 );
 
@@ -304,7 +306,10 @@ const summaryCards = computed(() => {
     { label: "Ingresos por compra", value: formatNumber(summary.ingresos_compra) },
     { label: "Salidas por OT", value: formatNumber(summary.salidas_ot) },
     { label: "Movimientos kardex", value: String(summary.movimientos_kardex ?? 0) },
-    { label: "OT generadas", value: String(summary.ordenes_generadas ?? 0) },
+    {
+      label: "OT pendientes",
+      value: String(summary.ordenes_pendientes ?? summary.ordenes_generadas ?? 0),
+    },
     { label: "OT cerradas", value: String(summary.ordenes_cerradas ?? 0) },
     {
       label: "Materiales distintos",
