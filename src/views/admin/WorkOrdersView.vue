@@ -1387,7 +1387,7 @@ import {
   downloadReportExcel,
   downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
-import { formatDateTime } from "@/app/utils/date-time";
+import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import {
   appendOilIndicator,
   buildProductDisplayTitle,
@@ -1647,6 +1647,15 @@ function getWorkOrderOperationalDateLabel(item: any) {
   return raw ? formatDateTime(raw, "-") : "-";
 }
 
+function getWorkOrderScheduledProgramDate(item: any) {
+  return String(item?.linked_programacion_fecha || "").trim();
+}
+
+function getWorkOrderScheduledProgramDateLabel(item: any) {
+  const raw = getWorkOrderScheduledProgramDate(item);
+  return raw ? formatDateOnly(raw, "-") : "-";
+}
+
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
 const requiresOilProductsForCurrentWorkOrder = computed(
   () => normalizeMaintenanceKindValue(headerForm.maintenance_kind) === "CEBADO",
@@ -1824,6 +1833,7 @@ const headers = [
   { title: "Clase", key: "emergency_label" },
   { title: "Horometro actual", key: "horometro_actual" },
   { title: "Horometro proyectado", key: "horometro_proyectado" },
+  { title: "Fecha programada", key: "scheduled_program_date_label" },
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -4612,6 +4622,8 @@ const rows = computed(() => {
       equipment_component_label: getEquipmentComponentLabel(r),
       maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
       emergency_label: parseBooleanFlag(r?.is_emergency) ? "Emergente" : "Normal",
+      scheduled_program_date: getWorkOrderScheduledProgramDate(r),
+      scheduled_program_date_label: getWorkOrderScheduledProgramDateLabel(r),
       operational_date: getWorkOrderOperationalDate(r),
       operational_date_label: getWorkOrderOperationalDateLabel(r),
       _raw: r,
@@ -4621,6 +4633,7 @@ const rows = computed(() => {
         equipment_component_label: getEquipmentComponentLabel(r),
         maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
         emergency_label: parseBooleanFlag(r?.is_emergency) ? "Emergente" : "Normal",
+        scheduled_program_date_label: getWorkOrderScheduledProgramDateLabel(r),
         operational_date_label: getWorkOrderOperationalDateLabel(r),
       }).toLowerCase(),
     }))
