@@ -303,12 +303,12 @@
               </v-col>
               <v-col cols="12" lg="6">
                 <DashboardBarChartCard
-                  title="OT por rango"
-                  subtitle="Cantidad de órdenes con consumo del aceite en cada fecha"
-                  :chip-label="`${oilOrdersTrendChartItems.length} puntos`"
+                  title="Picos diarios de consumo"
+                  subtitle="Dias con mayor uso del aceite para detectar jornadas de alto consumo"
+                  :chip-label="`${oilDailyPeakChartItems.length} dias`"
                   chip-color="secondary"
-                  :items="oilOrdersTrendChartItems"
-                  empty-text="No hay órdenes registradas para este aceite en el rango."
+                  :items="oilDailyPeakChartItems"
+                  empty-text="No hay consumos diarios visibles para este aceite en el rango."
                 />
               </v-col>
             </v-row>
@@ -356,6 +356,36 @@
               </v-col>
 
               <v-col cols="12" lg="4">
+                <div class="text-subtitle-2 font-weight-medium mb-2">Detalle del día pico</div>
+                <div class="dashboard-table-shell oil-kpi-table-shell mb-4">
+                  <v-table density="compact" class="dashboard-mini-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>OT</th>
+                        <th>{{ oilQuantityUnitLabel }}</th>
+                        <th>Costo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="item in oilPeakDayDetailRows" :key="`${item.work_order_id}-${item.fecha_referencia}`">
+                        <td>{{ item.fecha_referencia_label }}</td>
+                        <td>
+                          <div class="font-weight-medium">{{ item.work_order_code }}</div>
+                          <div class="text-caption text-medium-emphasis">{{ item.equipment_label }}</div>
+                        </td>
+                        <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
+                        <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
+                      </tr>
+                      <tr v-if="!oilPeakDayDetailRows.length">
+                        <td colspan="4" class="text-center text-medium-emphasis py-4">
+                          No existe un día pico identificado para este aceite.
+                        </td>
+                      </tr>
+                    </tbody>
+                  </v-table>
+                </div>
+
                 <div class="text-subtitle-2 font-weight-medium mb-2">Agrupado por equipo</div>
                 <div class="dashboard-table-shell oil-kpi-table-shell">
                   <v-table density="compact" class="dashboard-mini-table">
@@ -985,12 +1015,12 @@
             </v-col>
             <v-col cols="12" lg="6">
               <DashboardBarChartCard
-                title="OT por rango"
-                subtitle="Cantidad de órdenes con consumo del aceite en cada fecha"
-                :chip-label="`${oilOrdersTrendChartItems.length} puntos`"
+                title="Picos diarios de consumo"
+                subtitle="Dias donde el aceite registró su mayor salida para identificar picos de uso"
+                :chip-label="`${oilDailyPeakChartItems.length} dias`"
                 chip-color="info"
-                :items="oilOrdersTrendChartItems"
-                empty-text="No hay órdenes registradas para este aceite en el rango."
+                :items="oilDailyPeakChartItems"
+                empty-text="No hay consumos diarios visibles para este aceite en el rango."
               />
             </v-col>
           </v-row>
@@ -1037,6 +1067,36 @@
             </v-col>
 
             <v-col cols="12" lg="4">
+              <div class="text-subtitle-2 font-weight-medium mb-2">Detalle del día pico</div>
+              <div class="dashboard-table-shell oil-kpi-table-shell oil-kpi-table-shell--tall mb-4">
+                <v-table density="compact" class="dashboard-mini-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>OT</th>
+                      <th>{{ oilQuantityUnitLabel }}</th>
+                      <th>Costo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="item in oilPeakDayDetailRows" :key="`${item.work_order_id}-${item.fecha_referencia}-detail`">
+                      <td>{{ item.fecha_referencia_label }}</td>
+                      <td>
+                        <div class="font-weight-medium">{{ item.work_order_code }}</div>
+                        <div class="text-caption text-medium-emphasis">{{ item.equipment_label }}</div>
+                      </td>
+                      <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
+                      <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
+                    </tr>
+                    <tr v-if="!oilPeakDayDetailRows.length">
+                      <td colspan="4" class="text-center text-medium-emphasis py-4">
+                        No existe un día pico identificado para este aceite.
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </div>
+
               <div class="text-subtitle-2 font-weight-medium mb-2">Resumen por bodega</div>
               <div class="dashboard-table-shell oil-kpi-table-shell oil-kpi-table-shell--tall">
                 <v-table density="compact" class="dashboard-mini-table">
@@ -1499,6 +1559,54 @@ const oilOrdersTrendChartItems = computed<DashboardChartItem[]>(() =>
     valueLabel: `${item.total_ordenes ?? 0} OT`,
     helper: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
   })),
+);
+void oilOrdersTrendChartItems.value;
+const oilDailyUsageRows = computed<AnyRow[]>(() => {
+  const grouped = new Map<string, AnyRow>();
+  for (const item of oilWorkOrderRows.value) {
+    const key = String(item.fecha_referencia || "").slice(0, 10);
+    if (!key) continue;
+    const current = grouped.get(key) ?? {
+      key,
+      fecha_referencia: key,
+      fecha_referencia_label: item.fecha_referencia_label || key,
+      total_cantidad: 0,
+      total_costo: 0,
+      total_movimientos: 0,
+      total_ordenes: 0,
+      work_order_ids: new Set<string>(),
+      details: [] as AnyRow[],
+    };
+    current.total_cantidad += Number(item.cantidad || 0);
+    current.total_costo += Number(item.subtotal || 0);
+    current.total_movimientos += Number(item.movimientos || 0);
+    current.work_order_ids.add(String(item.work_order_id || ""));
+    current.total_ordenes = current.work_order_ids.size;
+    current.details.push(item);
+    grouped.set(key, current);
+  }
+  return [...grouped.values()]
+    .map((item: AnyRow) => ({
+      ...item,
+      total_cantidad: Number(item.total_cantidad.toFixed(4)),
+      total_costo: Number(item.total_costo.toFixed(2)),
+    }))
+    .sort((a: AnyRow, b: AnyRow) => b.total_cantidad - a.total_cantidad || String(a.key).localeCompare(String(b.key)));
+});
+const oilDailyPeakChartItems = computed<DashboardChartItem[]>(() =>
+  oilDailyUsageRows.value.slice(0, 10).map((item: AnyRow) => ({
+    key: item.key,
+    label: item.fecha_referencia_label || item.key,
+    value: Number(item.total_cantidad || 0),
+    valueLabel: `${formatDetailedNumber(item.total_cantidad)} ${oilQuantityUnitLabel.value}`,
+    helper: `${item.total_ordenes ?? 0} OT · $${formatDetailedNumber(item.total_costo, 2)}`,
+  })),
+);
+const oilPeakDay = computed<AnyRow | null>(() => oilDailyUsageRows.value[0] ?? null);
+const oilPeakDayDetailRows = computed<AnyRow[]>(() =>
+  oilPeakDay.value?.details
+    ? [...oilPeakDay.value.details].sort((a: AnyRow, b: AnyRow) => Number(b.cantidad || 0) - Number(a.cantidad || 0))
+    : [],
 );
 const oilWorkOrderChartItems = computed<DashboardChartItem[]>(() =>
   oilWorkOrderRows.value

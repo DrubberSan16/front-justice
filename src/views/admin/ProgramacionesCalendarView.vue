@@ -274,6 +274,13 @@
                     color="primary"
                     @click.stop="handleMonthlyItemClick(item as any)"
                   />
+                  <v-btn
+                    v-if="hasMonthlyReprogramHistory(item as any)"
+                    icon="mdi-timeline-clock-outline"
+                    variant="text"
+                    color="secondary"
+                    @click.stop="openMonthlyReprogramHistoryFromItem(item as any)"
+                  />
                 </div>
               </template>
           </v-data-table>
@@ -806,6 +813,24 @@
                 variant="outlined"
               />
             </v-col>
+            <v-col v-if="monthlyCellHasReprogramHistory" cols="12">
+              <div class="d-flex align-center justify-space-between flex-wrap" style="gap: 10px;">
+                <div>
+                  <div class="text-body-2 font-weight-medium">Historial de reprogramaciones</div>
+                  <div class="text-caption text-medium-emphasis">
+                    {{ monthlyCellReprogramCount }} registro{{ monthlyCellReprogramCount === 1 ? "" : "s" }} documentado{{ monthlyCellReprogramCount === 1 ? "" : "s" }} para esta orden.
+                  </div>
+                </div>
+                <v-btn
+                  variant="tonal"
+                  color="secondary"
+                  prepend-icon="mdi-timeline-clock-outline"
+                  @click="openMonthlyReprogramHistoryDialog()"
+                >
+                  Ver historial
+                </v-btn>
+              </div>
+            </v-col>
             <v-col cols="12">
               <v-textarea v-model="monthlyCell.observacion" rows="3" label="Observación" variant="outlined" />
             </v-col>
@@ -816,6 +841,71 @@
           <v-spacer />
           <v-btn variant="text" @click="monthlyCellDialog = false">Cancelar</v-btn>
           <v-btn v-if="canPersistMonthlyCell" color="primary" :loading="savingMonthlyCell" @click="saveMonthlyCell">Guardar</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="monthlyReprogramHistoryDialog" :fullscreen="smAndDown" :max-width="smAndDown ? undefined : 900">
+      <v-card rounded="xl">
+        <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap: 12px;">
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">Historial de reprogramaciones</div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ monthlyReprogramHistoryPreview.subtitle || "Sin detalle adicional" }}
+            </div>
+          </div>
+          <v-chip v-if="monthlyReprogramHistoryPreview.entries.length" label color="secondary" variant="tonal">
+            {{ monthlyReprogramHistoryPreview.entries.length }} registro{{ monthlyReprogramHistoryPreview.entries.length === 1 ? "" : "s" }}
+          </v-chip>
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="pt-4">
+          <div v-if="!monthlyReprogramHistoryPreview.entries.length" class="history-empty-state">
+            No existen reprogramaciones registradas para este bloque.
+          </div>
+          <v-timeline v-else side="end" density="compact" truncate-line="both">
+            <v-timeline-item
+              v-for="entry in monthlyReprogramHistoryPreview.entries"
+              :key="entry.key"
+              dot-color="secondary"
+              fill-dot
+              size="small"
+            >
+              <template #opposite>
+                <div class="text-caption text-medium-emphasis">{{ entry.changedAtLabel }}</div>
+              </template>
+              <v-card variant="outlined" class="history-timeline-card">
+                <div class="d-flex align-start justify-space-between flex-wrap" style="gap: 8px;">
+                  <div>
+                    <div class="text-body-1 font-weight-medium">{{ entry.title }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ entry.userLabel }}</div>
+                  </div>
+                  <v-chip label size="small" color="secondary" variant="tonal">
+                    {{ entry.sequenceLabel }}
+                  </v-chip>
+                </div>
+                <div class="history-timeline-card__dates mt-3">
+                  <div>
+                    <div class="text-caption text-medium-emphasis">Fecha anterior</div>
+                    <div class="font-weight-medium">{{ entry.previousDateLabel }}</div>
+                  </div>
+                  <div>
+                    <div class="text-caption text-medium-emphasis">Nueva fecha</div>
+                    <div class="font-weight-medium">{{ entry.newDateLabel }}</div>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  <div class="text-caption text-medium-emphasis">Motivo</div>
+                  <div class="text-body-2">{{ entry.reasonLabel }}</div>
+                </div>
+              </v-card>
+            </v-timeline-item>
+          </v-timeline>
+        </v-card-text>
+        <v-divider />
+        <v-card-actions class="pa-4">
+          <v-spacer />
+          <v-btn variant="text" @click="monthlyReprogramHistoryDialog = false">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -1204,6 +1294,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
+import { formatDateTime } from "@/app/utils/date-time";
 import {
   buildAgendaProgrammingReport,
   buildMonthlyProgrammingReport,
@@ -1341,6 +1432,16 @@ const monthlyCell = reactive<any>({
   is_reprogramming: false,
   reprogram_reason: "",
   observacion: "",
+});
+const monthlyReprogramHistoryDialog = ref(false);
+const monthlyReprogramHistoryPreview = reactive<{
+  title: string;
+  subtitle: string;
+  entries: Array<any>;
+}>({
+  title: "",
+  subtitle: "",
+  entries: [],
 });
 const savingMonthlyCell = ref(false);
 const savingMonthlyPalette = ref(false);
@@ -1626,6 +1727,11 @@ const monthlyCellDateChanged = computed(
     String(monthlyCell.fecha_programada || "") !==
       String(monthlyCell.original_fecha_programada || ""),
 );
+const monthlyCellReprogramHistory = computed(() =>
+  extractMonthlyReprogramHistory(monthlyCell.source_payload_json),
+);
+const monthlyCellReprogramCount = computed(() => monthlyCellReprogramHistory.value.length);
+const monthlyCellHasReprogramHistory = computed(() => monthlyCellReprogramCount.value > 0);
 function resolveSucursalId(explicitSucursalId?: string | null) {
   const explicit = String(explicitSucursalId || "").trim();
   return scopedSucursalId.value || explicit || null;
@@ -1659,6 +1765,65 @@ function currentUserEmail() {
 
 function currentUserId() {
   return auth.user?.id || "";
+}
+
+function formatProgramacionHistoryDate(value: unknown, fallback = "Sin fecha") {
+  if (!value) return fallback;
+  return formatDateTime(value, fallback);
+}
+
+function formatProgramacionHistoryDay(value: unknown, fallback = "Sin fecha") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  const parsed = raw.includes("T") ? new Date(raw) : new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return raw || fallback;
+  return parsed.toLocaleDateString("es-EC", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function extractMonthlyReprogramHistory(payload: any) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const history = Array.isArray(source.reprogramaciones_historial)
+    ? source.reprogramaciones_historial
+    : source.reprogramacion_actual
+      ? [source.reprogramacion_actual]
+      : [];
+  return history.map((entry: any, index: number) => {
+    const previousDate = entry?.fecha_anterior || entry?.fecha_programada_anterior || null;
+    const newDate = entry?.fecha_nueva || entry?.fecha_programada_nueva || null;
+    const changedAt =
+      entry?.fecha_transaccion ||
+      entry?.changed_at ||
+      entry?.created_at ||
+      entry?.updated_at ||
+      null;
+    const reason = String(entry?.observacion || entry?.motivo || entry?.reason || "").trim();
+    const userName = String(
+      entry?.usuario ||
+        entry?.actor_username ||
+        entry?.updated_by ||
+        entry?.created_by ||
+        "Usuario no identificado",
+    ).trim();
+    return {
+      key: `${changedAt || "sin-fecha"}-${index}`,
+      title: "Orden reprogramada",
+      sequenceLabel: `Reprogramacion ${index + 1}`,
+      changedAtLabel: formatProgramacionHistoryDate(changedAt),
+      previousDateLabel: formatProgramacionHistoryDay(previousDate),
+      newDateLabel: formatProgramacionHistoryDay(newDate),
+      reasonLabel: reason || "Sin observacion registrada.",
+      userLabel: userName,
+    };
+  });
+}
+
+function hasMonthlyReprogramHistory(item: any) {
+  const payload = item?.payload_json && typeof item.payload_json === "object" ? item.payload_json : {};
+  return extractMonthlyReprogramHistory(payload).length > 0;
 }
 
 function buildAuditPayload(isEditing = false) {
@@ -3245,6 +3410,30 @@ function openMonthlyCellEdit(item: any) {
     void loadSelectedMonthly(monthlyCell.programacion_mensual_id);
   }
   monthlyCellDialog.value = true;
+}
+
+function openMonthlyReprogramHistoryDialog() {
+  monthlyReprogramHistoryPreview.title = monthlyCell.work_order_id || monthlyCell.valor_crudo || "Bloque mensual";
+  monthlyReprogramHistoryPreview.subtitle = [
+    monthlyCell.equipo_codigo || null,
+    monthlyCell.fecha_programada ? `Fecha actual: ${formatProgramacionHistoryDay(monthlyCell.fecha_programada)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  monthlyReprogramHistoryPreview.entries = [...monthlyCellReprogramHistory.value];
+  monthlyReprogramHistoryDialog.value = true;
+}
+
+function openMonthlyReprogramHistoryFromItem(item: any) {
+  monthlyReprogramHistoryPreview.title = item?.work_order_code || item?.valor_crudo || "Bloque mensual";
+  monthlyReprogramHistoryPreview.subtitle = [
+    item?.equipo_codigo || item?.equipo_nombre || null,
+    item?.fecha_programada ? `Fecha actual: ${formatProgramacionHistoryDay(item.fecha_programada)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  monthlyReprogramHistoryPreview.entries = extractMonthlyReprogramHistory(item?.payload_json);
+  monthlyReprogramHistoryDialog.value = true;
 }
 
 async function openWeeklyEditorEditById(id: string) {
