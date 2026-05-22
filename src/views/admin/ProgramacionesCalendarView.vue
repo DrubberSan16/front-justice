@@ -712,26 +712,6 @@
         <v-card-text class="pt-4">
           <v-row dense>
             <v-col cols="12" md="6">
-              <v-select
-                v-model="monthlyCell.equipo_id"
-                :items="equipmentOptions"
-                item-title="title"
-                item-value="value"
-                label="Equipo"
-                variant="outlined"
-              />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field
-                v-model="monthlyCell.fecha_programada"
-                type="date"
-                :label="canReprogramMonthlyCell ? 'Nueva fecha programada' : 'Fecha programada'"
-                variant="outlined"
-                :hint="canReprogramMonthlyCell ? 'Al cambiar la fecha, el bloque se registrará como reprogramado.' : undefined"
-                persistent-hint
-              />
-            </v-col>
-            <v-col cols="12" md="6">
               <v-autocomplete
                 v-model="monthlyCell.work_order_id"
                 :items="monthlyWorkOrderOptions"
@@ -740,10 +720,49 @@
                 label="Orden de trabajo"
                 variant="outlined"
                 clearable
+                :disabled="monthlyCellIsReprogramming"
                 :loading="loadingMonthlyWorkOrderHours"
-                hint="Al seleccionar una OT, el mensual usa el total de horas registradas en sus tareas."
+                hint="Selecciona primero la OT cuando el bloque mensual corresponda a una orden de trabajo."
                 persistent-hint
               />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-select
+                v-model="monthlyCell.equipo_id"
+                :items="equipmentOptions"
+                item-title="title"
+                item-value="value"
+                label="Equipo"
+                variant="outlined"
+                :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellIsReprogramming"
+                :hint="monthlyCell.work_order_id ? 'Se autocompleta desde la OT seleccionada.' : undefined"
+                persistent-hint
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="monthlyCell.fecha_programada"
+                type="date"
+                :label="monthlyCellIsReprogramming ? 'Nueva fecha de la orden' : 'Fecha programada'"
+                variant="outlined"
+                :disabled="monthlyCellDateLocked"
+                :hint="canReprogramMonthlyCell ? 'Al cambiar la fecha, el bloque se registrará como reprogramado.' : undefined"
+                persistent-hint
+              />
+            </v-col>
+            <v-col
+              v-if="canReprogramMonthlyCell && monthlyCellHasLinkedWorkOrder"
+              cols="12"
+            >
+              <v-checkbox
+                v-model="monthlyCell.is_reprogramming"
+                label="Reprogramar orden"
+                color="primary"
+                hide-details
+              />
+              <div class="text-caption text-medium-emphasis mt-1">
+                Activa esta opciÃ³n para cambiar solo la fecha de la OT mensual y registrar el motivo de reprogramaciÃ³n.
+              </div>
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field
@@ -760,6 +779,7 @@
                 hint="Usa 325, 650, 975, R20 o una cantidad de horas"
                 persistent-hint
                 variant="outlined"
+                :disabled="monthlyCellIsReprogramming"
               />
             </v-col>
             <v-col cols="12" md="6">
@@ -771,9 +791,12 @@
                 label="Plantilla MPG opcional"
                 variant="outlined"
                 clearable
+                :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellIsReprogramming"
+                :hint="monthlyCell.work_order_id ? 'Se toma de la OT / plantilla seleccionada.' : undefined"
+                persistent-hint
               />
             </v-col>
-            <v-col v-if="canReprogramMonthlyCell" cols="12">
+            <v-col v-if="monthlyCellIsReprogramming" cols="12">
               <v-textarea
                 v-model="monthlyCell.reprogram_reason"
                 rows="3"
@@ -999,6 +1022,22 @@
               <v-text-field v-model="weeklyCell.actividad" label="Actividad" variant="outlined" />
             </v-col>
             <v-col cols="12">
+              <v-checkbox
+                v-model="weeklyCell.include_work_order"
+                label="Realizar orden de trabajo"
+                color="primary"
+                hide-details
+              />
+              <div class="text-caption text-medium-emphasis mt-1">
+                <template v-if="weeklyCellUsesMonthlyWorkOrderOptions">
+                  Se usarÃ¡ una OT ya programada en el mensual para este dÃ­a.
+                </template>
+                <template v-else>
+                  Si activas esta opciÃ³n podrÃ¡s vincular una OT planificada o en proceso.
+                </template>
+              </div>
+            </v-col>
+            <v-col v-if="weeklyCell.include_work_order" cols="12">
               <v-autocomplete
                 v-model="weeklyCell.work_order_id"
                 :items="weeklyCellWorkOrderOptions"
@@ -1007,6 +1046,8 @@
                 label="Orden de trabajo a ejecutar"
                 variant="outlined"
                 clearable
+                :hint="weeklyCellUsesMonthlyWorkOrderOptions ? 'Se listan primero las OTs del mensual para este dÃ­a.' : 'Se listan OTs en estado planificado o en proceso.'"
+                persistent-hint
               />
             </v-col>
             <v-col cols="12" md="6">
@@ -1274,6 +1315,7 @@ const weeklyCell = reactive<any>({
   slot_key: "",
   fecha_actividad: "",
   dia_semana: "",
+  include_work_order: false,
   work_order_id: "",
   horas_asignadas: "",
   actividad: "",
@@ -1293,6 +1335,7 @@ const monthlyCell = reactive<any>({
   fecha_programada: "",
   valor_crudo: "",
   procedimiento_id: "",
+  is_reprogramming: false,
   reprogram_reason: "",
   observacion: "",
 });
@@ -1474,11 +1517,27 @@ function resolveMonthlyWorkOrdersForDate(date: string) {
   return [...byId.values()];
 }
 
+function resolveProcedureIdFromWorkOrder(workOrder: any) {
+  return (
+    workOrder?.procedimiento_id ||
+    selectedPlanProcedure(workOrder?.plan_id)?.id ||
+    selectedPlanProcedure(workOrder?.payload_json?.plan_id)?.id ||
+    ""
+  );
+}
+
+const weeklyCellMonthlyWorkOrders = computed(() =>
+  resolveMonthlyWorkOrdersForDate(weeklyCell.fecha_actividad),
+);
+const weeklyCellUsesMonthlyWorkOrderOptions = computed(
+  () => weeklyCellMonthlyWorkOrders.value.length > 0,
+);
 const weeklyCellWorkOrderOptions = computed(() => {
-  const monthlyWorkOrders = resolveMonthlyWorkOrdersForDate(weeklyCell.fecha_actividad);
-  const source = monthlyWorkOrders.length
-    ? monthlyWorkOrders
-    : workOrderCatalog.value.filter((item: any) => normalizeWorkflowStatus(item?.status_workflow) === "PLANNED");
+  const source = weeklyCellMonthlyWorkOrders.value.length
+    ? weeklyCellMonthlyWorkOrders.value
+    : workOrderCatalog.value.filter((item: any) =>
+        ["PLANNED", "IN_PROGRESS"].includes(normalizeWorkflowStatus(item?.status_workflow)),
+      );
   return source.map((item: any) => ({
     value: item.id,
     title: resolveWorkOrderOptionTitle(item),
@@ -1491,9 +1550,23 @@ const monthlyCellTotalHoursLabel = computed(() => {
   const hours = Number(monthlyCell.total_horas_ot ?? 0);
   return Number.isFinite(hours) && hours > 0 ? `${hours.toFixed(2)} h` : "0.00 h";
 });
+const monthlyCellHasLinkedWorkOrder = computed(() =>
+  Boolean(String(monthlyCell.work_order_id || "").trim()),
+);
 const canReprogramMonthlyCell = computed(
   () => canEdit.value && Boolean(monthlyCell.id && monthlyCell.programacion_mensual_id),
 );
+const monthlyCellIsReprogramming = computed(
+  () => canReprogramMonthlyCell.value && monthlyCellHasLinkedWorkOrder.value && Boolean(monthlyCell.is_reprogramming),
+);
+const monthlyCellDateLocked = computed(
+  () => canReprogramMonthlyCell.value && monthlyCellHasLinkedWorkOrder.value && !monthlyCell.is_reprogramming,
+);
+const resolvedMonthlyCellDialogTitle = computed(() => {
+  if (monthlyCellIsReprogramming.value) return "ReprogramaciÃ³n de orden";
+  return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
+});
+void resolvedMonthlyCellDialogTitle.value;
 const monthlyCellDialogTitle = computed(() => {
   if (canReprogramMonthlyCell.value) return "Reprogramación bloque mensual";
   return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
@@ -1947,8 +2020,14 @@ watch(
     const selected = workOrderCatalog.value.find(
       (item: any) => String(item?.id || "") === String(value || ""),
     );
-    if (selected?.equipment_id && !monthlyCell.equipo_id) {
-      monthlyCell.equipo_id = selected.equipment_id;
+    if (selected) {
+      monthlyCell.equipo_id = selected.equipment_id || monthlyCell.equipo_id;
+      monthlyCell.equipo_codigo =
+        selected.equipment_codigo ||
+        selected.equipo_codigo ||
+        monthlyCell.equipo_codigo;
+      monthlyCell.procedimiento_id =
+        resolveProcedureIdFromWorkOrder(selected) || monthlyCell.procedimiento_id;
     }
     if (!value) {
       monthlyCell.total_horas_ot = null;
@@ -1956,8 +2035,22 @@ watch(
     }
     const hours = await resolveWorkOrderTaskHours(String(value));
     monthlyCell.total_horas_ot = hours;
-    if (hours > 0) {
+    if (hours > 0 && (!monthlyCell.id || !String(monthlyCell.valor_crudo || "").trim())) {
       monthlyCell.valor_crudo = `${hours.toFixed(2)} h`;
+    }
+  },
+);
+
+watch(
+  () => weeklyCell.include_work_order,
+  (enabled) => {
+    if (!enabled) {
+      weeklyCell.work_order_id = "";
+      return;
+    }
+    if (weeklyCell.work_order_id) return;
+    if (weeklyCellMonthlyWorkOrders.value.length === 1) {
+      weeklyCell.work_order_id = weeklyCellMonthlyWorkOrders.value[0].id;
     }
   },
 );
@@ -2979,6 +3072,7 @@ function resetMonthlyCell() {
   monthlyCell.fecha_programada = selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date());
   monthlyCell.valor_crudo = "";
   monthlyCell.procedimiento_id = "";
+  monthlyCell.is_reprogramming = false;
   monthlyCell.reprogram_reason = "";
   monthlyCell.observacion = "";
 }
@@ -3008,6 +3102,7 @@ function openMonthlyCellCreate(date: string, row?: any) {
   resetMonthlyCell();
   monthlyCell.fecha_programada = date;
   monthlyCell.programacion_mensual_id = selectedMonthly.value.id;
+  monthlyCell.is_reprogramming = false;
   if (row?.equipo_id) {
     monthlyCell.equipo_id = row.equipo_id;
   } else if (row?.equipo_codigo) {
@@ -3031,6 +3126,7 @@ function openMonthlyCellEdit(item: any) {
   monthlyCell.fecha_programada = item.fecha_programada || "";
   monthlyCell.valor_crudo = item.valor_crudo || "";
   monthlyCell.procedimiento_id = item.procedimiento_id || "";
+  monthlyCell.is_reprogramming = false;
   monthlyCell.reprogram_reason = "";
   monthlyCell.observacion = item.observacion || "";
   monthlyCellDialog.value = true;
@@ -3092,7 +3188,11 @@ async function saveMonthlyCell() {
     ui.error("Debes indicar el valor mensual, por ejemplo 325, 650, 975, R20 o una cantidad de horas.");
     return;
   }
-  if (monthlyCellDateChanged.value && !String(monthlyCell.reprogram_reason || "").trim()) {
+  if (monthlyCell.id && monthlyCellHasLinkedWorkOrder.value && monthlyCellDateChanged.value && !monthlyCellIsReprogramming.value) {
+    ui.error("Activa 'Reprogramar orden' para cambiar la fecha de una OT mensual ya vinculada.");
+    return;
+  }
+  if (monthlyCellIsReprogramming.value && !String(monthlyCell.reprogram_reason || "").trim()) {
     ui.error("Debes indicar la descripción del porqué se reprograma el bloque mensual.");
     return;
   }
@@ -3110,7 +3210,7 @@ async function saveMonthlyCell() {
         total_horas_ot: monthlyCell.total_horas_ot ?? null,
       },
     };
-    if (monthlyCell.id && monthlyCellDateChanged.value) {
+    if (monthlyCell.id && monthlyCellIsReprogramming.value && monthlyCellDateChanged.value) {
       await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}/reprogramacion`, {
         ...payload,
         observacion_reprogramacion: String(monthlyCell.reprogram_reason || "").trim(),
@@ -3613,12 +3713,12 @@ function calculateWeeklySlotHours(slotKey: string) {
 
 function openWeeklyCell(slotKey: string, date: string, item?: any) {
   if (item ? !canEdit.value : !canCreate.value) return;
-  const monthlyWorkOrders = resolveMonthlyWorkOrdersForDate(date);
   weeklyCell.local_id = item?.local_id || "";
   weeklyCell.slot_key = slotKey;
   weeklyCell.fecha_actividad = date;
   weeklyCell.dia_semana = item?.dia_semana || resolveWeekDayLabel(date);
-  weeklyCell.work_order_id = item?.work_order_id || (monthlyWorkOrders.length === 1 ? monthlyWorkOrders[0].id : "");
+  weeklyCell.include_work_order = Boolean(item?.work_order_id);
+  weeklyCell.work_order_id = item?.work_order_id || "";
   weeklyCell.horas_asignadas = formatHourInput(item?.horas_asignadas ?? calculateWeeklySlotHours(slotKey));
   weeklyCell.actividad = item?.actividad || "";
   weeklyCell.tipo_proceso = item?.tipo_proceso || "OPERACION";
@@ -3661,7 +3761,7 @@ async function saveWeeklyCell() {
     ui.error("Debes ingresar la actividad del bloque semanal.");
     return;
   }
-  if (!weeklyCell.work_order_id) {
+  if (weeklyCell.include_work_order && !weeklyCell.work_order_id) {
     ui.error("Debes seleccionar la orden de trabajo que se ejecutará.");
     return;
   }
@@ -3671,7 +3771,7 @@ async function saveWeeklyCell() {
     fecha_actividad: weeklyCell.fecha_actividad,
     dia_semana: weeklyCell.dia_semana || resolveWeekDayLabel(weeklyCell.fecha_actividad),
     actividad: weeklyCell.actividad.trim(),
-    work_order_id: weeklyCell.work_order_id || "",
+    work_order_id: weeklyCell.include_work_order ? weeklyCell.work_order_id || "" : "",
     horas_asignadas: numericOrNull(weeklyCell.horas_asignadas) ?? calculateWeeklySlotHours(weeklyCell.slot_key),
     tipo_proceso: weeklyCell.tipo_proceso || "OPERACION",
     responsable_area: weeklyCell.responsable_area?.trim() || "",
