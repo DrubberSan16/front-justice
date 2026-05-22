@@ -1867,6 +1867,31 @@ function formatDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeDateOnly(value: unknown) {
+  return String(value || "").slice(0, 10);
+}
+
+function findScheduledWorkOrderConflict(options: {
+  workOrderId?: string | null;
+  date?: string | null;
+  excludeProgramacionId?: string | null;
+}) {
+  const workOrderId = String(options.workOrderId || "").trim();
+  const targetDate = normalizeDateOnly(options.date);
+  const excludeProgramacionId = String(options.excludeProgramacionId || "").trim();
+  if (!workOrderId || !targetDate) return null;
+  return (
+    agendaRows.value.find((item: any) => {
+      const scheduledWorkOrderId = String(item?.work_order_id || "").trim();
+      const scheduledDate = normalizeDateOnly(item?.proxima_fecha);
+      const programacionId = String(item?.id || "").trim();
+      if (!scheduledWorkOrderId || !scheduledDate || !programacionId) return false;
+      if (excludeProgramacionId && programacionId === excludeProgramacionId) return false;
+      return scheduledWorkOrderId === workOrderId && scheduledDate === targetDate;
+    }) ?? null
+  );
+}
+
 function resolveMonthlyImportIdByDate(date?: string | null) {
   const targetDate = String(date || "").slice(0, 10);
   if (!targetDate) return "";
@@ -3508,6 +3533,15 @@ async function saveMonthlyCell() {
     ui.error("Debes indicar la descripción del porqué se reprograma el bloque mensual.");
     return;
   }
+  const monthlyWorkOrderConflict = findScheduledWorkOrderConflict({
+    workOrderId: monthlyCell.work_order_id || null,
+    date: monthlyCell.fecha_programada,
+    excludeProgramacionId: sourceProgramacionId || null,
+  });
+  if (monthlyWorkOrderConflict) {
+    ui.error("La orden de trabajo ya estÃ¡ programada para ese dÃ­a.");
+    return;
+  }
   savingMonthlyCell.value = true;
   try {
     const payload = {
@@ -3777,6 +3811,15 @@ async function save() {
   }
   const payload = buildPayload();
   if (!payload) return;
+  const duplicateScheduledWorkOrder = findScheduledWorkOrderConflict({
+    workOrderId: form.work_order_id,
+    date: form.proxima_fecha || null,
+    excludeProgramacionId: editingId.value || null,
+  });
+  if (duplicateScheduledWorkOrder) {
+    ui.error("La orden de trabajo ya estÃ¡ programada para ese dÃ­a.");
+    return;
+  }
   saving.value = true;
   try {
     let saved: any = null;
