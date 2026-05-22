@@ -706,7 +706,7 @@
     <v-dialog v-model="monthlyCellDialog" :fullscreen="isWeeklyCellFullscreen" :max-width="isWeeklyCellFullscreen ? undefined : 720">
       <v-card rounded="xl">
         <v-card-title class="text-subtitle-1 font-weight-bold">
-          {{ monthlyCellDialogTitle }}
+          {{ monthlyCellDialogTitleDisplay }}
         </v-card-title>
         <v-divider />
         <v-card-text class="pt-4">
@@ -720,7 +720,7 @@
                 label="Orden de trabajo"
                 variant="outlined"
                 clearable
-                :disabled="monthlyCellIsReprogramming"
+                :disabled="monthlyCellRequiresReprogramToggle"
                 :loading="loadingMonthlyWorkOrderHours"
                 hint="Selecciona primero la OT cuando el bloque mensual corresponda a una orden de trabajo."
                 persistent-hint
@@ -734,7 +734,7 @@
                 item-value="value"
                 label="Equipo"
                 variant="outlined"
-                :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellIsReprogramming"
+                :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellRequiresReprogramToggle"
                 :hint="monthlyCell.work_order_id ? 'Se autocompleta desde la OT seleccionada.' : undefined"
                 persistent-hint
               />
@@ -779,7 +779,7 @@
                 hint="Usa 325, 650, 975, R20 o una cantidad de horas"
                 persistent-hint
                 variant="outlined"
-                :disabled="monthlyCellIsReprogramming"
+                :disabled="monthlyCellRequiresReprogramToggle"
               />
             </v-col>
             <v-col cols="12" md="6">
@@ -791,7 +791,7 @@
                 label="Plantilla MPG opcional"
                 variant="outlined"
                 clearable
-                :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellIsReprogramming"
+                :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellRequiresReprogramToggle"
                 :hint="monthlyCell.work_order_id ? 'Se toma de la OT / plantilla seleccionada.' : undefined"
                 persistent-hint
               />
@@ -1353,6 +1353,7 @@ const monthlyPaletteForm = reactive<Record<string, string>>({
   DEFAULT: "#D7E0EA",
 });
 const workOrderCatalog = ref<any[]>([]);
+const warehouseCatalog = ref<any[]>([]);
 const loadingWorkOrderCatalog = ref(false);
 
 const form = reactive<any>({
@@ -1437,6 +1438,9 @@ function normalizeWorkflowStatus(value: unknown) {
 const workOrderOptions = computed(() =>
   workOrderCatalog.value
     .filter((item: any) => {
+      if (!["PLANNED", "IN_PROGRESS"].includes(normalizeWorkflowStatus(item?.status_workflow))) {
+        return false;
+      }
       const selectedEquipmentId = String(form.equipo_id || "").trim();
       if (!selectedEquipmentId) return true;
       return String(item?.equipment_id || "") === selectedEquipmentId;
@@ -1526,6 +1530,37 @@ function resolveProcedureIdFromWorkOrder(workOrder: any) {
   );
 }
 
+function resolveWorkOrderSucursalId(workOrder: any) {
+  const directSucursalId = [
+    workOrder?.sucursal_id,
+    workOrder?.payload_json?.sucursal_id,
+    workOrder?.valor_json?.sucursal_id,
+    workOrder?.linked_programacion_sucursal_id,
+    workOrder?.linked_programacion?.sucursal_id,
+  ]
+    .map((value) => String(value || "").trim())
+    .find(Boolean);
+  if (directSucursalId) return directSucursalId;
+
+  const procedureId = resolveProcedureIdFromWorkOrder(workOrder);
+  const procedure = procedureCatalog.value.find(
+    (item: any) => String(item?.id || "").trim() === String(procedureId || "").trim(),
+  );
+  const warehouseId = String(
+    procedure?.bodega_id ||
+      workOrder?.bodega_id ||
+      workOrder?.payload_json?.bodega_id ||
+      workOrder?.valor_json?.bodega_id ||
+      "",
+  ).trim();
+  if (!warehouseId) return "";
+
+  const warehouse = warehouseCatalog.value.find(
+    (item: any) => String(item?.id || "").trim() === warehouseId,
+  );
+  return String(warehouse?.sucursal_id || "").trim();
+}
+
 const weeklyCellMonthlyWorkOrders = computed(() =>
   resolveMonthlyWorkOrdersForDate(weeklyCell.fecha_actividad),
 );
@@ -1554,14 +1589,25 @@ const monthlyCellHasLinkedWorkOrder = computed(() =>
   Boolean(String(monthlyCell.work_order_id || "").trim()),
 );
 const canReprogramMonthlyCell = computed(
-  () => canEdit.value && Boolean(monthlyCell.id && monthlyCell.programacion_mensual_id),
+  () => canEdit.value && Boolean(monthlyCell.id),
 );
 const monthlyCellIsReprogramming = computed(
   () => canReprogramMonthlyCell.value && monthlyCellHasLinkedWorkOrder.value && Boolean(monthlyCell.is_reprogramming),
 );
-const monthlyCellDateLocked = computed(
-  () => canReprogramMonthlyCell.value && monthlyCellHasLinkedWorkOrder.value && !monthlyCell.is_reprogramming,
+const monthlyCellRequiresReprogramToggle = computed(
+  () => canReprogramMonthlyCell.value && monthlyCellHasLinkedWorkOrder.value,
 );
+const monthlyCellDateLocked = computed(
+  () => monthlyCellRequiresReprogramToggle.value && !monthlyCell.is_reprogramming,
+);
+const monthlyCellFieldsLocked = computed(
+  () => monthlyCellRequiresReprogramToggle.value && !monthlyCell.is_reprogramming,
+);
+void monthlyCellFieldsLocked.value;
+const monthlyCellDialogTitleDisplay = computed(() => {
+  if (monthlyCellIsReprogramming.value) return "Reprogramacion de orden";
+  return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
+});
 const resolvedMonthlyCellDialogTitle = computed(() => {
   if (monthlyCellIsReprogramming.value) return "ReprogramaciÃ³n de orden";
   return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
@@ -1571,9 +1617,9 @@ const monthlyCellDialogTitle = computed(() => {
   if (canReprogramMonthlyCell.value) return "Reprogramación bloque mensual";
   return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
 });
+void monthlyCellDialogTitle.value;
 const monthlyCellDateChanged = computed(
   () =>
-    canReprogramMonthlyCell.value &&
     String(monthlyCell.fecha_programada || "") !==
       String(monthlyCell.original_fecha_programada || ""),
 );
@@ -1719,16 +1765,18 @@ function normalize(item: any) {
 async function loadCatalogs() {
   loadingWorkOrderCatalog.value = true;
   try {
-    const [equipos, procedimientos, workOrders] = await Promise.all([
+    const [equipos, procedimientos, workOrders, bodegas] = await Promise.all([
       listAll("/kpi_maintenance/equipos"),
       listAll("/kpi_maintenance/inteligencia/procedimientos"),
       listAll("/kpi_maintenance/work-orders"),
+      listAll("/kpi_inventory/bodegas"),
     ]);
     equipmentCatalog.value = equipos;
     equipmentOptions.value = equipos.map(normalize);
     procedureCatalog.value = procedimientos;
     procedureOptions.value = procedimientos.map(normalize);
     workOrderCatalog.value = Array.isArray(workOrders) ? workOrders : [];
+    warehouseCatalog.value = Array.isArray(bodegas) ? bodegas : [];
   } finally {
     loadingWorkOrderCatalog.value = false;
   }
@@ -1962,6 +2010,10 @@ watch(
       selected.procedimiento_id ||
       selectedPlanProcedure(form.plan_id)?.id ||
       "";
+    const resolvedSucursalId = resolveWorkOrderSucursalId(selected);
+    if (resolvedSucursalId) {
+      form.sucursal_id = resolvedSucursalId;
+    }
     if (hydratingProgramacionForm.value) return;
 
     const frequency = resolveTemplateFrequencyHours(selected);
