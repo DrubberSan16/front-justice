@@ -208,6 +208,16 @@
               :readonly="Boolean(field.readonly)"
             />
             <v-text-field
+              v-else-if="isProcedureFrequencyHoursField(field)"
+              v-model="form[field.key]"
+              type="text"
+              :label="repairText(field.label)"
+              :hint="getFieldHint(field)"
+              persistent-hint
+              variant="outlined"
+              :readonly="Boolean(field.readonly)"
+            />
+            <v-text-field
               v-else
               v-model="form[field.key]"
               :type="field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'"
@@ -217,6 +227,7 @@
               variant="outlined"
               :readonly="Boolean(field.readonly)"
               :loading="isAutoCodeField(field) && autoCodeLoading"
+              :step="field.type === 'number' ? 'any' : undefined"
             />
           </v-col>
         </v-row>
@@ -604,11 +615,55 @@ function isAutoCodeField(field: EnhancedMaintenanceField) {
   return Boolean(field.readonly && field.key === "codigo" && getAutoCodeEndpoint());
 }
 
+function isProcedureFrequencyHoursField(field: EnhancedMaintenanceField) {
+  return props.moduleKey === "inteligencia-procedimientos" && field.key === "frecuencia_horas";
+}
+
+function parseProcedureFrequencyDisplay(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(",", ".");
+  const match = normalized.match(/^(\d+)(?:\.(\d))?$/);
+  if (!match) return Number.NaN;
+  const hours = Number(match[1] || "0");
+  const minuteTens = match[2] == null ? 0 : Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minuteTens) || minuteTens < 0 || minuteTens > 5) {
+    return Number.NaN;
+  }
+  return Number((hours + minuteTens / 6).toFixed(4));
+}
+
+function formatProcedureFrequencyDisplay(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  const totalMinutes = Math.round(numeric * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (minutes >= 0 && minutes < 60 && minutes % 10 === 0) {
+    const minuteTens = minutes / 10;
+    return minuteTens === 0 ? String(hours) : `${hours},${minuteTens}`;
+  }
+  return String(Number(numeric.toFixed(2)));
+}
+
+function formatProcedureFrequencyLabel(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return value;
+  const totalMinutes = Math.round(numeric * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (!minutes) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
+
 function getFieldHint(field: EnhancedMaintenanceField) {
   if (isAutoCodeField(field)) {
     return autoCodeLoading.value && !String(form[field.key] ?? "").trim()
       ? "Generando codigo..."
       : "Autogenerado por el sistema";
+  }
+  if (isProcedureFrequencyHoursField(field)) {
+    return "Formato H,M. Ej.: 1,3 = 1 h 30 min y 1,5 = 1 h 50 min.";
   }
   return field.required ? "Obligatorio" : "";
 }
@@ -1135,7 +1190,7 @@ function resetForm() {
         jsonTextFields[field.key] = JSON.stringify(defaultJsonValue(field), null, 2);
       }
     }
-    else if (field.type === "number") form[field.key] = "0";
+    else if (field.type === "number") form[field.key] = isProcedureFrequencyHoursField(field) ? "" : "0";
     else form[field.key] = "";
   }
   if (props.moduleKey === "equipos") {
@@ -1253,6 +1308,9 @@ const rows = computed(() => {
           const opt = (relationOptions.value[field.key] ?? []).find((x) => x.value === r[field.key]);
           out[field.key] = opt?.title ?? r[field.key];
         }
+        if (isProcedureFrequencyHoursField(field) && r[field.key] !== null && r[field.key] !== undefined && r[field.key] !== "") {
+          out[field.key] = formatProcedureFrequencyLabel(r[field.key]);
+        }
       }
       out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
@@ -1352,13 +1410,26 @@ function sanitizePayload() {
   for (const field of cfg.fields) {
     if (field.sendInPayload === false) continue;
     let val = field.type === "json" && !field.editor && !field.hidden ? jsonTextFields[field.key] : form[field.key];
+    if (isProcedureFrequencyHoursField(field)) {
+      const parsedFrequency = parseProcedureFrequencyDisplay(val);
+      if (String(val ?? "").trim() && !Number.isFinite(parsedFrequency as number)) {
+        ui.error("Frecuencia horas debe usar el formato H,M y solo admite minutos en decenas de 10.");
+        return null;
+      }
+      val = parsedFrequency;
+    }
     if (field.type === "number") {
-      val = val === "" || val === null || val === undefined ? "0" : String(val);
+      val = val === "" || val === null || val === undefined
+        ? (isProcedureFrequencyHoursField(field) ? null : "0")
+        : String(val);
     }
     if (field.type === "text") {
       val = val === "" ? null : val;
     }
     if (field.type === "select" && val === "") {
+      val = null;
+    }
+    if (isProcedureFrequencyHoursField(field) && val === "null") {
       val = null;
     }
     if (field.type === "json") {
@@ -1440,6 +1511,14 @@ function validateForm() {
       return false;
     }
 
+    if (isProcedureFrequencyHoursField(field)) {
+      if (String(val ?? "").trim() && !Number.isFinite(parseProcedureFrequencyDisplay(val) as number)) {
+        ui.error("Frecuencia horas debe usar el formato H,M y solo admite minutos en decenas de 10.");
+        return false;
+      }
+      continue;
+    }
+
     if (val === "" || val === null || val === undefined) {
       ui.error(`El campo ${repairText(field.label)} es obligatorio.`);
       return false;
@@ -1507,6 +1586,11 @@ async function openEdit(item: any) {
       const serialized = String(serializeJsonValue(item[field.key], field));
       jsonTextFields[field.key] = serialized;
       form[field.key] = parseJsonField(serialized, field);
+      continue;
+    }
+
+    if (isProcedureFrequencyHoursField(field)) {
+      form[field.key] = formatProcedureFrequencyDisplay(item[field.key]);
       continue;
     }
 

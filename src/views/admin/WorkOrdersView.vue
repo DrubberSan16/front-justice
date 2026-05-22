@@ -694,7 +694,28 @@
 
           <v-window-item value="consumos">
             <v-row v-if="!isReadOnlyWorkflow" dense class="pt-2">
-              <v-col cols="12" md="4"><v-select v-model="consumoForm.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" clearable variant="outlined" :disabled="loadingCatalogs" /></v-col>
+              <v-col cols="12" md="4">
+                <v-text-field
+                  v-if="selectedProcedureWarehouseId"
+                  :model-value="selectedProcedureWarehouseLabel"
+                  label="Bodega"
+                  variant="outlined"
+                  readonly
+                  hint="Se toma directamente desde la plantilla MPG seleccionada."
+                  persistent-hint
+                />
+                <v-select
+                  v-else
+                  v-model="consumoForm.bodega_id"
+                  :items="warehouseOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Bodega"
+                  clearable
+                  variant="outlined"
+                  :disabled="loadingCatalogs"
+                />
+              </v-col>
               <v-col cols="12" md="4">
                 <v-autocomplete
                   v-model="consumoForm.producto_id"
@@ -706,13 +727,13 @@
                   variant="outlined"
                   clearable
                   no-filter
-                  :disabled="!consumoForm.bodega_id || loadingCatalogs"
+                  :disabled="!effectiveConsumoWarehouseId || loadingCatalogs"
                   :loading="loadingConsumoProducts"
                   :hint="consumoProductHint"
                   persistent-hint
                 />
                 <div
-                  v-if="consumoForm.bodega_id"
+                  v-if="effectiveConsumoWarehouseId"
                   class="d-flex align-center justify-space-between mt-1 px-1"
                   style="gap: 8px; flex-wrap: wrap;"
                 >
@@ -734,6 +755,38 @@
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
+            <div
+              v-if="!isReadOnlyWorkflow && procedureSuggestedMaterialRows.length"
+              class="mb-3"
+            >
+              <div class="text-subtitle-2 mb-2">Materiales sugeridos por la plantilla</div>
+              <v-data-table
+                :headers="procedureMaterialSuggestionHeaders"
+                :items="procedureSuggestedMaterialRows"
+                density="comfortable"
+                class="table-enterprise enterprise-table mb-2"
+                :items-per-page="5"
+              >
+                <template #bottom />
+                <template #item.actions="{ item }">
+                  <v-btn
+                    color="primary"
+                    size="small"
+                    variant="tonal"
+                    prepend-icon="mdi-plus-circle-outline"
+                    :disabled="!effectiveConsumoWarehouseId"
+                    @click="useProcedureSuggestedMaterial(asAny(item)?._raw ?? asAny(item))"
+                  >
+                    Usar en consumo
+                  </v-btn>
+                </template>
+                <template #no-data>
+                  <div class="pa-4 text-medium-emphasis">
+                    La plantilla no tiene materiales sugeridos.
+                  </div>
+                </template>
+              </v-data-table>
+            </div>
             <div v-if="!isReadOnlyWorkflow" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
             <v-data-table
               :headers="consumoHeaders"
@@ -1661,9 +1714,13 @@ const requiresOilProductsForCurrentWorkOrder = computed(
   () => normalizeMaintenanceKindValue(headerForm.maintenance_kind) === "CEBADO",
 );
 const consumoProductHint = computed(() =>
-  requiresOilProductsForCurrentWorkOrder.value
-    ? "Para OT de tipo Cebado solo se listan materiales marcados como aceite en la bodega seleccionada."
-    : "Se cargan materiales por bodega a medida que los necesites.",
+  selectedProcedureWarehouseId.value
+    ? requiresOilProductsForCurrentWorkOrder.value
+      ? "La bodega se toma desde la plantilla MPG y solo se listan materiales marcados como aceite."
+      : "La bodega se toma desde la plantilla MPG y los materiales se cargan desde esa bodega."
+    : requiresOilProductsForCurrentWorkOrder.value
+      ? "Para OT de tipo Cebado solo se listan materiales marcados como aceite en la bodega seleccionada."
+      : "Se cargan materiales por bodega a medida que los necesites.",
 );
 const materialIssueHelperText = computed(() =>
   requiresOilProductsForCurrentWorkOrder.value
@@ -1947,6 +2004,10 @@ function parseValorJson(valorJson: unknown) {
   return {};
 }
 
+function asAny<T = any>(value: unknown): T {
+  return value as T;
+}
+
 function parseNullableNumber(value: unknown) {
   if (value === null || value === undefined || String(value).trim() === "") {
     return null;
@@ -1975,6 +2036,16 @@ function formatDecimalValue(value: unknown) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(numeric);
+}
+
+function formatHoursDurationLabel(value: unknown) {
+  const numeric = parseNullableNumber(value);
+  if (numeric == null || numeric < 0) return "Sin horas configuradas";
+  const totalMinutes = Math.round(numeric * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (!minutes) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
 }
 
 const attachmentHeaders = [
@@ -2035,6 +2106,14 @@ const materialReservationHeaders = computed(() => {
   }
   return base;
 });
+
+const procedureMaterialSuggestionHeaders = [
+  { title: "Material", key: "material_label" },
+  { title: "Disponible", key: "stock_disponible_label" },
+  { title: "Ya reservado OT", key: "cantidad_reservada_ot" },
+  { title: "Estado", key: "estado_label" },
+  { title: "Acciones", key: "actions", sortable: false },
+];
 
 const scrapHeaders = computed(() => {
   const base = [
@@ -2558,8 +2637,85 @@ function normalizeStockProductOption(row: any) {
   };
 }
 
+function ensureConsumoProductOption(item: any) {
+  const productId = String(item?.producto_id || item?.id || "").trim();
+  if (!productId) return;
+  const exists = consumoProductOptions.value.some(
+    (option: any) => String(option?.value || "").trim() === productId,
+  );
+  if (exists) return;
+
+  const productRecord = productCatalogMap.value.get(productId);
+  const productLabel = resolveProductLabel(
+    productId,
+    String(
+      item?.material_label ||
+        item?.label ||
+        buildProductDisplayTitle(productRecord ?? item, { includeCode: false }) ||
+        item?.codigo ||
+        item?.nombre ||
+        productId,
+    ).trim(),
+  );
+  const stockAvailable = toPositiveNumber(item?.stock_disponible ?? item?.stock_actual);
+  const activeReserved = toPositiveNumber(item?.cantidad_reservada_activa);
+
+  consumoProductOptions.value = [
+    {
+      value: productId,
+      title:
+        `${productLabel} - Disponible: ${stockAvailable}` +
+        (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
+      label: productLabel,
+      es_aceite: Boolean(item?.es_aceite ?? productRecord?.es_aceite),
+      stock_actual: toPositiveNumber(item?.stock_actual),
+      stock_disponible: stockAvailable,
+      cantidad_reservada_activa: activeReserved,
+    },
+    ...consumoProductOptions.value,
+  ];
+}
+
+function resetConsumoDraft(options?: { preserveWarehouse?: boolean; clearOptions?: boolean }) {
+  if (!options?.preserveWarehouse) {
+    consumoForm.bodega_id = "";
+  }
+  consumoForm.producto_id = "";
+  consumoForm.cantidad = "";
+  consumoForm.costo_unitario = "";
+  consumoForm.observacion = "";
+  consumoProductSearch.value = "";
+
+  if (options?.clearOptions) {
+    consumoProductOptions.value = [];
+    consumoProductsPage.value = 1;
+    consumoProductsTotalPages.value = 1;
+    consumoProductsTotal.value = 0;
+  }
+}
+
+function useProcedureSuggestedMaterial(item: any) {
+  if (isReadOnlyWorkflow.value) {
+    ui.error("La OT está cerrada y no permite edición.");
+    return;
+  }
+
+  const warehouseId = effectiveConsumoWarehouseId.value;
+  if (!warehouseId) {
+    ui.error("La plantilla seleccionada no tiene una bodega asignada para consumos.");
+    return;
+  }
+
+  if (!selectedProcedureWarehouseId.value) {
+    consumoForm.bodega_id = warehouseId;
+  }
+  ensureConsumoProductOption(item);
+  consumoForm.producto_id = String(item?.producto_id || item?.id || "").trim();
+  void syncConsumoUnitCost();
+}
+
 async function loadConsumoProducts(options?: { reset?: boolean; search?: string }) {
-  const warehouseId = String(consumoForm.bodega_id || "").trim();
+  const warehouseId = effectiveConsumoWarehouseId.value;
   if (!warehouseId) {
     consumoProductOptions.value = [];
     consumoProductsPage.value = 1;
@@ -2817,7 +2973,7 @@ const scrapRows = computed(() => localScraps.value.flatMap((scrap: any) => {
 }));
 
 function resetConsumoProductIfInvalid() {
-  if (!consumoForm.bodega_id) {
+  if (!effectiveConsumoWarehouseId.value) {
     consumoForm.producto_id = "";
     return;
   }
@@ -2839,7 +2995,8 @@ function resetScrapProductIfInvalid(index: number) {
 }
 
 async function syncConsumoUnitCost() {
-  if (!consumoForm.producto_id || !consumoForm.bodega_id) {
+  const warehouseId = effectiveConsumoWarehouseId.value;
+  if (!consumoForm.producto_id || !warehouseId) {
     consumoForm.costo_unitario = "";
     return;
   }
@@ -2847,7 +3004,7 @@ async function syncConsumoUnitCost() {
     const { data } = await api.get("/kpi_maintenance/inventory/cost-reference", {
       params: {
         producto_id: consumoForm.producto_id,
-        bodega_id: consumoForm.bodega_id,
+        bodega_id: warehouseId,
       },
     });
     const resolved = unwrapData(data);
@@ -3716,7 +3873,8 @@ function buildDraftAttachmentPersistencePayload(attachment: any) {
 
 function buildWorkOrderSaveBundlePayload() {
   const { generatedTitle, generatedType } = buildAutoHeaderValues();
-  const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad);
+  const consumoWarehouseId = effectiveConsumoWarehouseId.value;
+  const hasCompleteConsumo = !!(consumoWarehouseId && consumoForm.producto_id && consumoForm.cantidad);
 
   const payload: Record<string, any> = {
     header: {
@@ -3771,7 +3929,7 @@ function buildWorkOrderSaveBundlePayload() {
   if (hasCompleteConsumo) {
     payload.consumo_pendiente = {
       producto_id: consumoForm.producto_id,
-      bodega_id: consumoForm.bodega_id,
+      bodega_id: consumoWarehouseId,
       cantidad: Number(consumoForm.cantidad),
       ...(consumoForm.costo_unitario
         ? { costo_unitario: Number(consumoForm.costo_unitario) }
@@ -3975,6 +4133,24 @@ const selectedProcedure = computed(
     ) ?? null,
 );
 
+const selectedProcedureWarehouseId = computed(() =>
+  String(selectedProcedure.value?.bodega_id || "").trim(),
+);
+
+const selectedProcedureWarehouseLabel = computed(() => {
+  const warehouseId = selectedProcedureWarehouseId.value;
+  if (!warehouseId) return "";
+  return (
+    warehouseNameMap.value[warehouseId] ||
+    String(selectedProcedure.value?.bodega_label || "").trim() ||
+    warehouseId
+  );
+});
+
+const effectiveConsumoWarehouseId = computed(() =>
+  selectedProcedureWarehouseId.value || String(consumoForm.bodega_id || "").trim(),
+);
+
 const selectedEquipmentRecord = computed(
   () =>
     equipmentCatalogRows.value.find(
@@ -4008,7 +4184,7 @@ const resolvedHorometroProyectado = computed(() => {
 
 const resolvedHorasARealizarLabel = computed(() =>
   resolvedHorasARealizar.value != null
-    ? `${formatDecimalValue(resolvedHorasARealizar.value)} h`
+    ? formatHoursDurationLabel(resolvedHorasARealizar.value)
     : "Sin horas configuradas",
 );
 
@@ -4052,6 +4228,57 @@ const selectedProcedureLabel = computed(
       ? `${selectedProcedure.value.codigo} - ${selectedProcedure.value.nombre || selectedProcedure.value.codigo}`
       : selectedProcedure.value?.nombre || "Sin plantilla MPG",
 );
+
+const procedureSuggestedMaterialRows = computed(() => {
+  const procedureMaterials = Array.isArray(selectedProcedure.value?.materiales_detalle)
+    ? selectedProcedure.value.materiales_detalle
+    : [];
+  const warehouseId = effectiveConsumoWarehouseId.value;
+
+  return procedureMaterials
+    .map((material: any, index: number) => {
+      const productId = String(material?.id || "").trim();
+      if (!productId) return null;
+
+      const matchingReservation = materialReservationRows.value.find(
+        (row) =>
+          String(row?.producto_id || "").trim() === productId &&
+          (!warehouseId || String(row?.bodega_id || "").trim() === warehouseId),
+      );
+      const loadedStockOption = consumoProductOptions.value.find(
+        (option: any) => String(option?.value || "").trim() === productId,
+      );
+      const productRecord = productCatalogMap.value.get(productId);
+      const materialLabel = resolveProductLabel(
+        productId,
+        String(
+          material?.label ||
+            buildProductDisplayTitle(productRecord ?? material, { includeCode: false }) ||
+            material?.codigo ||
+            material?.nombre ||
+            productId,
+        ).trim(),
+      );
+      const stockAvailable = parseNullableNumber(
+        loadedStockOption?.stock_disponible ?? loadedStockOption?.stock_actual,
+      );
+
+      return {
+        id: `${warehouseId || "sin-bodega"}-${productId}-${index}`,
+        producto_id: productId,
+        material_label: materialLabel,
+        cantidad_reservada_ot: toPositiveNumber(matchingReservation?.cantidad_reservada),
+        stock_disponible_label:
+          stockAvailable != null ? formatDecimalValue(stockAvailable) : "Pendiente de consulta",
+        estado_label: matchingReservation
+          ? "Ya tiene reserva en esta OT"
+          : warehouseId
+            ? "Listo para solicitar en consumos"
+            : "La plantilla no tiene bodega asignada",
+      };
+    })
+    .filter((row: any): row is any => Boolean(row));
+});
 
 const selectedEquipmentLabel = computed(() => {
   const selected = equipmentOptions.value.find(
@@ -4673,16 +4900,7 @@ function resetAllForms() {
   attachmentForm.mime_type = "";
   attachmentPreviewUrl.value = null;
 
-  consumoForm.producto_id = "";
-  consumoForm.bodega_id = "";
-  consumoForm.cantidad = "";
-  consumoForm.costo_unitario = "";
-  consumoForm.observacion = "";
-  consumoProductSearch.value = "";
-  consumoProductOptions.value = [];
-  consumoProductsPage.value = 1;
-  consumoProductsTotalPages.value = 1;
-  consumoProductsTotal.value = 0;
+  resetConsumoDraft({ preserveWarehouse: false, clearOptions: true });
   materialIssueTarget.value = null;
   materialIssueForm.cantidad = "";
   materialIssueForm.observacion = "";
@@ -5090,8 +5308,14 @@ async function saveAll() {
       await createAttachment(false);
     }
 
-    const hasCompleteConsumo = !!(consumoForm.bodega_id && consumoForm.producto_id && consumoForm.cantidad);
-    const hasConsumoDraft = !!(consumoForm.producto_id || consumoForm.bodega_id || consumoForm.cantidad || consumoForm.costo_unitario || consumoForm.observacion);
+    const hasCompleteConsumo = !!(effectiveConsumoWarehouseId.value && consumoForm.producto_id && consumoForm.cantidad);
+    const hasConsumoDraft = !!(
+      consumoForm.producto_id ||
+      (consumoForm.bodega_id && !selectedProcedureWarehouseId.value) ||
+      consumoForm.cantidad ||
+      consumoForm.costo_unitario ||
+      consumoForm.observacion
+    );
     if (hasConsumoDraft && !hasCompleteConsumo) {
       ui.error("Para registrar un consumo debes completar bodega, material y cantidad.");
       return;
@@ -5161,11 +5385,9 @@ async function saveAll() {
     }
 
     if (payload.consumo_pendiente) {
-      consumoForm.producto_id = "";
-      consumoForm.bodega_id = "";
-      consumoForm.cantidad = "";
-      consumoForm.costo_unitario = "";
-      consumoForm.observacion = "";
+      resetConsumoDraft({
+        preserveWarehouse: !selectedProcedureWarehouseId.value && Boolean(consumoForm.bodega_id),
+      });
     }
     await fetchWorkOrders();
     await loadDetailData();
@@ -5368,7 +5590,8 @@ async function createConsumo(options?: {
 }) {
   if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
-  if (!consumoForm.bodega_id || !consumoForm.producto_id || !consumoForm.cantidad) {
+  const warehouseId = effectiveConsumoWarehouseId.value;
+  if (!warehouseId || !consumoForm.producto_id || !consumoForm.cantidad) {
     return ui.error("Bodega, material y cantidad son obligatorios.");
   }
   const refreshAfterSave = options?.refreshAfterSave ?? true;
@@ -5377,7 +5600,7 @@ async function createConsumo(options?: {
 
   const payload = {
     producto_id: consumoForm.producto_id,
-    bodega_id: consumoForm.bodega_id,
+    bodega_id: warehouseId,
     cantidad: Number(consumoForm.cantidad),
     ...(consumoForm.costo_unitario ? { costo_unitario: Number(consumoForm.costo_unitario) } : {}),
     observacion: consumoForm.observacion || null,
@@ -5385,11 +5608,9 @@ async function createConsumo(options?: {
 
   try {
     await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, payload);
-    consumoForm.producto_id = "";
-    consumoForm.bodega_id = "";
-    consumoForm.cantidad = "";
-    consumoForm.costo_unitario = "";
-    consumoForm.observacion = "";
+    resetConsumoDraft({
+      preserveWarehouse: !selectedProcedureWarehouseId.value && Boolean(consumoForm.bodega_id),
+    });
     if (refreshAfterSave) {
       await loadDetailData();
     }
@@ -5733,7 +5954,7 @@ watch(
     ) {
       return;
     }
-    if (consumoForm.bodega_id) {
+    if (effectiveConsumoWarehouseId.value) {
       consumoForm.producto_id = "";
       consumoProductSearch.value = "";
       await loadConsumoProducts({ reset: true, search: "" });
@@ -5744,7 +5965,17 @@ watch(
 );
 
 watch(
-  () => consumoForm.bodega_id,
+  () => selectedProcedureWarehouseId.value,
+  (warehouseId) => {
+    if (!warehouseId) return;
+    if (String(consumoForm.bodega_id || "").trim() !== warehouseId) {
+      consumoForm.bodega_id = "";
+    }
+  },
+);
+
+watch(
+  () => effectiveConsumoWarehouseId.value,
   async () => {
     consumoForm.producto_id = "";
     consumoProductSearch.value = "";
@@ -5764,7 +5995,7 @@ watch(
 watch(
   () => consumoProductSearch.value,
   (value) => {
-    if (!consumoForm.bodega_id) return;
+    if (!effectiveConsumoWarehouseId.value) return;
     if (consumoSearchTimer) clearTimeout(consumoSearchTimer);
     consumoSearchTimer = setTimeout(() => {
       void loadConsumoProducts({ reset: true, search: value });

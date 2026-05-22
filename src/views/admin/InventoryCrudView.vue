@@ -371,6 +371,10 @@ let stockBodegaFetchTimer: ReturnType<typeof setTimeout> | null = null;
 let stockBodegaRequestId = 0;
 
 const relationOptions = ref<Record<string, Array<{ value: any; title: string; bodegaId?: string | null }>>>({});
+const relationOptionsLoaded = reactive({
+  table: false,
+  form: false,
+});
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
@@ -438,6 +442,24 @@ function normalizeLabel(item: any) {
   return item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 
+function buildWarehouseOptionTitle(
+  warehouse: any,
+  branchNameById?: Map<string, string>,
+) {
+  const code = String(warehouse?.codigo || "").trim();
+  const name =
+    String(warehouse?.nombre || "").trim() ||
+    String(normalizeLabel(warehouse) || "").trim();
+  const branchId = String(warehouse?.sucursal_id || "").trim();
+  const branchName = String(branchNameById?.get(branchId) || "").trim();
+  const parts = [
+    code || null,
+    branchName ? `(${branchName})` : null,
+    name || null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(" - ") : String(warehouse?.id || "");
+}
+
 function normalizeLooseText(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
@@ -489,6 +511,7 @@ function getRelationFields(mode: "table" | "form" = "table") {
 
 async function loadRelations(mode: "table" | "form" = "table") {
   if (!moduleConfig.value) return;
+  if (relationOptionsLoaded[mode]) return;
   const nextRelationOptions =
     mode === "form" ? { ...relationOptions.value } : {};
 
@@ -497,10 +520,19 @@ async function loadRelations(mode: "table" | "form" = "table") {
       (field) => field.key === "bodega_id" && field.relation,
     );
     if (warehouseField?.relation?.endpoint) {
-      const rows = await listAll(warehouseField.relation.endpoint);
+      const [rows, branches] = await Promise.all([
+        listAll(warehouseField.relation.endpoint),
+        listAll("/kpi_inventory/sucursales"),
+      ]);
+      const branchNameById = new Map(
+        branches.map((branch: any) => [
+          String(branch?.id || ""),
+          String(branch?.nombre || "").trim(),
+        ]),
+      );
       nextRelationOptions.bodega_id = rows.map((r: any) => ({
         value: r.id,
-        title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+        title: buildWarehouseOptionTitle(r, branchNameById),
         bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
       }));
     }
@@ -518,6 +550,7 @@ async function loadRelations(mode: "table" | "form" = "table") {
       }
     }
     relationOptions.value = nextRelationOptions;
+    relationOptionsLoaded[mode] = true;
     return;
   }
 
@@ -540,6 +573,7 @@ async function loadRelations(mode: "table" | "form" = "table") {
     }));
   }
   relationOptions.value = nextRelationOptions;
+  relationOptionsLoaded[mode] = true;
 }
 
 function isWarehouseDependentProductField(field: MaintenanceField) {
@@ -732,6 +766,22 @@ async function ensureFormRelationsLoaded() {
   await loadRelations("form");
 }
 
+function getItemEndpoint(recordId: string) {
+  const endpoint = String(moduleConfig.value?.endpoint || "").trim();
+  const normalizedId = String(recordId || "").trim();
+  if (!endpoint || !normalizedId) return null;
+  return `${endpoint}/${normalizedId}`;
+}
+
+function hydrateFormFromItem(item: Record<string, any> | null | undefined) {
+  thirdPartyLookupHydrating.value = true;
+  for (const field of moduleConfig.value?.fields ?? []) {
+    form[field.key] = item?.[field.key] ?? form[field.key];
+  }
+  lastThirdPartyLookupRuc.value = normalizeRuc(form.identificacion);
+  thirdPartyLookupHydrating.value = false;
+}
+
 function reservationStateColor(value: string) {
   const normalized = String(value || "").trim().toUpperCase();
   if (normalized === "RESERVADO") return "warning";
@@ -853,17 +903,27 @@ function openCreate() {
   dialog.value = true;
 }
 
-function openEdit(item: any) {  
+async function openEdit(item: any) {
   editingId.value = item.id;
   resetForm();
-  void ensureFormRelationsLoaded();
-  thirdPartyLookupHydrating.value = true;
-  for (const field of moduleConfig.value?.fields ?? []) {
-    form[field.key] = item[field.key] ?? form[field.key];
+  try {
+    const itemEndpoint = getItemEndpoint(item.id);
+    const [detailResponse] = await Promise.all([
+      itemEndpoint ? api.get(itemEndpoint) : Promise.resolve({ data: item }),
+      ensureFormRelationsLoaded(),
+    ]);
+    const detail =
+      (detailResponse as any)?.data?.data ??
+      (detailResponse as any)?.data ??
+      item;
+    hydrateFormFromItem(detail);
+    dialog.value = true;
+  } catch (e: any) {
+    ui.error(
+      e?.response?.data?.message ||
+        "No se pudo cargar el registro para editar.",
+    );
   }
-  lastThirdPartyLookupRuc.value = normalizeRuc(form.identificacion);
-  thirdPartyLookupHydrating.value = false;
-  dialog.value = true;
 }
 
 function openDelete(item: any) {
@@ -1025,6 +1085,9 @@ watch(
     serverPage.value = 1;
     serverItemsPerPage.value = 20;
     serverTotalItems.value = 0;
+    relationOptions.value = {};
+    relationOptionsLoaded.table = false;
+    relationOptionsLoaded.form = false;
     resetForm();
     await hydrateModuleData();
   },
