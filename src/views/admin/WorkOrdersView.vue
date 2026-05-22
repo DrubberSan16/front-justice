@@ -588,7 +588,7 @@
                     v-if="isTaskRequired(item._raw ?? item)"
                     class="text-caption text-medium-emphasis mt-1"
                   >
-                    Campo obligatorio
+                    {{ requiresMandatoryTaskCaptureForCurrentSave ? "Campo obligatorio" : "Obligatorio al finalizar la OT" }}
                   </div>
                 </div>
               </template>
@@ -1731,6 +1731,9 @@ const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
 const isBlocked = computed(() => normalizedWorkflow.value === "BLOCKED");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
+const requiresMandatoryTaskCaptureForCurrentSave = computed(
+  () => normalizedWorkflow.value === "CLOSED",
+);
 const persistedWorkflow = computed(() =>
   normalizeWorkflowStatus(currentWorkOrderRecord.value?.status_workflow || ""),
 );
@@ -3770,7 +3773,10 @@ function validateTaskValue(task: any) {
 
 function buildTaskPersistencePayload(
   task: any,
-  options?: { preserveDraftAttachmentRefs?: boolean },
+  options?: {
+    preserveDraftAttachmentRefs?: boolean;
+    enforceRequiredCapture?: boolean;
+  },
 ) {
   const fieldType = getTaskFieldType(task);
   const isAdditional = isAdditionalTask(task);
@@ -3824,7 +3830,7 @@ function buildTaskPersistencePayload(
     }
   }
 
-  if (isTaskRequired(task) && !validateTaskValue(task)) {
+  if (options?.enforceRequiredCapture && isTaskRequired(task) && !validateTaskValue(task)) {
     throw new Error(`Completa la captura obligatoria de la tarea ${taskLabel}.`);
   }
 
@@ -3913,7 +3919,10 @@ function buildWorkOrderSaveBundlePayload() {
     .filter((row) => !row?._isDraft && row?._dirty)
     .map((row) => ({
       id: row.id,
-      ...buildTaskPersistencePayload(row, { preserveDraftAttachmentRefs: true }),
+      ...buildTaskPersistencePayload(row, {
+        preserveDraftAttachmentRefs: true,
+        enforceRequiredCapture: requiresMandatoryTaskCaptureForCurrentSave.value,
+      }),
     }));
   if (editedTasks.length) {
     payload.tareas_editadas = editedTasks;
@@ -3921,7 +3930,12 @@ function buildWorkOrderSaveBundlePayload() {
 
   const newTasks = taskRows.value
     .filter((row) => row?._isDraft)
-    .map((row) => buildTaskPersistencePayload(row, { preserveDraftAttachmentRefs: true }));
+    .map((row) =>
+      buildTaskPersistencePayload(row, {
+        preserveDraftAttachmentRefs: true,
+        enforceRequiredCapture: requiresMandatoryTaskCaptureForCurrentSave.value,
+      }),
+    );
   if (newTasks.length) {
     payload.tareas_nuevas = newTasks;
   }
@@ -3997,10 +4011,10 @@ function resolveWorkOrderSaveErrorMessage(error: any) {
   return "Hubo un error al guardar la orden de trabajo. No se aplicaron cambios.";
 }
 
-function validateTaskRowsForSave() {
+function validateTaskRowsForSave(options?: { enforceRequiredCapture?: boolean }) {
   for (const row of taskRows.value) {
     try {
-      buildTaskPersistencePayload(row);
+      buildTaskPersistencePayload(row, options);
     } catch (error: any) {
       ui.error(error?.message || "Revisa la captura de tareas antes de guardar.");
       return false;
@@ -5317,7 +5331,9 @@ async function saveAll() {
     }
 
     await syncChecklistFromTemplate(false);
-    if (!validateTaskRowsForSave()) {
+    if (!validateTaskRowsForSave({
+      enforceRequiredCapture: requiresMandatoryTaskCaptureForCurrentSave.value,
+    })) {
       return;
     }
 
@@ -5433,7 +5449,9 @@ async function persistDraftTasks(refreshAfterSave = true, throwOnError = false) 
     try {
       await api.post(
         `/kpi_maintenance/work-orders/${editingId.value}/tareas`,
-        buildTaskPersistencePayload(draft),
+        buildTaskPersistencePayload(draft, {
+          enforceRequiredCapture: requiresMandatoryTaskCaptureForCurrentSave.value,
+        }),
       );
     } catch (e: any) {
       const errorMessage =
@@ -5457,7 +5475,9 @@ async function persistEditedTasks(refreshAfterSave = true, throwOnError = false)
     try {
       await api.patch(
         `/kpi_maintenance/work-orders/tareas/${row.id}`,
-        buildTaskPersistencePayload(row),
+        buildTaskPersistencePayload(row, {
+          enforceRequiredCapture: requiresMandatoryTaskCaptureForCurrentSave.value,
+        }),
       );
       row._dirty = false;
     } catch (e: any) {
