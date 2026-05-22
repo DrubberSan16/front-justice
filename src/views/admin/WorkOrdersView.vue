@@ -397,9 +397,9 @@
               readonly
             />
           </v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow :disabled="isReadOnlyWorkflow" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow hint="Obligatorio" persistent-hint :disabled="isReadOnlyWorkflow" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow hint="Obligatorio" persistent-hint :disabled="isReadOnlyWorkflow" /></v-col>
+          <v-col cols="12" md="4"><v-textarea v-model="headerForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow hint="Obligatorio" persistent-hint :disabled="isReadOnlyWorkflow" /></v-col>
           </v-row>
         </v-card>
 
@@ -4361,6 +4361,23 @@ function buildAutoHeaderValues() {
   return { generatedTitle, generatedType };
 }
 
+function validateRequiredWorkOrderOutcomeFields() {
+  const requiredFields = [
+    { key: "causa", label: "Causa" },
+    { key: "accion", label: "Acción" },
+    { key: "prevencion", label: "Prevención" },
+  ] as const;
+
+  for (const field of requiredFields) {
+    if (!String(headerForm[field.key] || "").trim()) {
+      ui.error(`${field.label} es obligatoria.`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function unwrapData<T = any>(payload: T): any {
   if (payload && typeof payload === "object" && "data" in (payload as any)) {
     return (payload as any).data;
@@ -5118,6 +5135,9 @@ async function saveHeader(
     ui.error("Tipo mantenimiento es obligatorio.");
     return false;
   }
+  if (!validateRequiredWorkOrderOutcomeFields()) {
+    return false;
+  }
   if (!editingId.value && headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
     ui.error("Debes indicar por que la orden es emergente.");
     return false;
@@ -5287,6 +5307,9 @@ async function saveAll() {
     }
     if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
       ui.error("Debes ingresar el horometro actual para calcular la OT.");
+      return;
+    }
+    if (!validateRequiredWorkOrderOutcomeFields()) {
       return;
     }
     if (!editingId.value && !headerForm.code) {
