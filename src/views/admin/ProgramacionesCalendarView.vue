@@ -1699,6 +1699,16 @@ function formatDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function resolveMonthlyImportId(item?: any) {
+  return String(
+    item?.programacion_mensual_id ||
+      item?.payload_json?.programacion_mensual_id ||
+      selectedMonthly.value?.id ||
+      selectedMonthlyId.value ||
+      "",
+  ).trim();
+}
+
 function startOfCalendarMonth(source: Date) {
   const date = new Date(source.getFullYear(), source.getMonth(), 1);
   const day = date.getDay();
@@ -3115,7 +3125,7 @@ function onMonthlyRowClick(_event: unknown, row: any) {
 
 function resetMonthlyCell() {
   monthlyCell.id = null;
-  monthlyCell.programacion_mensual_id = selectedMonthly.value?.id || "";
+  monthlyCell.programacion_mensual_id = resolveMonthlyImportId();
   monthlyCell.equipo_id = "";
   monthlyCell.equipo_codigo = "";
   monthlyCell.work_order_id = "";
@@ -3153,7 +3163,7 @@ function openMonthlyCellCreate(date: string, row?: any) {
   }
   resetMonthlyCell();
   monthlyCell.fecha_programada = date;
-  monthlyCell.programacion_mensual_id = selectedMonthly.value.id;
+  monthlyCell.programacion_mensual_id = resolveMonthlyImportId();
   monthlyCell.is_reprogramming = false;
   if (row?.equipo_id) {
     monthlyCell.equipo_id = row.equipo_id;
@@ -3169,7 +3179,7 @@ function openMonthlyCellEdit(item: any) {
   if (!canEdit.value) return;
   resetMonthlyCell();
   monthlyCell.id = item.id;
-  monthlyCell.programacion_mensual_id = item.programacion_mensual_id || selectedMonthly.value?.id || "";
+  monthlyCell.programacion_mensual_id = resolveMonthlyImportId(item);
   monthlyCell.equipo_id = item.equipo_id || findEquipmentByCode(item.equipo_codigo || "")?.id || "";
   monthlyCell.equipo_codigo = item.equipo_codigo || "";
   monthlyCell.work_order_id = item.payload_json?.work_order_id || "";
@@ -3224,7 +3234,9 @@ function handleMonthlyItemClick(item: any) {
 
 async function saveMonthlyCell() {
   if (!canPersistMonthlyCell.value) return;
-  if (!selectedMonthly.value?.id && !monthlyCell.programacion_mensual_id) {
+  const monthlyImportId = resolveMonthlyImportId(monthlyCell);
+  monthlyCell.programacion_mensual_id = monthlyImportId;
+  if (!monthlyCell.id && !monthlyImportId) {
     ui.error("Selecciona un calendario mensual antes de guardar.");
     return;
   }
@@ -3272,7 +3284,7 @@ async function saveMonthlyCell() {
       await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}`, payload);
       ui.success("Bloque mensual actualizado.");
     } else {
-      await api.post(`/kpi_maintenance/programaciones/mensuales/${monthlyCell.programacion_mensual_id || selectedMonthly.value.id}/detalles`, payload);
+      await api.post(`/kpi_maintenance/programaciones/mensuales/${monthlyImportId}/detalles`, payload);
       ui.success("Bloque mensual creado.");
     }
     monthlyCellDialog.value = false;
