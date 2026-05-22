@@ -279,6 +279,7 @@
               v-else
               v-model="form[field.key]"
               :type="field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'"
+              :step="field.type === 'number' ? 'any' : undefined"
               :label="field.label"
               :hint="field.required ? 'Obligatorio' : ''"
               persistent-hint
@@ -475,6 +476,12 @@ function productNameLooksLikeOil() {
 function toSafeNumber(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function formatNumberFieldForForm(value: unknown) {
+  if (value === null || value === undefined || value === "") return "0";
+  const formatted = formatNumberForDisplay(value);
+  return formatted || "0";
 }
 
 function findGallonsUnitOption() {
@@ -776,6 +783,10 @@ function getItemEndpoint(recordId: string) {
 function hydrateFormFromItem(item: Record<string, any> | null | undefined) {
   thirdPartyLookupHydrating.value = true;
   for (const field of moduleConfig.value?.fields ?? []) {
+    if (field.type === "number") {
+      form[field.key] = formatNumberFieldForForm(item?.[field.key] ?? form[field.key]);
+      continue;
+    }
     form[field.key] = item?.[field.key] ?? form[field.key];
   }
   lastThirdPartyLookupRuc.value = normalizeRuc(form.identificacion);
