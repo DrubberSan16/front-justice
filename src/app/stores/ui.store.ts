@@ -12,6 +12,7 @@ type SnackbarVariant = "success" | "error" | "info" | "warning";
 
 export const useUiStore = defineStore("ui", () => {
   const show = ref(false);
+  const title = ref("");
   const text = ref("");
   const variant = ref<SnackbarVariant>("info");
   const timeout = ref(3500);
@@ -24,6 +25,15 @@ export const useUiStore = defineStore("ui", () => {
   let hideLoadingTimer: ReturnType<typeof setTimeout> | null = null;
 
   function open(message: string, v: SnackbarVariant = "info", t = 3500) {
+    const fallbackTitle =
+      v === "success"
+        ? "Proceso completado"
+        : v === "error"
+          ? "Atencion"
+          : v === "warning"
+            ? "Advertencia"
+            : "Informacion";
+    title.value = fallbackTitle;
     text.value = message;
     variant.value = v;
     timeout.value = t;
@@ -113,6 +123,7 @@ export const useUiStore = defineStore("ui", () => {
 
   return {
     show,
+    title,
     text,
     variant,
     timeout,
