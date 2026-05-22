@@ -1699,10 +1699,28 @@ function formatDate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function resolveMonthlyImportIdByDate(date?: string | null) {
+  const targetDate = String(date || "").slice(0, 10);
+  if (!targetDate) return "";
+
+  const directMatch = monthlyImports.value.find((item: any) => {
+    const start = String(item?.fecha_inicio || "").slice(0, 10);
+    const end = String(item?.fecha_fin || "").slice(0, 10);
+    if (!start || !end) return false;
+    return start <= targetDate && targetDate <= end;
+  });
+  if (directMatch?.id) return String(directMatch.id || "").trim();
+
+  const period = targetDate.slice(0, 7);
+  const periodMatch = monthlyAvailablePeriods.value.find((item) => item.period === period);
+  return String(periodMatch?.importId || "").trim();
+}
+
 function resolveMonthlyImportId(item?: any) {
   return String(
     item?.programacion_mensual_id ||
       item?.payload_json?.programacion_mensual_id ||
+      resolveMonthlyImportIdByDate(item?.fecha_programada || monthlyCell.fecha_programada || selectedMonthlyPeriod.value) ||
       selectedMonthly.value?.id ||
       selectedMonthlyId.value ||
       "",
@@ -3191,6 +3209,13 @@ function openMonthlyCellEdit(item: any) {
   monthlyCell.is_reprogramming = false;
   monthlyCell.reprogram_reason = "";
   monthlyCell.observacion = item.observacion || "";
+  if (
+    monthlyCell.programacion_mensual_id &&
+    String(selectedMonthlyId.value || "").trim() !== monthlyCell.programacion_mensual_id
+  ) {
+    applyMonthlySelectionByImportId(monthlyCell.programacion_mensual_id);
+    void loadSelectedMonthly(monthlyCell.programacion_mensual_id);
+  }
   monthlyCellDialog.value = true;
 }
 
@@ -3236,6 +3261,9 @@ async function saveMonthlyCell() {
   if (!canPersistMonthlyCell.value) return;
   const monthlyImportId = resolveMonthlyImportId(monthlyCell);
   monthlyCell.programacion_mensual_id = monthlyImportId;
+  if (monthlyImportId && String(selectedMonthlyId.value || "").trim() !== monthlyImportId) {
+    applyMonthlySelectionByImportId(monthlyImportId);
+  }
   if (!monthlyCell.id && !monthlyImportId) {
     ui.error("Selecciona un calendario mensual antes de guardar.");
     return;
