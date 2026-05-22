@@ -1327,6 +1327,9 @@ const weeklyCell = reactive<any>({
 const monthlyCell = reactive<any>({
   id: null,
   programacion_mensual_id: "",
+  source_type: "MENSUAL_DETALLE",
+  source_programacion_id: "",
+  source_payload_json: {},
   equipo_id: "",
   equipo_codigo: "",
   work_order_id: "",
@@ -1725,6 +1728,23 @@ function resolveMonthlyImportId(item?: any) {
       selectedMonthlyId.value ||
       "",
   ).trim();
+}
+
+function isDynamicMonthlyProgramacionItem(item?: any) {
+  const itemId = String(item?.id || "").trim();
+  const programacionId = String(item?.programacion_id || "").trim();
+  const sourceFlag = String(item?.payload_json?.fuente_programacion || "").trim().toUpperCase();
+  return Boolean(programacionId) && (itemId.startsWith("programacion-") || sourceFlag === "DINAMICA");
+}
+
+function resolveMonthlyProgramacionSourceId(item?: any) {
+  const directId = String(item?.programacion_id || monthlyCell.source_programacion_id || "").trim();
+  if (directId) return directId;
+  const syntheticId = String(item?.id || monthlyCell.id || "").trim();
+  if (syntheticId.startsWith("programacion-")) {
+    return syntheticId.slice("programacion-".length).trim();
+  }
+  return "";
 }
 
 function startOfCalendarMonth(source: Date) {
@@ -3144,6 +3164,9 @@ function onMonthlyRowClick(_event: unknown, row: any) {
 function resetMonthlyCell() {
   monthlyCell.id = null;
   monthlyCell.programacion_mensual_id = resolveMonthlyImportId();
+  monthlyCell.source_type = "MENSUAL_DETALLE";
+  monthlyCell.source_programacion_id = "";
+  monthlyCell.source_payload_json = {};
   monthlyCell.equipo_id = "";
   monthlyCell.equipo_codigo = "";
   monthlyCell.work_order_id = "";
@@ -3196,11 +3219,16 @@ function openMonthlyCellCreate(date: string, row?: any) {
 function openMonthlyCellEdit(item: any) {
   if (!canEdit.value) return;
   resetMonthlyCell();
+  const isDynamicProgramacion = isDynamicMonthlyProgramacionItem(item);
   monthlyCell.id = item.id;
   monthlyCell.programacion_mensual_id = resolveMonthlyImportId(item);
+  monthlyCell.source_type = isDynamicProgramacion ? "PROGRAMACION" : "MENSUAL_DETALLE";
+  monthlyCell.source_programacion_id = resolveMonthlyProgramacionSourceId(item);
+  monthlyCell.source_payload_json =
+    item?.payload_json && typeof item.payload_json === "object" ? { ...item.payload_json } : {};
   monthlyCell.equipo_id = item.equipo_id || findEquipmentByCode(item.equipo_codigo || "")?.id || "";
   monthlyCell.equipo_codigo = item.equipo_codigo || "";
-  monthlyCell.work_order_id = item.payload_json?.work_order_id || "";
+  monthlyCell.work_order_id = item.payload_json?.work_order_id || item.work_order_id || "";
   monthlyCell.total_horas_ot = item.payload_json?.total_horas_ot ?? item.payload_json?.horas_programadas ?? null;
   monthlyCell.original_fecha_programada = item.fecha_programada || "";
   monthlyCell.fecha_programada = item.fecha_programada || "";
@@ -3260,6 +3288,9 @@ function handleMonthlyItemClick(item: any) {
 async function saveMonthlyCell() {
   if (!canPersistMonthlyCell.value) return;
   const monthlyImportId = resolveMonthlyImportId(monthlyCell);
+  const isProgramacionSource =
+    monthlyCell.source_type === "PROGRAMACION" && Boolean(resolveMonthlyProgramacionSourceId(monthlyCell));
+  const sourceProgramacionId = resolveMonthlyProgramacionSourceId(monthlyCell);
   monthlyCell.programacion_mensual_id = monthlyImportId;
   if (monthlyImportId && String(selectedMonthlyId.value || "").trim() !== monthlyImportId) {
     applyMonthlySelectionByImportId(monthlyImportId);
@@ -3302,15 +3333,65 @@ async function saveMonthlyCell() {
         total_horas_ot: monthlyCell.total_horas_ot ?? null,
       },
     };
+    const programacionPayloadJson =
+      monthlyCell.source_payload_json && typeof monthlyCell.source_payload_json === "object"
+        ? { ...monthlyCell.source_payload_json }
+        : {};
+
     if (monthlyCell.id && monthlyCellIsReprogramming.value && monthlyCellDateChanged.value) {
-      await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}/reprogramacion`, {
-        ...payload,
-        observacion_reprogramacion: String(monthlyCell.reprogram_reason || "").trim(),
-      });
-      ui.success("Bloque mensual reprogramado.");
+      if (isProgramacionSource && sourceProgramacionId) {
+        const reason = String(monthlyCell.reprogram_reason || "").trim();
+        const historyEntry = {
+          fecha_anterior: monthlyCell.original_fecha_programada || null,
+          fecha_nueva: monthlyCell.fecha_programada || null,
+          observacion: reason,
+          usuario: currentUserName(),
+          usuario_email: currentUserEmail() || null,
+          fecha_transaccion: new Date().toISOString(),
+        };
+        const previousHistory = Array.isArray(programacionPayloadJson.reprogramaciones_historial)
+          ? [...programacionPayloadJson.reprogramaciones_historial]
+          : [];
+        await api.patch(`/kpi_maintenance/programaciones/${sourceProgramacionId}`, {
+          work_order_id: monthlyCell.work_order_id || undefined,
+          equipo_id: monthlyCell.equipo_id,
+          procedimiento_id: monthlyCell.procedimiento_id || undefined,
+          proxima_fecha: monthlyCell.fecha_programada,
+          payload_json: {
+            ...programacionPayloadJson,
+            ...buildAuditPayload(true),
+            programacion_mensual_id: monthlyImportId || programacionPayloadJson.programacion_mensual_id || null,
+            reprogramacion_actual: historyEntry,
+            reprogramacion_observacion: reason,
+            reprogramaciones_historial: [...previousHistory, historyEntry],
+          },
+        });
+        ui.success("Orden reprogramada.");
+      } else {
+        await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}/reprogramacion`, {
+          ...payload,
+          observacion_reprogramacion: String(monthlyCell.reprogram_reason || "").trim(),
+        });
+        ui.success("Bloque mensual reprogramado.");
+      }
     } else if (monthlyCell.id) {
-      await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}`, payload);
-      ui.success("Bloque mensual actualizado.");
+      if (isProgramacionSource && sourceProgramacionId) {
+        await api.patch(`/kpi_maintenance/programaciones/${sourceProgramacionId}`, {
+          work_order_id: monthlyCell.work_order_id || undefined,
+          equipo_id: monthlyCell.equipo_id,
+          procedimiento_id: monthlyCell.procedimiento_id || undefined,
+          proxima_fecha: monthlyCell.fecha_programada,
+          payload_json: {
+            ...programacionPayloadJson,
+            ...buildAuditPayload(true),
+            programacion_mensual_id: monthlyImportId || programacionPayloadJson.programacion_mensual_id || null,
+          },
+        });
+        ui.success("Programación actualizada.");
+      } else {
+        await api.patch(`/kpi_maintenance/programaciones/mensuales/detalles/${monthlyCell.id}`, payload);
+        ui.success("Bloque mensual actualizado.");
+      }
     } else {
       await api.post(`/kpi_maintenance/programaciones/mensuales/${monthlyImportId}/detalles`, payload);
       ui.success("Bloque mensual creado.");
