@@ -1887,6 +1887,7 @@ const headers = [
   { title: "Type", key: "type" },
   { title: "Title", key: "title" },
   { title: "Equipo", key: "equipment_label" },
+  { title: "Bodega", key: "bodega_label" },
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Tipo", key: "maintenance_kind_label" },
