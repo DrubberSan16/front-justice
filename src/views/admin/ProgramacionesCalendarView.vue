@@ -596,7 +596,7 @@
             </template>
             <template #item.estado_programacion="{ item }">
               <v-chip size="small" :color="chipColor((item as any).estado_programacion)" variant="tonal">
-                {{ (item as any).estado_programacion }}
+                {{ formatProgramacionStatusLabel((item as any).estado_programacion) }}
               </v-chip>
             </template>
             <template #item.actions="{ item }">
@@ -3103,6 +3103,7 @@ const agendaDayMonthlyHoursLabel = computed(() => {
 });
 
 function chipColor(status: string) {
+  if (status === "A_REALIZAR") return "warning";
   if (status === "VENCIDA") return "error";
   if (status === "PROXIMA") return "warning";
   if (status === "REPROGRAMADA") return "secondary";
@@ -3110,16 +3111,24 @@ function chipColor(status: string) {
 }
 
 function eventClass(status: string) {
+  if (status === "A_REALIZAR") return "calendar-event--warning";
   if (status === "VENCIDA") return "calendar-event--danger";
   if (status === "PROXIMA") return "calendar-event--warning";
   if (status === "REPROGRAMADA") return "calendar-event--rescheduled";
   return "calendar-event--normal";
 }
 
+function formatProgramacionStatusLabel(status: unknown) {
+  const normalized = String(status || "").trim().toUpperCase();
+  if (!normalized) return "";
+  if (normalized === "A_REALIZAR") return "A REALIZAR";
+  return normalized.replace(/_/g, " ");
+}
+
 function resolveMonthlyDetailStateLabel(item: any) {
   if (isMonthlyWeeklyAggregate(item)) return "Agendado semanal";
   const status = String(item?.estado_programacion || "").trim().toUpperCase();
-  if (status) return status;
+  if (status) return formatProgramacionStatusLabel(status);
   if (item?.payload_json?.reprogramado) return "REPROGRAMADA";
   return item?.programacion_id ? "SINCRONIZADO" : "SOLO REPORTE";
 }
@@ -3127,6 +3136,7 @@ function resolveMonthlyDetailStateLabel(item: any) {
 function resolveMonthlyDetailStateColor(item: any) {
   if (isMonthlyWeeklyAggregate(item)) return "info";
   const status = resolveMonthlyDetailStateLabel(item);
+  if (status === "A REALIZAR") return "warning";
   if (status === "REPROGRAMADA") return "secondary";
   if (status === "VENCIDA") return "error";
   if (status === "PROXIMA") return "warning";
