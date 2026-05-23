@@ -57,14 +57,14 @@
               </div>
 
               <!-- Solo para CREATE: feedback de precarga desde rol -->
-              <div v-if="!isEdit" class="text-caption text-medium-emphasis mt-1">
+              <div class="text-caption text-medium-emphasis mt-1">
                 Al crear, se copiarán por defecto los menús/permisos del rol seleccionado.
               </div>
 
-              <div v-if="!isEdit && roleProfileLoading" class="mt-2">
+              <div v-if="roleProfileLoading" class="mt-2">
                 <v-progress-linear indeterminate />
               </div>
-              <div v-if="!isEdit && roleProfileError" class="text-caption text-error mt-1">
+              <div v-if="roleProfileError" class="text-caption text-error mt-1">
                 {{ roleProfileError }}
               </div>
             </v-col>
@@ -252,6 +252,7 @@ const allowedReportKeys = computed(() => new Set(reportAccessOptions.value.map((
 
 const roleProfileLoading = ref(false);
 const roleProfileError = ref<string | null>(null);
+const hydratingForm = ref(false);
 const branchOptions = ref<Array<{ title: string; value: string; subtitle: string }>>([]);
 const branchLoading = ref(false);
 const branchError = ref<string | null>(null);
@@ -277,16 +278,21 @@ function roleDefaultReportes(roleId: string) {
   return normalizeReportAccess(role?.reportes).filter((item) => allowedReportKeys.value.has(item));
 }
 
-/** Precarga menú/permiso desde rol (solo CREATE) */
-async function preloadFromRole(roleId: string) {
-  if (!roleId || isEdit.value) return;
+/** Precarga menú/permiso desde rol */
+async function preloadFromRole(
+  roleId: string,
+  options?: { preserveOriginal?: boolean },
+) {
+  if (!roleId) return;
 
   roleProfileLoading.value = true;
   roleProfileError.value = null;
 
   try {
     const menuRoles = await fetchMenuRolesByRole(roleId);
-    menuUsersProfile.setDraftsFromRoleMenus(menuRoles);
+    menuUsersProfile.setDraftsFromRoleMenus(menuRoles, {
+      preserveOriginal: options?.preserveOriginal === true,
+    });
   } catch (e: any) {
     roleProfileError.value =
       e?.response?.data?.message || "No se pudo cargar la perfilería del rol.";
@@ -323,6 +329,7 @@ watch(
   () => props.modelValue,
   async (open) => {
     if (!open) return;
+    hydratingForm.value = true;
 
     // Precargas compartidas del modal
     await Promise.allSettled([
@@ -376,18 +383,21 @@ watch(
       await preloadFromRole(form.roleId);
       menuUsersProfile.restrictToMenuIds(visibleMenuIds);
     }
+    hydratingForm.value = false;
   },
   { immediate: true }
 );
 
-/** CREATE: si cambia el rol, recargar perfilería del rol */
+/** Si cambia el rol, recargar perfilería del rol */
 watch(
   () => form.roleId,
   async (roleId, prev) => {
-    if (isEdit.value) return;
+    if (hydratingForm.value) return;
     if (!roleId || roleId === prev) return;
     form.reportes = roleDefaultReportes(roleId);
-    await preloadFromRole(roleId);
+    await preloadFromRole(roleId, {
+      preserveOriginal: isEdit.value,
+    });
     menuUsersProfile.restrictToMenuIds(collectVisibleMenuIds(menusFull.tree));
   }
 );

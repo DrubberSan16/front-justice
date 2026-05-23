@@ -122,15 +122,18 @@ export const useMenuUsersProfileStore = defineStore("menuUsersProfile", {
       }
     },
 
-    // 2) Precargar perfil por rol (para creación)
-    // Toma menu-roles del rol y arma drafts enabled=true con permisos del rol.
-    setDraftsFromRoleMenus(menuRoles: MenuRole[]) {
-      this.reset();
-
+    // 2) Precargar perfil por rol
+    // Si preserveOriginal=true, reemplaza solo drafts y mantiene snapshot original
+    // para que la sincronización desactive los permisos previos del usuario.
+    setDraftsFromRoleMenus(
+      menuRoles: MenuRole[],
+      options?: { preserveOriginal?: boolean },
+    ) {
+      const preserveOriginal = options?.preserveOriginal === true;
+      const nextDrafts: Record<string, PermissionDraft> = {};
       for (const mr of menuRoles ?? []) {
-        // si el rol tiene registros INACTIVE, no precargamos
         const enabled = mr.status === "ACTIVE";
-        this.drafts[mr.menuId] = {
+        nextDrafts[mr.menuId] = {
           menuId: mr.menuId,
           enabled,
           isReaded: !!mr.isReaded,
@@ -143,8 +146,12 @@ export const useMenuUsersProfileStore = defineStore("menuUsersProfile", {
         };
       }
 
-      // en creación no hay "original" todavía
-      this.original = {};
+      this.drafts = nextDrafts;
+      this.loading = false;
+      this.error = null;
+      if (!preserveOriginal) {
+        this.original = {};
+      }
     },
 
     // 3) Crear perfil del usuario (para creación): POST uno por uno SOLO enabled=true
