@@ -756,11 +756,32 @@ onMounted(() => {
   position: relative;
   overflow: hidden;
   padding: 28px;
+  --welcome-hero-text: var(--app-text);
+  --welcome-hero-muted: color-mix(in srgb, var(--app-text) 68%, transparent);
+  --welcome-hero-panel-bg: color-mix(in srgb, var(--surface-base) 84%, rgb(var(--v-theme-primary)) 16%);
+  --welcome-hero-panel-bg-hover: color-mix(in srgb, var(--surface-base) 78%, rgb(var(--v-theme-primary)) 22%);
+  --welcome-hero-panel-border: color-mix(in srgb, var(--surface-border) 60%, rgb(var(--v-theme-primary)) 40%);
+  background:
+    radial-gradient(circle at top left, rgba(var(--v-theme-primary), 0.16), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(var(--v-theme-secondary), 0.12), transparent 30%),
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--surface-base) 92%, rgb(var(--v-theme-primary)) 8%),
+      color-mix(in srgb, var(--surface-soft) 84%, rgb(var(--v-theme-secondary)) 16%)
+    );
+  color: var(--welcome-hero-text);
+}
+
+:global(:root[data-theme="dark"]) .welcome-hero {
+  --welcome-hero-text: #eef5fb;
+  --welcome-hero-muted: rgba(238, 245, 251, 0.72);
+  --welcome-hero-panel-bg: rgba(255, 255, 255, 0.05);
+  --welcome-hero-panel-bg-hover: rgba(255, 255, 255, 0.09);
+  --welcome-hero-panel-border: rgba(255, 255, 255, 0.1);
   background:
     radial-gradient(circle at top left, rgba(83, 172, 255, 0.12), transparent 34%),
     radial-gradient(circle at bottom right, rgba(33, 208, 165, 0.1), transparent 30%),
     linear-gradient(160deg, rgba(26, 48, 74, 0.94), rgba(39, 64, 92, 0.88));
-  color: #eef5fb;
 }
 
 .welcome-hero__aurora {
@@ -819,7 +840,7 @@ onMounted(() => {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(238, 245, 251, 0.68);
+  color: var(--welcome-hero-muted);
 }
 
 .welcome-preview-grid {
@@ -834,8 +855,8 @@ onMounted(() => {
   width: 100%;
   padding: 14px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--welcome-hero-panel-border);
+  background: var(--welcome-hero-panel-bg);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -844,8 +865,8 @@ onMounted(() => {
 
 .welcome-preview-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(135, 205, 255, 0.28);
-  background: rgba(255, 255, 255, 0.09);
+  border-color: color-mix(in srgb, var(--welcome-hero-panel-border) 72%, rgb(var(--v-theme-primary)) 28%);
+  background: var(--welcome-hero-panel-bg-hover);
 }
 
 .welcome-preview-card__date {
@@ -868,9 +889,9 @@ onMounted(() => {
 .welcome-hero__empty {
   padding: 14px 16px;
   border-radius: 18px;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(238, 245, 251, 0.76);
+  border: 1px dashed var(--welcome-hero-panel-border);
+  background: color-mix(in srgb, var(--welcome-hero-panel-bg) 72%, transparent);
+  color: var(--welcome-hero-muted);
   font-size: 0.86rem;
 }
 
@@ -883,8 +904,8 @@ onMounted(() => {
 .welcome-stat {
   padding: 16px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--welcome-hero-panel-border);
+  background: var(--welcome-hero-panel-bg);
   backdrop-filter: blur(10px);
 }
 
@@ -892,7 +913,7 @@ onMounted(() => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.74;
+  color: var(--welcome-hero-muted);
 }
 
 .welcome-stat__value {
@@ -904,7 +925,7 @@ onMounted(() => {
 .welcome-stat__helper {
   margin-top: 8px;
   font-size: 0.84rem;
-  opacity: 0.8;
+  color: var(--welcome-hero-muted);
 }
 
 .welcome-toolbar {
