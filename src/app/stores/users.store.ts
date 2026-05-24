@@ -26,27 +26,47 @@ export const useUsersStore = defineStore("users", () => {
   const filtered = computed(() => {
     const q = search.value.trim().toLowerCase();
 
-    return items.value.filter((u) => {
-      if (!includeDeleted.value && u.isDeleted) return false;
+    return items.value
+      .filter((u) => {
+        if (!includeDeleted.value && u.isDeleted) return false;
 
-      if (statusFilter.value !== "ALL" && u.status !== statusFilter.value) return false;
+        if (statusFilter.value !== "ALL" && u.status !== statusFilter.value) return false;
 
-      if (roleFilter.value !== "ALL" && u.roleId !== roleFilter.value) return false;
+        if (roleFilter.value !== "ALL" && u.roleId !== roleFilter.value) return false;
 
-      if (!q) return true;
+        if (!q) return true;
 
-      const hay = [
-        u.nameUser,
-        u.nameSurname,
-        u.email,
-        u.role?.nombre ?? "",
-        u.status ?? "",
-      ]
-        .join(" ")
-        .toLowerCase();
+        const hay = [
+          u.nameUser,
+          u.nameSurname,
+          u.email,
+          u.role?.nombre ?? "",
+          u.status ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
 
-      return hay.includes(q);
-    });
+        return hay.includes(q);
+      })
+      .slice()
+      .sort((a, b) => {
+        const left = String(a.nameSurname || a.nameUser || a.email || "").trim();
+        const right = String(b.nameSurname || b.nameUser || b.email || "").trim();
+        const byName = left.localeCompare(right, "es", {
+          sensitivity: "base",
+          numeric: true,
+        });
+        if (byName !== 0) return byName;
+
+        return String(a.nameUser || "").trim().localeCompare(
+          String(b.nameUser || "").trim(),
+          "es",
+          {
+            sensitivity: "base",
+            numeric: true,
+          },
+        );
+      });
   });
 
   async function fetchAll() {
