@@ -21,13 +21,18 @@
               {{ dashboard.selected.marca_lubricante || "Marca sin registrar" }}
             </div>
             <div class="text-body-2 text-medium-emphasis mt-1">
-              {{ dashboard.selected.equipo_label || dashboard.selected.equipo_codigo || dashboard.selected.equipo_nombre || "Sin equipo" }}
+              {{
+                dashboard.selected.equipo_label ||
+                dashboard.selected.equipo_codigo ||
+                dashboard.selected.equipo_nombre ||
+                "Sin equipo"
+              }}
               <span v-if="dashboard.selected.equipo_modelo">
-                · {{ dashboard.selected.equipo_modelo }}
+                - {{ dashboard.selected.equipo_modelo }}
               </span>
             </div>
             <div class="text-caption text-medium-emphasis mt-1">
-              {{ dashboard.selected.compartimentos?.join(" · ") || "Sin compartimentos" }}
+              {{ dashboard.selected.compartimentos?.join(" - ") || "Sin compartimentos" }}
             </div>
           </div>
           <div class="d-flex flex-wrap" style="gap: 8px;">
@@ -116,25 +121,37 @@
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Compartimento</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.compartimento_principal || "Sin compartimento" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.compartimento_principal || "Sin compartimento" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Equipo</div>
               <div class="font-weight-medium">
-                {{ dashboard.latest_analysis.equipo_nombre || dashboard.latest_analysis.equipo_codigo || "Sin equipo" }}
+                {{
+                  dashboard.latest_analysis.equipo_nombre ||
+                  dashboard.latest_analysis.equipo_codigo ||
+                  "Sin equipo"
+                }}
               </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Marca</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.equipo_marca || "Sin marca" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.equipo_marca || "Sin marca" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Serie</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.equipo_serie || "Sin serie" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.equipo_serie || "Sin serie" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Modelo</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.equipo_modelo || "Sin modelo" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.equipo_modelo || "Sin modelo" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Lubricante</div>
@@ -142,11 +159,15 @@
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Marca del lubricante</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.marca_lubricante || "Sin marca" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.marca_lubricante || "Sin marca" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Numero de muestra</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.numero_muestra || "Sin numero" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.numero_muestra || "Sin numero" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Fecha de muestreo</div>
@@ -154,11 +175,19 @@
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Fecha de ingreso</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.fecha_ingreso || "Sin fecha" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.fecha_ingreso || "Sin fecha" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Fecha de informe</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.fecha_informe || dashboard.latest_analysis.fecha_reporte || "Sin fecha" }}</div>
+              <div class="font-weight-medium">
+                {{
+                  dashboard.latest_analysis.sample_info?.fecha_informe ||
+                  dashboard.latest_analysis.fecha_reporte ||
+                  "Sin fecha"
+                }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Equipo Hrs/Km</div>
@@ -166,18 +195,28 @@
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Aceite Hrs/Km</div>
-              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.horas_lubricante ?? "N/A" }}</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.horas_lubricante ?? "N/A" }}
+              </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Condicion</div>
               <div class="font-weight-medium">
-                {{ dashboard.latest_analysis.sample_info?.condicion || dashboard.latest_analysis.estado_diagnostico || "N/D" }}
+                {{
+                  dashboard.latest_analysis.sample_info?.condicion ||
+                  dashboard.latest_analysis.estado_diagnostico ||
+                  "N/D"
+                }}
               </div>
             </div>
             <div>
               <div class="text-caption text-medium-emphasis">Evaluacion</div>
               <div class="font-weight-medium">
-                {{ dashboard.latest_analysis.evaluacion_ultima_muestra || dashboard.latest_analysis.diagnostico || "Sin evaluacion" }}
+                {{
+                  dashboard.latest_analysis.evaluacion_ultima_muestra ||
+                  dashboard.latest_analysis.diagnostico ||
+                  "Sin evaluacion"
+                }}
               </div>
             </div>
           </div>
@@ -222,23 +261,31 @@
       </v-card>
 
       <v-card rounded="xl" class="pa-4 enterprise-surface">
-        <div class="text-subtitle-1 font-weight-bold mb-3">Gráficos comparativos por bloque</div>
+        <div class="text-subtitle-1 font-weight-bold mb-3">Resumen estadistico por bloque</div>
         <div class="chart-grid-inner">
-          <LubricantComparisonChart
+          <DashboardBarChartCard
             title="Desgaste del equipo"
-            subtitle="Comparativa de todas las líneas de desgaste del equipo"
-            :metrics="comparisonCharts.desgaste"
+            subtitle="Indicadores ordenados por intensidad promedio del periodo"
+            chip-label="Comparativo"
+            chip-color="primary"
+            empty-text="No hay indicadores de desgaste para este rango."
+            :items="buildComparisonMetricBarItems(comparisonCharts.desgaste)"
           />
-          <LubricantComparisonChart
-            title="Contaminación del lubricante"
-            subtitle="Comparativa parabólica de contaminantes y elementos de ingreso"
-            :metrics="comparisonCharts.contaminacion"
-            curve-mode="smooth"
+          <DashboardBarChartCard
+            title="Contaminacion del lubricante"
+            subtitle="Indicadores ordenados por intensidad promedio del periodo"
+            chip-label="Comparativo"
+            chip-color="warning"
+            empty-text="No hay indicadores de contaminacion para este rango."
+            :items="buildComparisonMetricBarItems(comparisonCharts.contaminacion)"
           />
-          <LubricantComparisonChart
+          <DashboardBarChartCard
             title="Estado del lubricante"
-            subtitle="Comparativa de viscosidad, TBN y variables de condición"
-            :metrics="comparisonCharts.estado"
+            subtitle="Indicadores ordenados por intensidad promedio del periodo"
+            chip-label="Comparativo"
+            chip-color="success"
+            empty-text="No hay indicadores de estado para este rango."
+            :items="buildComparisonMetricBarItems(comparisonCharts.estado)"
           />
         </div>
       </v-card>
@@ -252,13 +299,15 @@
         >
           <div class="text-subtitle-1 font-weight-bold mb-3">{{ section.title }}</div>
           <div class="chart-grid-inner">
-            <LubricantTrendChart
+            <DashboardBarChartCard
               v-for="metric in section.metrics"
               :key="metric.key"
               :title="metric.label"
               :subtitle="metric.group_label"
-              :unit="metric.unit"
-              :points="metric.points"
+              :chip-label="buildTrendChipLabel(metric)"
+              chip-color="info"
+              empty-text="No hay muestras numericas para este indicador."
+              :items="buildTrendMetricBarItems(metric)"
             />
             <div v-if="!section.metrics?.length" class="dashboard-state dashboard-state--compact">
               Sin metricas para este bloque.
@@ -272,8 +321,34 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import LubricantComparisonChart from "@/components/maintenance/LubricantComparisonChart.vue";
-import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
+import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
+
+type MetricPoint = {
+  key: string;
+  codigo: string;
+  fecha: string;
+  level: string;
+  value: number;
+  index: number;
+};
+
+type DashboardBarItem = {
+  key: string;
+  label: string;
+  value: number;
+  valueLabel: string;
+  helper: string;
+  color: string;
+};
+
+const metricPalette = [
+  "linear-gradient(90deg, #2f6cab 0%, #7ab8ff 100%)",
+  "linear-gradient(90deg, #0f8f72 0%, #6de3bf 100%)",
+  "linear-gradient(90deg, #e17a00 0%, #ffca6a 100%)",
+  "linear-gradient(90deg, #a245d8 0%, #dd9cff 100%)",
+  "linear-gradient(90deg, #e24f5f 0%, #ff9aa5 100%)",
+  "linear-gradient(90deg, #4558d8 0%, #9db0ff 100%)",
+];
 
 const props = defineProps<{
   dashboard: Record<string, any> | null;
@@ -296,6 +371,108 @@ const comparisonCharts = computed(() => {
     estado: findMetrics("estado"),
   };
 });
+
+function formatMetricNumber(value: unknown) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return "0";
+  return new Intl.NumberFormat("es-EC", {
+    minimumFractionDigits: numericValue % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(numericValue);
+}
+
+function formatMetricValue(value: unknown, unit?: string | null) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return "N/D";
+  return unit ? `${formatMetricNumber(numericValue)} ${unit}` : formatMetricNumber(numericValue);
+}
+
+function getMetricColor(index: number) {
+  return metricPalette[index % metricPalette.length] || metricPalette[0] || "linear-gradient(90deg, #2f6cab 0%, #7ab8ff 100%)";
+}
+
+function normalizeMetricPoints(points: unknown): MetricPoint[] {
+  if (!Array.isArray(points)) return [];
+
+  return points
+    .map((point, index) => {
+      const source = point as Record<string, any>;
+      const value = Number(source?.valor);
+      if (!Number.isFinite(value)) return null;
+
+      return {
+        key: String(source?.codigo || source?.fecha || index),
+        codigo: source?.codigo ? String(source.codigo) : "",
+        fecha: source?.fecha ? String(source.fecha) : "",
+        level: String(source?.nivel_alerta || "").trim().toUpperCase(),
+        value,
+        index,
+      };
+    })
+    .filter(Boolean) as MetricPoint[];
+}
+
+function buildTrendChipLabel(metric: Record<string, any>) {
+  const totalPoints = normalizeMetricPoints(metric?.points).length;
+  return totalPoints ? `${totalPoints} muestras` : "Sin muestras";
+}
+
+function buildTrendMetricBarItems(metric: Record<string, any>): DashboardBarItem[] {
+  const unit = metric?.unit ? String(metric.unit) : "";
+  const points = normalizeMetricPoints(metric?.points)
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 8);
+
+  return points.map((point, index) => {
+    const helperParts = [
+      point.codigo || "",
+      point.level ? `Estado: ${point.level}` : "",
+    ].filter(Boolean);
+
+    return {
+      key: `${metric?.key || metric?.label || "metric"}-${point.key}-${index}`,
+      label: point.fecha || point.codigo || `Muestra ${point.index + 1}`,
+      value: point.value,
+      valueLabel: formatMetricValue(point.value, unit),
+      helper: helperParts.join(" - "),
+      color: getMetricColor(index),
+    };
+  });
+}
+
+function buildComparisonMetricBarItems(metrics: unknown): DashboardBarItem[] {
+  if (!Array.isArray(metrics)) return [];
+
+  const items: DashboardBarItem[] = [];
+
+  metrics.forEach((metric, index) => {
+    const source = metric as Record<string, any>;
+    const points = normalizeMetricPoints(source?.points);
+    if (!points.length) return;
+
+    const initialPoint = points[0] as MetricPoint;
+    const peakPoint = points.reduce((best, point) => (point.value > best.value ? point : best), initialPoint);
+    const latestPoint = points[points.length - 1] as MetricPoint;
+    const averageValue = points.reduce((accumulator, point) => accumulator + point.value, 0) / points.length;
+
+    items.push({
+      key: String(source?.key || source?.label || index),
+      label: String(source?.label || `Indicador ${index + 1}`),
+      value: averageValue,
+      valueLabel: formatMetricValue(averageValue, source?.unit),
+      helper: [
+        `Pico ${formatMetricValue(peakPoint.value, source?.unit)}`,
+        peakPoint.fecha || "",
+        `Ultimo ${formatMetricValue(latestPoint.value, source?.unit)}`,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+      color: getMetricColor(index),
+    });
+  });
+
+  return items.sort((left, right) => right.value - left.value);
+}
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
