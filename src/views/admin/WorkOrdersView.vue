@@ -202,7 +202,7 @@
           v-if="canPersistHeader"
           variant="tonal"
           :loading="savingHeader"
-          :disabled="savingHeader || loadingCatalogs"
+          :disabled="savingHeader || loadingCatalogs || isReadOnlyWorkflow"
           @click="saveAll"
         >
           Guardar
@@ -1812,7 +1812,7 @@ function canCloseOrVoidWorkOrder(item: any) {
 const canCloseOrVoidCurrent = computed(() =>
   editingId.value ? canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) : true,
 );
-const isReadOnlyWorkflow = computed(() => isClosed.value && !closingFlow.value);
+const isReadOnlyWorkflow = computed(() => isBlocked.value || (isClosed.value && !closingFlow.value));
 const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
@@ -1825,10 +1825,14 @@ const canRegisterRealIssue = computed(
 );
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
-  if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
-    return workflowOptions;
+  if (isBlocked.value) {
+    return workflowOptions.filter((item) => item.value === "BLOCKED");
   }
-  return workflowOptions.filter((item) => item.value !== "CLOSED");
+  const manualOptions = workflowOptions.filter((item) => item.value !== "BLOCKED");
+  if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
+    return manualOptions;
+  }
+  return manualOptions.filter((item) => item.value !== "CLOSED");
 });
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
@@ -1864,6 +1868,13 @@ const blockingAlertText = computed(() => {
   const blockerLabel = selected?.title || "la OT anexada seleccionada";
   return `${headerForm.code || "Esta OT"} esta bloqueada hasta culminar ${blockerLabel}${headerForm.blocked_reason ? ` · Motivo: ${headerForm.blocked_reason}` : ""}.`;
 });
+function readOnlyWorkflowMessage() {
+  if (isBlocked.value) {
+    return blockingAlertText.value || "La OT esta bloqueada y no permite edicion hasta finalizar la OT anexada.";
+  }
+  return "La OT esta cerrada y no permite edicion.";
+}
+
 const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
 const closeRestrictionText = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value) return "";
@@ -2700,7 +2711,7 @@ function resetConsumoDraft(options?: { preserveWarehouse?: boolean; clearOptions
 
 function useProcedureSuggestedMaterial(item: any) {
   if (isReadOnlyWorkflow.value) {
-    ui.error("La OT está cerrada y no permite edición.");
+    ui.error(readOnlyWorkflowMessage());
     return;
   }
 
@@ -3517,7 +3528,7 @@ function submitTaskResponsible(mode: "add" | "set") {
   const task = taskResponsiblesTarget.value;
   if (!task) return;
   if (isReadOnlyWorkflow.value) {
-    ui.error("La OT está cerrada y no permite edición.");
+    ui.error(readOnlyWorkflowMessage());
     return;
   }
   const userId = String(taskResponsibleForm.user_id || "").trim();
@@ -3545,7 +3556,7 @@ function removeTaskResponsible(item: any) {
   const task = taskResponsiblesTarget.value;
   if (!task) return;
   if (isReadOnlyWorkflow.value) {
-    ui.error("La OT está cerrada y no permite edición.");
+    ui.error(readOnlyWorkflowMessage());
     return;
   }
   const userId = String(item?.user_id || "").trim();
@@ -3636,7 +3647,7 @@ function buildTaskEvidenceAttachmentRef(draftAttachment: any, requirement: strin
 
 async function handleTaskEvidenceFiles(task: any, requirement: string, value: File | File[] | null) {
   if (isReadOnlyWorkflow.value) {
-    ui.error("La OT está cerrada y no permite edición.");
+    ui.error(readOnlyWorkflowMessage());
     return;
   }
 
@@ -3723,7 +3734,7 @@ function unlinkAttachmentFromTaskEvidence(attachmentId?: string | null, draftAtt
 
 function removeTaskEvidenceAttachment(task: any, attachment: any) {
   if (isReadOnlyWorkflow.value) {
-    ui.error("La OT está cerrada y no permite edición.");
+    ui.error(readOnlyWorkflowMessage());
     return;
   }
   const payload = getTaskJsonObject(task);
@@ -4035,7 +4046,7 @@ function resolveNextLocalTaskOrder() {
 
 function addCustomTask() {
   if (isReadOnlyWorkflow.value) {
-    ui.error("La OT está cerrada y no permite edición.");
+    ui.error(readOnlyWorkflowMessage());
     return;
   }
   const planId = String(headerForm.plan_id || taskForm.plan_id || selectedProcedure.value?.plan_id || "").trim();
@@ -5109,11 +5120,19 @@ function ensureTabVisible() {
 }
 
 async function startProcess() {
+  if (isReadOnlyWorkflow.value) {
+    ui.error(readOnlyWorkflowMessage());
+    return;
+  }
   headerForm.status_workflow = "IN_PROGRESS";
   tab.value = "consumos";
 }
 
 async function prepareClose() {
+  if (isReadOnlyWorkflow.value) {
+    ui.error(readOnlyWorkflowMessage());
+    return;
+  }
   if (!canCloseOrVoidCurrent.value) {
     ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return;
@@ -5129,6 +5148,10 @@ async function saveHeader(
   showToast = true,
 ) {
   if (!canPersistHeader.value) return false;
+  if (isReadOnlyWorkflow.value) {
+    ui.error(readOnlyWorkflowMessage());
+    return false;
+  }
   if (
     editingId.value &&
     normalizedWorkflow.value === "CLOSED" &&
@@ -5295,6 +5318,10 @@ async function saveAll() {
   savingHeader.value = true;
   try {
     if (!canPersistHeader.value) return;
+    if (isReadOnlyWorkflow.value) {
+      ui.error(readOnlyWorkflowMessage());
+      return;
+    }
     if (
       editingId.value &&
       normalizedWorkflow.value === "CLOSED" &&
@@ -5567,7 +5594,7 @@ void persistEditedTasks;
 void persistDraftAttachments;
 
 async function deleteTask(item: any) {
-  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (item?._isDraft) {
     taskRows.value = taskRows.value.filter((row) => row.id !== item.id);
     return;
@@ -5583,7 +5610,7 @@ async function deleteTask(item: any) {
 }
 
 async function createAttachment(showToast = true) {
-  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
   const draftId = `draft-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -5610,7 +5637,7 @@ async function createAttachment(showToast = true) {
 }
 
 async function deleteAttachment(item: any) {
-  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (item?._isDraft) {
     unlinkAttachmentFromTaskEvidence(null, String(item?.id || ""));
     attachmentRows.value = attachmentRows.value.filter((row) => row.id !== item.id);
@@ -5632,7 +5659,7 @@ async function createConsumo(options?: {
   showToast?: boolean;
   throwOnError?: boolean;
 }) {
-  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
   const warehouseId = effectiveConsumoWarehouseId.value;
   if (!warehouseId || !consumoForm.producto_id || !consumoForm.cantidad) {
@@ -5695,7 +5722,7 @@ function closeMaterialIssueDialog() {
 
 async function submitMaterialIssue() {
   if (issuingMaterials.value) return;
-  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (!canRegisterRealIssue.value) {
     return ui.error(
       hasPendingInProcessSave.value
@@ -5748,7 +5775,7 @@ async function submitMaterialIssue() {
 
 async function registerScrapMaterials() {
   if (registeringScrap.value) return;
-  if (isReadOnlyWorkflow.value) return ui.error("La OT está cerrada y no permite edición.");
+  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar desechos.");
   if (!scrapForm.bodega_origen_id) {
     return ui.error("Debes seleccionar la bodega origen del material desechado.");
