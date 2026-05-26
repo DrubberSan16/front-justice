@@ -1737,6 +1737,8 @@ const requiresMandatoryTaskCaptureForCurrentSave = computed(
 const persistedWorkflow = computed(() =>
   normalizeWorkflowStatus(currentWorkOrderRecord.value?.status_workflow || ""),
 );
+const isPersistedBlocked = computed(() => persistedWorkflow.value === "BLOCKED");
+const isPersistedClosed = computed(() => persistedWorkflow.value === "CLOSED");
 const hasPendingInProcessSave = computed(
   () => !!editingId.value && normalizedWorkflow.value === "IN_PROGRESS" && persistedWorkflow.value !== "IN_PROGRESS",
 );
@@ -1812,7 +1814,7 @@ function canCloseOrVoidWorkOrder(item: any) {
 const canCloseOrVoidCurrent = computed(() =>
   editingId.value ? canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) : true,
 );
-const isReadOnlyWorkflow = computed(() => isBlocked.value || (isClosed.value && !closingFlow.value));
+const isReadOnlyWorkflow = computed(() => isPersistedBlocked.value || (isPersistedClosed.value && !closingFlow.value));
 const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
@@ -5156,7 +5158,7 @@ async function saveHeader(
     editingId.value &&
     normalizedWorkflow.value === "CLOSED" &&
     !canCloseOrVoidCurrent.value &&
-    !isClosed.value
+    persistedWorkflow.value !== "CLOSED"
   ) {
     ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return false;
@@ -5326,7 +5328,7 @@ async function saveAll() {
       editingId.value &&
       normalizedWorkflow.value === "CLOSED" &&
       !canCloseOrVoidCurrent.value &&
-      !isClosed.value
+      persistedWorkflow.value !== "CLOSED"
     ) {
       ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
       return;
