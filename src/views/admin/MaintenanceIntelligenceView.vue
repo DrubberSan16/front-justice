@@ -259,13 +259,11 @@
 
             <v-row dense class="mb-2">
               <v-col cols="12" lg="5">
-                <DashboardBarChartCard
+                <LubricantTrendChart
                   title="Consumo por rango"
                   subtitle="Evolución del aceite seleccionado según el periodo filtrado"
-                  :chip-label="`${oilTrendChartItems.length} puntos`"
-                  chip-color="success"
-                  :items="oilTrendChartItems"
-                  empty-text="No hay consumos del aceite seleccionado dentro del rango."
+                  :unit="oilQuantityUnitLabel"
+                  :points="oilTrendChartPoints"
                 />
               </v-col>
               <v-col cols="12" lg="7">
@@ -292,23 +290,19 @@
 
             <v-row dense class="mb-2">
               <v-col cols="12" lg="6">
-                <DashboardBarChartCard
+                <LubricantTrendChart
                   title="Costo por rango"
                   subtitle="Evolución del costo del aceite según el periodo filtrado"
-                  :chip-label="`${oilCostTrendChartItems.length} puntos`"
-                  chip-color="warning"
-                  :items="oilCostTrendChartItems"
-                  empty-text="No hay costos asociados al aceite seleccionado dentro del rango."
+                  unit="USD"
+                  :points="oilCostTrendChartPoints"
                 />
               </v-col>
               <v-col cols="12" lg="6">
-                <DashboardBarChartCard
+                <LubricantTrendChart
                   title="Picos diarios de consumo"
                   subtitle="Dias con mayor uso del aceite para detectar jornadas de alto consumo"
-                  :chip-label="`${oilDailyPeakChartItems.length} dias`"
-                  chip-color="secondary"
-                  :items="oilDailyPeakChartItems"
-                  empty-text="No hay consumos diarios visibles para este aceite en el rango."
+                  :unit="oilQuantityUnitLabel"
+                  :points="oilDailyUsageChartPoints"
                 />
               </v-col>
             </v-row>
@@ -964,13 +958,11 @@
 
           <v-row dense class="mb-2">
             <v-col cols="12" lg="6">
-              <DashboardBarChartCard
+              <LubricantTrendChart
                 title="Consumo por rango"
                 subtitle="Evolución del aceite seleccionado según el periodo filtrado"
-                :chip-label="`${oilTrendChartItems.length} puntos`"
-                chip-color="success"
-                :items="oilTrendChartItems"
-                empty-text="No hay consumos del aceite seleccionado dentro del rango."
+                :unit="oilQuantityUnitLabel"
+                :points="oilTrendChartPoints"
               />
             </v-col>
             <v-col cols="12" lg="6">
@@ -1004,23 +996,19 @@
               />
             </v-col>
             <v-col cols="12" lg="6">
-              <DashboardBarChartCard
+              <LubricantTrendChart
                 title="Costo por rango"
                 subtitle="Comportamiento del costo del aceite según el periodo filtrado"
-                :chip-label="`${oilCostTrendChartItems.length} puntos`"
-                chip-color="warning"
-                :items="oilCostTrendChartItems"
-                empty-text="No hay costos asociados al aceite seleccionado dentro del rango."
+                unit="USD"
+                :points="oilCostTrendChartPoints"
               />
             </v-col>
             <v-col cols="12" lg="6">
-              <DashboardBarChartCard
+              <LubricantTrendChart
                 title="Picos diarios de consumo"
                 subtitle="Dias donde el aceite registró su mayor salida para identificar picos de uso"
-                :chip-label="`${oilDailyPeakChartItems.length} dias`"
-                chip-color="info"
-                :items="oilDailyPeakChartItems"
-                empty-text="No hay consumos diarios visibles para este aceite en el rango."
+                :unit="oilQuantityUnitLabel"
+                :points="oilDailyUsageChartPoints"
               />
             </v-col>
           </v-row>
@@ -1177,6 +1165,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
+import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
 import { hasReportAccess } from "@/app/config/report-access";
@@ -1210,6 +1199,13 @@ type DashboardChartItem = {
   valueLabel?: string;
   helper?: string;
   color?: string;
+};
+
+type TrendChartPoint = {
+  codigo?: string | null;
+  fecha?: string | null;
+  valor?: number | null;
+  nivel_alerta?: string | null;
 };
 
 type SummaryState = {
@@ -1533,34 +1529,53 @@ const oilWorkOrderRows = computed<AnyRow[]>(() =>
 const oilEquipmentRows = computed<AnyRow[]>(() =>
   unwrap<AnyRow[]>(oilKpi.value?.by_equipment, []),
 );
-const oilTrendChartItems = computed<DashboardChartItem[]>(() =>
-  unwrap<AnyRow[]>(oilKpi.value?.trend, []).map((item: AnyRow) => ({
-    key: item.key,
-    label: item.label,
-    value: Number(item.cantidad || 0),
-    valueLabel: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
-    helper: `${item.total_ordenes ?? 0} OT`,
-  })),
+
+function resolveOilTrendLevel(value: number, average: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(average) || average <= 0) return "NORMAL";
+  if (value >= average * 1.5) return "ANORMAL";
+  if (value >= average * 1.15) return "PRECAUCION";
+  return "NORMAL";
+}
+
+function resolveOilTrendDate(item: AnyRow, index: number) {
+  return String(item.label || item.fecha_referencia_label || item.fecha_referencia || item.key || `P${index + 1}`);
+}
+
+function resolveOilTrendCode(item: AnyRow, index: number) {
+  const orders = item.total_ordenes ?? item.ordenes;
+  const movements = item.total_movimientos ?? item.movimientos;
+  if (orders != null) return `${orders} OT`;
+  if (movements != null) return `${movements} mov.`;
+  return item.key ? String(item.key) : `P${index + 1}`;
+}
+
+function buildOilTrendPoints(rows: AnyRow[], valueField: string): TrendChartPoint[] {
+  const numericRows = rows
+    .map((item, index) => ({
+      item,
+      index,
+      value: Number(item?.[valueField] || 0),
+    }))
+    .filter((item) => Number.isFinite(item.value));
+  const average =
+    numericRows.length > 0
+      ? numericRows.reduce((total, item) => total + item.value, 0) / numericRows.length
+      : 0;
+
+  return numericRows.map(({ item, index, value }) => ({
+    codigo: resolveOilTrendCode(item, index),
+    fecha: resolveOilTrendDate(item, index),
+    valor: value,
+    nivel_alerta: resolveOilTrendLevel(value, average),
+  }));
+}
+
+const oilTrendChartPoints = computed<TrendChartPoint[]>(() =>
+  buildOilTrendPoints(unwrap<AnyRow[]>(oilKpi.value?.trend, []), "cantidad"),
 );
-const oilCostTrendChartItems = computed<DashboardChartItem[]>(() =>
-  unwrap<AnyRow[]>(oilKpi.value?.statistics?.cost_trend, []).map((item: AnyRow) => ({
-    key: item.key,
-    label: item.label,
-    value: Number(item.costo || 0),
-    valueLabel: `$${formatDetailedNumber(item.costo, 2)}`,
-    helper: `${item.total_ordenes ?? 0} OT`,
-  })),
+const oilCostTrendChartPoints = computed<TrendChartPoint[]>(() =>
+  buildOilTrendPoints(unwrap<AnyRow[]>(oilKpi.value?.statistics?.cost_trend, []), "costo"),
 );
-const oilOrdersTrendChartItems = computed<DashboardChartItem[]>(() =>
-  unwrap<AnyRow[]>(oilKpi.value?.statistics?.orders_trend, []).map((item: AnyRow) => ({
-    key: item.key,
-    label: item.label,
-    value: Number(item.total_ordenes || 0),
-    valueLabel: `${item.total_ordenes ?? 0} OT`,
-    helper: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
-  })),
-);
-void oilOrdersTrendChartItems.value;
 const oilDailyUsageRows = computed<AnyRow[]>(() => {
   const grouped = new Map<string, AnyRow>();
   for (const item of oilWorkOrderRows.value) {
@@ -1593,14 +1608,11 @@ const oilDailyUsageRows = computed<AnyRow[]>(() => {
     }))
     .sort((a: AnyRow, b: AnyRow) => b.total_cantidad - a.total_cantidad || String(a.key).localeCompare(String(b.key)));
 });
-const oilDailyPeakChartItems = computed<DashboardChartItem[]>(() =>
-  oilDailyUsageRows.value.slice(0, 10).map((item: AnyRow) => ({
-    key: item.key,
-    label: item.fecha_referencia_label || item.key,
-    value: Number(item.total_cantidad || 0),
-    valueLabel: `${formatDetailedNumber(item.total_cantidad)} ${oilQuantityUnitLabel.value}`,
-    helper: `${item.total_ordenes ?? 0} OT · $${formatDetailedNumber(item.total_costo, 2)}`,
-  })),
+const oilDailyUsageChartPoints = computed<TrendChartPoint[]>(() =>
+  buildOilTrendPoints(
+    [...oilDailyUsageRows.value].sort((a: AnyRow, b: AnyRow) => String(a.key).localeCompare(String(b.key))),
+    "total_cantidad",
+  ),
 );
 const oilPeakDay = computed<AnyRow | null>(() => oilDailyUsageRows.value[0] ?? null);
 const oilPeakDayDetailRows = computed<AnyRow[]>(() =>

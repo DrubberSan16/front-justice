@@ -260,36 +260,6 @@
         </div>
       </v-card>
 
-      <v-card rounded="xl" class="pa-4 enterprise-surface">
-        <div class="text-subtitle-1 font-weight-bold mb-3">Resumen estadistico por bloque</div>
-        <div class="chart-grid-inner">
-          <DashboardBarChartCard
-            title="Desgaste del equipo"
-            subtitle="Indicadores ordenados por intensidad promedio del periodo"
-            chip-label="Comparativo"
-            chip-color="primary"
-            empty-text="No hay indicadores de desgaste para este rango."
-            :items="buildComparisonMetricBarItems(comparisonCharts.desgaste)"
-          />
-          <DashboardBarChartCard
-            title="Contaminacion del lubricante"
-            subtitle="Indicadores ordenados por intensidad promedio del periodo"
-            chip-label="Comparativo"
-            chip-color="warning"
-            empty-text="No hay indicadores de contaminacion para este rango."
-            :items="buildComparisonMetricBarItems(comparisonCharts.contaminacion)"
-          />
-          <DashboardBarChartCard
-            title="Estado del lubricante"
-            subtitle="Indicadores ordenados por intensidad promedio del periodo"
-            chip-label="Comparativo"
-            chip-color="success"
-            empty-text="No hay indicadores de estado para este rango."
-            :items="buildComparisonMetricBarItems(comparisonCharts.estado)"
-          />
-        </div>
-      </v-card>
-
       <div class="charts-grid">
         <v-card
           v-for="section in dashboard.chart_sections ?? []"
@@ -299,15 +269,13 @@
         >
           <div class="text-subtitle-1 font-weight-bold mb-3">{{ section.title }}</div>
           <div class="chart-grid-inner">
-            <DashboardBarChartCard
+            <LubricantTrendChart
               v-for="metric in section.metrics"
               :key="metric.key"
               :title="metric.label"
               :subtitle="metric.group_label"
-              :chip-label="buildTrendChipLabel(metric)"
-              chip-color="info"
-              empty-text="No hay muestras numericas para este indicador."
-              :items="buildTrendMetricBarItems(metric)"
+              :unit="metric.unit"
+              :points="metric.points"
             />
             <div v-if="!section.metrics?.length" class="dashboard-state dashboard-state--compact">
               Sin metricas para este bloque.
@@ -320,159 +288,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
+import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
 
-type MetricPoint = {
-  key: string;
-  codigo: string;
-  fecha: string;
-  level: string;
-  value: number;
-  index: number;
-};
-
-type DashboardBarItem = {
-  key: string;
-  label: string;
-  value: number;
-  valueLabel: string;
-  helper: string;
-  color: string;
-};
-
-const metricPalette = [
-  "linear-gradient(90deg, #2f6cab 0%, #7ab8ff 100%)",
-  "linear-gradient(90deg, #0f8f72 0%, #6de3bf 100%)",
-  "linear-gradient(90deg, #e17a00 0%, #ffca6a 100%)",
-  "linear-gradient(90deg, #a245d8 0%, #dd9cff 100%)",
-  "linear-gradient(90deg, #e24f5f 0%, #ff9aa5 100%)",
-  "linear-gradient(90deg, #4558d8 0%, #9db0ff 100%)",
-];
-
-const props = defineProps<{
+defineProps<{
   dashboard: Record<string, any> | null;
   loading?: boolean;
   error?: string | null;
 }>();
-
-const comparisonCharts = computed(() => {
-  const sections = Array.isArray(props.dashboard?.chart_sections)
-    ? props.dashboard.chart_sections
-    : [];
-  const findMetrics = (key: string) =>
-    (sections.find((section: Record<string, any>) => section.key === key)?.metrics || []) as Array<
-      Record<string, any>
-    >;
-
-  return {
-    desgaste: findMetrics("desgaste"),
-    contaminacion: findMetrics("contaminacion"),
-    estado: findMetrics("estado"),
-  };
-});
-
-function formatMetricNumber(value: unknown) {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return "0";
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: numericValue % 1 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(numericValue);
-}
-
-function formatMetricValue(value: unknown, unit?: string | null) {
-  const numericValue = Number(value);
-  if (!Number.isFinite(numericValue)) return "N/D";
-  return unit ? `${formatMetricNumber(numericValue)} ${unit}` : formatMetricNumber(numericValue);
-}
-
-function getMetricColor(index: number) {
-  return metricPalette[index % metricPalette.length] || metricPalette[0] || "linear-gradient(90deg, #2f6cab 0%, #7ab8ff 100%)";
-}
-
-function normalizeMetricPoints(points: unknown): MetricPoint[] {
-  if (!Array.isArray(points)) return [];
-
-  return points
-    .map((point, index) => {
-      const source = point as Record<string, any>;
-      const value = Number(source?.valor);
-      if (!Number.isFinite(value)) return null;
-
-      return {
-        key: String(source?.codigo || source?.fecha || index),
-        codigo: source?.codigo ? String(source.codigo) : "",
-        fecha: source?.fecha ? String(source.fecha) : "",
-        level: String(source?.nivel_alerta || "").trim().toUpperCase(),
-        value,
-        index,
-      };
-    })
-    .filter(Boolean) as MetricPoint[];
-}
-
-function buildTrendChipLabel(metric: Record<string, any>) {
-  const totalPoints = normalizeMetricPoints(metric?.points).length;
-  return totalPoints ? `${totalPoints} muestras` : "Sin muestras";
-}
-
-function buildTrendMetricBarItems(metric: Record<string, any>): DashboardBarItem[] {
-  const unit = metric?.unit ? String(metric.unit) : "";
-  const points = normalizeMetricPoints(metric?.points)
-    .sort((left, right) => right.value - left.value)
-    .slice(0, 8);
-
-  return points.map((point, index) => {
-    const helperParts = [
-      point.codigo || "",
-      point.level ? `Estado: ${point.level}` : "",
-    ].filter(Boolean);
-
-    return {
-      key: `${metric?.key || metric?.label || "metric"}-${point.key}-${index}`,
-      label: point.fecha || point.codigo || `Muestra ${point.index + 1}`,
-      value: point.value,
-      valueLabel: formatMetricValue(point.value, unit),
-      helper: helperParts.join(" - "),
-      color: getMetricColor(index),
-    };
-  });
-}
-
-function buildComparisonMetricBarItems(metrics: unknown): DashboardBarItem[] {
-  if (!Array.isArray(metrics)) return [];
-
-  const items: DashboardBarItem[] = [];
-
-  metrics.forEach((metric, index) => {
-    const source = metric as Record<string, any>;
-    const points = normalizeMetricPoints(source?.points);
-    if (!points.length) return;
-
-    const initialPoint = points[0] as MetricPoint;
-    const peakPoint = points.reduce((best, point) => (point.value > best.value ? point : best), initialPoint);
-    const latestPoint = points[points.length - 1] as MetricPoint;
-    const averageValue = points.reduce((accumulator, point) => accumulator + point.value, 0) / points.length;
-
-    items.push({
-      key: String(source?.key || source?.label || index),
-      label: String(source?.label || `Indicador ${index + 1}`),
-      value: averageValue,
-      valueLabel: formatMetricValue(averageValue, source?.unit),
-      helper: [
-        `Pico ${formatMetricValue(peakPoint.value, source?.unit)}`,
-        peakPoint.fecha || "",
-        `Ultimo ${formatMetricValue(latestPoint.value, source?.unit)}`,
-      ]
-        .filter(Boolean)
-        .join(" - "),
-      color: getMetricColor(index),
-    });
-  });
-
-  return items.sort((left, right) => right.value - left.value);
-}
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();
