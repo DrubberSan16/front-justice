@@ -117,6 +117,14 @@
                 Abrir modulo
               </v-btn>
               <v-btn
+                variant="tonal"
+                prepend-icon="mdi-file-pdf-box"
+                :loading="exportingPdf"
+                @click="downloadManualPdf(activeManual)"
+              >
+                Descargar PDF
+              </v-btn>
+              <v-btn
                 variant="text"
                 prepend-icon="mdi-check-all"
                 @click="markChecklist(activeManual, true)"
@@ -302,6 +310,7 @@ import { computed, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { useUiStore } from "@/app/stores/ui.store";
 import {
   getOperativeUserManualDefinition,
   type UserManualDefinition,
@@ -309,15 +318,21 @@ import {
 } from "@/app/config/user-manual";
 import type { MenuNode } from "@/app/types/menu.types";
 import { findMenuRouteByValue } from "@/app/utils/menu-route-catalog";
+import {
+  downloadReportPdf,
+  type ReportDefinition,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 const router = useRouter();
 const auth = useAuthStore();
 const menu = useMenuStore();
+const ui = useUiStore();
 
 const search = ref("");
 const selectedCategory = ref("Todas");
 const activeManualId = ref("");
 const checklistState = ref<Record<string, boolean>>({});
+const exportingPdf = ref(false);
 
 function flattenMenu(nodes: MenuNode[]): MenuNode[] {
   return (nodes ?? []).flatMap((node) => [node, ...flattenMenu(node.children ?? [])]);
@@ -445,6 +460,96 @@ function moduleInitials(title: string) {
 
 function sortedFields(manual: UserManualDefinition): UserManualFieldGuide[] {
   return [...manual.fields].sort((left, right) => Number(right.required) - Number(left.required));
+}
+
+function manualFileSlug(value: string) {
+  return String(value || "manual")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase() || "manual";
+}
+
+function joinManualList(items: string[]) {
+  return items.filter(Boolean).join(" | ");
+}
+
+function buildManualPdfReport(manual: UserManualDefinition): ReportDefinition {
+  const relatedTitles = resolvedRelatedManuals(manual).map((item) => item.title);
+  return {
+    fileName: `manual_usuario_${manualFileSlug(manual.title)}`,
+    title: `Manual de usuario - ${manual.title}`,
+    subtitle: manual.summary,
+    orientation: "landscape",
+    summary: [
+      { label: "Modulo", value: manual.title },
+      { label: "Categoria", value: manual.category },
+      { label: "Pasos", value: manual.flow.length },
+      { label: "Campos", value: manual.fields.length },
+      { label: "Checklist", value: `${checklistProgress(manual)}/${manual.checklist.length}` },
+    ],
+    sheets: [
+      {
+        name: "Resumen",
+        rows: [
+          {
+            modulo: manual.title,
+            categoria: manual.category,
+            proposito: manual.purpose,
+            requisitos_previos: joinManualList(manual.prerequisites),
+            modulos_relacionados: joinManualList(relatedTitles),
+          },
+        ],
+      },
+      {
+        name: "Flujo",
+        rows: manual.flow.map((step, index) => ({
+          orden: index + 1,
+          paso: step.title,
+          descripcion: step.description,
+          campos_acciones: joinManualList(step.fields),
+          verificaciones: joinManualList(step.checks),
+        })),
+      },
+      {
+        name: "Campos",
+        rows: sortedFields(manual).map((field) => ({
+          campo: field.label,
+          tipo: field.type,
+          requerido: field.required ? "Si" : "No",
+          nota: field.note,
+        })),
+      },
+      {
+        name: "Checklist",
+        rows: manual.checklist.map((item, index) => ({
+          estado: isChecklistChecked(manual, index) ? "Completado" : "Pendiente",
+          item,
+        })),
+      },
+      {
+        name: "Buenas practicas",
+        rows: [
+          ...manual.tips.map((item) => ({ tipo: "Buena practica", detalle: item })),
+          ...manual.warnings.map((item) => ({ tipo: "Alerta", detalle: item })),
+        ],
+      },
+    ],
+  };
+}
+
+async function downloadManualPdf(manual: UserManualDefinition | null) {
+  if (!manual) return;
+  exportingPdf.value = true;
+  try {
+    await downloadReportPdf(buildManualPdfReport(manual));
+    ui.success("Manual descargado en PDF.");
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo descargar el manual en PDF.");
+  } finally {
+    exportingPdf.value = false;
+  }
 }
 
 function focusManual(routeName: string) {

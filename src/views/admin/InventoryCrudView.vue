@@ -23,6 +23,15 @@
           Recargar
         </v-btn>
         <v-btn
+          v-if="isStockBodegaModule"
+          variant="tonal"
+          prepend-icon="mdi-file-excel"
+          :loading="exportingStock"
+          @click="exportStockWarehouseXlsx"
+        >
+          Descargar XLSX
+        </v-btn>
+        <v-btn
           v-if="canCreate"
           color="primary"
           prepend-icon="mdi-plus"
@@ -337,6 +346,10 @@ import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { resolveProductDisplayName } from "@/app/utils/product-display";
+import {
+  downloadReportExcel,
+  type ReportDefinition,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -362,6 +375,7 @@ const records = ref<any[]>([]);
 const loading = ref(false);
 const initialLoading = ref(false);
 const saving = ref(false);
+const exportingStock = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
 const stockWarehouseFilter = ref("");
@@ -859,6 +873,126 @@ const rows = computed(() => {
       return out;
     });
 });
+
+function exportDateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function resolveRelationTitle(fieldKey: string, value: unknown) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return "";
+  return (
+    relationOptions.value[fieldKey]?.find((option) => String(option.value) === normalized)?.title ||
+    normalized
+  );
+}
+
+function stockWarehouseLabel(row: any) {
+  return (
+    row?.bodega_label ||
+    [row?.bodega_codigo, row?.bodega_nombre].filter(Boolean).join(" - ") ||
+    resolveRelationTitle("bodega_id", row?.bodega_id)
+  );
+}
+
+function stockProductLabel(row: any) {
+  return (
+    row?.producto_label ||
+    [row?.producto_codigo, row?.producto_nombre].filter(Boolean).join(" - ") ||
+    resolveRelationTitle("producto_id", row?.producto_id)
+  );
+}
+
+function stockExportParams() {
+  return {
+    search: search.value.trim() || undefined,
+    bodega_id: isStockBodegaModule.value
+      ? stockWarehouseFilter.value || undefined
+      : undefined,
+  };
+}
+
+async function fetchAllStockWarehouseRows() {
+  if (!moduleConfig.value) return [] as any[];
+  const limit = 100;
+  const params = stockExportParams();
+  const firstPage = await fetchPaginatedResource(moduleConfig.value.endpoint, params, {
+    page: 1,
+    limit,
+  });
+  const allRows = [...firstPage.data];
+  const totalPages = Number(firstPage.pagination.totalPages || 1);
+  for (let page = 2; page <= totalPages; page += 1) {
+    const response = await fetchPaginatedResource(moduleConfig.value.endpoint, params, {
+      page,
+      limit,
+    });
+    allRows.push(...response.data);
+  }
+  return allRows;
+}
+
+function buildStockWarehouseReport(sourceRows: any[]): ReportDefinition {
+  const warehouseFilterLabel = stockWarehouseFilter.value
+    ? resolveRelationTitle("bodega_id", stockWarehouseFilter.value)
+    : "Todas las bodegas";
+  const reportRows = sourceRows.map((row) => ({
+    bodega: stockWarehouseLabel(row),
+    material: stockProductLabel(row),
+    condicion: row?.es_usado ? "Usado" : "Nuevo",
+    stock_actual: Number(row?.stock_actual || 0),
+    stock_minimo: Number(row?.stock_min_bodega || 0),
+    stock_maximo: Number(row?.stock_max_bodega || 0),
+    stock_fisico: Number(row?.stock_fisico || 0),
+    diferencia: Number(row?.diferencia || 0),
+    estado: row?.status || "",
+  }));
+  return {
+    fileName: `stock_bodega_${exportDateStamp()}`,
+    title: "Stock por bodega",
+    subtitle: `Exportacion segun filtros aplicados. Bodega: ${warehouseFilterLabel}.`,
+    orientation: "landscape",
+    summary: [
+      { label: "Bodega", value: warehouseFilterLabel },
+      { label: "Busqueda", value: search.value.trim() || "Sin busqueda" },
+      { label: "Registros", value: reportRows.length },
+      { label: "Stock total", value: reportRows.reduce((acc, item) => acc + Number(item.stock_actual || 0), 0) },
+    ],
+    sheets: [
+      {
+        name: "Stock",
+        rows: reportRows,
+        emptyMessage: "Sin stock para los filtros seleccionados.",
+        columns: [
+          { key: "bodega", header: "Bodega", width: 28 },
+          { key: "material", header: "Material", width: 32 },
+          { key: "condicion", header: "Condicion", width: 12 },
+          { key: "stock_actual", header: "Stock actual", width: 14, format: "number" },
+          { key: "stock_minimo", header: "Stock minimo", width: 14, format: "number" },
+          { key: "stock_maximo", header: "Stock maximo", width: 14, format: "number" },
+          { key: "stock_fisico", header: "Stock fisico", width: 14, format: "number" },
+          { key: "diferencia", header: "Diferencia", width: 14, format: "number" },
+          { key: "estado", header: "Estado", width: 12 },
+        ],
+      },
+    ],
+  };
+}
+
+async function exportStockWarehouseXlsx() {
+  if (!isStockBodegaModule.value || !moduleConfig.value) return;
+  exportingStock.value = true;
+  try {
+    await ensureFormRelationsLoaded();
+    const exportRows = await fetchAllStockWarehouseRows();
+    await downloadReportExcel(buildStockWarehouseReport(exportRows));
+    ui.success("Stock por bodega descargado en XLSX.");
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo descargar el stock por bodega.");
+  } finally {
+    exportingStock.value = false;
+  }
+}
 
 function sanitizePayload() {
   const cfg = moduleConfig.value;

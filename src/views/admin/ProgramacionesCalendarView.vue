@@ -771,6 +771,18 @@
                 Activa esta opciÃ³n para cambiar solo la fecha de la OT mensual y registrar el motivo de reprogramaciÃ³n.
               </div>
             </v-col>
+            <v-col v-if="monthlyCellIsReprogramming" cols="12" md="6">
+              <v-text-field
+                v-model="monthlyCell.horometro_actual"
+                type="number"
+                min="0"
+                step="0.01"
+                label="Horometro actual del equipo"
+                hint="Se actualiza en el equipo y en la OT vinculada."
+                persistent-hint
+                variant="outlined"
+              />
+            </v-col>
             <v-col cols="12" md="6">
               <v-text-field
                 :model-value="monthlyCellTotalHoursLabel"
@@ -1425,6 +1437,7 @@ const monthlyCell = reactive<any>({
   equipo_codigo: "",
   work_order_id: "",
   total_horas_ot: null,
+  horometro_actual: "",
   original_fecha_programada: "",
   fecha_programada: "",
   valor_crudo: "",
@@ -2136,6 +2149,38 @@ function extractWorkOrderExecutionHours(workOrder: any) {
     ?? null;
 }
 
+function findEquipmentById(id: unknown) {
+  const normalized = String(id || "").trim();
+  if (!normalized) return null;
+  return equipmentCatalog.value.find((item: any) => String(item?.id || "") === normalized) ?? null;
+}
+
+function resolveCurrentHorometerForMonthlyCell(source?: any | null) {
+  const payload = normalizePayload(source?.payload_json);
+  const workOrderId = String(
+    payload?.work_order_id ||
+      source?.work_order_id ||
+      monthlyCell.work_order_id ||
+      "",
+  ).trim();
+  const workOrder = workOrderCatalog.value.find(
+    (item: any) => String(item?.id || "") === workOrderId,
+  );
+  const workOrderPayload = normalizePayload(workOrder?.valor_json || workOrder?.payload_json);
+  const equipment = findEquipmentById(
+    source?.equipo_id ||
+      workOrder?.equipment_id ||
+      monthlyCell.equipo_id ||
+      "",
+  );
+  return numericOrNull(payload?.horometro_actual)
+    ?? numericOrNull(workOrderPayload?.horometro_actual)
+    ?? numericOrNull(workOrder?.horometro_actual)
+    ?? numericOrNull(workOrder?.equipment_horometro_actual)
+    ?? numericOrNull(equipment?.horometro_actual)
+    ?? null;
+}
+
 function extractWorkOrderExecutionDate(workOrder: any) {
   return String(
     workOrder?.closed_at
@@ -2318,6 +2363,9 @@ watch(
         monthlyCell.equipo_codigo;
       monthlyCell.procedimiento_id =
         resolveProcedureIdFromWorkOrder(selected) || monthlyCell.procedimiento_id;
+      if (!String(monthlyCell.horometro_actual || "").trim()) {
+        monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(selected));
+      }
     }
     if (!value) {
       monthlyCell.total_horas_ot = null;
@@ -3371,6 +3419,7 @@ function resetMonthlyCell() {
   monthlyCell.equipo_codigo = "";
   monthlyCell.work_order_id = "";
   monthlyCell.total_horas_ot = null;
+  monthlyCell.horometro_actual = "";
   monthlyCell.original_fecha_programada = "";
   monthlyCell.fecha_programada = selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date());
   monthlyCell.valor_crudo = "";
@@ -3430,6 +3479,7 @@ function openMonthlyCellEdit(item: any) {
   monthlyCell.equipo_codigo = item.equipo_codigo || "";
   monthlyCell.work_order_id = item.payload_json?.work_order_id || item.work_order_id || "";
   monthlyCell.total_horas_ot = item.payload_json?.total_horas_ot ?? item.payload_json?.horas_programadas ?? null;
+  monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(item));
   monthlyCell.original_fecha_programada = item.fecha_programada || "";
   monthlyCell.fecha_programada = item.fecha_programada || "";
   monthlyCell.valor_crudo = item.valor_crudo || "";
@@ -3543,6 +3593,17 @@ async function saveMonthlyCell() {
     ui.error("Debes indicar la descripción del porqué se reprograma el bloque mensual.");
     return;
   }
+  const monthlyReprogramHorometer = monthlyCellIsReprogramming.value
+    ? numericOrNull(monthlyCell.horometro_actual)
+    : null;
+  if (monthlyCellIsReprogramming.value && monthlyReprogramHorometer === null) {
+    ui.error("Debes ingresar el horometro actual del equipo.");
+    return;
+  }
+  if (monthlyReprogramHorometer !== null && monthlyReprogramHorometer < 0) {
+    ui.error("El horometro actual no puede ser negativo.");
+    return;
+  }
   const monthlyWorkOrderConflict = findScheduledWorkOrderConflict({
     workOrderId: monthlyCell.work_order_id || null,
     date: monthlyCell.fecha_programada,
@@ -3564,7 +3625,13 @@ async function saveMonthlyCell() {
         ...buildAuditPayload(Boolean(monthlyCell.id)),
         work_order_id: monthlyCell.work_order_id || null,
         total_horas_ot: monthlyCell.total_horas_ot ?? null,
+        ...(monthlyReprogramHorometer !== null
+          ? { horometro_actual: monthlyReprogramHorometer }
+          : {}),
       },
+      ...(monthlyReprogramHorometer !== null
+        ? { horometro_actual: monthlyReprogramHorometer }
+        : {}),
     };
     const programacionPayloadJson =
       monthlyCell.source_payload_json && typeof monthlyCell.source_payload_json === "object"
@@ -3578,6 +3645,7 @@ async function saveMonthlyCell() {
           fecha_anterior: monthlyCell.original_fecha_programada || null,
           fecha_nueva: monthlyCell.fecha_programada || null,
           observacion: reason,
+          horometro_actual: monthlyReprogramHorometer,
           usuario: currentUserName(),
           usuario_email: currentUserEmail() || null,
           fecha_transaccion: new Date().toISOString(),
@@ -3590,10 +3658,16 @@ async function saveMonthlyCell() {
           equipo_id: monthlyCell.equipo_id,
           procedimiento_id: monthlyCell.procedimiento_id || undefined,
           proxima_fecha: monthlyCell.fecha_programada,
+          ...(monthlyReprogramHorometer !== null
+            ? { horometro_actual: monthlyReprogramHorometer }
+            : {}),
           payload_json: {
             ...programacionPayloadJson,
             ...buildAuditPayload(true),
             programacion_mensual_id: monthlyImportId || programacionPayloadJson.programacion_mensual_id || null,
+            ...(monthlyReprogramHorometer !== null
+              ? { horometro_actual: monthlyReprogramHorometer }
+              : {}),
             reprogramacion_actual: historyEntry,
             reprogramacion_observacion: reason,
             reprogramaciones_historial: [...previousHistory, historyEntry],
