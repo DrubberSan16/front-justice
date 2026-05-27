@@ -241,11 +241,6 @@
                 <div class="text-caption text-medium-emphasis">Consumo total del rango</div>
               </div>
               <div class="indicator-tile">
-                <div class="text-caption text-medium-emphasis">Costo asociado</div>
-                <div class="text-h6 font-weight-bold">${{ formatDetailedNumber(oilKpi?.totals?.total_costo, 2) }}</div>
-                <div class="text-caption text-medium-emphasis">Subtotal acumulado en consumos</div>
-              </div>
-              <div class="indicator-tile">
                 <div class="text-caption text-medium-emphasis">Promedio por equipo</div>
                 <div class="text-h6 font-weight-bold">{{ formatDetailedNumber(oilKpi?.totals?.promedio_por_equipo) }}</div>
                 <div class="text-caption text-medium-emphasis">Promedio por equipo visible</div>
@@ -267,23 +262,19 @@
                 />
               </v-col>
               <v-col cols="12" lg="7">
-                <DashboardBarChartCard
+                <LubricantTrendChart
                   title="Consumo por equipo"
                   subtitle="Equipos que más aceite registraron en órdenes de trabajo"
-                  :chip-label="`${oilEquipmentChartItems.length} equipos`"
-                  chip-color="primary"
-                  :items="oilEquipmentChartItems"
-                  empty-text="No existen equipos con consumo de aceite en este rango."
+                  :unit="oilQuantityUnitLabel"
+                  :points="oilEquipmentChartPoints"
                 />
               </v-col>
               <v-col cols="12" lg="12">
-                <DashboardBarChartCard
+                <LubricantTrendChart
                   title="Consumo por OT ejecutada"
                   subtitle="Ordenes de trabajo del rango con su total consumido del aceite seleccionado"
-                  :chip-label="`${oilWorkOrderChartItems.length} OT`"
-                  chip-color="info"
-                  :items="oilWorkOrderChartItems"
-                  empty-text="No existen ordenes ejecutadas con consumo para este aceite en el rango."
+                  :unit="oilQuantityUnitLabel"
+                  :points="oilWorkOrderChartPoints"
                 />
               </v-col>
             </v-row>
@@ -1538,10 +1529,19 @@ function resolveOilTrendLevel(value: number, average: number) {
 }
 
 function resolveOilTrendDate(item: AnyRow, index: number) {
-  return String(item.label || item.fecha_referencia_label || item.fecha_referencia || item.key || `P${index + 1}`);
+  return String(
+    item.label ||
+      item.fecha_referencia_label ||
+      item.fecha_referencia ||
+      item.equipment_label ||
+      item.work_order_code ||
+      item.key ||
+      `P${index + 1}`,
+  );
 }
 
 function resolveOilTrendCode(item: AnyRow, index: number) {
+  if (item.work_order_code) return String(item.work_order_code);
   const orders = item.total_ordenes ?? item.ordenes;
   const movements = item.total_movimientos ?? item.movimientos;
   if (orders != null) return `${orders} OT`;
@@ -1614,24 +1614,31 @@ const oilDailyUsageChartPoints = computed<TrendChartPoint[]>(() =>
     "total_cantidad",
   ),
 );
+const oilEquipmentChartPoints = computed<TrendChartPoint[]>(() =>
+  buildOilTrendPoints(
+    oilEquipmentRows.value
+      .slice()
+      .sort((left, right) => Number(right.total_cantidad || 0) - Number(left.total_cantidad || 0)),
+    "total_cantidad",
+  ),
+);
+const oilWorkOrderChartPoints = computed<TrendChartPoint[]>(() =>
+  buildOilTrendPoints(
+    oilWorkOrderRows.value
+      .slice()
+      .sort((left, right) => {
+        const leftDate = String(left.fecha_referencia || left.fecha_referencia_label || "");
+        const rightDate = String(right.fecha_referencia || right.fecha_referencia_label || "");
+        return leftDate.localeCompare(rightDate) || String(left.work_order_code || "").localeCompare(String(right.work_order_code || ""));
+      }),
+    "cantidad",
+  ),
+);
 const oilPeakDay = computed<AnyRow | null>(() => oilDailyUsageRows.value[0] ?? null);
 const oilPeakDayDetailRows = computed<AnyRow[]>(() =>
   oilPeakDay.value?.details
     ? [...oilPeakDay.value.details].sort((a: AnyRow, b: AnyRow) => Number(b.cantidad || 0) - Number(a.cantidad || 0))
     : [],
-);
-const oilWorkOrderChartItems = computed<DashboardChartItem[]>(() =>
-  oilWorkOrderRows.value
-    .slice()
-    .sort((left, right) => Number(right.cantidad || 0) - Number(left.cantidad || 0))
-    .slice(0, 8)
-    .map((item: AnyRow) => ({
-      key: item.work_order_id || item.work_order_code,
-      label: item.work_order_code || "OT",
-      value: Number(item.cantidad || 0),
-      valueLabel: `${formatDetailedNumber(item.cantidad)} ${oilQuantityUnitLabel.value}`,
-      helper: item.equipment_label || item.fecha_referencia_label || "",
-    })),
 );
 const oilEquipmentChartItems = computed<DashboardChartItem[]>(() =>
   oilEquipmentRows.value.slice(0, 6).map((item: AnyRow) => ({
