@@ -397,9 +397,48 @@
               readonly
             />
           </v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.causa" label="Causa" variant="outlined" rows="3" auto-grow hint="Obligatorio" persistent-hint :disabled="isReadOnlyWorkflow" /></v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.accion" label="Acción" variant="outlined" rows="3" auto-grow hint="Obligatorio" persistent-hint :disabled="isReadOnlyWorkflow" /></v-col>
-          <v-col cols="12" md="4"><v-textarea v-model="headerForm.prevencion" label="Prevención" variant="outlined" rows="3" auto-grow hint="Obligatorio" persistent-hint :disabled="isReadOnlyWorkflow" /></v-col>
+          <v-col cols="12" md="4">
+            <v-textarea
+              v-model="headerForm.causa"
+              label="Causa"
+              variant="outlined"
+              rows="3"
+              auto-grow
+              hint="Obligatorio"
+              persistent-hint
+              :disabled="isReadOnlyWorkflow"
+              :rules="[requiredWorkOrderOutcomeRule('Causa')]"
+              :error-messages="workOrderOutcomeError('causa', 'Causa')"
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-textarea
+              v-model="headerForm.accion"
+              label="Acción"
+              variant="outlined"
+              rows="3"
+              auto-grow
+              hint="Obligatorio"
+              persistent-hint
+              :disabled="isReadOnlyWorkflow"
+              :rules="[requiredWorkOrderOutcomeRule('Acción')]"
+              :error-messages="workOrderOutcomeError('accion', 'Acción')"
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-textarea
+              v-model="headerForm.prevencion"
+              label="Prevención"
+              variant="outlined"
+              rows="3"
+              auto-grow
+              hint="Obligatorio"
+              persistent-hint
+              :disabled="isReadOnlyWorkflow"
+              :rules="[requiredWorkOrderOutcomeRule('Prevención')]"
+              :error-messages="workOrderOutcomeError('prevencion', 'Prevención')"
+            />
+          </v-col>
           </v-row>
         </v-card>
 
@@ -1531,6 +1570,7 @@ const localIssues = ref<any[]>([]);
 const localScraps = ref<any[]>([]);
 const localHistory = ref<any[]>([]);
 const persistedHeaderSnapshot = ref("");
+const workOrderOutcomeValidationTouched = ref(false);
 
 const headerForm = reactive<any>({
   code: "",
@@ -4389,18 +4429,35 @@ function buildAutoHeaderValues() {
   return { generatedTitle, generatedType };
 }
 
+type WorkOrderOutcomeField = "causa" | "accion" | "prevencion";
+
+function requiredWorkOrderOutcomeRule(label: string) {
+  return (value: unknown) =>
+    Boolean(String(value ?? "").trim()) || `${label} es obligatorio.`;
+}
+
+function workOrderOutcomeError(key: WorkOrderOutcomeField, label: string) {
+  if (!workOrderOutcomeValidationTouched.value) return [];
+  return String(headerForm[key] || "").trim()
+    ? []
+    : [`${label} es obligatorio.`];
+}
+
 function validateRequiredWorkOrderOutcomeFields() {
+  workOrderOutcomeValidationTouched.value = true;
   const requiredFields = [
     { key: "causa", label: "Causa" },
     { key: "accion", label: "Acción" },
     { key: "prevencion", label: "Prevención" },
   ] as const;
 
-  for (const field of requiredFields) {
-    if (!String(headerForm[field.key] || "").trim()) {
-      ui.error(`${field.label} es obligatoria.`);
-      return false;
-    }
+  const missingFields = requiredFields.filter(
+    (field) => !String(headerForm[field.key] || "").trim(),
+  );
+
+  if (missingFields.length) {
+    ui.error("Completa los campos obligatorios resaltados en la cabecera de la OT.");
+    return false;
   }
 
   return true;
@@ -4913,6 +4970,7 @@ const rows = computed(() => {
 });
 
 function resetAllForms() {
+  workOrderOutcomeValidationTouched.value = false;
   currentWorkOrderRecord.value = null;
   headerForm.code = "";
   headerForm.type = "MANTENIMIENTO";
