@@ -21,6 +21,16 @@
             <v-chip color="success" variant="tonal" label>
               {{ completedChecklistCount }} checklist completados
             </v-chip>
+            <v-btn
+              color="primary"
+              variant="tonal"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="exportingPdf"
+              :disabled="!accessibleManuals.length"
+              @click="downloadManualPdf"
+            >
+              Descargar manual PDF
+            </v-btn>
           </div>
         </div>
 
@@ -115,14 +125,6 @@
                 @click="goToModule(activeManual.routeName)"
               >
                 Abrir modulo
-              </v-btn>
-              <v-btn
-                variant="tonal"
-                prepend-icon="mdi-file-pdf-box"
-                :loading="exportingPdf"
-                @click="downloadManualPdf(activeManual)"
-              >
-                Descargar PDF
               </v-btn>
               <v-btn
                 variant="text"
@@ -318,10 +320,6 @@ import {
 } from "@/app/config/user-manual";
 import type { MenuNode } from "@/app/types/menu.types";
 import { findMenuRouteByValue } from "@/app/utils/menu-route-catalog";
-import {
-  downloadReportPdf,
-  type ReportDefinition,
-} from "@/app/utils/maintenance-intelligence-reports";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -471,80 +469,286 @@ function manualFileSlug(value: string) {
     .toLowerCase() || "manual";
 }
 
-function joinManualList(items: string[]) {
-  return items.filter(Boolean).join(" | ");
+const manualPdfTextReplacements: Array<[string, string]> = [
+  ["ÃƒÂ¡", "a"],
+  ["ÃƒÂ©", "e"],
+  ["ÃƒÂ­", "i"],
+  ["ÃƒÂ³", "o"],
+  ["ÃƒÂº", "u"],
+  ["ÃƒÂ±", "n"],
+  ["Ãƒâ€˜", "N"],
+  ["Ã‚Â·", "-"],
+  ["Ã‚", ""],
+];
+
+function pdfText(value: unknown) {
+  let text = String(value ?? "");
+  for (const [from, to] of manualPdfTextReplacements) {
+    text = text.split(from).join(to);
+  }
+  return text.replace(/\s+/g, " ").trim();
 }
 
-function buildManualPdfReport(manual: UserManualDefinition): ReportDefinition {
-  const relatedTitles = resolvedRelatedManuals(manual).map((item) => item.title);
-  return {
-    fileName: `manual_usuario_${manualFileSlug(manual.title)}`,
-    title: `Manual de usuario - ${manual.title}`,
-    subtitle: manual.summary,
-    orientation: "landscape",
-    summary: [
-      { label: "Modulo", value: manual.title },
-      { label: "Categoria", value: manual.category },
-      { label: "Pasos", value: manual.flow.length },
-      { label: "Campos", value: manual.fields.length },
-      { label: "Checklist", value: `${checklistProgress(manual)}/${manual.checklist.length}` },
-    ],
-    sheets: [
-      {
-        name: "Resumen",
-        rows: [
-          {
-            modulo: manual.title,
-            categoria: manual.category,
-            proposito: manual.purpose,
-            requisitos_previos: joinManualList(manual.prerequisites),
-            modulos_relacionados: joinManualList(relatedTitles),
-          },
-        ],
-      },
-      {
-        name: "Flujo",
-        rows: manual.flow.map((step, index) => ({
-          orden: index + 1,
-          paso: step.title,
-          descripcion: step.description,
-          campos_acciones: joinManualList(step.fields),
-          verificaciones: joinManualList(step.checks),
-        })),
-      },
-      {
-        name: "Campos",
-        rows: sortedFields(manual).map((field) => ({
-          campo: field.label,
-          tipo: field.type,
-          requerido: field.required ? "Si" : "No",
-          nota: field.note,
-        })),
-      },
-      {
-        name: "Checklist",
-        rows: manual.checklist.map((item, index) => ({
-          estado: isChecklistChecked(manual, index) ? "Completado" : "Pendiente",
-          item,
-        })),
-      },
-      {
-        name: "Buenas practicas",
-        rows: [
-          ...manual.tips.map((item) => ({ tipo: "Buena practica", detalle: item })),
-          ...manual.warnings.map((item) => ({ tipo: "Alerta", detalle: item })),
-        ],
-      },
-    ],
-  };
+function manualListText(items: string[], fallback = "No aplica") {
+  const values = items.map(pdfText).filter(Boolean);
+  return values.length ? values.join("\n") : fallback;
 }
 
-async function downloadManualPdf(manual: UserManualDefinition | null) {
-  if (!manual) return;
+function manualGeneratedAtLabel() {
+  return new Intl.DateTimeFormat("es-EC", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date());
+}
+
+function buildManualModuleGroups(manuals: UserManualDefinition[]) {
+  const groups = new Map<string, UserManualDefinition[]>();
+  for (const manual of manuals) {
+    const category = manual.category || "General";
+    groups.set(category, [...(groups.get(category) ?? []), manual]);
+  }
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, "es"));
+}
+
+function addManualPdfFooter(doc: any) {
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    doc.setDrawColor(183, 201, 214);
+    doc.line(48, pageHeight - 36, pageWidth - 48, pageHeight - 36);
+    doc.setTextColor(91, 107, 123);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Manual de usuario KPI Justice", 48, pageHeight - 20);
+    doc.text(`Pagina ${page} de ${totalPages}`, pageWidth - 48, pageHeight - 20, {
+      align: "right",
+    });
+  }
+}
+
+async function downloadManualPdf() {
+  const manuals = accessibleManuals.value;
+  if (!manuals.length) {
+    ui.error("No hay modulos disponibles para generar el manual.");
+    return;
+  }
   exportingPdf.value = true;
   try {
-    await downloadReportPdf(buildManualPdfReport(manual));
-    ui.success("Manual descargado en PDF.");
+    const [{ jsPDF }, autoTableModule] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+    const autoTable = autoTableModule.default as any;
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 48;
+    const contentWidth = pageWidth - marginX * 2;
+    const headerTop = 70;
+    const bottomLimit = pageHeight - 58;
+    const generatedAt = manualGeneratedAtLabel();
+    const userLabel = pdfText(auth.user?.nameSurname || auth.user?.nameUser || "Usuario");
+    const roleLabel = pdfText(auth.user?.role?.nombre || "Sin rol asignado");
+
+    function drawHeader() {
+      doc.setFillColor(31, 78, 120);
+      doc.rect(0, 0, pageWidth, 34, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("KPI Justice", marginX, 22);
+      doc.setFont("helvetica", "normal");
+      doc.text("Manual de usuario", pageWidth - marginX, 22, { align: "right" });
+      doc.setTextColor(31, 41, 55);
+    }
+
+    function ensureSpace(y: number, needed = 64) {
+      if (y + needed <= bottomLimit) return y;
+      doc.addPage();
+      drawHeader();
+      return headerTop;
+    }
+
+    function sectionTitle(title: string, y: number) {
+      y = ensureSpace(y, 42);
+      doc.setTextColor(31, 78, 120);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text(pdfText(title), marginX, y);
+      doc.setDrawColor(31, 78, 120);
+      doc.line(marginX, y + 6, pageWidth - marginX, y + 6);
+      doc.setTextColor(31, 41, 55);
+      return y + 24;
+    }
+
+    function paragraph(text: unknown, y: number, fontSize = 9) {
+      const clean = pdfText(text);
+      if (!clean) return y;
+      const lines = doc.splitTextToSize(clean, contentWidth);
+      y = ensureSpace(y, lines.length * (fontSize + 4));
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(fontSize);
+      doc.setTextColor(31, 41, 55);
+      doc.text(lines, marginX, y);
+      return y + lines.length * (fontSize + 4) + 8;
+    }
+
+    function table(startY: number, head: string[], body: Array<Array<string | number>>) {
+      autoTable(doc, {
+        startY,
+        head: [head.map(pdfText)],
+        body: body.map((row) => row.map((cell) => pdfText(cell))),
+        theme: "grid",
+        margin: { left: marginX, right: marginX, top: headerTop, bottom: 58 },
+        styles: {
+          font: "helvetica",
+          fontSize: 7.8,
+          cellPadding: 5,
+          lineColor: [183, 201, 214],
+          lineWidth: 0.4,
+          valign: "top",
+        },
+        headStyles: {
+          fillColor: [31, 78, 120],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: { fillColor: [247, 250, 252] },
+        didDrawPage: drawHeader,
+      });
+      return ((doc as any).lastAutoTable?.finalY ?? startY) + 18;
+    }
+
+    doc.setFillColor(31, 78, 120);
+    doc.rect(0, 0, pageWidth, 136, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(24);
+    doc.text("Manual de Usuario", marginX, 64);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text("Guia operativa consolidada por permisos de acceso", marginX, 88);
+    doc.text("KPI Justice", marginX, 112);
+
+    doc.setTextColor(31, 41, 55);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("Informacion del documento", marginX, 182);
+    autoTable(doc, {
+      startY: 202,
+      body: [
+        ["Usuario", userLabel],
+        ["Rol", roleLabel],
+        ["Generado", generatedAt],
+        ["Modulos incluidos", manuals.length],
+        ["Alcance", "Solo se incluyen modulos con permiso de lectura para el usuario actual."],
+      ],
+      theme: "grid",
+      margin: { left: marginX, right: marginX },
+      styles: { font: "helvetica", fontSize: 9, cellPadding: 7, lineColor: [183, 201, 214] },
+      columnStyles: {
+        0: { fillColor: [217, 234, 247], fontStyle: "bold", cellWidth: 150 },
+        1: { cellWidth: contentWidth - 150 },
+      },
+    });
+    let y = ((doc as any).lastAutoTable?.finalY ?? 290) + 28;
+    y = sectionTitle("Proposito", y);
+    y = paragraph(
+      "Este manual consolida los flujos de uso, campos principales, controles esperados y recomendaciones operativas de los modulos disponibles para el usuario. Debe utilizarse como guia de consulta para ejecutar procesos con trazabilidad y consistencia.",
+      y,
+      10,
+    );
+
+    doc.addPage();
+    drawHeader();
+    y = sectionTitle("Indice general", headerTop);
+    y = paragraph(
+      "Los modulos se agrupan por categoria funcional. Cada capitulo contiene objetivo, requisitos previos, flujo operativo, campos a cargar, buenas practicas, alertas y checklist.",
+      y,
+    );
+    for (const [category, items] of buildManualModuleGroups(manuals)) {
+      y = sectionTitle(category, y + 6);
+      for (const manual of items) {
+        y = ensureSpace(y, 18);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(31, 41, 55);
+        doc.text(`- ${pdfText(manual.title)}`, marginX + 10, y);
+        y += 16;
+      }
+    }
+
+    manuals.forEach((manual, manualIndex) => {
+      doc.addPage();
+      drawHeader();
+      let moduleY = sectionTitle(`${manualIndex + 1}. ${manual.title}`, headerTop);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(91, 107, 123);
+      doc.text(`Categoria: ${pdfText(manual.category)}`, marginX, moduleY);
+      moduleY += 18;
+      moduleY = paragraph(manual.summary, moduleY, 9);
+
+      moduleY = sectionTitle("Objetivo y alcance", moduleY + 4);
+      moduleY = paragraph(manual.purpose, moduleY, 9);
+
+      moduleY = sectionTitle("Requisitos previos", moduleY + 4);
+      moduleY = paragraph(manualListText(manual.prerequisites), moduleY, 9);
+
+      moduleY = sectionTitle("Flujo operativo", moduleY + 4);
+      moduleY = table(
+        moduleY,
+        ["No.", "Paso", "Descripcion", "Campos o acciones", "Controles"],
+        manual.flow.map((step, index) => [
+          index + 1,
+          step.title,
+          step.description,
+          manualListText(step.fields, "No aplica"),
+          manualListText(step.checks, "No aplica"),
+        ]),
+      );
+
+      moduleY = sectionTitle("Campos a cargar", moduleY + 4);
+      moduleY = table(
+        moduleY,
+        ["Campo", "Tipo", "Requerido", "Observacion"],
+        sortedFields(manual).map((field) => [
+          field.label,
+          field.type,
+          field.required ? "Si" : "No",
+          field.note,
+        ]),
+      );
+
+      moduleY = sectionTitle("Buenas practicas y alertas", moduleY + 4);
+      moduleY = table(
+        moduleY,
+        ["Tipo", "Detalle"],
+        [
+          ...manual.tips.map((item) => ["Buena practica", item]),
+          ...manual.warnings.map((item) => ["Alerta", item]),
+        ],
+      );
+
+      moduleY = sectionTitle("Checklist operativo", moduleY + 4);
+      table(
+        moduleY,
+        ["Estado", "Verificacion"],
+        manual.checklist.map((item, index) => [
+          isChecklistChecked(manual, index) ? "Completado" : "Pendiente",
+          item,
+        ]),
+      );
+    });
+
+    addManualPdfFooter(doc);
+    doc.save(`manual_usuario_${manualFileSlug(roleLabel)}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    ui.success("Manual completo descargado en PDF.");
   } catch (error: any) {
     ui.error(error?.message || "No se pudo descargar el manual en PDF.");
   } finally {
