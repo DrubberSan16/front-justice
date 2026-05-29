@@ -656,6 +656,83 @@ function formatProcedureFrequencyLabel(value: unknown) {
   return `${hours} h ${minutes} min`;
 }
 
+function normalizeDateOnlyInput(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const directDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (directDate) {
+    const year = Number(directDate[1]);
+    const month = Number(directDate[2]);
+    const day = Number(directDate[3]);
+    const parsedDate = new Date(Date.UTC(year, month - 1, day));
+    if (
+      parsedDate.getUTCFullYear() === year &&
+      parsedDate.getUTCMonth() === month - 1 &&
+      parsedDate.getUTCDate() === day
+    ) {
+      return raw;
+    }
+    return null;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function parseDateOnlyToUtc(value: unknown) {
+  const normalized = normalizeDateOnlyInput(value);
+  const match = normalized?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date;
+}
+
+function formatUtcDateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function calculateEquipmentNextServiceDate(baseDate: unknown, unitValue: unknown, intervalValue: unknown) {
+  const interval = Math.round(Number(intervalValue || 0));
+  const date = parseDateOnlyToUtc(baseDate);
+  if (!date || !(interval > 0)) return "";
+  const unit = String(unitValue || "DIAS").trim().toUpperCase();
+  if (unit === "SEMANAS") {
+    date.setUTCDate(date.getUTCDate() + interval * 7);
+  } else if (unit === "MESES") {
+    date.setUTCMonth(date.getUTCMonth() + interval);
+  } else if (unit === "ANIOS" || unit === "ANIO") {
+    date.setUTCFullYear(date.getUTCFullYear() + interval);
+  } else {
+    date.setUTCDate(date.getUTCDate() + interval);
+  }
+  return formatUtcDateOnly(date);
+}
+
+function syncEquipmentNextServiceDate() {
+  if (props.moduleKey !== "equipos") return;
+  if (!form.es_servicio) {
+    form.proximo_servicio_fecha = "";
+    return;
+  }
+  const nextDate = calculateEquipmentNextServiceDate(
+    form.ultimo_servicio_fecha,
+    form.intervalo_mantenimiento_unidad,
+    form.intervalo_mantenimiento_valor,
+  );
+  form.proximo_servicio_fecha = nextDate || "";
+}
+
 function getFieldHint(field: EnhancedMaintenanceField) {
   if (isAutoCodeField(field)) {
     return autoCodeLoading.value && !String(form[field.key] ?? "").trim()
@@ -1435,6 +1512,9 @@ function sanitizePayload() {
     if (field.type === "select" && val === "") {
       val = null;
     }
+    if (field.type === "date") {
+      val = normalizeDateOnlyInput(val);
+    }
     if (isProcedureFrequencyHoursField(field) && val === "null") {
       val = null;
     }
@@ -1473,6 +1553,13 @@ function sanitizePayload() {
       payload.intervalo_mantenimiento_unidad = null;
       payload.ultimo_servicio_fecha = null;
       payload.proximo_servicio_fecha = null;
+    } else {
+      payload.proximo_servicio_fecha =
+        calculateEquipmentNextServiceDate(
+          payload.ultimo_servicio_fecha,
+          payload.intervalo_mantenimiento_unidad,
+          payload.intervalo_mantenimiento_valor,
+        ) || null;
     }
     payload.componentes = selectedEquipmentComponentRows.value
       .map((component, index) => ({
@@ -1600,12 +1687,18 @@ async function openEdit(item: any) {
       continue;
     }
 
+    if (field.type === "date") {
+      form[field.key] = normalizeDateOnlyInput(item[field.key]) ?? "";
+      continue;
+    }
+
     form[field.key] = field.type === "json"
       ? serializeJsonValue(item[field.key], field)
       : item[field.key] ?? form[field.key];
   }
   if (props.moduleKey === "equipos") {
     await loadSelectedEquipmentComponents(item.id);
+    syncEquipmentNextServiceDate();
   }
   dialog.value = true;
 }
@@ -1732,6 +1825,19 @@ watch(
   () => form.bodega_id,
   () => {
     pruneWarehouseDependentSelections();
+  },
+);
+
+watch(
+  () => [
+    props.moduleKey,
+    form.es_servicio,
+    form.intervalo_mantenimiento_valor,
+    form.intervalo_mantenimiento_unidad,
+    form.ultimo_servicio_fecha,
+  ],
+  () => {
+    syncEquipmentNextServiceDate();
   },
 );
 
