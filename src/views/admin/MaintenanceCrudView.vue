@@ -665,6 +665,12 @@ function getFieldHint(field: EnhancedMaintenanceField) {
   if (isProcedureFrequencyHoursField(field)) {
     return "Formato H,M. Ej.: 1,3 = 1 h 30 min y 1,5 = 1 h 50 min.";
   }
+  if (props.moduleKey === "equipos" && field.key === "ultimo_servicio_fecha") {
+    return "Fecha base para calcular el proximo mantenimiento.";
+  }
+  if (props.moduleKey === "equipos" && field.key === "proximo_servicio_fecha") {
+    return "Se calcula automaticamente al guardar segun el intervalo.";
+  }
   return field.required ? "Obligatorio" : "";
 }
 

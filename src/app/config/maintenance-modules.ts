@@ -215,7 +215,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "es_servicio", label: "Equipo con mantenimiento por tiempo", type: "boolean" },
       { key: "intervalo_mantenimiento_valor", label: "Intervalo de mantenimiento", type: "number" },
       { key: "intervalo_mantenimiento_unidad", label: "Unidad del intervalo", type: "select", options: intervaloServicioEquipoOptions },
-      { key: "ultimo_servicio_fecha", label: "Ultimo servicio registrado", type: "date", readonly: true },
+      { key: "ultimo_servicio_fecha", label: "Ultimo servicio registrado", type: "date" },
       { key: "proximo_servicio_fecha", label: "Proximo servicio estimado", type: "date", readonly: true },
     ],
   },
