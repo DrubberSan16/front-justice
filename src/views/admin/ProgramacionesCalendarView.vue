@@ -256,6 +256,15 @@
                   </span>
                 </div>
               </template>
+              <template #item.work_order_code="{ item }">
+                <div class="font-weight-medium">{{ resolveMonthlyDetailWorkOrderLabel(item as any) }}</div>
+                <div
+                  v-if="resolveMonthlyDetailWorkOrderSubtitle(item as any)"
+                  class="text-caption text-medium-emphasis"
+                >
+                  {{ resolveMonthlyDetailWorkOrderSubtitle(item as any) }}
+                </div>
+              </template>
               <template #item.estado_programacion="{ item }">
                 <v-chip
                   size="small"
@@ -1520,7 +1529,7 @@ const monthlyDetailHeaders = [
   { title: "Equipo", key: "equipo_codigo" },
   { title: "Actividad", key: "valor_crudo" },
   { title: "Tipo", key: "tipo_mantenimiento" },
-  { title: "Plan", key: "plan_id" },
+  { title: "OT vinculada", key: "work_order_code" },
   { title: "Estado", key: "estado_programacion" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -2107,6 +2116,14 @@ function numericOrNull(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function firstNonEmptyText(...values: unknown[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
 function firstPositiveNumber(...values: unknown[]) {
   for (const value of values) {
     const parsed = numericOrNull(value);
@@ -2666,6 +2683,9 @@ const dynamicMonthlyProgramacionDetails = computed(() => {
         equipo_id: item.equipo_id,
         equipo_codigo: item.equipo_codigo,
         equipo_nombre: item.equipo_nombre,
+        work_order_id: item.work_order_id ?? item.payload_json?.work_order_id ?? null,
+        work_order_code: item.work_order_code ?? item.payload_json?.work_order_code ?? null,
+        work_order_title: item.work_order_title ?? item.payload_json?.work_order_title ?? null,
         fecha_programada: String(item.proxima_fecha || "").slice(0, 10),
         valor_crudo: formatMonthlyHoursLabel(frequencyHours),
         valor_normalizado: frequencyHours,
@@ -2681,6 +2701,7 @@ const dynamicMonthlyProgramacionDetails = computed(() => {
           horometro_programado: item.proxima_horas ?? null,
           work_order_id: item.work_order_id ?? item.payload_json?.work_order_id ?? null,
           work_order_code: item.work_order_code ?? item.payload_json?.work_order_code ?? null,
+          work_order_title: item.work_order_title ?? item.payload_json?.work_order_title ?? null,
           color_key: item.payload_json?.color_key || "SINCRONIZADO",
         },
       };
@@ -3179,6 +3200,41 @@ function formatProgramacionStatusLabel(status: unknown) {
   if (normalized === "VENCIDA_REALIZADA") return "VENCIDA - REALIZADA";
   if (normalized === "A_REALIZAR") return "A REALIZAR";
   return normalized.replace(/_/g, " ");
+}
+
+function resolveMonthlyDetailWorkOrderData(item: any) {
+  const payload = (item?.payload_json ?? {}) as Record<string, any>;
+  const monthlyWorkOrder = (payload.monthly_work_order ?? {}) as Record<string, any>;
+  const id = firstNonEmptyText(
+    item?.work_order_id,
+    payload.work_order_id,
+    monthlyWorkOrder.work_order_id,
+  );
+  const code = firstNonEmptyText(
+    item?.work_order_code,
+    item?.work_order_codigo,
+    payload.work_order_code,
+    monthlyWorkOrder.work_order_code,
+  );
+  const title = firstNonEmptyText(
+    item?.work_order_title,
+    payload.work_order_title,
+    monthlyWorkOrder.work_order_title,
+  );
+  return { id, code, title };
+}
+
+function resolveMonthlyDetailWorkOrderLabel(item: any) {
+  const workOrder = resolveMonthlyDetailWorkOrderData(item);
+  return workOrder.code || workOrder.title || workOrder.id || "Sin OT vinculada";
+}
+
+function resolveMonthlyDetailWorkOrderSubtitle(item: any) {
+  const workOrder = resolveMonthlyDetailWorkOrderData(item);
+  if (workOrder.code && workOrder.title && workOrder.title !== workOrder.code) {
+    return workOrder.title;
+  }
+  return "";
 }
 
 function resolveMonthlyDetailStateLabel(item: any) {
