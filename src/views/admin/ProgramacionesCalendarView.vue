@@ -3151,31 +3151,39 @@ const agendaDayMonthlyHoursLabel = computed(() => {
 });
 
 function chipColor(status: string) {
-  if (status === "A_REALIZAR") return "warning";
-  if (status === "VENCIDA") return "error";
-  if (status === "PROXIMA") return "warning";
-  if (status === "REPROGRAMADA") return "secondary";
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "A_LA_FECHA_REALIZADA" || normalized === "REALIZADA") return "success";
+  if (normalized === "VENCIDA_REALIZADA") return "error";
+  if (normalized === "A_REALIZAR") return "warning";
+  if (normalized === "VENCIDA") return "error";
+  if (normalized === "PROXIMA") return "warning";
+  if (normalized === "REPROGRAMADA") return "secondary";
   return "primary";
 }
 
 function eventClass(status: string) {
-  if (status === "A_REALIZAR") return "calendar-event--warning";
-  if (status === "VENCIDA") return "calendar-event--danger";
-  if (status === "PROXIMA") return "calendar-event--warning";
-  if (status === "REPROGRAMADA") return "calendar-event--rescheduled";
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "A_LA_FECHA_REALIZADA" || normalized === "REALIZADA") return "calendar-event--done";
+  if (normalized === "VENCIDA_REALIZADA") return "calendar-event--danger";
+  if (normalized === "A_REALIZAR") return "calendar-event--warning";
+  if (normalized === "VENCIDA") return "calendar-event--danger";
+  if (normalized === "PROXIMA") return "calendar-event--warning";
+  if (normalized === "REPROGRAMADA") return "calendar-event--rescheduled";
   return "calendar-event--normal";
 }
 
 function formatProgramacionStatusLabel(status: unknown) {
   const normalized = String(status || "").trim().toUpperCase();
   if (!normalized) return "";
+  if (normalized === "A_LA_FECHA_REALIZADA") return "A LA FECHA - REALIZADA";
+  if (normalized === "VENCIDA_REALIZADA") return "VENCIDA - REALIZADA";
   if (normalized === "A_REALIZAR") return "A REALIZAR";
   return normalized.replace(/_/g, " ");
 }
 
 function resolveMonthlyDetailStateLabel(item: any) {
   if (isMonthlyWeeklyAggregate(item)) return "Agendado semanal";
-  const status = String(item?.estado_programacion || "").trim().toUpperCase();
+  const status = String(item?.estado_programacion || item?.payload_json?.estado_programacion || "").trim().toUpperCase();
   if (status) return formatProgramacionStatusLabel(status);
   if (item?.payload_json?.reprogramado) return "REPROGRAMADA";
   return item?.programacion_id ? "SINCRONIZADO" : "SOLO REPORTE";
@@ -3184,6 +3192,8 @@ function resolveMonthlyDetailStateLabel(item: any) {
 function resolveMonthlyDetailStateColor(item: any) {
   if (isMonthlyWeeklyAggregate(item)) return "info";
   const status = resolveMonthlyDetailStateLabel(item);
+  if (status === "A LA FECHA - REALIZADA" || status === "REALIZADA") return "success";
+  if (status === "VENCIDA - REALIZADA") return "error";
   if (status === "A REALIZAR") return "warning";
   if (status === "REPROGRAMADA") return "secondary";
   if (status === "VENCIDA") return "error";
@@ -4831,6 +4841,7 @@ onMounted(async () => {
 .calendar-event--normal { background: rgba(25, 118, 210, 0.12); border-color: rgba(25, 118, 210, 0.18); }
 .calendar-event--warning { background: rgba(251, 140, 0, 0.16); border-color: rgba(251, 140, 0, 0.22); }
 .calendar-event--danger { background: rgba(211, 47, 47, 0.16); border-color: rgba(211, 47, 47, 0.22); }
+.calendar-event--done { background: rgba(46, 125, 50, 0.16); border-color: rgba(46, 125, 50, 0.22); }
 .calendar-event--rescheduled { background: rgba(0, 137, 123, 0.14); border-color: rgba(0, 137, 123, 0.22); }
 .calendar-event--weekly { background: rgba(25, 118, 210, 0.16); border-color: rgba(25, 118, 210, 0.24); }
 .calendar-event--monthly { background: rgba(126, 87, 194, 0.16); border-color: rgba(126, 87, 194, 0.24); }
