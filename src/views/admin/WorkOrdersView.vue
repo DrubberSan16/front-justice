@@ -1252,6 +1252,32 @@
             </v-col>
           </v-row>
           <v-row dense>
+            <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
+              <v-select
+                v-model="materialIssueForm.condicion_material"
+                :items="materialIssueConditionOptions"
+                item-title="title"
+                item-value="value"
+                label="Condicion"
+                variant="outlined"
+              />
+            </v-col>
+            <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
+              <v-text-field
+                :model-value="formatTaskHours(materialIssueTarget.stock_nuevo)"
+                label="Stock nuevo"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
+            <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
+              <v-text-field
+                :model-value="formatTaskHours(materialIssueTarget.stock_usado)"
+                label="Stock usado"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
             <v-col cols="12" md="4">
               <v-text-field
                 v-model="materialIssueForm.cantidad"
@@ -1560,9 +1586,16 @@ const taskResponsibleEditUserId = ref("");
 const materialIssueTarget = ref<any | null>(null);
 const materialIssueForm = reactive({
   cantidad: "",
+  condicion_material: "NUEVO",
   observacion: "",
 });
-
+const materialIssueConditionOptions = [
+  { title: "Nuevo", value: "NUEVO" },
+  { title: "Usado", value: "USADO" },
+];
+const materialIssueRequiresCondition = computed(() =>
+  targetManagesUsedStock(materialIssueTarget.value),
+);
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
 const localConsumos = ref<any[]>([]);
@@ -2137,6 +2170,7 @@ const issueHeaders = computed(() => {
     { title: "Fecha", key: "fecha_label" },
     { title: "Bodega", key: "bodega_label" },
     { title: "Material", key: "producto_label" },
+    { title: "Condicion", key: "condicion_material" },
     { title: "Cantidad", key: "cantidad" },
   ];
   if (canViewCosts.value) {
@@ -2260,6 +2294,7 @@ const reportPreviewIssueHeaders = computed(() => {
     { title: "Fecha", key: "fecha_label" },
     { title: "Bodega", key: "bodega_label" },
     { title: "Material", key: "producto_label" },
+    { title: "Condicion", key: "condicion_material" },
     { title: "Cantidad", key: "cantidad" },
   ];
   if (canViewCosts.value) {
@@ -2668,6 +2703,22 @@ function toPositiveNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeIssueCondition(value: unknown): "NUEVO" | "USADO" {
+  return String(value || "").trim().toUpperCase() === "USADO" ? "USADO" : "NUEVO";
+}
+
+function targetManagesUsedStock(target: any) {
+  return Boolean(target?.maneja_stock_usado ?? target?.es_usado);
+}
+
+function issueConditionAvailable(target: any, condition: "NUEVO" | "USADO") {
+  if (condition === "USADO") return toPositiveNumber(target?.stock_usado);
+  if (target?.stock_nuevo !== undefined && target?.stock_nuevo !== null) {
+    return toPositiveNumber(target.stock_nuevo);
+  }
+  return toPositiveNumber(target?.stock_actual);
+}
+
 function normalizeStockProductOption(row: any) {
   const productId = String(row?.producto_id || row?.id || "");
   const baseLabel = String(
@@ -2681,6 +2732,8 @@ function normalizeStockProductOption(row: any) {
     : resolveProductLabel(productId, baseLabel);
   const stock = toPositiveNumber(row?.stock_disponible ?? row?.stock_actual);
   const activeReserved = toPositiveNumber(row?.cantidad_reservada_activa);
+  const stockNuevo = toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual);
+  const stockUsado = toPositiveNumber(row?.stock_usado);
   return {
     value: productId,
     title:
@@ -2688,7 +2741,10 @@ function normalizeStockProductOption(row: any) {
       (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
     label: String(productLabel || productId),
     es_aceite: Boolean(row?.es_aceite),
+    maneja_stock_usado: Boolean(row?.es_usado),
     stock_actual: toPositiveNumber(row?.stock_actual),
+    stock_nuevo: stockNuevo,
+    stock_usado: stockUsado,
     stock_disponible: stock,
     cantidad_reservada_activa: activeReserved,
   };
@@ -2716,6 +2772,8 @@ function ensureConsumoProductOption(item: any) {
   );
   const stockAvailable = toPositiveNumber(item?.stock_disponible ?? item?.stock_actual);
   const activeReserved = toPositiveNumber(item?.cantidad_reservada_activa);
+  const stockNuevo = toPositiveNumber(item?.stock_nuevo ?? item?.stock_actual);
+  const stockUsado = toPositiveNumber(item?.stock_usado);
 
   consumoProductOptions.value = [
     {
@@ -2725,7 +2783,10 @@ function ensureConsumoProductOption(item: any) {
         (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
       label: productLabel,
       es_aceite: Boolean(item?.es_aceite ?? productRecord?.es_aceite),
+      maneja_stock_usado: Boolean(item?.es_usado ?? item?.maneja_stock_usado),
       stock_actual: toPositiveNumber(item?.stock_actual),
+      stock_nuevo: stockNuevo,
+      stock_usado: stockUsado,
       stock_disponible: stockAvailable,
       cantidad_reservada_activa: activeReserved,
     },
@@ -2913,6 +2974,10 @@ const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   cantidad_reservada: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
   cantidad_emitida: toPositiveNumber(item?.cantidad_emitida),
   cantidad_pendiente: toPositiveNumber(item?.cantidad_pendiente ?? item?.cantidad),
+  maneja_stock_usado: Boolean(item?.maneja_stock_usado ?? item?.es_usado),
+  stock_actual: toPositiveNumber(item?.stock_actual),
+  stock_nuevo: toPositiveNumber(item?.stock_nuevo ?? item?.stock_actual),
+  stock_usado: toPositiveNumber(item?.stock_usado),
   costo_unitario: toPositiveNumber(item?.costo_unitario),
   subtotal: toPositiveNumber(item?.subtotal ?? (toPositiveNumber(item?.cantidad) * toPositiveNumber(item?.costo_unitario))),
   observacion: item?.observacion || "-",
@@ -2934,6 +2999,10 @@ const materialReservationRows = computed(() => {
         producto_label: row?.producto_label || "-",
         bodega_label: row?.bodega_label || "-",
         es_aceite: Boolean(row?.es_aceite),
+        maneja_stock_usado: Boolean(row?.maneja_stock_usado),
+        stock_actual: toPositiveNumber(row?.stock_actual),
+        stock_nuevo: toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual),
+        stock_usado: toPositiveNumber(row?.stock_usado),
         cantidad_reservada: 0,
         cantidad_emitida: 0,
         cantidad_pendiente: 0,
@@ -2950,6 +3019,20 @@ const materialReservationRows = computed(() => {
     current.cantidad_pendiente = Math.max(
       current.cantidad_pendiente,
       toPositiveNumber(row?.cantidad_pendiente ?? row?.cantidad),
+    );
+    current.maneja_stock_usado =
+      current.maneja_stock_usado || Boolean(row?.maneja_stock_usado);
+    current.stock_actual = Math.max(
+      toPositiveNumber(current.stock_actual),
+      toPositiveNumber(row?.stock_actual),
+    );
+    current.stock_nuevo = Math.max(
+      toPositiveNumber(current.stock_nuevo),
+      toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual),
+    );
+    current.stock_usado = Math.max(
+      toPositiveNumber(current.stock_usado),
+      toPositiveNumber(row?.stock_usado),
     );
     const observation = String(row?.observacion || "").trim();
     if (
@@ -2988,6 +3071,7 @@ const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
       detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
     ),
     bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
+    condicion_material: normalizeIssueCondition(detail?.condicion_material),
     cantidad: toPositiveNumber(detail?.cantidad),
     costo_unitario: toPositiveNumber(detail?.costo_unitario),
     subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
@@ -5006,6 +5090,7 @@ function resetAllForms() {
   resetConsumoDraft({ preserveWarehouse: false, clearOptions: true });
   materialIssueTarget.value = null;
   materialIssueForm.cantidad = "";
+  materialIssueForm.condicion_material = "NUEVO";
   materialIssueForm.observacion = "";
   materialIssueDialog.value = false;
 
@@ -5769,6 +5854,7 @@ function openMaterialIssueDialog(item: any) {
   }
   materialIssueTarget.value = item;
   materialIssueForm.cantidad = "";
+  materialIssueForm.condicion_material = targetManagesUsedStock(item) ? "" : "NUEVO";
   materialIssueForm.observacion = "";
   materialIssueDialog.value = true;
 }
@@ -5777,6 +5863,7 @@ function closeMaterialIssueDialog() {
   materialIssueDialog.value = false;
   materialIssueTarget.value = null;
   materialIssueForm.cantidad = "";
+  materialIssueForm.condicion_material = "NUEVO";
   materialIssueForm.observacion = "";
 }
 
@@ -5808,12 +5895,27 @@ async function submitMaterialIssue() {
     return ui.error(`La salida real no puede superar lo reservado pendiente (${pending}).`);
   }
 
+  const conditionRequired = targetManagesUsedStock(target);
+  const condition = conditionRequired
+    ? normalizeIssueCondition(materialIssueForm.condicion_material)
+    : "NUEVO";
+  if (conditionRequired && !String(materialIssueForm.condicion_material || "").trim()) {
+    return ui.error("Selecciona si la salida corresponde a material nuevo o usado.");
+  }
+  const conditionAvailable = issueConditionAvailable(target, condition);
+  if (quantity > conditionAvailable) {
+    return ui.error(
+      `Stock ${condition === "USADO" ? "usado" : "nuevo"} insuficiente. Disponible ${conditionAvailable}.`,
+    );
+  }
+
   const payload = {
     items: [
       {
         producto_id: target.producto_id,
         bodega_id: target.bodega_id,
         cantidad: quantity,
+        condicion_material: condition,
       },
     ],
     observacion: materialIssueForm.observacion || null,

@@ -234,7 +234,7 @@
       <v-divider />
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
-          <v-col v-for="field in moduleConfig?.fields ?? []" :key="field.key" cols="12" md="6">
+          <v-col v-for="field in visibleFormFields" :key="field.key" cols="12" md="6">
             <v-autocomplete
               v-if="field.type === 'select' && isMaterialField(field)"
               v-model="form[field.key]"
@@ -266,7 +266,7 @@
               v-model="form[field.key]"
               color="primary"
               inset
-              :label="form[field.key] ? 'Material usado' : 'Material nuevo'"
+              :label="form[field.key] ? 'Maneja material usado' : 'Solo material nuevo'"
               hide-details
             />
             <v-checkbox
@@ -416,6 +416,9 @@ const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const tableLoading = computed(() => loading.value || initialLoading.value);
 const stockWarehouseOptions = computed(() => relationOptions.value.bodega_id ?? []);
+const visibleFormFields = computed(() =>
+  (moduleConfig.value?.fields ?? []).filter(shouldShowFormField),
+);
 const reservationHeaders = [
   { title: "Reserva", key: "estado" },
   { title: "Cantidad", key: "cantidad" },
@@ -521,6 +524,12 @@ function isStockBodegaLabelField(fieldKey: string) {
 
 function isStockMaterialConditionField(field: MaintenanceField) {
   return isStockBodegaModule.value && field.key === "es_usado";
+}
+
+function shouldShowFormField(field: MaintenanceField) {
+  if (!isStockBodegaModule.value) return true;
+  if (field.key === "stock_usado") return Boolean(form.es_usado);
+  return true;
 }
 
 function getRelationFields(mode: "table" | "form" = "table") {
@@ -629,8 +638,15 @@ function clearThirdPartyLookupTimer() {
   thirdPartyLookupTimer = null;
 }
 
-function syncStockDifference() {
+function syncStockTotals() {
   if (!isStockBodegaModule.value) return;
+  if (!Boolean(form.es_usado)) {
+    form.stock_usado = "0";
+  }
+  const stockTotal =
+    toSafeNumber(form.stock_nuevo) +
+    (Boolean(form.es_usado) ? toSafeNumber(form.stock_usado) : 0);
+  form.stock_actual = String(Number(stockTotal.toFixed(6)));
   form.diferencia = String(
     Number(
       (toSafeNumber(form.stock_actual) - toSafeNumber(form.stock_fisico)).toFixed(6),
@@ -768,7 +784,7 @@ function resetForm() {
     else if (field.type === "number") form[field.key] = "0";
     else form[field.key] = "";
   }
-  syncStockDifference();
+  syncStockTotals();
 }
 
 function getSelectOptions(field: MaintenanceField) {
@@ -805,6 +821,16 @@ function hydrateFormFromItem(item: Record<string, any> | null | undefined) {
   }
   lastThirdPartyLookupRuc.value = normalizeRuc(form.identificacion);
   thirdPartyLookupHydrating.value = false;
+  if (isStockBodegaModule.value) {
+    if (
+      toSafeNumber(form.stock_nuevo) === 0 &&
+      toSafeNumber(item?.stock_actual) > 0 &&
+      toSafeNumber(item?.stock_usado) === 0
+    ) {
+      form.stock_nuevo = formatNumberFieldForForm(item?.stock_actual);
+    }
+    syncStockTotals();
+  }
 }
 
 function reservationStateColor(value: string) {
@@ -862,7 +888,7 @@ const rows = computed(() => {
       if (field.type === "boolean") {
           out[field.key] =
             cfg.key === "stock-bodega" && field.key === "es_usado"
-              ? (r[field.key] ? "Usado" : "Nuevo")
+              ? (r[field.key] ? "Con usado" : "Solo nuevo")
               : (r[field.key] ? "Si" : "No");
         }
       }
@@ -939,7 +965,9 @@ function buildStockWarehouseReport(sourceRows: any[]): ReportDefinition {
   const reportRows = sourceRows.map((row) => ({
     bodega: stockWarehouseLabel(row),
     material: stockProductLabel(row),
-    condicion: row?.es_usado ? "Usado" : "Nuevo",
+    condicion: row?.es_usado ? "Con usado" : "Solo nuevo",
+    stock_nuevo: Number(row?.stock_nuevo || row?.stock_actual || 0),
+    stock_usado: Number(row?.stock_usado || 0),
     stock_actual: Number(row?.stock_actual || 0),
     stock_minimo: Number(row?.stock_min_bodega || 0),
     stock_maximo: Number(row?.stock_max_bodega || 0),
@@ -966,8 +994,10 @@ function buildStockWarehouseReport(sourceRows: any[]): ReportDefinition {
         columns: [
           { key: "bodega", header: "Bodega", width: 28 },
           { key: "material", header: "Material", width: 32 },
-          { key: "condicion", header: "Condicion", width: 12 },
-          { key: "stock_actual", header: "Stock actual", width: 14, format: "number" },
+          { key: "condicion", header: "Condicion", width: 14 },
+          { key: "stock_nuevo", header: "Stock nuevo", width: 14, format: "number" },
+          { key: "stock_usado", header: "Stock usado", width: 14, format: "number" },
+          { key: "stock_actual", header: "Stock actual total", width: 16, format: "number" },
           { key: "stock_minimo", header: "Stock minimo", width: 14, format: "number" },
           { key: "stock_maximo", header: "Stock maximo", width: 14, format: "number" },
           { key: "stock_fisico", header: "Stock fisico", width: 14, format: "number" },
@@ -1021,6 +1051,13 @@ function sanitizePayload() {
     payload.requiere_serie = false;
   }
 
+  if (cfg.key === "stock-bodega") {
+    const stockNuevo = toSafeNumber(payload.stock_nuevo);
+    const stockUsado = Boolean(payload.es_usado) ? toSafeNumber(payload.stock_usado) : 0;
+    payload.stock_usado = String(stockUsado);
+    payload.stock_actual = String(Number((stockNuevo + stockUsado).toFixed(6)));
+  }
+
   return payload;
 }
 
@@ -1035,6 +1072,16 @@ function validateForm() {
     if (field.type === "boolean") continue;
     if (val === "" || val === null || val === undefined) {
       ui.error(`El campo ${field.label} es obligatorio.`);
+      return false;
+    }
+  }
+  if (cfg.key === "stock-bodega") {
+    if (toSafeNumber(form.stock_nuevo) < 0 || toSafeNumber(form.stock_usado) < 0) {
+      ui.error("El stock nuevo y usado no pueden ser negativos.");
+      return false;
+    }
+    if (Boolean(form.es_usado) && toSafeNumber(form.stock_usado) <= 0) {
+      ui.error("Indica la cantidad de stock usado cuando el material maneja usados.");
       return false;
     }
   }
@@ -1295,10 +1342,17 @@ watch(
 );
 
 watch(
-  () => [dialog.value, isStockBodegaModule.value, form.stock_actual, form.stock_fisico],
+  () => [
+    dialog.value,
+    isStockBodegaModule.value,
+    form.stock_nuevo,
+    form.stock_usado,
+    form.stock_fisico,
+    form.es_usado,
+  ],
   () => {
     if (!dialog.value || !isStockBodegaModule.value) return;
-    syncStockDifference();
+    syncStockTotals();
   },
 );
 

@@ -24,6 +24,15 @@
             <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="loadReport">
               Actualizar
             </v-btn>
+            <v-btn
+              variant="tonal"
+              prepend-icon="mdi-file-pdf-box"
+              :loading="exportingPdf"
+              :disabled="loading || !reportPayload"
+              @click="downloadDailyReportPdf"
+            >
+              Descargar PDF
+            </v-btn>
           </div>
         </div>
 
@@ -189,11 +198,16 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { useUiStore } from "@/app/stores/ui.store";
 import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import { currentDateInputValue, formatDateTime } from "@/app/utils/date-time";
+import {
+  downloadReportPdf,
+  type ReportDefinition,
+} from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
 type DashboardChartItem = {
@@ -206,7 +220,9 @@ type DashboardChartItem = {
 
 const auth = useAuthStore();
 const menuStore = useMenuStore();
+const ui = useUiStore();
 const loading = ref(false);
+const exportingPdf = ref(false);
 const error = ref<string | null>(null);
 const reportPayload = ref<AnyRow | null>(null);
 const activeTab = ref("movimientos");
@@ -332,6 +348,77 @@ function sourceChipColor(sourceType: string) {
   if (normalized === "INGRESO_COMPRA") return "success";
   if (normalized === "SALIDA_OT") return "warning";
   return "primary";
+}
+
+function buildDailyOperationsPdfReport(): ReportDefinition {
+  const summary = reportPayload.value?.summary ?? {};
+  const label = reportPayload.value?.filters?.label || filters.fecha || "Sin fecha";
+  return {
+    fileName: `reporte_diario_${String(filters.fecha || "hoy").replace(/\W+/g, "_")}`,
+    title: "Reporte diario",
+    subtitle: `Consolidado operativo del ${label}.`,
+    orientation: "landscape",
+    summary: [
+      { label: "Entradas del dia", value: formatNumber(summary.total_entradas) },
+      { label: "Salidas del dia", value: formatNumber(summary.total_salidas) },
+      { label: "Salidas por OT", value: formatNumber(summary.salidas_ot) },
+      { label: "OT pendientes", value: String(summary.ordenes_pendientes ?? summary.ordenes_generadas ?? 0) },
+      { label: "OT cerradas", value: String(summary.ordenes_cerradas ?? 0) },
+    ],
+    sheets: [
+      {
+        name: "Movimientos",
+        rows: movementRows.value,
+        emptyMessage: "No hay movimientos de inventario para la fecha consultada.",
+        columns: [
+          { key: "fecha", header: "Fecha", format: "datetime", width: 18 },
+          { key: "source_label", header: "Fuente", width: 18 },
+          { key: "producto_nombre", header: "Material", width: 26 },
+          { key: "bodega_label", header: "Bodega", width: 24 },
+          { key: "entrada_cantidad", header: "Entrada", format: "number", width: 12 },
+          { key: "salida_cantidad", header: "Salida", format: "number", width: 12 },
+          { key: "documento", header: "Documento", width: 18 },
+          { key: "work_order_code", header: "OT", width: 16 },
+        ],
+      },
+      {
+        name: "OT pendientes",
+        rows: pendingRows.value,
+        emptyMessage: "No hay ordenes de trabajo pendientes.",
+        columns: workOrderHeaders.map((item) => ({
+          key: String(item.key),
+          header: String(item.title),
+          width: 18,
+        })),
+      },
+      {
+        name: "OT cerradas",
+        rows: closedRows.value,
+        emptyMessage: "No se cerraron ordenes de trabajo.",
+        columns: workOrderHeaders.map((item) => ({
+          key: String(item.key),
+          header: String(item.title),
+          width: 18,
+        })),
+      },
+    ],
+  };
+}
+
+async function downloadDailyReportPdf() {
+  if (!reportPayload.value) {
+    await loadReport();
+  }
+  if (!reportPayload.value) return;
+  exportingPdf.value = true;
+  try {
+    await downloadReportPdf(buildDailyOperationsPdfReport());
+    ui.success("Reporte diario descargado en PDF.");
+  } catch (e: any) {
+    ui.error(e?.message || "No se pudo descargar el reporte diario en PDF.");
+  } finally {
+    exportingPdf.value = false;
+  }
 }
 
 async function loadReport() {
