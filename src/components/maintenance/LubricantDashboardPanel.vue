@@ -246,7 +246,7 @@
                   <td>{{ detail.parametro_label || detail.parametro }}</td>
                   <td>{{ detail.resultado_numerico ?? detail.resultado_texto ?? "N/D" }}</td>
                   <td>{{ detail.unidad || "-" }}</td>
-                  <td>{{ detail.linea_base_resuelta ?? detail.linea_base ?? "N/D" }}</td>
+                  <td>{{ detail.linea_base_display ?? detail.linea_base_label ?? detail.linea_base_resuelta ?? detail.linea_base ?? "N/D" }}</td>
                   <td>{{ detail.delta_valor ?? detail.tendencia ?? "N/D" }}</td>
                   <td>
                     <v-chip size="x-small" :color="conditionColor(detail.nivel_alerta)" variant="tonal">
