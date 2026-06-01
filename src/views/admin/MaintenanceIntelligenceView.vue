@@ -92,7 +92,7 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface">
           <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
             <div>
-              <div class="text-subtitle-1 font-weight-bold">KPI de análisis de aceite</div>
+              <div class="text-subtitle-1 font-weight-bold">Reporte consumo de aceite</div>
               <div class="text-body-2 text-medium-emphasis">
                 Compara el consumo de materiales marcados como aceite por OT, equipo y rango de fechas.
               </div>
@@ -117,7 +117,7 @@
                 :loading="oilKpiLoading"
                 @click="loadOilKpi"
               >
-                Actualizar KPI
+                Actualizar reporte
               </v-btn>
             </div>
           </div>
@@ -178,6 +178,16 @@
                 hide-details
               />
             </v-col>
+            <v-col cols="12" sm="6" lg="2">
+              <v-checkbox
+                v-model="oilOnlyCebado"
+                label="Solo OT de cebado"
+                color="primary"
+                density="comfortable"
+                hide-details
+                @update:model-value="loadOilKpi"
+              />
+            </v-col>
             <v-col cols="12" lg="3">
               <div class="text-caption text-medium-emphasis mb-1">Referencia del filtro</div>
               <div class="oil-kpi-filter-hint">
@@ -200,7 +210,7 @@
 
           <LoadingTableState
             v-if="oilKpiLoading"
-            message="Cargando KPI de aceite..."
+            message="Cargando reporte de consumo de aceite..."
             :rows="6"
             :columns="4"
           />
@@ -229,6 +239,9 @@
               </v-chip>
               <v-chip label color="warning" variant="tonal">
                 Promedio OT: {{ formatDetailedNumber(oilKpi?.totals?.promedio_por_orden) }} {{ oilQuantityUnitLabel }}
+              </v-chip>
+              <v-chip v-if="oilKpi?.filters?.solo_cebado" label color="deep-orange" variant="tonal">
+                Solo cebado
               </v-chip>
               </div>
               <div class="text-caption text-primary mt-3">Presiona para abrir el detalle completo, gráficos ampliados y el reporte relacionado.</div>
@@ -307,6 +320,7 @@
                       <tr>
                         <th>Fecha</th>
                         <th>OT</th>
+                        <th>Tipo mtto</th>
                         <th>Equipo</th>
                         <th>{{ oilQuantityUnitLabel }}</th>
                         <th>Dif. anterior</th>
@@ -320,6 +334,7 @@
                           <div class="font-weight-medium">{{ item.work_order_code }}</div>
                           <div class="text-caption text-medium-emphasis">{{ item.work_order_title }}</div>
                         </td>
+                        <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                         <td>{{ item.equipment_label }}</td>
                         <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
                         <td>
@@ -331,7 +346,7 @@
                         <td>{{ item.bodega_label }}</td>
                       </tr>
                       <tr v-if="!oilWorkOrderRows.length">
-                        <td colspan="6" class="text-center text-medium-emphasis py-4">
+                        <td colspan="7" class="text-center text-medium-emphasis py-4">
                           No existen órdenes de trabajo con consumo de este aceite en el rango consultado.
                         </td>
                       </tr>
@@ -348,6 +363,7 @@
                       <tr>
                         <th>Fecha</th>
                         <th>OT</th>
+                        <th>Tipo</th>
                         <th>{{ oilQuantityUnitLabel }}</th>
                         <th>Costo</th>
                       </tr>
@@ -359,11 +375,12 @@
                           <div class="font-weight-medium">{{ item.work_order_code }}</div>
                           <div class="text-caption text-medium-emphasis">{{ item.equipment_label }}</div>
                         </td>
+                        <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                         <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
                         <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
                       </tr>
                       <tr v-if="!oilPeakDayDetailRows.length">
-                        <td colspan="4" class="text-center text-medium-emphasis py-4">
+                        <td colspan="5" class="text-center text-medium-emphasis py-4">
                           No existe un día pico identificado para este aceite.
                         </td>
                       </tr>
@@ -878,7 +895,7 @@
     :max-width="isDashboardDialogFullscreen ? undefined : 1500"
   >
     <v-card rounded="xl" class="enterprise-dialog">
-      <v-card-title class="text-subtitle-1 font-weight-bold">Detalle de análisis de aceite</v-card-title>
+      <v-card-title class="text-subtitle-1 font-weight-bold">Detalle reporte consumo de aceite</v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
         <v-alert
@@ -891,7 +908,7 @@
 
         <LoadingTableState
           v-if="oilKpiLoading"
-          message="Cargando detalle ampliado de aceite..."
+          message="Cargando detalle de consumo de aceite..."
           :rows="8"
           :columns="4"
         />
@@ -918,6 +935,9 @@
               </v-chip>
               <v-chip label color="warning" variant="tonal">
                 ${{ formatDetailedNumber(oilKpi?.totals?.total_costo, 2) }}
+              </v-chip>
+              <v-chip v-if="oilKpi?.filters?.solo_cebado" label color="deep-orange" variant="tonal">
+                Solo cebado
               </v-chip>
             </div>
           </div>
@@ -1013,6 +1033,7 @@
                     <tr>
                       <th>Fecha</th>
                       <th>OT</th>
+                      <th>Tipo mtto</th>
                       <th>Equipo</th>
                       <th>{{ oilQuantityUnitLabel }}</th>
                       <th>Costo</th>
@@ -1028,6 +1049,7 @@
                         <div class="font-weight-medium">{{ item.work_order_code }}</div>
                         <div class="text-caption text-medium-emphasis">{{ item.work_order_title }}</div>
                       </td>
+                      <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                       <td>{{ item.equipment_label }}</td>
                       <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
                       <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
@@ -1036,7 +1058,7 @@
                       <td>{{ item.bodega_label }}</td>
                     </tr>
                     <tr v-if="!oilWorkOrderRows.length">
-                      <td colspan="8" class="text-center text-medium-emphasis py-4">
+                      <td colspan="9" class="text-center text-medium-emphasis py-4">
                         No existen órdenes de trabajo con consumo de este aceite en el rango consultado.
                       </td>
                     </tr>
@@ -1053,6 +1075,7 @@
                     <tr>
                       <th>Fecha</th>
                       <th>OT</th>
+                      <th>Tipo</th>
                       <th>{{ oilQuantityUnitLabel }}</th>
                       <th>Costo</th>
                     </tr>
@@ -1064,11 +1087,12 @@
                         <div class="font-weight-medium">{{ item.work_order_code }}</div>
                         <div class="text-caption text-medium-emphasis">{{ item.equipment_label }}</div>
                       </td>
+                      <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                       <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
                       <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
                     </tr>
                     <tr v-if="!oilPeakDayDetailRows.length">
-                      <td colspan="4" class="text-center text-medium-emphasis py-4">
+                      <td colspan="5" class="text-center text-medium-emphasis py-4">
                         No existe un día pico identificado para este aceite.
                       </td>
                     </tr>
@@ -1240,6 +1264,7 @@ const oilPeriod = ref("MENSUAL");
 const oilReferenceDate = ref(formatDateForInput());
 const oilCustomFrom = ref("");
 const oilCustomTo = ref("");
+const oilOnlyCebado = ref(false);
 const oilRelatedLubricantSelection = ref<AnyRow | null>(null);
 const oilRelatedDashboard = ref<AnyRow | null>(null);
 const oilRelatedDashboardLoading = ref(false);
@@ -1425,6 +1450,7 @@ async function loadOilKpi() {
         : undefined,
       from: oilUsesCustomRange.value ? oilCustomFrom.value || undefined : undefined,
       to: oilUsesCustomRange.value ? oilCustomTo.value || undefined : undefined,
+      solo_cebado: oilOnlyCebado.value || undefined,
     };
     const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-aceite/kpi", {
       params,
@@ -1436,7 +1462,7 @@ async function loadOilKpi() {
     }
   } catch (e: any) {
     oilKpiError.value =
-      e?.response?.data?.message || "No se pudo cargar el KPI de análisis de aceite.";
+      e?.response?.data?.message || "No se pudo cargar el reporte consumo de aceite.";
   } finally {
     oilKpiLoading.value = false;
   }
@@ -1455,6 +1481,16 @@ function chipColorForStatus(value: unknown) {
   if (["OBSERVACION", "PENDIENTE", "WARNING"].includes(normalized)) return "warning";
   if (["COMPLETED", "CERRADA", "NORMAL", "OPERATIVO"].includes(normalized)) return "success";
   return "secondary";
+}
+
+function maintenanceKindLabel(value: unknown) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "CORRECTIVO") return "Correctivo";
+  if (normalized === "PREVENTIVO") return "Preventivo";
+  if (normalized === "PREDICTIVO") return "Predictivo";
+  if (normalized === "CEBADO") return "Cebado";
+  if (normalized === "INSPECCION") return "Inspeccion";
+  return normalized || "Sin definir";
 }
 
 function formatCompactNumber(value: unknown) {
