@@ -1,5 +1,6 @@
 import { api } from "@/app/http/api";
 import { createLogTransact } from "@/app/services/log-transacts.service";
+import { currentDateTimeInputValue } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
 
 export type ProductRow = {
@@ -85,7 +86,7 @@ export async function fetchProductsWithStock() {
 }
 
 async function registerMovementAndKardex(args: MovementArgs) {
-  const now = new Date().toISOString();
+  const now = currentDateTimeInputValue();
   const subtotal = args.cantidad * args.costoUnitario;
 
   const movPayload: any = {

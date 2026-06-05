@@ -1315,7 +1315,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
-import { formatDateTime } from "@/app/utils/date-time";
+import { currentDateTimeInputValue, formatDateTime } from "@/app/utils/date-time";
 import {
   buildAgendaProgrammingReport,
   buildMonthlyProgrammingReport,
@@ -3714,7 +3714,7 @@ async function saveMonthlyCell() {
           horometro_actual: monthlyReprogramHorometer,
           usuario: currentUserName(),
           usuario_email: currentUserEmail() || null,
-          fecha_transaccion: new Date().toISOString(),
+          fecha_transaccion: currentDateTimeInputValue(),
         };
         const previousHistory = Array.isArray(programacionPayloadJson.reprogramaciones_historial)
           ? [...programacionPayloadJson.reprogramaciones_historial]
