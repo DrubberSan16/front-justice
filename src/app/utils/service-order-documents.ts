@@ -222,7 +222,7 @@ export async function downloadServiceOrderPdf(
   doc.setFontSize(14);
   doc.text("ORDEN DE SERVICIO", pageWidth / 2, 110, { align: "center" });
   doc.setFontSize(10);
-  doc.text(`No. ${safeText(order.codigo, "RJCTI-SIN-CODIGO")}`, pageWidth / 2, 128, {
+  doc.text(`No. ${safeText(order.codigo, "JCTI-OS-SIN-CODIGO")}`, pageWidth / 2, 128, {
     align: "center",
   });
 

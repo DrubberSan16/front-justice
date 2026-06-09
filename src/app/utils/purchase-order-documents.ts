@@ -155,7 +155,7 @@ export async function downloadPurchaseOrderPdf(
   );
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text(`No. ${safeText(order.codigo, "OC-SIN-CODIGO")}`, rightX, 85, {
+  doc.text(`No. ${safeText(order.codigo, "JCTI-OC-SIN-CODIGO")}`, rightX, 85, {
     align: "right",
   });
 

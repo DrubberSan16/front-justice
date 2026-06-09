@@ -567,42 +567,26 @@ function createLocalId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function incrementAlphaPrefix(letter: string) {
-  const nextCharCode = letter.toUpperCase().charCodeAt(0) + 1;
-  if (nextCharCode > 90) return "A";
-  return String.fromCharCode(nextCharCode);
-}
-
 function getServiceOrderCodeRank(code: string) {
-  const year = new Date().getFullYear();
-  const match = new RegExp(`^RJCTI-${year}-([A-Z])(\\d{7})$`, "i").exec(
-    String(code || "").trim(),
-  );
-  if (!match) return -1;
-  const letter = (match[1] || "A").toUpperCase();
-  const number = Number(match[2] || "0");
-  return (letter.charCodeAt(0) - 64) * 10000000 + number;
+  const normalized = String(code || "").trim();
+  const currentMatch = /^JCTI-OS(\d+)$/i.exec(normalized);
+  if (currentMatch) return Number(currentMatch[1] || "0");
+  const legacyMatch = /^RJCTI-\d{4}-([A-Z])(\d{7})$/i.exec(normalized);
+  if (!legacyMatch) return -1;
+  const letterRank = (legacyMatch[1] || "A").toUpperCase().charCodeAt(0) - 65;
+  const number = Number(legacyMatch[2] || "0");
+  return letterRank * 9999999 + number;
 }
 
 function nextServiceOrderCode(lastCode: string | null) {
-  const year = new Date().getFullYear();
-  const match = new RegExp(`^RJCTI-${year}-([A-Z])(\\d{7})$`, "i").exec(
-    String(lastCode || "").trim(),
-  );
-  if (!match) return `RJCTI-${year}-A0000001`;
-  const currentLetter = (match[1] || "A").toUpperCase();
-  const currentNumber = Number(match[2] || "0");
-  if (currentNumber >= 9999999) {
-    return `RJCTI-${year}-${incrementAlphaPrefix(currentLetter)}0000001`;
-  }
-  return `RJCTI-${year}-${currentLetter}${String(currentNumber + 1).padStart(7, "0")}`;
+  const currentNumber = getServiceOrderCodeRank(lastCode || "");
+  return `JCTI-OS${String(Math.max(0, currentNumber) + 1).padStart(6, "0")}`;
 }
 
 function getHighestServiceOrderCode(codes: string[]) {
-  const year = new Date().getFullYear();
   return codes
     .map((item) => String(item || "").trim())
-    .filter((item) => new RegExp(`^RJCTI-${year}-([A-Z])(\\d{7})$`, "i").test(item))
+    .filter((item) => getServiceOrderCodeRank(item) >= 0)
     .sort((a, b) => getServiceOrderCodeRank(b) - getServiceOrderCodeRank(a))[0] ?? null;
 }
 
@@ -902,7 +886,6 @@ function buildPayload() {
     (item) => String(item.id || item.nameUser || item.email || "") === String(form.emitido_por_user_id),
   );
   return {
-    codigo: form.codigo || undefined,
     fecha_emision: form.fecha_emision || undefined,
     proveedor_id: form.proveedor_id || undefined,
     emitido_por_user_id: form.emitido_por_user_id || undefined,

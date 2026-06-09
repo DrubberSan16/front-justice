@@ -607,36 +607,26 @@ function createLocalId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function incrementAlphaPrefix(letter: string) {
-  const nextCharCode = letter.toUpperCase().charCodeAt(0) + 1;
-  if (nextCharCode > 90) return "A";
-  return String.fromCharCode(nextCharCode);
-}
-
 function nextPurchaseOrderCode(lastCode: string | null) {
-  if (!lastCode) return "OC-A00001";
-  const match = /^OC-([A-Z])(\d{5})$/i.exec(String(lastCode || "").trim());
-  if (!match) return "OC-A00001";
-  const currentLetter = (match[1] ?? "A").toUpperCase();
-  const currentNumber = Number(match[2] ?? "0");
-  if (currentNumber >= 99999) {
-    return `OC-${incrementAlphaPrefix(currentLetter)}00001`;
-  }
-  return `OC-${currentLetter}${String(currentNumber + 1).padStart(5, "0")}`;
+  const currentNumber = getPurchaseOrderCodeRank(lastCode || "");
+  return `JCTI-OC${String(Math.max(0, currentNumber) + 1).padStart(6, "0")}`;
 }
 
 function getPurchaseOrderCodeRank(code: string) {
-  const match = /^OC-([A-Z])(\d{5})$/i.exec(String(code || "").trim());
-  if (!match) return -1;
-  const letter = (match[1] ?? "A").toUpperCase();
-  const number = Number(match[2] ?? "0");
-  return (letter.charCodeAt(0) - 64) * 100000 + number;
+  const normalized = String(code || "").trim();
+  const currentMatch = /^JCTI-OC(\d+)$/i.exec(normalized);
+  if (currentMatch) return Number(currentMatch[1] ?? "0");
+  const legacyMatch = /^OC-([A-Z])(\d{5})$/i.exec(normalized);
+  if (!legacyMatch) return -1;
+  const letterRank = (legacyMatch[1] ?? "A").toUpperCase().charCodeAt(0) - 65;
+  const number = Number(legacyMatch[2] ?? "0");
+  return letterRank * 99999 + number;
 }
 
 function getHighestPurchaseOrderCode(codes: string[]) {
   const normalized = codes
     .map((item) => String(item || "").trim())
-    .filter(Boolean)
+    .filter((item) => getPurchaseOrderCodeRank(item) >= 0)
     .sort((a, b) => getPurchaseOrderCodeRank(b) - getPurchaseOrderCodeRank(a));
   return normalized[0] ?? null;
 }
@@ -924,7 +914,6 @@ function validateForm() {
 
 function buildPayload() {
   return {
-    codigo: form.codigo || undefined,
     fecha_emision: form.fecha_emision || undefined,
     fecha_requerida: form.fecha_requerida || undefined,
     proveedor_id: form.proveedor_id || undefined,
