@@ -121,7 +121,11 @@
             size="small"
             variant="text"
             prepend-icon="mdi-cloud-search-outline"
-            :loading="consultingGuideId === item.guia_remision_id"
+            :loading="
+              consultingGuideId === item.guia_remision_id ||
+              isGuideAuthorizationPendingSummary(item)
+            "
+            :disabled="isGuideAuthorizationPendingSummary(item)"
             @click="consultGuide(item)"
           >
             Consultar SRI
@@ -756,6 +760,15 @@
           >
             {{ message }}
           </div>
+          <v-alert
+            v-if="isCurrentGuideAuthorizationPending"
+            type="info"
+            variant="tonal"
+            density="comfortable"
+            class="mt-3"
+          >
+            La guia fue enviada a autorizar. Espera a que el SRI confirme la autorizacion; el sistema actualizara esta vista automaticamente.
+          </v-alert>
         </div>
 
         <div v-if="guidePreviewLoading" class="guide-preview-loading mt-4">
@@ -821,6 +834,7 @@
           v-if="!isCurrentGuideAuthorized"
           color="primary"
           :loading="guideSaving"
+          :disabled="isCurrentGuideAuthorizationPending"
           @click="generateGuide"
         >
           {{ isGuideRegenerationFlow ? "Regenerar guía" : "Generar guía" }}
@@ -830,7 +844,7 @@
           color="success"
           variant="tonal"
           :disabled="!canAuthorizeCurrentGuide"
-          :loading="guideAuthorizing"
+          :loading="guideAuthorizing || isCurrentGuideAuthorizationPending"
           @click="authorizeGuide"
         >
           Autorizar en SRI
@@ -1084,6 +1098,7 @@ const sriCertificatePassword = ref("");
 const guideContext = ref<GuideContext>({});
 const generatedGuide = ref<GuideResponse | null>(null);
 const guidePreviewUrl = ref("");
+const guideAuthorizationPendingIds = ref<Set<string>>(new Set());
 const sriConfigMeta = reactive<SriConfigMeta>({});
 let guideStatusSocket: Socket | null = null;
 
@@ -1305,13 +1320,22 @@ const totalReferentialAmount = computed(() =>
 );
 
 const canAuthorizeCurrentGuide = computed(() => {
-  if (!generatedGuide.value?.id || guideSaving.value || guidePreviewLoading.value) {
+  if (
+    !generatedGuide.value?.id ||
+    guideSaving.value ||
+    guidePreviewLoading.value ||
+    isGuideAuthorizationPendingSummary(generatedGuide.value)
+  ) {
     return false;
   }
   const emissionState = String(generatedGuide.value.estado_emision || "").trim().toUpperCase();
   const sriState = String(generatedGuide.value.sri_estado || "").trim().toUpperCase();
   return emissionState !== "AUTORIZADA" && sriState !== "AUTORIZADO";
 });
+
+const isCurrentGuideAuthorizationPending = computed(() =>
+  isGuideAuthorizationPendingSummary(generatedGuide.value),
+);
 
 const isCurrentGuideAuthorized = computed(() =>
   isGuideAuthorizedSummary(
@@ -1440,6 +1464,49 @@ function isGuideAuthorizedSummary(
     .trim()
     .toUpperCase();
   return emission === "AUTORIZADA" || sri === "AUTORIZADO";
+}
+
+function isGuidePendingSriSummary(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+) {
+  const emission = String((value as any)?.estado_emision || (value as any)?.guia_remision_estado || "")
+    .trim()
+    .toUpperCase();
+  const sri = String((value as any)?.sri_estado || (value as any)?.guia_remision_sri_estado || "")
+    .trim()
+    .toUpperCase();
+  return (
+    emission === "RECIBIDA" ||
+    sri === "RECIBIDA" ||
+    emission === "PENDIENTE" ||
+    sri === "PENDIENTE"
+  );
+}
+
+function getGuideSummaryId(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+) {
+  return String((value as any)?.id || (value as any)?.guia_remision_id || "").trim();
+}
+
+function setGuideAuthorizationPending(guideId: unknown, pending: boolean) {
+  const normalizedId = String(guideId || "").trim();
+  if (!normalizedId) return;
+  const next = new Set(guideAuthorizationPendingIds.value);
+  if (pending) {
+    next.add(normalizedId);
+  } else {
+    next.delete(normalizedId);
+  }
+  guideAuthorizationPendingIds.value = next;
+}
+
+function isGuideAuthorizationPendingSummary(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+) {
+  const guideId = getGuideSummaryId(value);
+  if (guideId && guideAuthorizationPendingIds.value.has(guideId)) return true;
+  return isGuidePendingSriSummary(value);
 }
 
 function guideActionLabel(item: TransferRow) {
@@ -2162,6 +2229,7 @@ async function loadGuidePreviewByTransfer(transferId: string) {
       return;
     }
     generatedGuide.value = payload;
+    setGuideAuthorizationPending(payload.id, isGuidePendingSriSummary(payload));
     await buildGuidePreview(payload);
   } catch (error: any) {
     resetGuidePreview();
@@ -2264,8 +2332,18 @@ async function handleGuideStatusSocketUpdate(payload: {
   if (!guide?.id || !transferId) return;
 
   const previousGuide = generatedGuide.value;
-  const previousAuthorized = isGuideAuthorizedSummary(previousGuide);
+  const previousRow = transfers.value.find(
+    (row) =>
+      String(row.id || "") === transferId ||
+      String(row.guia_remision_id || "") === guide.id,
+  );
+  const isCurrentDialogGuide = previousGuide?.id === guide.id;
+  const previousSummary = isCurrentDialogGuide ? previousGuide : previousRow;
+  const previousAuthorized = isGuideAuthorizedSummary(previousSummary);
+  const previousPending = isGuideAuthorizationPendingSummary(previousSummary);
   const nextAuthorized = isGuideAuthorizedSummary(guide);
+  const nextPending = isGuidePendingSriSummary(guide);
+  setGuideAuthorizationPending(guide.id, nextPending);
 
   transfers.value = transfers.value.map((row) =>
     applyGuideStatusToTransferRow(row, guide, transferId),
@@ -2301,8 +2379,18 @@ async function handleGuideStatusSocketUpdate(payload: {
     await buildGuidePreview(generatedGuide.value);
   }
 
-  if (!previousAuthorized && nextAuthorized && previousGuide?.id === guide.id) {
+  if (!previousAuthorized && nextAuthorized) {
+    setGuideAuthorizationPending(guide.id, false);
+    await loadTransfers();
+    if (!isCurrentDialogGuide && !previousRow) return;
+    if (payload?.source === "authorize" && guideAuthorizing.value) return;
     ui.success("La guía fue autorizada por el SRI y la vista se actualizó automáticamente.");
+    return;
+  }
+
+  if (previousPending && !nextPending && !nextAuthorized && isCurrentDialogGuide) {
+    setGuideAuthorizationPending(guide.id, false);
+    notifyGuideSriResult("El SRI devolvio un estado final para la guia.", guide);
   }
 }
 
@@ -2593,11 +2681,6 @@ async function openGuideDialog(item: TransferRow) {
     const payload = (data?.data ?? data) as GuideContext;
     guideContext.value = payload || {};
     const draft = (payload?.draft ?? {}) as Record<string, unknown>;
-    const regenerationDate =
-      payload?.guia_existente &&
-      !isGuideAuthorizedSummary(payload.guia_existente as Record<string, unknown>)
-        ? formatDateForInput()
-        : "";
     guideRecipientLookupHydrating.value = true;
     guideProviderLookupHydrating.value = true;
     guideForm.ambiente = normalizeGuideEnvironment(
@@ -2605,13 +2688,13 @@ async function openGuideDialog(item: TransferRow) {
         (payload?.config as Record<string, unknown> | null)?.ambiente_default,
     );
     guideForm.fecha_emision = String(
-      regenerationDate || draft.fecha_emision || formatDateForInput(),
+      draft.fecha_emision || formatDateForInput(),
     );
     guideForm.fecha_ini_transporte = String(
-      regenerationDate || draft.fecha_ini_transporte || guideForm.fecha_emision,
+      draft.fecha_ini_transporte || guideForm.fecha_emision,
     );
     guideForm.fecha_fin_transporte = String(
-      regenerationDate || draft.fecha_fin_transporte || guideForm.fecha_ini_transporte,
+      draft.fecha_fin_transporte || guideForm.fecha_ini_transporte,
     );
     guideForm.dir_partida = String(draft.dir_partida || "");
     guideForm.proveedor_identificacion = String(payload?.proveedor?.identificacion || "");
@@ -2730,6 +2813,7 @@ async function generateGuide() {
     });
     const payload = (data?.data ?? data) as GuideResponse;
     generatedGuide.value = payload;
+    setGuideAuthorizationPending(payload.id, false);
     guideForm.forzar_regeneracion = true;
     guideContext.value = {
       ...guideContext.value,
@@ -2760,10 +2844,17 @@ async function authorizeGuide() {
     ui.error("Primero debes generar la guía antes de autorizarla.");
     return;
   }
+  const guideId = generatedGuide.value.id;
+  setGuideAuthorizationPending(guideId, true);
+  ui.open(
+    "La guia fue enviada a autorizar. Espera a que el SRI confirme la autorizacion.",
+    "info",
+    7000,
+  );
   guideAuthorizing.value = true;
   try {
     const response = await api.post(
-      `/kpi_inventory/guias-remision-sri/${generatedGuide.value.id}/autorizar`,
+      `/kpi_inventory/guias-remision-sri/${guideId}/autorizar`,
       {
         updated_by: getUserName(),
       },
@@ -2771,6 +2862,10 @@ async function authorizeGuide() {
     const payload = (response.data?.data ?? response.data) as GuideResponse;
     generatedGuide.value = payload;
     await buildGuidePreview(payload);
+    setGuideAuthorizationPending(
+      payload.id,
+      isGuidePendingSriSummary(payload) && !isGuideAuthorizedSummary(payload),
+    );
     notifyGuideSriResult(
       String(response.data?.message || "Estado SRI actualizado."),
       payload,
@@ -2782,6 +2877,7 @@ async function authorizeGuide() {
         error?.message ||
         "No se pudo autorizar la guía en el SRI.",
     );
+    setGuideAuthorizationPending(guideId, false);
   } finally {
     guideAuthorizing.value = false;
   }
