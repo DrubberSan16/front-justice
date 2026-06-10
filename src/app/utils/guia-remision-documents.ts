@@ -1,4 +1,5 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
+import companyLogoUrl from "@/assets/logo-emp.png";
 
 type GuideDetailLike = {
   codigo_producto?: string | null;
@@ -72,6 +73,14 @@ type GuidePdfPayload = {
   generatedBy?: string | null;
 };
 
+type ImageAsset = {
+  dataUrl: string;
+  width: number;
+  height: number;
+};
+
+let companyLogoAssetPromise: Promise<ImageAsset | null> | null = null;
+
 function repairText(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
@@ -139,6 +148,58 @@ async function buildAccessKeyBarcodeDataUrl(value: unknown) {
   });
 
   return canvas.toDataURL("image/png");
+}
+
+function loadImageAsset(url: string): Promise<ImageAsset | null> {
+  if (!url || typeof Image === "undefined" || typeof document === "undefined") {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      if (!width || !height) {
+        resolve(null);
+        return;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        resolve(null);
+        return;
+      }
+      context.drawImage(image, 0, 0, width, height);
+      resolve({
+        dataUrl: canvas.toDataURL("image/png"),
+        width,
+        height,
+      });
+    };
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+}
+
+function getCompanyLogoAsset() {
+  companyLogoAssetPromise ??= loadImageAsset(companyLogoUrl);
+  return companyLogoAssetPromise;
+}
+
+function getContainedImageSize(
+  image: ImageAsset,
+  maxWidth: number,
+  maxHeight: number,
+) {
+  const ratio = Math.min(maxWidth / image.width, maxHeight / image.height);
+  return {
+    width: image.width * ratio,
+    height: image.height * ratio,
+  };
 }
 
 function footer(doc: any, generatedBy: string) {
@@ -249,14 +310,39 @@ function drawTopRightBox(doc: any, guide: GuideLike, x: number, y: number, width
   return height;
 }
 
-function drawTopLeftBox(doc: any, config: GuideConfigLike, x: number, y: number, width: number) {
-  const height = 176;
+function drawTopLeftBox(
+  doc: any,
+  config: GuideConfigLike,
+  x: number,
+  y: number,
+  width: number,
+  logoAsset?: ImageAsset | null,
+) {
+  const height = 220;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10.5);
   doc.setTextColor(17, 24, 39);
-  doc.text(`R.U.C.: ${safeText(config.ruc)}`, x, y + 12);
 
-  let cursorY = y + 34;
+  let cursorY = y + 12;
+  if (logoAsset) {
+    const logoBoxWidth = width - 4;
+    const logoBoxHeight = 66;
+    const logoSize = getContainedImageSize(logoAsset, logoBoxWidth, logoBoxHeight);
+    const logoX = x + (width - logoSize.width) / 2;
+    doc.addImage(
+      logoAsset.dataUrl,
+      "PNG",
+      logoX,
+      cursorY,
+      logoSize.width,
+      logoSize.height,
+    );
+    cursorY += logoBoxHeight + 14;
+  }
+
+  doc.text(`R.U.C.: ${safeText(config.ruc)}`, x, cursorY);
+  cursorY += 22;
+
   doc.setFontSize(11.5);
   doc.text(safeText(config.razon_social, "EMISOR"), x, cursorY);
   cursorY += 16;
@@ -341,9 +427,7 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
 
   const guide = payload.guide ?? {};
   const transfer = payload.transfer ?? {};
-  const sucursal = payload.sucursal ?? {};
   const config = payload.config ?? {};
-  const provider = payload.provider ?? {};
   const details = Array.isArray(guide.detalle_snapshot) ? guide.detalle_snapshot : [];
   const generatedBy = safeText(payload.generatedBy, "Sistema");
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -352,12 +436,22 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
   const gap = 16;
   const leftWidth = 250;
   const rightWidth = pageWidth - left * 2 - leftWidth - gap;
-  const barcodeDataUrl = await buildAccessKeyBarcodeDataUrl(guide.clave_acceso);
+  const [barcodeDataUrl, companyLogoAsset] = await Promise.all([
+    buildAccessKeyBarcodeDataUrl(guide.clave_acceso),
+    getCompanyLogoAsset(),
+  ]);
 
   doc.setFillColor(255, 255, 255);
   doc.rect(0, 0, pageWidth, doc.internal.pageSize.getHeight(), "F");
 
-  const leftHeaderHeight = drawTopLeftBox(doc, config, left, top, leftWidth);
+  const leftHeaderHeight = drawTopLeftBox(
+    doc,
+    config,
+    left,
+    top,
+    leftWidth,
+    companyLogoAsset,
+  );
   const rightHeaderHeight = drawTopRightBox(
     doc,
     guide,
@@ -371,14 +465,8 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
     const barcodeWidth = rightWidth - 20;
     const barcodeY = top + 152;
     doc.setFillColor(255, 255, 255);
-    doc.rect(barcodeX, barcodeY, barcodeWidth, 56, "F");
+    doc.rect(barcodeX, barcodeY, barcodeWidth, 50, "F");
     doc.addImage(barcodeDataUrl, "PNG", barcodeX, barcodeY, barcodeWidth, 50);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(55, 65, 81);
-    doc.text("Codigo de barras de la clave de acceso", barcodeX + barcodeWidth / 2, barcodeY + 54, {
-      align: "center",
-    });
   }
 
   let cursorY = top + Math.max(leftHeaderHeight, rightHeaderHeight) + 16;
@@ -470,55 +558,38 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
     },
   });
 
-  const infoAdicional = [
-    ...Object.entries(guide.info_adicional || {}).filter(([, value]) => Boolean(String(value ?? "").trim())),
-    ...(provider.razon_social || provider.identificacion || provider.direccion
-      ? [
-          ["PROVEEDOR", safeText(provider.razon_social, "")],
-          ["IDENTIFICACION PROVEEDOR", safeText(provider.identificacion, "")],
-          ["NOMBRE COMERCIAL PROVEEDOR", safeText(provider.nombre_comercial, "")],
-          ["DIRECCION PROVEEDOR", safeText(provider.direccion, "")],
-          ["ORIGEN DE DATOS", safeText(provider.origen, "")],
-        ]
-      : []),
-    ["SUCURSAL", safeText(sucursal.nombre || sucursal.codigo, "")],
-    ["BODEGA ORIGEN", safeText(transfer.bodega_origen_label, "")],
-    ["BODEGA DESTINO", safeText(transfer.bodega_destino_label, "")],
-  ].filter(([, value]) => Boolean(String(value ?? "").trim()));
-
-  if (infoAdicional.length) {
-    doc.addPage();
-    drawSectionTitle(doc, "INFORMACION ADICIONAL", left, top + 6, pageWidth - left * 2);
-    autoTable(doc, {
-      startY: top + 28,
-      margin: { left, right: left },
-      head: [["Informacion Adicional", "Valor"]],
-      body: infoAdicional.map(([label, value]) => [safeText(label), safeText(value)]),
-      styles: {
-        font: "helvetica",
-        fontSize: 8.2,
-        cellPadding: 5,
-        textColor: [17, 24, 39],
-        lineColor: [70, 70, 70],
-        lineWidth: 0.45,
-        overflow: "linebreak",
-      },
-      headStyles: {
-        fillColor: [255, 255, 255],
-        textColor: [17, 24, 39],
-        fontStyle: "bold",
-        lineColor: [40, 40, 40],
-        lineWidth: 0.8,
-      },
-      columnStyles: {
-        0: { cellWidth: 180, fontStyle: "bold" },
-        1: { cellWidth: pageWidth - left * 2 - 180 },
-      },
-      didDrawPage: () => {
-        footer(doc, generatedBy);
-      },
-    });
-  }
+  doc.addPage();
+  drawSectionTitle(doc, "INFORMACION ADICIONAL", left, top + 6, pageWidth - left * 2);
+  autoTable(doc, {
+    startY: top + 28,
+    margin: { left, right: left },
+    head: [["Informacion Adicional", "Valor"]],
+    body: [["", ""]],
+    styles: {
+      font: "helvetica",
+      fontSize: 8.2,
+      cellPadding: 5,
+      minCellHeight: 22,
+      textColor: [17, 24, 39],
+      lineColor: [70, 70, 70],
+      lineWidth: 0.45,
+      overflow: "linebreak",
+    },
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [17, 24, 39],
+      fontStyle: "bold",
+      lineColor: [40, 40, 40],
+      lineWidth: 0.8,
+    },
+    columnStyles: {
+      0: { cellWidth: 180, fontStyle: "bold" },
+      1: { cellWidth: pageWidth - left * 2 - 180 },
+    },
+    didDrawPage: () => {
+      footer(doc, generatedBy);
+    },
+  });
 
   return doc.output("blob");
 }
