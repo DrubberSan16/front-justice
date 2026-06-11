@@ -319,6 +319,16 @@ function applyCellFormat(cell: any, format: ReportColumn["format"]) {
   cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
 }
 
+function resolvePdfColumnWidth(column: { width?: number }, compactTable: boolean) {
+  return Math.max(
+    compactTable ? 42 : 52,
+    Math.min(
+      compactTable ? 140 : 180,
+      Number(column.width ?? 14) * (compactTable ? 4.2 : 5.2),
+    ),
+  );
+}
+
 export async function downloadReportExcel(report: ReportDefinition) {
   const { Workbook } = await import("exceljs");
   const workbook = new Workbook();
@@ -604,14 +614,18 @@ export async function downloadReportPdf(report: ReportDefinition) {
     const previewColumnIndex = resolveColumnIndex(columns, sheet.media?.previewColumnKey);
     const linkColumnIndex = resolveColumnIndex(columns, sheet.media?.linkUrlKey);
     const compactTable = columns.length >= 9;
+    const columnWidths = columns.map((column) => resolvePdfColumnWidth(column, compactTable));
+    const availableTableWidth = pageWidth - marginX * 2;
+    const tableNeedsHorizontalBreak =
+      columnWidths.reduce((total, width) => total + width, 0) > availableTableWidth;
+    const tableFontSize = tableNeedsHorizontalBreak ? 5.8 : compactTable ? 6.5 : 8;
+    const tableHeadFontSize = tableNeedsHorizontalBreak ? 6.2 : compactTable ? 7 : 8;
+    const tableCellPadding = tableNeedsHorizontalBreak ? 2 : compactTable ? 3 : 5;
     const columnStyles = Object.fromEntries(
-      columns.map((column, columnIndex) => [
+      columns.map((_, columnIndex) => [
         columnIndex,
         {
-          cellWidth: Math.max(
-            compactTable ? 42 : 52,
-            Math.min(compactTable ? 140 : 180, Number(column.width ?? 14) * (compactTable ? 4.2 : 5.2)),
-          ),
+          cellWidth: columnWidths[columnIndex],
         },
       ]),
     );
@@ -663,9 +677,16 @@ export async function downloadReportPdf(report: ReportDefinition) {
       startY: cursorY,
       margin: { left: marginX, right: marginX, top: 118, bottom: 36 },
       theme: "grid",
+      horizontalPageBreak: tableNeedsHorizontalBreak,
+      horizontalPageBreakRepeat: tableNeedsHorizontalBreak
+        ? columns.length > 1
+          ? [0, 1]
+          : [0]
+        : undefined,
+      horizontalPageBreakBehaviour: "afterAllRows",
       styles: {
-        fontSize: compactTable ? 6.5 : 8,
-        cellPadding: compactTable ? 3 : 5,
+        fontSize: tableFontSize,
+        cellPadding: tableCellPadding,
         overflow: "linebreak",
         valign: "middle",
       },
@@ -674,12 +695,12 @@ export async function downloadReportPdf(report: ReportDefinition) {
         textColor: [255, 255, 255],
         fontStyle: "bold",
         halign: "center",
-        fontSize: compactTable ? 7 : 8,
+        fontSize: tableHeadFontSize,
       },
       bodyStyles: {
         textColor: [31, 41, 55],
-        fontSize: compactTable ? 6.5 : 8,
-        cellPadding: compactTable ? 3 : 5,
+        fontSize: tableFontSize,
+        cellPadding: tableCellPadding,
         overflow: "linebreak",
       },
       alternateRowStyles: { fillColor: [247, 250, 252] },
