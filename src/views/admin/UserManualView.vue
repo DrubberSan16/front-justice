@@ -320,6 +320,7 @@ import {
 } from "@/app/config/user-manual";
 import type { MenuNode } from "@/app/types/menu.types";
 import { findMenuRouteByValue } from "@/app/utils/menu-route-catalog";
+import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -545,11 +546,12 @@ async function downloadManualPdf() {
     ]);
     const autoTable = autoTableModule.default as any;
     const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+    const companyLogoAsset = await getCompanyLogoAsset();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const marginX = 48;
     const contentWidth = pageWidth - marginX * 2;
-    const headerTop = 70;
+    const headerTop = 82;
     const bottomLimit = pageHeight - 58;
     const generatedAt = manualGeneratedAtLabel();
     const userLabel = pdfText(auth.user?.nameSurname || auth.user?.nameUser || "Usuario");
@@ -557,13 +559,20 @@ async function downloadManualPdf() {
 
     function drawHeader() {
       doc.setFillColor(31, 78, 120);
-      doc.rect(0, 0, pageWidth, 34, "F");
+      doc.rect(0, 0, pageWidth, 48, "F");
+      drawPdfCompanyLogo(doc, companyLogoAsset, {
+        marginX,
+        y: 10,
+        maxWidth: 94,
+        maxHeight: 28,
+      });
+      const headerTextX = marginX + (companyLogoAsset ? 110 : 0);
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.text("KPI Justice", marginX, 22);
+      doc.text("KPI Justice", headerTextX, 29);
       doc.setFont("helvetica", "normal");
-      doc.text("Manual de usuario", pageWidth - marginX, 22, { align: "right" });
+      doc.text("Manual de usuario", pageWidth - marginX, 29, { align: "right" });
       doc.setTextColor(31, 41, 55);
     }
 
@@ -625,22 +634,28 @@ async function downloadManualPdf() {
     }
 
     doc.setFillColor(31, 78, 120);
-    doc.rect(0, 0, pageWidth, 136, "F");
+    doc.rect(0, 0, pageWidth, 150, "F");
+    drawPdfCompanyLogo(doc, companyLogoAsset, {
+      marginX,
+      y: 24,
+      maxWidth: 150,
+      maxHeight: 46,
+    });
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
-    doc.text("Manual de Usuario", marginX, 64);
+    doc.text("Manual de Usuario", marginX, 92);
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
-    doc.text("Guia operativa consolidada por permisos de acceso", marginX, 88);
-    doc.text("KPI Justice", marginX, 112);
+    doc.text("Guia operativa consolidada por permisos de acceso", marginX, 116);
+    doc.text("KPI Justice", marginX, 136);
 
     doc.setTextColor(31, 41, 55);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("Informacion del documento", marginX, 182);
+    doc.text("Informacion del documento", marginX, 196);
     autoTable(doc, {
-      startY: 202,
+      startY: 216,
       body: [
         ["Usuario", userLabel],
         ["Rol", roleLabel],

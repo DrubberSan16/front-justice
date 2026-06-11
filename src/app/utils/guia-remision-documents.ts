@@ -1,5 +1,10 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
-import companyLogoUrl from "@/assets/logo-emp.png";
+import {
+  drawPdfCompanyLogo,
+  getCompanyLogoAsset,
+  getContainedImageSize,
+  type PdfImageAsset,
+} from "@/app/utils/pdf-branding";
 
 type GuideDetailLike = {
   codigo_producto?: string | null;
@@ -73,14 +78,6 @@ type GuidePdfPayload = {
   generatedBy?: string | null;
 };
 
-type ImageAsset = {
-  dataUrl: string;
-  width: number;
-  height: number;
-};
-
-let companyLogoAssetPromise: Promise<ImageAsset | null> | null = null;
-
 function repairText(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
@@ -148,58 +145,6 @@ async function buildAccessKeyBarcodeDataUrl(value: unknown) {
   });
 
   return canvas.toDataURL("image/png");
-}
-
-function loadImageAsset(url: string): Promise<ImageAsset | null> {
-  if (!url || typeof Image === "undefined" || typeof document === "undefined") {
-    return Promise.resolve(null);
-  }
-
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => {
-      const width = image.naturalWidth || image.width;
-      const height = image.naturalHeight || image.height;
-      if (!width || !height) {
-        resolve(null);
-        return;
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      if (!context) {
-        resolve(null);
-        return;
-      }
-      context.drawImage(image, 0, 0, width, height);
-      resolve({
-        dataUrl: canvas.toDataURL("image/png"),
-        width,
-        height,
-      });
-    };
-    image.onerror = () => resolve(null);
-    image.src = url;
-  });
-}
-
-function getCompanyLogoAsset() {
-  companyLogoAssetPromise ??= loadImageAsset(companyLogoUrl);
-  return companyLogoAssetPromise;
-}
-
-function getContainedImageSize(
-  image: ImageAsset,
-  maxWidth: number,
-  maxHeight: number,
-) {
-  const ratio = Math.min(maxWidth / image.width, maxHeight / image.height);
-  return {
-    width: image.width * ratio,
-    height: image.height * ratio,
-  };
 }
 
 function footer(doc: any, generatedBy: string) {
@@ -316,7 +261,7 @@ function drawTopLeftBox(
   x: number,
   y: number,
   width: number,
-  logoAsset?: ImageAsset | null,
+  logoAsset?: PdfImageAsset | null,
 ) {
   const height = 220;
   doc.setFont("helvetica", "bold");
@@ -331,7 +276,7 @@ function drawTopLeftBox(
     const logoX = x + (width - logoSize.width) / 2;
     doc.addImage(
       logoAsset.dataUrl,
-      "PNG",
+      logoAsset.format,
       logoX,
       cursorY,
       logoSize.width,
@@ -436,6 +381,12 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
   const gap = 16;
   const leftWidth = 250;
   const rightWidth = pageWidth - left * 2 - leftWidth - gap;
+  const cornerLogoOptions = {
+    marginX: left,
+    y: 14,
+    maxWidth: 108,
+    maxHeight: 32,
+  };
   const [barcodeDataUrl, companyLogoAsset] = await Promise.all([
     buildAccessKeyBarcodeDataUrl(guide.clave_acceso),
     getCompanyLogoAsset(),
@@ -518,7 +469,7 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
 
   autoTable(doc, {
     startY: cursorY,
-    margin: { left, right: left },
+    margin: { left, right: left, top: 72, bottom: 52 },
     head: [["Cantidad", "Descripcion", "Codigo Principal", "Codigo Auxiliar", "Detalle Adicional"]],
     body: details.length
       ? details.map((detail) => [
@@ -554,15 +505,19 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
       4: { cellWidth: 100 },
     },
     didDrawPage: () => {
+      if (doc.getCurrentPageInfo().pageNumber > 1) {
+        drawPdfCompanyLogo(doc, companyLogoAsset, cornerLogoOptions);
+      }
       footer(doc, generatedBy);
     },
   });
 
   doc.addPage();
-  drawSectionTitle(doc, "INFORMACION ADICIONAL", left, top + 6, pageWidth - left * 2);
+  const additionalTop = top + 52;
+  drawSectionTitle(doc, "INFORMACION ADICIONAL", left, additionalTop, pageWidth - left * 2);
   autoTable(doc, {
-    startY: top + 28,
-    margin: { left, right: left },
+    startY: additionalTop + 22,
+    margin: { left, right: left, top: 72, bottom: 52 },
     head: [["Informacion Adicional", "Valor"]],
     body: [["", ""]],
     styles: {
@@ -587,6 +542,7 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
       1: { cellWidth: pageWidth - left * 2 - 180 },
     },
     didDrawPage: () => {
+      drawPdfCompanyLogo(doc, companyLogoAsset, cornerLogoOptions);
       footer(doc, generatedBy);
     },
   });

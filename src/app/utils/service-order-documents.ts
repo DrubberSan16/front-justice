@@ -1,4 +1,5 @@
 import { formatDateOnly } from "@/app/utils/date-time";
+import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 
 type ServiceOrderDetailLike = {
   codigo_producto?: string | null;
@@ -196,6 +197,7 @@ export async function downloadServiceOrderPdf(
     unit: "pt",
     format: "a4",
   });
+  const companyLogoAsset = await getCompanyLogoAsset();
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -206,6 +208,12 @@ export async function downloadServiceOrderPdf(
   const details = Array.isArray(order.detalles) ? order.detalles : [];
   const emissionDate = formatDate(order.fecha_emision || new Date());
   const totalAmount = toNumber(order.total);
+  const logoOptions = {
+    marginX: marginLeft,
+    y: 30,
+    maxWidth: 112,
+    maxHeight: 34,
+  };
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
@@ -259,7 +267,7 @@ export async function downloadServiceOrderPdf(
 
   autoTable(doc, {
     startY: cursorY + 10,
-    margin: { left: marginLeft, right: marginRight },
+    margin: { left: marginLeft, right: marginRight, top: 88, bottom: 60 },
     theme: "grid",
     styles: {
       font: "helvetica",
@@ -302,6 +310,9 @@ export async function downloadServiceOrderPdf(
           formatMoney(detail.total),
         ])
       : [["1", "", "0.00", "Sin servicios cargados", "0.00", "0.00"]],
+    didDrawPage: () => {
+      drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
+    },
   });
 
   const lastTable = (doc as any).lastAutoTable;
@@ -360,6 +371,7 @@ export async function downloadServiceOrderPdf(
   let signatureY = cursorY + 72;
   if (signatureY > pageHeight - 90) {
     doc.addPage();
+    drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
     signatureY = 140;
   }
   doc.setFont("helvetica", "normal");

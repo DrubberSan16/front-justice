@@ -5,6 +5,7 @@ import {
   formatDateTime,
   looksLikeDateValue,
 } from "@/app/utils/date-time";
+import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 
 type AnyRow = Record<string, any>;
 
@@ -533,10 +534,12 @@ export async function downloadReportPdf(report: ReportDefinition) {
     unit: "pt",
     format: "a4",
   });
+  const companyLogoAsset = await getCompanyLogoAsset();
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 32;
+  const headerTextX = marginX + (companyLogoAsset ? 124 : 0);
   const generatedLabel = report.generatedAt
     ? formatDateTime(report.generatedAt, currentDateTimeLabel())
     : currentDateTimeLabel();
@@ -544,15 +547,21 @@ export async function downloadReportPdf(report: ReportDefinition) {
   function drawPageHeader(title: string, subtitle?: string, pageLabel?: string) {
     doc.setFillColor(31, 78, 120);
     doc.rect(0, 0, pageWidth, 86, "F");
+    drawPdfCompanyLogo(doc, companyLogoAsset, {
+      marginX,
+      y: 18,
+      maxWidth: 108,
+      maxHeight: 34,
+    });
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
-    doc.text(repairText(title), marginX, 34);
+    doc.text(repairText(title), headerTextX, 34);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     if (subtitle) {
-      const lines = doc.splitTextToSize(repairText(subtitle), pageWidth - marginX * 2);
-      doc.text(lines, marginX, 52);
+      const lines = doc.splitTextToSize(repairText(subtitle), pageWidth - headerTextX - marginX);
+      doc.text(lines, headerTextX, 52);
     }
     if (pageLabel) {
       doc.setFontSize(9);
@@ -652,7 +661,7 @@ export async function downloadReportPdf(report: ReportDefinition) {
 
     autoTable(doc, {
       startY: cursorY,
-      margin: { left: marginX, right: marginX },
+      margin: { left: marginX, right: marginX, top: 118, bottom: 36 },
       theme: "grid",
       styles: {
         fontSize: compactTable ? 6.5 : 8,
@@ -726,6 +735,13 @@ export async function downloadReportPdf(report: ReportDefinition) {
             });
           }
         }
+      },
+      didDrawPage: () => {
+        drawPageHeader(
+          report.title,
+          report.subtitle,
+          index === 0 ? "Reporte operativo" : repairText(sheet.name),
+        );
       },
     });
 

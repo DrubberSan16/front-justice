@@ -1,4 +1,5 @@
 import { formatDateOnly, formatDateTime as formatAppDateTime } from "@/app/utils/date-time";
+import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 
 type PurchaseOrderDetailLike = {
   codigo_producto?: string | null;
@@ -109,6 +110,7 @@ export async function downloadPurchaseOrderPdf(
     unit: "pt",
     format: "a4",
   });
+  const companyLogoAsset = await getCompanyLogoAsset();
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -116,6 +118,7 @@ export async function downloadPurchaseOrderPdf(
   const marginRight = 38;
   const usableWidth = pageWidth - marginLeft - marginRight;
   const rightX = pageWidth - marginRight;
+  const headerTextX = marginLeft + (companyLogoAsset ? 124 : 0);
   const details = Array.isArray(order.detalles) ? order.detalles : [];
   const observation = safeText(order.observacion || order.condicion_pago, "Sin observación");
   const totalQuantity = sumBy(details, (item) => item.cantidad);
@@ -132,6 +135,12 @@ export async function downloadPurchaseOrderPdf(
   const preparedBy = safeText(order.created_by || userName, userName);
   const approvedBy = safeText(order.updated_by || order.created_by || userName, userName);
   const generatedAt = formatDateTime(new Date());
+  const logoOptions = {
+    marginX: marginLeft,
+    y: 30,
+    maxWidth: 112,
+    maxHeight: 34,
+  };
 
   doc.setTextColor(0, 0, 0);
   doc.setDrawColor(0, 0, 0);
@@ -139,13 +148,13 @@ export async function downloadPurchaseOrderPdf(
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text(PURCHASE_ORDER_TEMPLATE.companyName, marginLeft, 40);
+  doc.text(PURCHASE_ORDER_TEMPLATE.companyName, headerTextX, 40);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
-  doc.text(PURCHASE_ORDER_TEMPLATE.addressLine, marginLeft, 55);
-  doc.text(PURCHASE_ORDER_TEMPLATE.cityCountry, marginLeft, 70);
-  doc.text(`RUC: ${PURCHASE_ORDER_TEMPLATE.ruc}`, marginLeft, 85);
+  doc.text(PURCHASE_ORDER_TEMPLATE.addressLine, headerTextX, 55);
+  doc.text(PURCHASE_ORDER_TEMPLATE.cityCountry, headerTextX, 70);
+  doc.text(`RUC: ${PURCHASE_ORDER_TEMPLATE.ruc}`, headerTextX, 85);
 
   doc.text(
     `${PURCHASE_ORDER_TEMPLATE.cityEmission}, ${emissionDateLabel}`,
@@ -204,7 +213,7 @@ export async function downloadPurchaseOrderPdf(
 
   autoTable(doc, {
     startY: cursorY,
-    margin: { left: marginLeft, right: marginRight },
+    margin: { left: marginLeft, right: marginRight, top: 96, bottom: 70 },
     theme: "grid",
     tableLineColor: [0, 0, 0],
     tableLineWidth: 0.5,
@@ -276,6 +285,9 @@ export async function downloadPurchaseOrderPdf(
       formatMoneyWithSymbol(totalIva),
       formatMoneyWithSymbol(totalAmount),
     ]],
+    didDrawPage: () => {
+      drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
+    },
   });
 
   const lastTable = (doc as any).lastAutoTable;
@@ -283,6 +295,7 @@ export async function downloadPurchaseOrderPdf(
 
   if (signatureY > pageHeight - 150) {
     doc.addPage();
+    drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
     signatureY = 150;
   }
 
