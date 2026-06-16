@@ -16,6 +16,7 @@
               </div>
             </div>
             <div class="d-flex align-center flex-wrap justify-end" style="gap:8px">
+              <MassPurgeButton endpoint="/kpi_inventory/kardex/purge-all" module-title="Kardex y movimientos de inventario" @purged="handleKardexPurged" />
               <v-btn v-if="canCreate" color="success" prepend-icon="mdi-tray-arrow-down" @click="openMovementDialog('INGRESO')">Ingreso de bodega</v-btn>
               <v-btn v-if="canCreate" color="warning" variant="tonal" prepend-icon="mdi-tray-arrow-up" @click="openMovementDialog('SALIDA')">Egreso de bodega</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('excel')" @click="exportInventoryReport('excel')">Excel</v-btn>
@@ -226,6 +227,7 @@ import {
   appendOilIndicator,
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type MovementType = "INGRESO" | "SALIDA";
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
@@ -368,6 +370,7 @@ async function loadKardex(page = kardexPagination.page) {
     loadingKardex.value = false;
   }
 }
+async function handleKardexPurged() { resetMaterialDetailCache(); kardexPagination.page = 1; await Promise.allSettled([loadKardex(1), ensureMovementCatalogsLoaded(true)]); }
 function applyKardexFilters() {
   kardexPagination.page = 1;
   void loadKardex(1);
