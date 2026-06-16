@@ -12,9 +12,16 @@
         </div>
       </div>
 
-      <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
-        Nuevo rol
-      </v-btn>
+      <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+        <MassPurgeButton
+          endpoint="/kpi_security/roles/purge-all"
+          module-title="Roles"
+          @purged="handleRolesPurged"
+        />
+        <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
+          Nuevo rol
+        </v-btn>
+      </div>
     </div>
 
     <!-- FILTROS -->
@@ -123,6 +130,7 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 
 import type { Role } from "@/app/types/roles.types";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import RoleFormDialog from "@/components/roles/RoleFormDialog.vue";
 import RoleDeleteDialog from "@/components/roles/RoleDeleteDialog.vue";
 
@@ -188,6 +196,10 @@ function openDelete(r: Role) {
   selectedRole.value = r;
   formError.value = null;
   deleteDialog.value = true;
+}
+
+async function handleRolesPurged() {
+  await roles.fetchAll(false);
 }
 
 function currentUserName() {

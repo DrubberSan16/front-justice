@@ -13,14 +13,26 @@
         <div class="text-h6 font-weight-bold">{{ displayModuleTitle }}</div>
         <div class="text-body-2 text-medium-emphasis">Mantenimiento de {{ displayModuleTitle.toLowerCase() }}.</div>
       </div>
-      <v-btn
-        v-if="canCreate"
-        color="primary"
-        prepend-icon="mdi-plus"
-        @click="openCreate"
-      >
-        Nuevo
-      </v-btn>
+      <div class="d-flex flex-wrap" style="gap: 8px;">
+        <v-btn
+          v-if="canPurgeModule"
+          color="error"
+          variant="tonal"
+          prepend-icon="mdi-delete-alert"
+          :disabled="!getPurgeEndpoint()"
+          @click="openPurgeDialog"
+        >
+          Eliminacion masiva
+        </v-btn>
+        <v-btn
+          v-if="canCreate"
+          color="primary"
+          prepend-icon="mdi-plus"
+          @click="openCreate"
+        >
+          Nuevo
+        </v-btn>
+      </div>
     </div>
 
     <v-row dense class="mb-2">
@@ -328,6 +340,34 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+  <v-dialog v-model="purgeDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 560">
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">Eliminacion real masiva</v-card-title>
+      <v-card-text>
+        <v-alert type="error" variant="tonal" class="mb-4">
+          Esta accion elimina fisicamente todos los registros de {{ displayModuleTitle }} y no se puede deshacer.
+        </v-alert>
+        <v-text-field
+          v-model="purgeConfirmation"
+          label="Escribe ELIMINAR para confirmar"
+          variant="outlined"
+          autocomplete="off"
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="closePurgeDialog">Cancelar</v-btn>
+        <v-btn
+          color="error"
+          :loading="purging"
+          :disabled="!isPurgeConfirmationValid"
+          @click="confirmPurgeAll"
+        >
+          Eliminar todo
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -344,6 +384,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { resolveProductDisplayName } from "@/app/utils/product-display";
+import { isSuperAdministrator } from "@/app/utils/role-access";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
@@ -369,6 +410,7 @@ const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && perms.value.isCreated);
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && perms.value.isEdited);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && perms.value.permitDeleted);
+const canPurgeModule = computed(() => Boolean(moduleConfig.value) && isSuperAdministrator(auth.user));
 const records = ref<any[]>([]);
 const loading = ref(false);
 const initialLoading = ref(false);
@@ -390,11 +432,17 @@ const equipmentReferenceOptions = ref<Array<{ value: any; title: string }>>([]);
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const purgeDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
+const purgeConfirmation = ref("");
+const purging = ref(false);
 const form = reactive<Record<string, any>>({});
 const jsonTextFields = reactive<Record<string, string>>({});
 const tableLoading = computed(() => loading.value || initialLoading.value);
+const isPurgeConfirmationValid = computed(
+  () => purgeConfirmation.value.trim().toUpperCase() === "ELIMINAR",
+);
 
 function defaultEquipmentComponentDrafts() {
   return [
@@ -871,6 +919,35 @@ function getCollectionEndpoint() {
   const id = getPathId(false);
   if (!id) return null;
   return resolveEndpoint(cfg.endpoint, id);
+}
+
+function getGlobalPurgeBaseEndpoint() {
+  switch (moduleConfig.value?.key) {
+    case "bitacora":
+      return "/kpi_maintenance/bitacora";
+    case "estados-equipo":
+      return "/kpi_maintenance/estados-equipo";
+    case "eventos-equipo":
+      return "/kpi_maintenance/eventos-equipo";
+    case "plan-tareas":
+      return "/kpi_maintenance/planes/tareas";
+    case "work-order-tareas":
+      return "/kpi_maintenance/work-orders/tareas";
+    case "work-order-adjuntos":
+      return "/kpi_maintenance/work-orders/adjuntos";
+    case "work-order-consumos":
+      return "/kpi_maintenance/work-orders/consumos";
+    case "work-order-issue-materials":
+      return "/kpi_maintenance/work-orders/issue-materials";
+    default:
+      return null;
+  }
+}
+
+function getPurgeEndpoint() {
+  const collectionEndpoint = getCollectionEndpoint();
+  const baseEndpoint = collectionEndpoint ?? getGlobalPurgeBaseEndpoint();
+  return baseEndpoint ? `${baseEndpoint}/purge-all` : null;
 }
 
 function getItemEndpoint(recordId: string) {
@@ -1756,6 +1833,51 @@ async function confirmDelete() {
     ui.error(e?.response?.data?.message || "No se pudo eliminar el registro.");
   } finally {
     saving.value = false;
+  }
+}
+
+function openPurgeDialog() {
+  if (!canPurgeModule.value) {
+    ui.error("Solo el Super Administrador puede ejecutar eliminacion real masiva.");
+    return;
+  }
+  if (!getPurgeEndpoint()) {
+    ui.error("No se pudo resolver el endpoint de eliminacion masiva de este modulo.");
+    return;
+  }
+  purgeConfirmation.value = "";
+  purgeDialog.value = true;
+}
+
+function closePurgeDialog() {
+  if (purging.value) return;
+  purgeDialog.value = false;
+  purgeConfirmation.value = "";
+}
+
+async function confirmPurgeAll() {
+  const purgeEndpoint = getPurgeEndpoint();
+  if (!moduleConfig.value || !purgeEndpoint || !canPurgeModule.value) {
+    ui.error("Solo el Super Administrador puede ejecutar eliminacion real masiva.");
+    return;
+  }
+  if (!isPurgeConfirmationValid.value) {
+    ui.error("Debes escribir ELIMINAR para confirmar.");
+    return;
+  }
+  purging.value = true;
+  try {
+    const { data } = await api.delete(purgeEndpoint);
+    const affected = Number(data?.affected ?? data?.data?.affected ?? 0);
+    ui.success(`Eliminacion real masiva ejecutada. Registros eliminados: ${affected}.`);
+    purgeDialog.value = false;
+    purgeConfirmation.value = "";
+    serverPage.value = 1;
+    await fetchRecords();
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo ejecutar la eliminacion real masiva.");
+  } finally {
+    purging.value = false;
   }
 }
 

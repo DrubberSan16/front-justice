@@ -12,14 +12,21 @@
         </div>
       </div>
 
-      <v-btn
-        v-if="canCreate"
-        color="primary"
-        prepend-icon="mdi-plus"
-        @click="openCreate"
-      >
-        Nuevo usuario
-      </v-btn>
+      <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+        <MassPurgeButton
+          endpoint="/kpi_security/users/purge-all"
+          module-title="Usuarios"
+          @purged="handleUsersPurged"
+        />
+        <v-btn
+          v-if="canCreate"
+          color="primary"
+          prepend-icon="mdi-plus"
+          @click="openCreate"
+        >
+          Nuevo usuario
+        </v-btn>
+      </div>
     </div>
 
     <v-row class="mb-2" dense>
@@ -187,6 +194,7 @@ import { canManageDeletedRecords } from "@/app/utils/role-access";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 
 import type { User } from "@/app/types/users.types";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import UserFormDialog from "@/components/users/UserFormDialog.vue";
 import UserDeleteDialog from "@/components/users/UserDeleteDialog.vue";
 
@@ -318,6 +326,10 @@ function openEdit(user: User) {
 function openDelete(user: User) {
   selectedUser.value = user;
   deleteDialog.value = true;
+}
+
+async function handleUsersPurged() {
+  await Promise.allSettled([roles.fetchAll(false), users.fetchAll()]);
 }
 
 function currentUserName() {

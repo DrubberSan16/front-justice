@@ -32,6 +32,15 @@
           Descargar XLSX
         </v-btn>
         <v-btn
+          v-if="canPurgeModule"
+          color="error"
+          variant="tonal"
+          prepend-icon="mdi-delete-alert"
+          @click="openPurgeDialog"
+        >
+          Eliminacion masiva
+        </v-btn>
+        <v-btn
           v-if="canCreate"
           color="primary"
           prepend-icon="mdi-plus"
@@ -331,6 +340,34 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+  <v-dialog v-model="purgeDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 560">
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">Eliminacion real masiva</v-card-title>
+      <v-card-text>
+        <v-alert type="error" variant="tonal" class="mb-4">
+          Esta accion elimina fisicamente todos los registros de {{ moduleConfig?.title }} y no se puede deshacer.
+        </v-alert>
+        <v-text-field
+          v-model="purgeConfirmation"
+          label="Escribe ELIMINAR para confirmar"
+          variant="outlined"
+          autocomplete="off"
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="closePurgeDialog">Cancelar</v-btn>
+        <v-btn
+          color="error"
+          :loading="purging"
+          :disabled="!isPurgeConfirmationValid"
+          @click="confirmPurgeAll"
+        >
+          Eliminar todo
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -340,8 +377,10 @@ import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { getInventoryModule, type MaintenanceField } from "@/app/config/maintenance-modules";
 import { useUiStore } from "@/app/stores/ui.store";
+import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { isSuperAdministrator } from "@/app/utils/role-access";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
@@ -353,6 +392,7 @@ import {
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
+const auth = useAuthStore();
 const menu = useMenuStore();
 const route = useRoute();
 const { mdAndDown, smAndDown } = useDisplay();
@@ -367,6 +407,7 @@ const canRead = computed(() => menuPermissions.value.isReaded);
 const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && menuPermissions.value.isCreated);
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPermissions.value.isEdited);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
+const canPurgeModule = computed(() => Boolean(moduleConfig.value) && isSuperAdministrator(auth.user));
 const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
 const isWarehouseModule = computed(() => moduleConfig.value?.key === "bodegas");
 const isThirdPartyModule = computed(() => moduleConfig.value?.key === "terceros");
@@ -393,9 +434,12 @@ const relationOptionsLoaded = reactive({
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const purgeDialog = ref(false);
 const reservationDialog = ref(false);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
+const purgeConfirmation = ref("");
+const purging = ref(false);
 const reservationLoading = ref(false);
 const reservationError = ref<string | null>(null);
 const reservationRows = ref<any[]>([]);
@@ -415,6 +459,9 @@ let thirdPartyLookupTimer: ReturnType<typeof setTimeout> | null = null;
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const tableLoading = computed(() => loading.value || initialLoading.value);
+const isPurgeConfirmationValid = computed(
+  () => purgeConfirmation.value.trim().toUpperCase() === "ELIMINAR",
+);
 const stockWarehouseOptions = computed(() => relationOptions.value.bodega_id ?? []);
 const visibleFormFields = computed(() =>
   (moduleConfig.value?.fields ?? []).filter(shouldShowFormField),
@@ -1219,6 +1266,46 @@ async function confirmDelete() {
     ui.error(e?.response?.data?.message || "No se pudo eliminar el registro.");
   } finally {
     saving.value = false;
+  }
+}
+
+function openPurgeDialog() {
+  if (!canPurgeModule.value) {
+    ui.error("Solo el Super Administrador puede ejecutar eliminacion real masiva.");
+    return;
+  }
+  purgeConfirmation.value = "";
+  purgeDialog.value = true;
+}
+
+function closePurgeDialog() {
+  if (purging.value) return;
+  purgeDialog.value = false;
+  purgeConfirmation.value = "";
+}
+
+async function confirmPurgeAll() {
+  if (!moduleConfig.value || !canPurgeModule.value) {
+    ui.error("Solo el Super Administrador puede ejecutar eliminacion real masiva.");
+    return;
+  }
+  if (!isPurgeConfirmationValid.value) {
+    ui.error("Debes escribir ELIMINAR para confirmar.");
+    return;
+  }
+  purging.value = true;
+  try {
+    const { data } = await api.delete(`${moduleConfig.value.endpoint}/purge-all`);
+    const affected = Number(data?.affected ?? data?.data?.affected ?? 0);
+    ui.success(`Eliminacion real masiva ejecutada. Registros eliminados: ${affected}.`);
+    purgeDialog.value = false;
+    purgeConfirmation.value = "";
+    serverPage.value = 1;
+    await fetchRecords();
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo ejecutar la eliminacion real masiva.");
+  } finally {
+    purging.value = false;
   }
 }
 

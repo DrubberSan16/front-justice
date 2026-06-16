@@ -13,6 +13,11 @@
           </div>
         </div>
         <div class="responsive-actions page-wrap">
+          <MassPurgeButton
+            endpoint="/kpi_process/digital-twins/purge-all"
+            module-title="Gemelos digitales"
+            @purged="loadDashboard"
+          />
           <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
             Nuevo gemelo
           </v-btn>
@@ -505,6 +510,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canAccessDigitalTwins } from "@/app/utils/role-access";
 import { formatDateTime } from "@/app/utils/date-time";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type TwinRow = {
   twin?: {

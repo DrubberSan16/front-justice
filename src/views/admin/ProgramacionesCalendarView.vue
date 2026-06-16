@@ -13,9 +13,16 @@
             Consolida programación mensual MPG, cronograma semanal y agenda operativa.
           </div>
         </div>
-        <v-btn variant="tonal" prepend-icon="mdi-refresh" :loading="loadingAll" @click="loadAll">
-          Actualizar
-        </v-btn>
+        <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+          <MassPurgeButton
+            endpoint="/kpi_maintenance/programaciones/purge-all"
+            module-title="Programaciones"
+            @purged="loadAll"
+          />
+          <v-btn variant="tonal" prepend-icon="mdi-refresh" :loading="loadingAll" @click="loadAll">
+            Actualizar
+          </v-btn>
+        </div>
       </div>
 
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
@@ -1307,6 +1314,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { hasReportAccess } from "@/app/config/report-access";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";

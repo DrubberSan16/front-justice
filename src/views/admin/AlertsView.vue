@@ -11,6 +11,11 @@
         </div>
       </div>
       <div class="responsive-actions">
+        <MassPurgeButton
+          endpoint="/kpi_maintenance/alertas/purge-all"
+          module-title="Alertas operativas"
+          @purged="refreshData"
+        />
         <v-chip label color="warning" variant="tonal">
           {{ summary.totals?.abiertas ?? 0 }} abiertas
         </v-chip>
@@ -271,6 +276,7 @@ import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime } from "@/app/utils/date-time";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type AlertRow = Record<string, any>;
 type SelectOption = { title: string; value: string };

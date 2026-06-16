@@ -13,7 +13,14 @@
             <div class="text-h6 font-weight-bold">Planes internos</div>
             <div class="text-body-2 text-medium-emphasis">Vista de soporte generada automaticamente desde Plantillas MPG.</div>
           </div>
-          <v-chip color="warning" variant="tonal">Gestionado desde Plantillas MPG</v-chip>
+          <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+            <MassPurgeButton
+              endpoint="/kpi_maintenance/planes/purge-all"
+              module-title="Planes internos"
+              @purged="fetchPlans"
+            />
+            <v-chip color="warning" variant="tonal">Gestionado desde Plantillas MPG</v-chip>
+          </div>
         </div>
 
         <v-text-field
@@ -142,6 +149,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 const ui = useUiStore();
 const menuStore = useMenuStore();

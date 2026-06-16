@@ -53,14 +53,21 @@
           </div>
         </div>
 
-        <v-btn
-          v-if="canCreate"
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="openCreateParent"
-        >
-          Crear menu padre
-        </v-btn>
+        <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+          <MassPurgeButton
+            endpoint="/kpi_security/menus/purge-all"
+            module-title="Menu"
+            @purged="handleMenusPurged"
+          />
+          <v-btn
+            v-if="canCreate"
+            color="primary"
+            prepend-icon="mdi-plus"
+            @click="openCreateParent"
+          >
+            Crear menu padre
+          </v-btn>
+        </div>
       </div>
 
       <v-row dense class="mb-2">
@@ -272,6 +279,7 @@ import {
 } from "@/app/utils/menu-route-catalog";
 import { createLogTransact } from "@/app/services/log-transacts.service";
 import { resolveIcon } from "@/app/config/icons";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 import type { MenuNodeFull } from "@/app/types/menus-full.types";
 
@@ -509,6 +517,10 @@ function openEdit(item: MenuRow) {
 function openDelete(item: MenuRow) {
   selected.value = item;
   deleteDialog.value = true;
+}
+
+async function handleMenusPurged() {
+  await menus.fetchAll();
 }
 
 function currentUserName() {

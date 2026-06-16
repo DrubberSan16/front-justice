@@ -15,6 +15,11 @@
         <v-chip color="info" variant="tonal">
           {{ pendingOrders.length }} órdenes disponibles para precarga
         </v-chip>
+        <MassPurgeButton
+          endpoint="/kpi_inventory/transferencias-bodega/purge-all"
+          module-title="Transferencias de bodega"
+          @purged="hydrateView"
+        />
         <v-btn
           variant="text"
           prepend-icon="mdi-cog"
@@ -670,13 +675,22 @@
           </v-col>
 
           <v-col cols="12" md="4">
-            <v-text-field
+            <v-combobox
               v-model="guideForm.identificacion_destinatario"
+              :search="guideRecipientSearch"
+              :items="guideRecipientOptions"
+              item-title="title"
+              item-value="value"
               label="Identificación destinatario"
               variant="outlined"
-              :loading="guideRecipientLookupLoading"
+              :loading="guideRecipientLookupLoading || guideRecipientsLoading"
               hint="Si ingresas un RUC de 13 dígitos se consultará el SRI."
               persistent-hint
+              clearable
+              auto-select-first
+              no-data-text="Sin destinatarios registrados"
+              @update:search="handleGuideRecipientSearch"
+              @update:model-value="handleGuideRecipientSelection"
             />
           </v-col>
           <v-col cols="12" md="4">
@@ -874,6 +888,7 @@ import {
   appendOilIndicator,
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
 
@@ -1032,6 +1047,19 @@ type GuideResponse = {
   has_xml_authorized?: boolean;
 };
 
+type GuideRecipientCatalogRow = {
+  identificacion_destinatario?: string | null;
+  razon_social_destinatario?: string | null;
+  dir_destinatario?: string | null;
+  cod_estab_destino?: string | null;
+  last_used_at?: string | null;
+};
+
+type GuideRecipientOption = GuideRecipientCatalogRow & {
+  value: string;
+  title: string;
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
@@ -1072,6 +1100,11 @@ const guideRecipientLookupError = ref("");
 const lastGuideRecipientLookedUpRuc = ref("");
 const guideRecipientLookupTimer = ref<number | null>(null);
 const guideRecipientLookupHydrating = ref(false);
+const guideRecipients = ref<GuideRecipientCatalogRow[]>([]);
+const guideRecipientsLoading = ref(false);
+const guideRecipientSearch = ref("");
+const guideRecipientCatalogHydrating = ref(false);
+let guideRecipientSearchTimer: ReturnType<typeof setTimeout> | null = null;
 const guideProviderLookupLoading = ref(false);
 const guideProviderLookupMessage = ref("");
 const guideProviderLookupError = ref("");
@@ -1280,6 +1313,24 @@ const productOptions = computed<CatalogOption[]>(() =>
     value: String(item.id),
     title: buildProductDisplayTitle(item),
   })),
+);
+
+const guideRecipientOptions = computed<GuideRecipientOption[]>(() =>
+  guideRecipients.value
+    .map((item) => {
+      const identification = String(item.identificacion_destinatario || "").trim();
+      if (!identification) return null;
+      const businessName = String(item.razon_social_destinatario || "").trim();
+      const address = String(item.dir_destinatario || "").trim();
+      return {
+        ...item,
+        value: identification,
+        title: [identification, businessName || "Sin razon social", address]
+          .filter(Boolean)
+          .join(" - "),
+      };
+    })
+    .filter((item): item is GuideRecipientOption => Boolean(item)),
 );
 
 const currentStockByProduct = computed(() => {
@@ -1729,6 +1780,12 @@ function clearGuideRecipientLookupTimer() {
   guideRecipientLookupTimer.value = null;
 }
 
+function clearGuideRecipientSearchTimer() {
+  if (!guideRecipientSearchTimer) return;
+  clearTimeout(guideRecipientSearchTimer);
+  guideRecipientSearchTimer = null;
+}
+
 function clearGuideRecipientLookupFeedback() {
   guideRecipientLookupMessage.value = "";
   guideRecipientLookupError.value = "";
@@ -2007,12 +2064,93 @@ function applyGuideRecipientAutofill(payload: Record<string, unknown> | null | u
   }
 }
 
+function findGuideRecipientOption(value: unknown) {
+  const candidate = typeof value === "object" && value
+    ? String((value as GuideRecipientOption).value || (value as GuideRecipientOption).identificacion_destinatario || "")
+    : String(value || "");
+  const normalized = normalizeRuc(candidate);
+  if (!normalized) return null;
+  return (
+    guideRecipientOptions.value.find((item) => item.value === normalized) ||
+    null
+  );
+}
+
+function applyStoredGuideRecipient(option: GuideRecipientOption | null) {
+  if (!option) return;
+  guideRecipientCatalogHydrating.value = true;
+  guideForm.identificacion_destinatario = option.value;
+  if (option.razon_social_destinatario) {
+    guideForm.razon_social_destinatario = String(option.razon_social_destinatario);
+  }
+  if (option.dir_destinatario) {
+    guideForm.dir_destinatario = String(option.dir_destinatario);
+  }
+  if (option.cod_estab_destino) {
+    guideForm.cod_estab_destino = String(option.cod_estab_destino);
+  }
+  lastGuideRecipientLookedUpRuc.value = option.value;
+  clearGuideRecipientLookupFeedback();
+  window.setTimeout(() => {
+    guideRecipientCatalogHydrating.value = false;
+  }, 0);
+}
+
+function handleGuideRecipientSelection(value: unknown) {
+  const option = findGuideRecipientOption(value);
+  if (option) {
+    applyStoredGuideRecipient(option);
+    return;
+  }
+  const normalized = normalizeRuc(value);
+  if (normalized && normalized !== guideForm.identificacion_destinatario) {
+    guideForm.identificacion_destinatario = normalized;
+  }
+}
+
+function handleGuideRecipientSearch(value: string) {
+  guideRecipientSearch.value = value || "";
+  const normalized = normalizeRuc(value);
+  if (normalized && normalized !== guideForm.identificacion_destinatario) {
+    guideForm.identificacion_destinatario = normalized;
+  }
+  clearGuideRecipientSearchTimer();
+  guideRecipientSearchTimer = setTimeout(() => {
+    void loadGuideRecipients(guideRecipientSearch.value);
+  }, 300);
+}
+
+async function loadGuideRecipients(search = guideRecipientSearch.value, force = false) {
+  if (guideRecipientsLoading.value && !force) return;
+  guideRecipientsLoading.value = true;
+  try {
+    const { data } = await api.get("/kpi_inventory/guias-remision-sri/destinatarios", {
+      params: {
+        search: String(search || "").trim() || undefined,
+        limit: 25,
+      },
+      meta: { skipGlobalLoading: true },
+    } as any);
+    const payload = data?.data ?? data;
+    guideRecipients.value = Array.isArray(payload) ? payload : [];
+  } catch {
+    guideRecipients.value = [];
+  } finally {
+    guideRecipientsLoading.value = false;
+  }
+}
+
 async function lookupGuideRecipientByRuc(
   ruc = guideForm.identificacion_destinatario,
   notifyOnError = false,
 ) {
   const normalizedRuc = normalizeRuc(ruc);
-  if (normalizedRuc.length !== 13 || !guideDialog.value || guideRecipientLookupHydrating.value) return;
+  if (
+    normalizedRuc.length !== 13 ||
+    !guideDialog.value ||
+    guideRecipientLookupHydrating.value ||
+    guideRecipientCatalogHydrating.value
+  ) return;
 
   guideRecipientLookupLoading.value = true;
   clearGuideRecipientLookupFeedback();
@@ -2139,7 +2277,10 @@ function resetSriConfigForm() {
 
 function resetGuideForm() {
   clearGuideRecipientLookupTimer();
+  clearGuideRecipientSearchTimer();
   clearGuideProviderLookupTimer();
+  guideRecipientSearch.value = "";
+  guideRecipientCatalogHydrating.value = false;
   guideForm.ambiente = "PRUEBAS";
   guideForm.fecha_emision = formatDateForInput();
   guideForm.fecha_ini_transporte = formatDateForInput();
@@ -2381,6 +2522,7 @@ async function handleGuideStatusSocketUpdate(payload: {
 
   if (!previousAuthorized && nextAuthorized) {
     setGuideAuthorizationPending(guide.id, false);
+    await loadGuideRecipients("", true);
     await loadTransfers();
     if (!isCurrentDialogGuide && !previousRow) return;
     if (payload?.source === "authorize" && guideAuthorizing.value) return;
@@ -2676,6 +2818,7 @@ async function openGuideDialog(item: TransferRow) {
   selectedTransfer.value = item;
   resetGuideForm();
   resetGuidePreview();
+  void loadGuideRecipients("", true);
   try {
     const { data } = await api.get(`/kpi_inventory/guias-remision-sri/prepare/${item.id}`);
     const payload = (data?.data ?? data) as GuideContext;
@@ -2706,6 +2849,7 @@ async function openGuideDialog(item: TransferRow) {
     guideForm.identificacion_transportista = String(draft.identificacion_transportista || "");
     guideForm.placa = String(draft.placa || "");
     guideForm.identificacion_destinatario = String(draft.identificacion_destinatario || "");
+    guideRecipientSearch.value = guideForm.identificacion_destinatario;
     guideForm.razon_social_destinatario = String(draft.razon_social_destinatario || "");
     guideForm.dir_destinatario = String(draft.dir_destinatario || "");
     guideForm.motivo_traslado = String(draft.motivo_traslado || "");
@@ -2826,6 +2970,7 @@ async function generateGuide() {
       },
     };
     await buildGuidePreview(payload);
+    await loadGuideRecipients("", true);
     ui.success("Guía generada correctamente. Revisa la vista previa y luego autorízala en el SRI.");
     await loadTransfers();
   } catch (error: any) {
@@ -3193,6 +3338,7 @@ watch(
   () => guideForm.identificacion_destinatario,
   (value) => {
     if (!guideDialog.value) return;
+    if (guideRecipientCatalogHydrating.value) return;
     const normalizedRuc = normalizeRuc(value);
     if (normalizedRuc !== value) {
       guideForm.identificacion_destinatario = normalizedRuc;
@@ -3264,6 +3410,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearSriTaxpayerLookupTimer();
   clearGuideRecipientLookupTimer();
+  clearGuideRecipientSearchTimer();
   clearGuideProviderLookupTimer();
   disconnectGuideStatusSocket();
   revokeGuidePreviewUrl();

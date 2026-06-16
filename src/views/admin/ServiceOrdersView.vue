@@ -17,6 +17,11 @@
         >
           De: usuarios activos
         </v-chip>
+        <MassPurgeButton
+          endpoint="/kpi_inventory/ordenes-servicio/purge-all"
+          module-title="Ordenes de servicio"
+          @purged="hydrateView"
+        />
         <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loading" @click="hydrateView">
           Recargar
         </v-btn>
@@ -379,6 +384,7 @@ import { downloadServiceOrderPdf } from "@/app/utils/service-order-documents";
 import { formatDateForInput, formatDateOnly } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
 

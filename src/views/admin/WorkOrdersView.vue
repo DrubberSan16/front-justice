@@ -6,6 +6,11 @@
         <div class="text-body-2 text-medium-emphasis">Cabeceras creadas y gestión de todo el detalle en una sola pantalla.</div>
       </div>
       <div class="d-flex flex-wrap" style="gap: 8px;">
+        <MassPurgeButton
+          endpoint="/kpi_maintenance/work-orders/purge-all"
+          module-title="Ordenes de trabajo"
+          @purged="fetchWorkOrders"
+        />
         <v-btn
           v-if="canAccessWorkOrderReports"
           variant="tonal"
@@ -1510,6 +1515,7 @@ import {
   appendOilIndicator,
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
+import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 const ui = useUiStore();
 const { smAndDown } = useDisplay();
