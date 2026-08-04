@@ -32,6 +32,7 @@ export type ReportSheet = {
   name: string;
   rows: AnyRow[];
   columns?: ReportColumn[];
+  fitColumnsToPage?: boolean;
   media?: ReportSheetMedia;
   note?: string;
   groupBy?: string[];
@@ -613,11 +614,16 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     const columns = resolveColumns(sheet, safeRows);
     const previewColumnIndex = resolveColumnIndex(columns, sheet.media?.previewColumnKey);
     const linkColumnIndex = resolveColumnIndex(columns, sheet.media?.linkUrlKey);
-    const compactTable = columns.length >= 9;
-    const columnWidths = columns.map((column) => resolvePdfColumnWidth(column, compactTable));
     const availableTableWidth = pageWidth - marginX * 2;
+    const compactTable = columns.length >= 9;
+    const requestedColumnWidths = columns.map((column) => resolvePdfColumnWidth(column, compactTable));
+    const requestedTableWidth = requestedColumnWidths.reduce((total, width) => total + width, 0);
+    const fitScale = sheet.fitColumnsToPage && requestedTableWidth > 0
+      ? availableTableWidth / requestedTableWidth
+      : 1;
+    const columnWidths = requestedColumnWidths.map((width) => width * fitScale);
     const tableNeedsHorizontalBreak =
-      columnWidths.reduce((total, width) => total + width, 0) > availableTableWidth;
+      !sheet.fitColumnsToPage && requestedTableWidth > availableTableWidth;
     const tableFontSize = tableNeedsHorizontalBreak ? 5.8 : compactTable ? 6.5 : 8;
     const tableHeadFontSize = tableNeedsHorizontalBreak ? 6.2 : compactTable ? 7 : 8;
     const tableCellPadding = tableNeedsHorizontalBreak ? 2 : compactTable ? 3 : 5;
@@ -684,6 +690,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
           : [0]
         : undefined,
       horizontalPageBreakBehaviour: "afterAllRows",
+      rowPageBreak: "avoid",
       styles: {
         fontSize: tableFontSize,
         cellPadding: tableCellPadding,
