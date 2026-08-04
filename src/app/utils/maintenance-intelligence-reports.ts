@@ -532,7 +532,7 @@ export async function downloadReportExcel(report: ReportDefinition) {
   );
 }
 
-export async function downloadReportPdf(report: ReportDefinition) {
+export async function buildReportPdfBlob(report: ReportDefinition) {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
@@ -778,7 +778,12 @@ export async function downloadReportPdf(report: ReportDefinition) {
     doc.text(`Página ${page} de ${pageCount}`, pageWidth - marginX, pageHeight - 16, { align: "right" });
   }
 
-  doc.save(`${report.fileName}.pdf`);
+  return doc.output("blob");
+}
+
+export async function downloadReportPdf(report: ReportDefinition) {
+  const blob = await buildReportPdfBlob(report);
+  saveBlob(blob, `${report.fileName}.pdf`);
 }
 
 export function buildIndicatorsReport(summary: AnyRow) {
@@ -1097,17 +1102,22 @@ export function buildInventoryStockReport(payload: {
   summary: ReportSummaryItem[];
   rows: AnyRow[];
   movementRows?: AnyRow[];
+  title?: string;
+  subtitle?: string;
+  primarySheetName?: string;
+  primaryNote?: string;
+  fileName?: string;
 }) {
   return {
-    fileName: `inventario_${formatDateForInput(new Date())}`,
-    title: "Reporte de inventario",
-    subtitle: `Agrupado por ${payload.groupLabel.toLowerCase()}.`,
+    fileName: payload.fileName || `inventario_${formatDateForInput(new Date())}`,
+    title: payload.title || "Reporte de inventario",
+    subtitle: payload.subtitle || `Agrupado por ${payload.groupLabel.toLowerCase()}.`,
     summary: payload.summary,
     sheets: [
       {
-        name: "Inventario",
+        name: payload.primarySheetName || "Inventario",
         rows: payload.rows,
-        note: `Vista consolidada y agrupada por ${payload.groupLabel}.`,
+        note: payload.primaryNote || `Vista consolidada y agrupada por ${payload.groupLabel}.`,
         groupBy: ["agrupacion"],
       },
       ...(payload.movementRows?.length ? [{ name: "Kardex", rows: payload.movementRows }] : []),
