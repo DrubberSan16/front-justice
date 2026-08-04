@@ -26,12 +26,17 @@
           </div>
 
           <v-row dense class="mb-3">
-            <v-col cols="12" md="4"><v-text-field v-model="kardexFilters.search" label="Buscar material o bodega" variant="outlined" prepend-inner-icon="mdi-magnify" hide-details clearable @keyup.enter="applyKardexFilters" /></v-col>
-            <v-col cols="12" md="3"><v-text-field v-model="kardexFilters.desde" type="date" label="Desde" variant="outlined" hide-details /></v-col>
-            <v-col cols="12" md="3"><v-text-field v-model="kardexFilters.hasta" type="date" label="Hasta" variant="outlined" hide-details /></v-col>
-            <v-col cols="12" md="2"><v-select v-model="inventoryGroupBy" :items="inventoryGroupingOptions" item-title="title" item-value="value" label="Agrupar exportacion" variant="outlined" hide-details /></v-col>
-            <v-col cols="12" class="d-flex justify-end">
+            <v-col cols="12" md="3"><v-text-field v-model="kardexFilters.search" label="Documento, material o bodega" variant="outlined" prepend-inner-icon="mdi-magnify" hide-details clearable @keyup.enter="applyKardexFilters" /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.bodega_id" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega" variant="outlined" hide-details clearable /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.producto_id" :items="kardexProductOptions" item-title="title" item-value="value" label="Material" variant="outlined" hide-details clearable /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.linea_id" :items="lineFilterOptions" item-title="title" item-value="value" label="Línea" variant="outlined" hide-details clearable /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.categoria_id" :items="categoryFilterOptions" item-title="title" item-value="value" label="Categoría" variant="outlined" hide-details clearable /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-text-field v-model="kardexFilters.desde" type="date" label="Desde" variant="outlined" hide-details /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-text-field v-model="kardexFilters.hasta" type="date" label="Hasta" variant="outlined" hide-details /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-select v-model="inventoryGroupBy" :items="inventoryGroupingOptions" item-title="title" item-value="value" label="Agrupar exportación" variant="outlined" hide-details /></v-col>
+            <v-col cols="12" class="d-flex justify-end" style="gap: 8px; flex-wrap: wrap;">
               <v-btn color="primary" variant="tonal" prepend-icon="mdi-filter-outline" :loading="loadingKardex" @click="applyKardexFilters">Aplicar filtros</v-btn>
+              <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveKardexFilters" @click="clearKardexFilters">Limpiar</v-btn>
             </v-col>
           </v-row>
 
@@ -270,12 +275,51 @@ const canAccessInventoryReports = computed(() => hasReportAccess(auth.user?.effe
 const KARDEX_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 const documentForm = reactive({ tipo: "INGRESO" as MovementType, fecha: formatDateForInput(), bodegaId: "", referencia: "", observacion: "" });
 const movementDetails = ref<MovementDetailForm[]>([{ localId: `detail-${Date.now()}`, productoId: "", cantidad: "", observacion: "" }]);
-const kardexFilters = reactive({ desde: formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), hasta: formatDateForInput(), search: "" });
+const defaultKardexDateFrom = formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+const defaultKardexDateTo = formatDateForInput();
+const kardexFilters = reactive({
+  desde: defaultKardexDateFrom,
+  hasta: defaultKardexDateTo,
+  search: "",
+  bodega_id: "",
+  producto_id: "",
+  linea_id: "",
+  categoria_id: "",
+});
 const kardexTotals = reactive({ materiales: 0, movimientos: 0, entradas: 0, salidas: 0 });
 const movementTypes = [{ value: "INGRESO", title: "Ingreso de Bodega" }, { value: "SALIDA", title: "Egreso de Bodega" }];
 const kardexPageSizeOptions = [{ title: "10", value: 10 }, { title: "25", value: 25 }, { title: "50", value: 50 }, { title: "100", value: 100 }];
 const inventoryGroupingOptions = [{ value: "bodega", title: "Bodega" }, { value: "sucursal", title: "Sucursal" }, { value: "linea", title: "Linea" }, { value: "categoria", title: "Categoria" }, { value: "material", title: "Material" }];
 const warehouseOptions = computed(() => bodegas.value.map((bodega) => ({ value: bodega.id, title: `${bodega.codigo} - ${bodega.nombre}` })));
+const kardexProductOptions = computed(() =>
+  products.value.map((product) => ({
+    value: String(product.id),
+    title: buildProductDisplayTitle(product),
+  })),
+);
+const lineFilterOptions = computed(() =>
+  lineas.value.map((line) => ({
+    value: String(line.id),
+    title: [line.codigo, line.nombre].filter(Boolean).join(" - "),
+  })),
+);
+const categoryFilterOptions = computed(() =>
+  categorias.value.map((category) => ({
+    value: String(category.id),
+    title: [category.codigo, category.nombre].filter(Boolean).join(" - "),
+  })),
+);
+const hasActiveKardexFilters = computed(() =>
+  Boolean(
+    kardexFilters.search ||
+      kardexFilters.bodega_id ||
+      kardexFilters.producto_id ||
+      kardexFilters.linea_id ||
+      kardexFilters.categoria_id ||
+      kardexFilters.desde !== defaultKardexDateFrom ||
+      kardexFilters.hasta !== defaultKardexDateTo,
+  ),
+);
 const warehouseMap = computed(() => new Map(bodegas.value.map((item) => [String(item.id), item])));
 const productMap = computed(() => new Map(products.value.map((item) => [String(item.id), item])));
 const branchMap = computed(() => new Map(sucursales.value.map((item) => [String(item.id), item])));
@@ -325,7 +369,7 @@ function getMaterialMovements(productoId: string) { return materialMovements[pro
 function isMaterialDetailLoading(productoId: string) { return Boolean(materialDetailLoading[productoId]); }
 function getMaterialDetailError(productoId: string) { return materialDetailErrors[productoId] ?? ""; }
 function prefetchMaterialDetail(productoId: string) { void loadMaterialDetail(productoId); }
-async function loadMaterialDetail(productoId: string, force = false) { const normalizedId = String(productoId || "").trim(); if (!normalizedId || materialDetailLoading[normalizedId] || (materialDetailLoaded[normalizedId] && !force)) return; materialDetailLoading[normalizedId] = true; materialDetailErrors[normalizedId] = ""; try { const { data } = await api.get(`/kpi_inventory/kardex/resumen-material/${normalizedId}/detalle`, { params: { desde: kardexFilters.desde || undefined, hasta: kardexFilters.hasta || undefined, search: kardexFilters.search || undefined } }); const payload = data?.data ?? data ?? {}; materialMovements[normalizedId] = Array.isArray(payload.movements) ? payload.movements : []; materialDetailLoaded[normalizedId] = true; } catch (error: any) { materialMovements[normalizedId] = []; materialDetailErrors[normalizedId] = error?.response?.data?.message || error?.message || "No se pudo cargar el detalle del material."; } finally { materialDetailLoading[normalizedId] = false; } }
+async function loadMaterialDetail(productoId: string, force = false) { const normalizedId = String(productoId || "").trim(); if (!normalizedId || materialDetailLoading[normalizedId] || (materialDetailLoaded[normalizedId] && !force)) return; materialDetailLoading[normalizedId] = true; materialDetailErrors[normalizedId] = ""; try { const { data } = await api.get(`/kpi_inventory/kardex/resumen-material/${normalizedId}/detalle`, { params: { desde: kardexFilters.desde || undefined, hasta: kardexFilters.hasta || undefined, search: kardexFilters.search || undefined, bodega_id: kardexFilters.bodega_id || undefined } }); const payload = data?.data ?? data ?? {}; materialMovements[normalizedId] = Array.isArray(payload.movements) ? payload.movements : []; materialDetailLoaded[normalizedId] = true; } catch (error: any) { materialMovements[normalizedId] = []; materialDetailErrors[normalizedId] = error?.response?.data?.message || error?.message || "No se pudo cargar el detalle del material."; } finally { materialDetailLoading[normalizedId] = false; } }
 async function ensureAllMaterialDetailsLoaded() { for (const group of kardexGroups.value) await loadMaterialDetail(group.producto_id); }
 function exportKey(format: "excel" | "pdf") { return `inventory:${format}`; }
 function isExporting(format: "excel" | "pdf") { return Boolean(exportState[exportKey(format)]); }
@@ -341,6 +385,10 @@ async function loadKardex(page = kardexPagination.page) {
         desde: kardexFilters.desde || undefined,
         hasta: kardexFilters.hasta || undefined,
         search: kardexFilters.search || undefined,
+        bodega_id: kardexFilters.bodega_id || undefined,
+        producto_id: kardexFilters.producto_id || undefined,
+        linea_id: kardexFilters.linea_id || undefined,
+        categoria_id: kardexFilters.categoria_id || undefined,
         page: targetPage,
         limit: kardexPagination.limit,
       },
@@ -375,6 +423,16 @@ function applyKardexFilters() {
   kardexPagination.page = 1;
   void loadKardex(1);
 }
+function clearKardexFilters() {
+  kardexFilters.search = "";
+  kardexFilters.bodega_id = "";
+  kardexFilters.producto_id = "";
+  kardexFilters.linea_id = "";
+  kardexFilters.categoria_id = "";
+  kardexFilters.desde = defaultKardexDateFrom;
+  kardexFilters.hasta = defaultKardexDateTo;
+  applyKardexFilters();
+}
 function changeKardexPage(page: number) {
   if (loadingKardex.value || page === kardexPagination.page) return;
   void loadKardex(page);
@@ -405,7 +463,7 @@ watch(() => movementDialog.open, async (open) => { if (open) await ensureMovemen
 watch(() => documentForm.tipo, () => { if (documentForm.tipo !== "SALIDA") return; movementDetails.value = movementDetails.value.map((detail) => !detail.productoId || getDetailAvailableStock(detail) > 0 ? detail : { ...detail, productoId: "", cantidad: "" }); });
 watch(() => documentForm.bodegaId, () => { if (!documentForm.bodegaId) movementDetails.value = movementDetails.value.map((detail) => ({ ...detail, productoId: "", cantidad: "" })); });
 watch(expandedMaterials, (current, previous) => { const previousSet = new Set((previous ?? []).map((item) => String(item))); current.map((item) => String(item)).filter((item) => !previousSet.has(item)).forEach((productoId) => void loadMaterialDetail(productoId)); }, { deep: true });
-onMounted(async () => { if (!canRead.value) return; await Promise.allSettled([loadKardex(), restoreImportJob()]); });
+onMounted(async () => { if (!canRead.value) return; await Promise.allSettled([loadKardex(), ensureMovementCatalogsLoaded(), restoreImportJob()]); });
 onBeforeUnmount(() => stopImportPolling());
 </script>
 

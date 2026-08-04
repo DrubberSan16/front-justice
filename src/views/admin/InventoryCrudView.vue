@@ -52,29 +52,63 @@
     </div>
 
     <v-row dense class="mb-2">
-      <v-col cols="12" md="4">
+      <v-col cols="12" md="3">
         <v-text-field
           v-model="search"
-          label="Buscar"
+          :label="isProductModule ? 'Código, nombre, descripción, SKU o barras' : 'Buscar'"
           variant="outlined"
           density="compact"
           prepend-inner-icon="mdi-magnify"
           clearable
         />
       </v-col>
-      <v-col v-if="isStockBodegaModule" cols="12" md="3">
-        <v-select
+      <template v-if="isProductModule">
+        <v-col cols="12" sm="6" md="3">
+          <v-select v-model="productStatusFilter" :items="recordStatusOptions" label="Estado" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-autocomplete v-model="productLineFilter" :items="relationOptions.linea_id ?? []" item-title="title" item-value="value" label="Línea" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-autocomplete v-model="productCategoryFilter" :items="relationOptions.categoria_id ?? []" item-title="title" item-value="value" label="Categoría" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-autocomplete v-model="productBrandFilter" :items="relationOptions.marca_id ?? []" item-title="title" item-value="value" label="Marca" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-autocomplete v-model="productUnitFilter" :items="relationOptions.unidad_medida_id ?? []" item-title="title" item-value="value" label="Unidad de medida" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select v-model="productOilFilter" :items="yesNoFilterOptions" label="Es aceite" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select v-model="productServiceFilter" :items="yesNoFilterOptions" label="Tipo de material" variant="outlined" density="compact" clearable />
+        </v-col>
+      </template>
+      <template v-if="isStockBodegaModule">
+        <v-col cols="12" sm="6" md="3">
+          <v-autocomplete
           v-model="stockWarehouseFilter"
           :items="stockWarehouseOptions"
           item-title="title"
           item-value="value"
-          label="Filtrar por bodega"
+          label="Bodega"
           variant="outlined"
           density="compact"
           clearable
         />
-      </v-col>
-      <v-col cols="12" md="5" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-autocomplete v-model="stockProductFilter" :items="relationOptions.producto_id ?? []" item-title="title" item-value="value" label="Material" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select v-model="stockUsedFilter" :items="stockConditionFilterOptions" label="Condición" variant="outlined" density="compact" clearable />
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-select v-model="stockLevelFilter" :items="stockLevelFilterOptions" label="Nivel de stock" variant="outlined" density="compact" clearable />
+        </v-col>
+      </template>
+      <v-col cols="12" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
         <v-btn
           variant="tonal"
           prepend-icon="mdi-filter-check"
@@ -86,7 +120,7 @@
         <v-btn
           variant="text"
           prepend-icon="mdi-filter-off"
-          :disabled="!search && !stockWarehouseFilter"
+          :disabled="!hasActiveTableFilters"
           @click="clearFilters"
         >
           Limpiar
@@ -420,6 +454,16 @@ const exportingStock = ref(false);
 const error = ref<string | null>(null);
 const search = ref("");
 const stockWarehouseFilter = ref("");
+const stockProductFilter = ref("");
+const stockUsedFilter = ref("");
+const stockLevelFilter = ref("");
+const productStatusFilter = ref("");
+const productLineFilter = ref("");
+const productCategoryFilter = ref("");
+const productBrandFilter = ref("");
+const productUnitFilter = ref("");
+const productOilFilter = ref("");
+const productServiceFilter = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(20);
 const serverTotalItems = ref(0);
@@ -463,6 +507,40 @@ const isPurgeConfirmationValid = computed(
   () => purgeConfirmation.value.trim().toUpperCase() === "ELIMINAR",
 );
 const stockWarehouseOptions = computed(() => relationOptions.value.bodega_id ?? []);
+const recordStatusOptions = [
+  { title: "Activo", value: "ACTIVE" },
+  { title: "Inactivo", value: "INACTIVE" },
+];
+const yesNoFilterOptions = [
+  { title: "Sí", value: "true" },
+  { title: "No", value: "false" },
+];
+const stockConditionFilterOptions = [
+  { title: "Con material usado", value: "true" },
+  { title: "Solo material nuevo", value: "false" },
+];
+const stockLevelFilterOptions = [
+  { title: "Con stock", value: "CON_STOCK" },
+  { title: "Sin stock", value: "SIN_STOCK" },
+  { title: "Bajo mínimo", value: "BAJO_MINIMO" },
+  { title: "Sobre máximo", value: "SOBRE_MAXIMO" },
+];
+const hasActiveTableFilters = computed(() =>
+  [
+    search.value,
+    stockWarehouseFilter.value,
+    stockProductFilter.value,
+    stockUsedFilter.value,
+    stockLevelFilter.value,
+    productStatusFilter.value,
+    productLineFilter.value,
+    productCategoryFilter.value,
+    productBrandFilter.value,
+    productUnitFilter.value,
+    productOilFilter.value,
+    productServiceFilter.value,
+  ].some((value) => String(value ?? "").trim()),
+);
 const visibleFormFields = computed(() =>
   (moduleConfig.value?.fields ?? []).filter(shouldShowFormField),
 );
@@ -582,7 +660,10 @@ function shouldShowFormField(field: MaintenanceField) {
 function getRelationFields(mode: "table" | "form" = "table") {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const sourceFields = mode === "form" ? cfg.fields : cfg.fields.slice(0, 6);
+  const sourceFields =
+    mode === "form" || cfg.key === "productos"
+      ? cfg.fields
+      : cfg.fields.slice(0, 6);
   return sourceFields.filter((field) => field.relation);
 }
 
@@ -613,18 +694,16 @@ async function loadRelations(mode: "table" | "form" = "table") {
         bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
       }));
     }
-    if (mode === "form") {
-      const productField = moduleConfig.value.fields.find(
-        (field) => field.key === "producto_id" && field.relation,
-      );
-      if (productField?.relation?.endpoint) {
-        const rows = await listAll(productField.relation.endpoint);
-        nextRelationOptions.producto_id = rows.map((r: any) => ({
-          value: r.id,
-          title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
-          bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
-        }));
-      }
+    const productField = moduleConfig.value.fields.find(
+      (field) => field.key === "producto_id" && field.relation,
+    );
+    if (productField?.relation?.endpoint) {
+      const rows = await listAll(productField.relation.endpoint);
+      nextRelationOptions.producto_id = rows.map((r: any) => ({
+        value: r.id,
+        title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+        bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
+      }));
     }
     relationOptions.value = nextRelationOptions;
     relationOptionsLoaded[mode] = true;
@@ -785,8 +864,38 @@ async function fetchRecords(skipLoading = false) {
       moduleConfig.value.endpoint,
       {
         search: search.value.trim() || undefined,
+        status: isProductModule.value
+          ? productStatusFilter.value || undefined
+          : undefined,
+        linea_id: isProductModule.value
+          ? productLineFilter.value || undefined
+          : undefined,
+        categoria_id: isProductModule.value
+          ? productCategoryFilter.value || undefined
+          : undefined,
+        marca_id: isProductModule.value
+          ? productBrandFilter.value || undefined
+          : undefined,
+        unidad_medida_id: isProductModule.value
+          ? productUnitFilter.value || undefined
+          : undefined,
+        es_aceite: isProductModule.value
+          ? productOilFilter.value || undefined
+          : undefined,
+        es_servicio: isProductModule.value
+          ? productServiceFilter.value || undefined
+          : undefined,
         bodega_id: isStockBodegaModule.value
           ? stockWarehouseFilter.value || undefined
+          : undefined,
+        producto_id: isStockBodegaModule.value
+          ? stockProductFilter.value || undefined
+          : undefined,
+        es_usado: isStockBodegaModule.value
+          ? stockUsedFilter.value || undefined
+          : undefined,
+        stock_estado: isStockBodegaModule.value
+          ? stockLevelFilter.value || undefined
           : undefined,
       },
       {
@@ -982,6 +1091,9 @@ function stockExportParams() {
     bodega_id: isStockBodegaModule.value
       ? stockWarehouseFilter.value || undefined
       : undefined,
+    producto_id: stockProductFilter.value || undefined,
+    es_usado: stockUsedFilter.value || undefined,
+    stock_estado: stockLevelFilter.value || undefined,
   };
 }
 
@@ -1345,6 +1457,16 @@ function applyFilters() {
 function clearFilters() {
   search.value = "";
   stockWarehouseFilter.value = "";
+  stockProductFilter.value = "";
+  stockUsedFilter.value = "";
+  stockLevelFilter.value = "";
+  productStatusFilter.value = "";
+  productLineFilter.value = "";
+  productCategoryFilter.value = "";
+  productBrandFilter.value = "";
+  productUnitFilter.value = "";
+  productOilFilter.value = "";
+  productServiceFilter.value = "";
   serverPage.value = 1;
 }
 
@@ -1361,6 +1483,16 @@ watch(
       stockBodegaFetchTimer = null;
     }
     stockWarehouseFilter.value = "";
+    stockProductFilter.value = "";
+    stockUsedFilter.value = "";
+    stockLevelFilter.value = "";
+    productStatusFilter.value = "";
+    productLineFilter.value = "";
+    productCategoryFilter.value = "";
+    productBrandFilter.value = "";
+    productUnitFilter.value = "";
+    productOilFilter.value = "";
+    productServiceFilter.value = "";
     serverPage.value = 1;
     serverItemsPerPage.value = 20;
     serverTotalItems.value = 0;
@@ -1421,7 +1553,20 @@ watch(
 );
 
 watch(
-  () => [search.value, stockWarehouseFilter.value],
+  () => [
+    search.value,
+    stockWarehouseFilter.value,
+    stockProductFilter.value,
+    stockUsedFilter.value,
+    stockLevelFilter.value,
+    productStatusFilter.value,
+    productLineFilter.value,
+    productCategoryFilter.value,
+    productBrandFilter.value,
+    productUnitFilter.value,
+    productOilFilter.value,
+    productServiceFilter.value,
+  ],
   () => {
     serverPage.value = 1;
     scheduleServerFetch();

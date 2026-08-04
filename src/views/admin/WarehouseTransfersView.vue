@@ -42,6 +42,31 @@
       </div>
     </div>
 
+    <v-row dense class="mb-2">
+      <v-col cols="12" md="4">
+        <v-text-field v-model="transferSearch" label="Código u observación" variant="outlined" density="compact" prepend-inner-icon="mdi-magnify" clearable @keyup.enter="applyTransferFilters" />
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-autocomplete v-model="sourceWarehouseFilter" :items="sourceWarehouseOptions" item-title="title" item-value="value" label="Bodega origen" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-autocomplete v-model="destinationWarehouseFilter" :items="sourceWarehouseOptions" item-title="title" item-value="value" label="Bodega destino" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-select v-model="transferStatusFilter" :items="transferStatusOptions" label="Estado" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-text-field v-model="transferDateFromFilter" type="date" label="Desde" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-text-field v-model="transferDateToFilter" type="date" label="Hasta" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" md="3" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
+        <v-btn variant="tonal" prepend-icon="mdi-filter-check" :loading="loading" @click="applyTransferFilters">Aplicar</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveTransferFilters" @click="clearTransferFilters">Limpiar</v-btn>
+      </v-col>
+    </v-row>
+
     <v-data-table-server
       :headers="headers"
       :items="tableRows"
@@ -1115,6 +1140,12 @@ const consultingGuideId = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
 const serverTotalItems = ref(0);
+const transferSearch = ref("");
+const sourceWarehouseFilter = ref("");
+const destinationWarehouseFilter = ref("");
+const transferStatusFilter = ref("");
+const transferDateFromFilter = ref("");
+const transferDateToFilter = ref("");
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
@@ -1125,6 +1156,19 @@ const productsLoaded = ref(false);
 const pendingOrdersLoaded = ref(false);
 const stockRowsLoaded = ref(false);
 const stockRowsLoading = ref(false);
+const transferStatusOptions = [
+  { title: "Completada", value: "COMPLETADA" },
+];
+const hasActiveTransferFilters = computed(() =>
+  [
+    transferSearch.value,
+    sourceWarehouseFilter.value,
+    destinationWarehouseFilter.value,
+    transferStatusFilter.value,
+    transferDateFromFilter.value,
+    transferDateToFilter.value,
+  ].some((value) => String(value || "").trim()),
+);
 const selectedTransfer = ref<TransferRow | null>(null);
 const sriCertificateFile = ref<File | null>(null);
 const sriCertificatePassword = ref("");
@@ -2558,7 +2602,14 @@ function disconnectGuideStatusSocket() {
 async function loadTransfers() {
   const response = await fetchPaginatedResource(
     "/kpi_inventory/transferencias-bodega",
-    {},
+    {
+      search: transferSearch.value.trim() || undefined,
+      bodega_origen_id: sourceWarehouseFilter.value || undefined,
+      bodega_destino_id: destinationWarehouseFilter.value || undefined,
+      estado: transferStatusFilter.value || undefined,
+      desde: transferDateFromFilter.value || undefined,
+      hasta: transferDateToFilter.value || undefined,
+    },
     {
       page: serverPage.value,
       limit: serverItemsPerPage.value,
@@ -3026,6 +3077,22 @@ async function authorizeGuide() {
   } finally {
     guideAuthorizing.value = false;
   }
+}
+
+function applyTransferFilters() {
+  serverPage.value = 1;
+  void hydrateView();
+}
+
+function clearTransferFilters() {
+  transferSearch.value = "";
+  sourceWarehouseFilter.value = "";
+  destinationWarehouseFilter.value = "";
+  transferStatusFilter.value = "";
+  transferDateFromFilter.value = "";
+  transferDateToFilter.value = "";
+  serverPage.value = 1;
+  void hydrateView();
 }
 
 async function consultGuide(item: TransferRow) {

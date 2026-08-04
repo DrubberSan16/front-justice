@@ -40,7 +40,7 @@
     </div>
 
     <v-row dense class="mb-2">
-      <v-col cols="12" md="5">
+      <v-col cols="12" md="4">
         <v-text-field
           v-model="search"
           label="Buscar por código, proveedor o referencia"
@@ -49,6 +49,25 @@
           prepend-inner-icon="mdi-magnify"
           clearable
         />
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-autocomplete v-model="supplierFilter" :items="supplierOptions" item-title="title" item-value="value" label="Proveedor" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-autocomplete v-model="warehouseFilter" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega destino" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-select v-model="statusFilter" :items="purchaseStatusOptions" label="Estado" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-text-field v-model="dateFromFilter" type="date" label="Desde" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" sm="6" md="3">
+        <v-text-field v-model="dateToFilter" type="date" label="Hasta" variant="outlined" density="compact" clearable />
+      </v-col>
+      <v-col cols="12" md="3" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
+        <v-btn variant="tonal" prepend-icon="mdi-filter-check" :loading="loading" @click="applyFilters">Aplicar</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveFilters" @click="clearFilters">Limpiar</v-btn>
       </v-col>
     </v-row>
 
@@ -449,6 +468,11 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const editingId = ref<string | null>(null);
 const search = ref("");
+const supplierFilter = ref("");
+const warehouseFilter = ref("");
+const statusFilter = ref("");
+const dateFromFilter = ref("");
+const dateToFilter = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
 const serverTotalItems = ref(0);
@@ -463,6 +487,21 @@ const deletingOrder = ref<PurchaseOrderRow | null>(null);
 const suppliersLoaded = ref(false);
 const productsLoaded = ref(false);
 const warehousesLoaded = ref(false);
+const purchaseStatusOptions = [
+  { title: "Emitida", value: "EMITIDA" },
+  { title: "Transferida", value: "TRANSFERIDA" },
+  { title: "Anulada", value: "ANULADA" },
+];
+const hasActiveFilters = computed(() =>
+  [
+    search.value,
+    supplierFilter.value,
+    warehouseFilter.value,
+    statusFilter.value,
+    dateFromFilter.value,
+    dateToFilter.value,
+  ].some((value) => String(value || "").trim()),
+);
 
 const form = reactive({
   codigo: "",
@@ -750,6 +789,11 @@ async function loadOrders() {
     "/kpi_inventory/ordenes-compra",
     {
       search: repairText(search.value).trim() || undefined,
+      proveedor_id: supplierFilter.value || undefined,
+      bodega_destino_id: warehouseFilter.value || undefined,
+      estado: statusFilter.value || undefined,
+      desde: dateFromFilter.value || undefined,
+      hasta: dateToFilter.value || undefined,
     },
     {
       page: serverPage.value,
@@ -795,7 +839,11 @@ async function hydrateView() {
   if (!canRead.value) return;
   loading.value = true;
   try {
-    await Promise.all([loadOrders(), ensureWarehousesLoaded(true)]);
+    await Promise.all([
+      loadOrders(),
+      ensureWarehousesLoaded(),
+      ensureSuppliersLoaded(),
+    ]);
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
@@ -834,6 +882,21 @@ function scheduleServerFetch() {
     serverPage.value = 1;
     void hydrateView();
   }, 350);
+}
+
+function applyFilters() {
+  serverPage.value = 1;
+  void hydrateView();
+}
+
+function clearFilters() {
+  search.value = "";
+  supplierFilter.value = "";
+  warehouseFilter.value = "";
+  statusFilter.value = "";
+  dateFromFilter.value = "";
+  dateToFilter.value = "";
+  serverPage.value = 1;
 }
 
 async function openCreate() {
@@ -1024,7 +1087,14 @@ onMounted(async () => {
 });
 
 watch(
-  () => search.value,
+  () => [
+    search.value,
+    supplierFilter.value,
+    warehouseFilter.value,
+    statusFilter.value,
+    dateFromFilter.value,
+    dateToFilter.value,
+  ],
   () => {
     scheduleServerFetch();
   },
