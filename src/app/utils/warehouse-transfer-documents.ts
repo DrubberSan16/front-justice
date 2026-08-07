@@ -4,6 +4,7 @@ import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-brandin
 type WarehouseTransferDetailLike = {
   codigo_producto?: string | null;
   nombre_producto?: string | null;
+  descripcion_producto?: string | null;
   cantidad?: string | number | null;
   costo_unitario?: string | number | null;
   subtotal?: string | number | null;
@@ -262,9 +263,10 @@ export async function downloadWarehouseTransferPdf(
     margin: { left: marginX, right: marginX, top: 78, bottom: 74 },
     theme: "grid",
     showFoot: "lastPage",
+    rowPageBreak: "avoid",
     styles: {
       font: "helvetica",
-      fontSize: 7.6,
+      fontSize: 7,
       cellPadding: 4,
       lineColor: COLORS.border,
       lineWidth: 0.35,
@@ -284,28 +286,39 @@ export async function downloadWarehouseTransferPdf(
       fontStyle: "bold",
     },
     columnStyles: {
-      0: { cellWidth: 24, halign: "center" },
-      1: { cellWidth: 60 },
-      2: { cellWidth: 174 },
-      3: { cellWidth: 54, halign: "right" },
-      4: { cellWidth: 58, halign: "right" },
-      5: { cellWidth: 64, halign: "right" },
-      6: { cellWidth: "auto" },
+      0: { cellWidth: 20, halign: "center" },
+      1: { cellWidth: 54 },
+      2: { cellWidth: 95 },
+      3: { cellWidth: 105 },
+      4: { cellWidth: 44, halign: "right" },
+      5: { cellWidth: 54, halign: "right" },
+      6: { cellWidth: 58, halign: "right" },
+      7: { cellWidth: "auto" },
     },
-    head: [["#", "CÓDIGO", "MATERIAL", "CANT.", "COSTO U.", "SUBTOTAL", "OBSERVACIÓN"]],
+    head: [[
+      "#",
+      "CÓDIGO",
+      "MATERIAL",
+      "DESCRIPCIÓN",
+      "CANT.",
+      "COSTO U.",
+      "SUBTOTAL",
+      "OBSERVACIÓN",
+    ]],
     body: details.length
       ? details.map((detail, index) => [
           index + 1,
           text(detail.codigo_producto),
           text(detail.nombre_producto),
+          text(detail.descripcion_producto),
           formatNumber(detail.cantidad, 2),
           formatMoney(detail.costo_unitario),
           formatMoney(detail.subtotal),
           text(detail.observacion),
         ])
-      : [[1, "-", "Sin materiales registrados", "0,00", "$0,00", "$0,00", "-"]],
+      : [[1, "-", "Sin materiales registrados", "-", "0,00", "$0,00", "$0,00", "-"]],
     foot: [[
-      { content: "TOTALES", colSpan: 3, styles: { halign: "right" } },
+      { content: "TOTALES", colSpan: 4, styles: { halign: "right" } },
       formatNumber(totalQuantity, 2),
       "",
       formatMoney(totalAmount),

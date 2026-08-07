@@ -982,6 +982,7 @@ type TransferDetailRow = {
   producto_id?: string;
   codigo_producto?: string | null;
   nombre_producto?: string | null;
+  descripcion_producto?: string | null;
   cantidad?: string | number | null;
   costo_unitario?: string | number | null;
   subtotal?: string | number | null;
