@@ -135,7 +135,7 @@
       </template>
 
       <template #item.acciones="{ item }">
-        <div class="d-flex flex-wrap" style="gap: 8px; min-width: 270px;">
+        <div class="d-flex flex-wrap" style="gap: 8px; min-width: 430px;">
           <v-btn
             size="small"
             color="primary"
@@ -145,6 +145,17 @@
             @click="openGuideDialog(item)"
           >
             {{ guideActionLabel(item) }}
+          </v-btn>
+          <v-btn
+            size="small"
+            color="secondary"
+            variant="tonal"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="transferPdfDownloadingId === item.id"
+            :disabled="!item.id"
+            @click="downloadTransferPdf(item)"
+          >
+            PDF transferencia
           </v-btn>
           <v-btn
             v-if="item.guia_remision_id && !isGuideAuthorizedSummary(item)"
@@ -907,6 +918,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
+import { downloadWarehouseTransferPdf } from "@/app/utils/warehouse-transfer-documents";
 import { isSuperAdministrator } from "@/app/utils/role-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
@@ -965,6 +977,17 @@ type TransferGuideSummary = {
   guia_remision_numero_autorizacion?: string | null;
 };
 
+type TransferDetailRow = {
+  id?: string;
+  producto_id?: string;
+  codigo_producto?: string | null;
+  nombre_producto?: string | null;
+  cantidad?: string | number | null;
+  costo_unitario?: string | number | null;
+  subtotal?: string | number | null;
+  observacion?: string | null;
+};
+
 type TransferRow = TransferGuideSummary & {
   id: string;
   codigo: string;
@@ -978,6 +1001,12 @@ type TransferRow = TransferGuideSummary & {
   estado?: string | null;
   total_items?: number;
   total_cantidad?: string | number | null;
+  observacion?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  detalles?: TransferDetailRow[];
 };
 
 type TransferDetailForm = {
@@ -1137,6 +1166,7 @@ const lastGuideProviderLookedUpRuc = ref("");
 const guideProviderLookupTimer = ref<number | null>(null);
 const guideProviderLookupHydrating = ref(false);
 const consultingGuideId = ref("");
+const transferPdfDownloadingId = ref("");
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
 const serverTotalItems = ref(0);
@@ -3093,6 +3123,30 @@ function clearTransferFilters() {
   transferDateToFilter.value = "";
   serverPage.value = 1;
   void hydrateView();
+}
+
+async function downloadTransferPdf(item: TransferRow) {
+  const transferId = String(item?.id || "").trim();
+  if (!transferId || transferPdfDownloadingId.value) return;
+
+  transferPdfDownloadingId.value = transferId;
+  try {
+    const { data } = await api.get(
+      `/kpi_inventory/transferencias-bodega/${transferId}`,
+      { meta: { skipGlobalLoading: true } } as any,
+    );
+    const transfer = (data?.data ?? data) as TransferRow;
+    await downloadWarehouseTransferPdf(transfer, getUserName());
+    ui.success("PDF de la transferencia descargado correctamente.");
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo descargar el PDF de la transferencia.",
+    );
+  } finally {
+    transferPdfDownloadingId.value = "";
+  }
 }
 
 async function consultGuide(item: TransferRow) {
