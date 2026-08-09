@@ -21,6 +21,7 @@
           @purged="hydrateView"
         />
         <v-btn
+          v-if="canConfigureSri"
           variant="text"
           prepend-icon="mdi-cog"
           :loading="sriConfigLoading"
@@ -919,7 +920,7 @@ import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { downloadWarehouseTransferPdf } from "@/app/utils/warehouse-transfer-documents";
-import { isSuperAdministrator } from "@/app/utils/role-access";
+import { isAdministrator, isSuperAdministrator } from "@/app/utils/role-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
   appendOilIndicator,
@@ -1129,6 +1130,9 @@ const perms = computed(() =>
 );
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
+const canConfigureSri = computed(
+  () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
+);
 const canManageSriSignature = computed(() => isSuperAdministrator(auth.user));
 
 const loading = ref(false);
@@ -2740,6 +2744,7 @@ async function openCreate() {
 }
 
 async function openSriConfigDialog() {
+  if (!canConfigureSri.value) return;
   sriConfigDialog.value = true;
   sriConfigLoading.value = true;
   resetSriSignatureUploadForm();
