@@ -83,9 +83,15 @@
       @update:options="handleServerOptionsUpdate"
     >
       <template #item.estado="{ item }">
-        <v-chip size="small" variant="tonal" :color="orderStateColor(item.estado)">
-          {{ item.estado }}
-        </v-chip>
+        <div class="d-flex flex-column" style="gap: 3px; min-width: 180px;">
+          <v-chip size="small" variant="tonal" :color="orderStateColor(item.estado)">
+            {{ item.estado }}
+          </v-chip>
+          <span v-if="isAnnulled(item)" class="text-caption text-medium-emphasis">
+            Anulada por {{ item.updated_by || "SYSTEM" }} ·
+            {{ formatDateTime(item.updated_at, "-") }}
+          </span>
+        </div>
       </template>
 
       <template #item.total="{ item }">
@@ -115,17 +121,20 @@
             v-if="canEdit"
             icon="mdi-pencil"
             variant="text"
-            :disabled="item.tiene_transferencia"
+            :disabled="item.tiene_transferencia || isAnnulled(item)"
             @click="openEdit(item)"
           />
           <v-btn
-            v-if="canDelete"
-            icon="mdi-delete"
-            variant="text"
+            v-if="canAnnulDocuments && !isAnnulled(item)"
+            size="small"
+            prepend-icon="mdi-cancel"
+            variant="tonal"
             color="error"
             :disabled="item.tiene_transferencia"
             @click="openDelete(item)"
-          />
+          >
+            Anular
+          </v-btn>
         </div>
       </template>
     </v-data-table-server>
@@ -381,16 +390,17 @@
     :max-width="smAndDown ? undefined : 520"
   >
     <v-card rounded="xl" class="enterprise-dialog">
-      <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar orden de compra</v-card-title>
+      <v-card-title class="text-subtitle-1 font-weight-bold">Anular orden de compra</v-card-title>
       <v-card-text>
-        ¿Seguro que deseas eliminar la orden
-        <strong>{{ deletingOrder?.codigo || "" }}</strong>?
+        ¿Seguro que deseas anular la orden
+        <strong>{{ deletingOrder?.codigo || "" }}</strong>? El documento se conservará
+        con la auditoría del usuario y la fecha de anulación.
       </v-card-text>
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="deleteDialog = false">Cancelar</v-btn>
         <v-btn color="error" :loading="saving" @click="confirmDelete">
-          Eliminar
+          Anular
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -409,9 +419,10 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
-import { formatDateForInput, formatDateOnly } from "@/app/utils/date-time";
+import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { canManageAdministrativeOperations } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
@@ -438,6 +449,8 @@ type PurchaseOrderRow = {
   total?: string | number | null;
   tiene_transferencia?: boolean;
   transferencia_codigo?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
 };
 
 const ui = useUiStore();
@@ -457,7 +470,7 @@ const perms = computed(() =>
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
-const canDelete = computed(() => perms.value.permitDeleted);
+const canAnnulDocuments = computed(() => canManageAdministrativeOperations(auth.user));
 const canDownloadPdf = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"),
 );
@@ -884,6 +897,10 @@ function scheduleServerFetch() {
   }, 350);
 }
 
+function isAnnulled(item: PurchaseOrderRow) {
+  return String(item?.estado || "").trim().toUpperCase() === "ANULADA";
+}
+
 function applyFilters() {
   serverPage.value = 1;
   void hydrateView();
@@ -951,6 +968,7 @@ async function openEdit(item: PurchaseOrderRow) {
 }
 
 function openDelete(item: PurchaseOrderRow) {
+  if (!canAnnulDocuments.value || isAnnulled(item)) return;
   deletingOrder.value = item;
   deleteDialog.value = true;
 }
@@ -1047,8 +1065,8 @@ async function confirmDelete() {
   if (!deletingOrder.value) return;
   saving.value = true;
   try {
-    await api.delete(`/kpi_inventory/ordenes-compra/${deletingOrder.value.id}`);
-    ui.success("Orden de compra eliminada correctamente.");
+    await api.patch(`/kpi_inventory/ordenes-compra/${deletingOrder.value.id}/anular`);
+    ui.success("Orden de compra anulada correctamente.");
     deleteDialog.value = false;
     deletingOrder.value = null;
     await loadOrders();
@@ -1056,7 +1074,7 @@ async function confirmDelete() {
     ui.error(
       error?.response?.data?.message ||
         error?.message ||
-        "No se pudo eliminar la orden de compra.",
+        "No se pudo anular la orden de compra.",
     );
   } finally {
     saving.value = false;

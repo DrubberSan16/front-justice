@@ -109,13 +109,19 @@
       class="elevation-0 table-enterprise enterprise-table"
     >
       <template #item.status_workflow="{ item }">
-        <v-chip
-          size="small"
-          variant="tonal"
-          :color="getWorkflowChipColor((item._raw ?? item)?.status_workflow)"
-        >
-          {{ workflowLabel((item._raw ?? item)?.status_workflow) }}
-        </v-chip>
+        <div class="d-flex flex-column" style="gap: 3px; min-width: 185px;">
+          <v-chip
+            size="small"
+            variant="tonal"
+            :color="isAnnulledWorkOrder(item._raw ?? item) ? 'error' : getWorkflowChipColor((item._raw ?? item)?.status_workflow)"
+          >
+            {{ isAnnulledWorkOrder(item._raw ?? item) ? "Anulada" : workflowLabel((item._raw ?? item)?.status_workflow) }}
+          </v-chip>
+          <span v-if="isAnnulledWorkOrder(item._raw ?? item)" class="text-caption text-medium-emphasis">
+            Anulada por {{ workOrderAnnulledBy(item._raw ?? item) }} ·
+            {{ workOrderAnnulledAt(item._raw ?? item) }}
+          </span>
+        </div>
       </template>
       <template #item.emergency_label="{ item }">
         <v-chip
@@ -134,14 +140,23 @@
       </template>
       <template #item.actions="{ item }">
         <div class="d-flex" style="gap:4px">
-          <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEdit(item._raw ?? item)" />
           <v-btn
-            v-if="canDelete && canCloseOrVoidWorkOrder(item._raw ?? item)"
-            icon="mdi-delete"
+            v-if="canEdit"
+            icon="mdi-pencil"
             variant="text"
+            :disabled="isAnnulledWorkOrder(item._raw ?? item)"
+            @click="openEdit(item._raw ?? item)"
+          />
+          <v-btn
+            v-if="canAnnulDocuments && !isAnnulledWorkOrder(item._raw ?? item)"
+            size="small"
+            prepend-icon="mdi-cancel"
+            variant="tonal"
             color="error"
             @click="openDelete(item._raw ?? item)"
-          />
+          >
+            Anular
+          </v-btn>
         </div>
       </template>
     </v-data-table>
@@ -1323,12 +1338,15 @@
 
   <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
     <v-card rounded="xl">
-      <v-card-title class="text-subtitle-1 font-weight-bold">Eliminar</v-card-title>
-      <v-card-text>¿Deseas eliminar esta orden de trabajo?</v-card-text>
+      <v-card-title class="text-subtitle-1 font-weight-bold">Anular orden de trabajo</v-card-title>
+      <v-card-text>
+        ¿Deseas anular esta orden de trabajo? El registro se conservará con el usuario
+        y la fecha de anulación.
+      </v-card-text>
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="deleteDialog = false">Cancelar</v-btn>
-        <v-btn color="error" :loading="savingHeader" @click="confirmDelete">Eliminar</v-btn>
+        <v-btn color="error" :loading="savingHeader" @click="confirmDelete">Anular</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -1511,6 +1529,7 @@ import {
   downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
+import { canManageAdministrativeOperations } from "@/app/utils/role-access";
 import {
   appendOilIndicator,
   buildProductDisplayTitle,
@@ -1692,7 +1711,7 @@ const perms = computed(() =>
 );
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
-const canDelete = computed(() => perms.value.permitDeleted);
+const canAnnulDocuments = computed(() => canManageAdministrativeOperations(auth.user));
 const canPersistHeader = computed(() => (editingId.value ? canEdit.value : canCreate.value));
 const canAccessWorkOrderReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "ordenes_trabajo"),
@@ -2098,6 +2117,38 @@ function parseValorJson(valorJson: unknown) {
     }
   }
   return {};
+}
+
+function workOrderAuditPayload(item: any) {
+  const row = item?._raw ?? item;
+  return parseValorJson(row?.valor_json);
+}
+
+function isAnnulledWorkOrder(item: any) {
+  const row = item?._raw ?? item;
+  const payload = workOrderAuditPayload(row);
+  return [row?.approval_action, payload?.approval_action, row?.status]
+    .some((value) => String(value || "").trim().toUpperCase() === "ANULADA");
+}
+
+function workOrderAnnulledBy(item: any) {
+  const row = item?._raw ?? item;
+  const payload = workOrderAuditPayload(row);
+  return String(
+    row?.approved_by_label ||
+      row?.approved_by_username ||
+      payload?.approved_by_name ||
+      payload?.approved_by_username ||
+      row?.updated_by ||
+      "SYSTEM",
+  ).trim();
+}
+
+function workOrderAnnulledAt(item: any) {
+  const row = item?._raw ?? item;
+  const payload = workOrderAuditPayload(row);
+  const raw = row?.approved_at || payload?.approved_at || row?.closed_at || row?.updated_at;
+  return raw ? formatDateTime(raw, "-") : "-";
 }
 
 function asAny<T = any>(value: unknown): T {
@@ -5245,8 +5296,8 @@ async function handleAttachmentFileChange(value: File | File[] | null) {
 }
 
 function openDelete(item: any) {
-  if (!canDelete.value || !canCloseOrVoidWorkOrder(item)) {
-    ui.error("Solo el usuario que creó o planificó la OT puede anularla.");
+  if (!canAnnulDocuments.value || isAnnulledWorkOrder(item)) {
+    ui.error("Solo Administrador, Super Administrador o Gerente General pueden anular la orden de trabajo.");
     return;
   }
   deletingId.value = item.id;
@@ -6005,18 +6056,20 @@ function removeScrapItem(index: number) {
 
 async function confirmDelete() {
   if (!deletingId.value) return;
-  if (!canCloseOrVoidCurrent.value) {
-    ui.error(closeRestrictionText.value || "No tienes permiso para anular esta orden de trabajo.");
+  if (!canAnnulDocuments.value || isAnnulledWorkOrder(currentWorkOrderRecord.value)) {
+    ui.error("Solo Administrador, Super Administrador o Gerente General pueden anular la orden de trabajo.");
     return;
   }
   savingHeader.value = true;
   try {
-    await api.delete(`/kpi_maintenance/work-orders/${deletingId.value}`);
-    ui.success("Orden de trabajo eliminada.");
+    await api.patch(`/kpi_maintenance/work-orders/${deletingId.value}/anular`);
+    ui.success("Orden de trabajo anulada. La auditoría registró el usuario y la fecha.");
     deleteDialog.value = false;
+    deletingId.value = null;
+    currentWorkOrderRecord.value = null;
     await fetchWorkOrders();
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo eliminar la OT.");
+    ui.error(e?.response?.data?.message || "No se pudo anular la orden de trabajo.");
   } finally {
     savingHeader.value = false;
   }

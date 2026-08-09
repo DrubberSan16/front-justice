@@ -90,9 +90,15 @@
       </template>
 
       <template #item.estado="{ item }">
-        <v-chip size="small" variant="tonal" color="success">
-          {{ item.estado || "COMPLETADA" }}
-        </v-chip>
+        <div class="d-flex flex-column" style="gap: 3px; min-width: 180px;">
+          <v-chip size="small" variant="tonal" :color="transferStateColor(item.estado)">
+            {{ item.estado || "COMPLETADA" }}
+          </v-chip>
+          <span v-if="isAnnulledTransfer(item)" class="text-caption text-medium-emphasis">
+            Anulada por {{ item.updated_by || "SYSTEM" }} ·
+            {{ formatDateTime(item.updated_at, "-") }}
+          </span>
+        </div>
       </template>
 
       <template #item.total_cantidad="{ item }">
@@ -136,7 +142,7 @@
       </template>
 
       <template #item.acciones="{ item }">
-        <div class="d-flex flex-wrap" style="gap: 8px; min-width: 430px;">
+        <div class="d-flex flex-wrap" style="gap: 8px; min-width: 520px;">
           <v-btn
             size="small"
             color="primary"
@@ -181,10 +187,41 @@
           >
             {{ preferredGuideXmlLabel(item) }}
           </v-btn>
+          <v-btn
+            v-if="canManageAdministrativeDocuments && !isAnnulledTransfer(item)"
+            size="small"
+            color="error"
+            variant="tonal"
+            prepend-icon="mdi-cancel"
+            :disabled="isGuideAuthorizedSummary(item)"
+            @click="openAnnulTransfer(item)"
+          >
+            Anular
+          </v-btn>
         </div>
       </template>
     </v-data-table-server>
   </v-card>
+
+  <v-dialog v-model="annulDialog" :max-width="520">
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Anular transferencia de bodega
+      </v-card-title>
+      <v-card-text>
+        ¿Seguro que deseas anular la transferencia
+        <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se generará el reverso
+        del stock y se conservará la auditoría del usuario y la fecha de anulación.
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn variant="text" @click="annulDialog = false">Cancelar</v-btn>
+        <v-btn color="error" :loading="annullingTransferId !== ''" @click="confirmAnnulTransfer">
+          Anular
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
   <v-dialog
     v-model="dialog"
@@ -920,7 +957,10 @@ import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { downloadWarehouseTransferPdf } from "@/app/utils/warehouse-transfer-documents";
-import { isAdministrator, isSuperAdministrator } from "@/app/utils/role-access";
+import {
+  canManageAdministrativeOperations,
+  isSuperAdministrator,
+} from "@/app/utils/role-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
   appendOilIndicator,
@@ -1130,15 +1170,19 @@ const perms = computed(() =>
 );
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
-const canConfigureSri = computed(
-  () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
+const canManageAdministrativeDocuments = computed(() =>
+  canManageAdministrativeOperations(auth.user),
 );
+const canConfigureSri = canManageAdministrativeDocuments;
 const canManageSriSignature = computed(() => isSuperAdministrator(auth.user));
 
 const loading = ref(false);
 const saving = ref(false);
 const orderLoading = ref(false);
 const dialog = ref(false);
+const annulDialog = ref(false);
+const annullingTransfer = ref<TransferRow | null>(null);
+const annullingTransferId = ref("");
 const sriConfigDialog = ref(false);
 const guideDialog = ref(false);
 const guideSaving = ref(false);
@@ -1193,6 +1237,7 @@ const stockRowsLoaded = ref(false);
 const stockRowsLoading = ref(false);
 const transferStatusOptions = [
   { title: "Completada", value: "COMPLETADA" },
+  { title: "Anulada", value: "ANULADA" },
 ];
 const hasActiveTransferFilters = computed(() =>
   [
@@ -2615,6 +2660,16 @@ async function handleGuideStatusSocketUpdate(payload: {
   }
 }
 
+function isAnnulledTransfer(item: TransferRow) {
+  return String(item?.estado || "").trim().toUpperCase() === "ANULADA";
+}
+
+function transferStateColor(state?: string | null) {
+  return String(state || "").trim().toUpperCase() === "ANULADA"
+    ? "error"
+    : "success";
+}
+
 function connectGuideStatusSocket() {
   if (guideStatusSocket || !canRead.value) return;
   const origin = resolveGuideSocketOrigin();
@@ -3129,6 +3184,40 @@ function clearTransferFilters() {
   transferDateToFilter.value = "";
   serverPage.value = 1;
   void hydrateView();
+}
+
+function openAnnulTransfer(item: TransferRow) {
+  if (
+    !canManageAdministrativeDocuments.value ||
+    isAnnulledTransfer(item) ||
+    isGuideAuthorizedSummary(item)
+  ) {
+    return;
+  }
+  annullingTransfer.value = item;
+  annulDialog.value = true;
+}
+
+async function confirmAnnulTransfer() {
+  const transferId = String(annullingTransfer.value?.id || "").trim();
+  if (!transferId || annullingTransferId.value) return;
+  annullingTransferId.value = transferId;
+  try {
+    await api.patch(`/kpi_inventory/transferencias-bodega/${transferId}/anular`);
+    ui.success("Transferencia anulada y stock revertido correctamente.");
+    annulDialog.value = false;
+    annullingTransfer.value = null;
+    stockRowsLoaded.value = false;
+    await hydrateView();
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo anular la transferencia.",
+    );
+  } finally {
+    annullingTransferId.value = "";
+  }
 }
 
 async function downloadTransferPdf(item: TransferRow) {

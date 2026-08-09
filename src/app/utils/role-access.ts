@@ -29,6 +29,16 @@ export function isAdministrator(user: AuthUser): boolean {
   return ["ADMINISTRADOR", "ADMINISTRADOR DEL SISTEMA", "ADMIN"].includes(roleName);
 }
 
+export function isGeneralManager(user: AuthUser): boolean {
+  return getRoleName(user) === "GERENTE GENERAL";
+}
+
+export function canManageAdministrativeOperations(user: AuthUser): boolean {
+  return ["ADMINISTRADOR", "SUPER ADMINISTRADOR", "GERENTE GENERAL"].includes(
+    getRoleName(user),
+  );
+}
+
 export function canAccessDigitalTwins(user: AuthUser): boolean {
   if (isSuperAdministrator(user)) return true;
   if (isAdministrator(user)) return false;
