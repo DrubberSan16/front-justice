@@ -1290,6 +1290,14 @@
                 readonly
               />
             </v-col>
+            <v-col v-if="materialIssueUsesCritical" cols="12" md="4">
+              <v-text-field
+                :model-value="formatTaskHours(materialIssueTarget.stock_critico)"
+                label="Stock crítico disponible"
+                variant="outlined"
+                readonly
+              />
+            </v-col>
             <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
               <v-text-field
                 :model-value="formatTaskHours(materialIssueTarget.stock_usado)"
@@ -1619,7 +1627,11 @@ const materialIssueConditionOptions = [
   { title: "Usado", value: "USADO" },
 ];
 const materialIssueRequiresCondition = computed(() =>
-  targetManagesUsedStock(materialIssueTarget.value),
+  targetManagesUsedStock(materialIssueTarget.value) &&
+  !usesCriticalStockFallback(materialIssueTarget.value),
+);
+const materialIssueUsesCritical = computed(() =>
+  usesCriticalStockFallback(materialIssueTarget.value),
 );
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -2760,15 +2772,30 @@ function toPositiveNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function normalizeIssueCondition(value: unknown): "NUEVO" | "USADO" {
-  return String(value || "").trim().toUpperCase() === "USADO" ? "USADO" : "NUEVO";
+function normalizeIssueCondition(value: unknown): "NUEVO" | "USADO" | "CRITICO" {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "USADO") return "USADO";
+  if (normalized === "CRITICO") return "CRITICO";
+  return "NUEVO";
 }
 
 function targetManagesUsedStock(target: any) {
   return Boolean(target?.maneja_stock_usado ?? target?.es_usado);
 }
 
-function issueConditionAvailable(target: any, condition: "NUEVO" | "USADO") {
+function usesCriticalStockFallback(target: any) {
+  return (
+    toPositiveNumber(target?.stock_nuevo) <= 0 &&
+    toPositiveNumber(target?.stock_usado) <= 0 &&
+    toPositiveNumber(target?.stock_critico) > 0
+  );
+}
+
+function issueConditionAvailable(
+  target: any,
+  condition: "NUEVO" | "USADO" | "CRITICO",
+) {
+  if (condition === "CRITICO") return toPositiveNumber(target?.stock_critico);
   if (condition === "USADO") return toPositiveNumber(target?.stock_usado);
   if (target?.stock_nuevo !== undefined && target?.stock_nuevo !== null) {
     return toPositiveNumber(target.stock_nuevo);
@@ -2802,6 +2829,7 @@ function normalizeStockProductOption(row: any) {
     stock_actual: toPositiveNumber(row?.stock_actual),
     stock_nuevo: stockNuevo,
     stock_usado: stockUsado,
+    stock_critico: toPositiveNumber(row?.stock_critico),
     stock_disponible: stock,
     cantidad_reservada_activa: activeReserved,
   };
@@ -2844,6 +2872,7 @@ function ensureConsumoProductOption(item: any) {
       stock_actual: toPositiveNumber(item?.stock_actual),
       stock_nuevo: stockNuevo,
       stock_usado: stockUsado,
+      stock_critico: toPositiveNumber(item?.stock_critico),
       stock_disponible: stockAvailable,
       cantidad_reservada_activa: activeReserved,
     },
@@ -3035,6 +3064,7 @@ const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   stock_actual: toPositiveNumber(item?.stock_actual),
   stock_nuevo: toPositiveNumber(item?.stock_nuevo ?? item?.stock_actual),
   stock_usado: toPositiveNumber(item?.stock_usado),
+  stock_critico: toPositiveNumber(item?.stock_critico),
   costo_unitario: toPositiveNumber(item?.costo_unitario),
   subtotal: toPositiveNumber(item?.subtotal ?? (toPositiveNumber(item?.cantidad) * toPositiveNumber(item?.costo_unitario))),
   observacion: item?.observacion || "-",
@@ -3060,6 +3090,7 @@ const materialReservationRows = computed(() => {
         stock_actual: toPositiveNumber(row?.stock_actual),
         stock_nuevo: toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual),
         stock_usado: toPositiveNumber(row?.stock_usado),
+        stock_critico: toPositiveNumber(row?.stock_critico),
         cantidad_reservada: 0,
         cantidad_emitida: 0,
         cantidad_pendiente: 0,
@@ -3090,6 +3121,10 @@ const materialReservationRows = computed(() => {
     current.stock_usado = Math.max(
       toPositiveNumber(current.stock_usado),
       toPositiveNumber(row?.stock_usado),
+    );
+    current.stock_critico = Math.max(
+      toPositiveNumber(current.stock_critico),
+      toPositiveNumber(row?.stock_critico),
     );
     const observation = String(row?.observacion || "").trim();
     if (
@@ -5911,7 +5946,11 @@ function openMaterialIssueDialog(item: any) {
   }
   materialIssueTarget.value = item;
   materialIssueForm.cantidad = "";
-  materialIssueForm.condicion_material = targetManagesUsedStock(item) ? "" : "NUEVO";
+  materialIssueForm.condicion_material = usesCriticalStockFallback(item)
+    ? "CRITICO"
+    : targetManagesUsedStock(item)
+      ? ""
+      : "NUEVO";
   materialIssueForm.observacion = "";
   materialIssueDialog.value = true;
 }
@@ -5952,17 +5991,20 @@ async function submitMaterialIssue() {
     return ui.error(`La salida real no puede superar lo reservado pendiente (${pending}).`);
   }
 
-  const conditionRequired = targetManagesUsedStock(target);
-  const condition = conditionRequired
-    ? normalizeIssueCondition(materialIssueForm.condicion_material)
-    : "NUEVO";
+  const criticalFallback = usesCriticalStockFallback(target);
+  const conditionRequired = targetManagesUsedStock(target) && !criticalFallback;
+  const condition = criticalFallback
+    ? "CRITICO"
+    : conditionRequired
+      ? normalizeIssueCondition(materialIssueForm.condicion_material)
+      : "NUEVO";
   if (conditionRequired && !String(materialIssueForm.condicion_material || "").trim()) {
     return ui.error("Selecciona si la salida corresponde a material nuevo o usado.");
   }
   const conditionAvailable = issueConditionAvailable(target, condition);
   if (quantity > conditionAvailable) {
     return ui.error(
-      `Stock ${condition === "USADO" ? "usado" : "nuevo"} insuficiente. Disponible ${conditionAvailable}.`,
+      `Stock ${condition === "USADO" ? "usado" : condition === "CRITICO" ? "crítico" : "nuevo"} insuficiente. Disponible ${conditionAvailable}.`,
     );
   }
 

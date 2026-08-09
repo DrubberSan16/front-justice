@@ -170,6 +170,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "stock_nuevo", label: "Stock nuevo", type: "number", required: true },
       { key: "es_usado", label: "Tiene material usado", type: "boolean", required: true },
       { key: "stock_usado", label: "Stock usado", type: "number" },
+      { key: "stock_critico", label: "Stock crítico", type: "number", required: true },
       { key: "stock_actual", label: "Stock actual total", type: "number", readonly: true, sendInPayload: false },
       { key: "stock_fisico", label: "Stock fisico", type: "number", required: true },
       { key: "diferencia", label: "Diferencia", type: "number", readonly: true, sendInPayload: false },

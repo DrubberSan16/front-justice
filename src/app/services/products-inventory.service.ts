@@ -18,6 +18,10 @@ type StockRow = {
   bodega_id: string;
   producto_id: string;
   stock_actual: string;
+  stock_nuevo?: string;
+  stock_usado?: string;
+  stock_critico?: string;
+  stock_disponible?: string | number;
   stock_fisico?: string;
   stock_min_bodega: string;
   stock_max_bodega: string;

@@ -162,7 +162,7 @@
             :disabled="!item.id"
             @click="downloadTransferPdf(item)"
           >
-            PDF transferencia
+            Descargar PDF
           </v-btn>
           <v-btn
             v-if="item.guia_remision_id && !isGuideAuthorizedSummary(item)"
@@ -984,6 +984,8 @@ type StockRow = {
   bodega_id: string;
   producto_id: string;
   stock_actual?: string | number | null;
+  stock_disponible?: string | number | null;
+  stock_critico?: string | number | null;
 };
 
 type PurchaseOrderDetailRow = {
@@ -1463,7 +1465,10 @@ const currentStockByProduct = computed(() => {
   if (!sourceWarehouseId) return map;
   for (const row of stockRows.value) {
     if (String(row.bodega_id || "") !== sourceWarehouseId) continue;
-    map.set(String(row.producto_id || ""), toNumber(row.stock_actual));
+    map.set(
+      String(row.producto_id || ""),
+      toNumber(row.stock_disponible ?? row.stock_actual),
+    );
   }
   return map;
 });

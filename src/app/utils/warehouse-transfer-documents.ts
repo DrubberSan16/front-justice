@@ -149,7 +149,7 @@ export async function downloadWarehouseTransferPdf(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(...COLORS.primary);
-    doc.text("TRANSFERENCIA DE BODEGA", rightX, 34, { align: "right" });
+    doc.text("GUÍA INTERNA", rightX, 34, { align: "right" });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(...COLORS.muted);
@@ -180,7 +180,7 @@ export async function downloadWarehouseTransferPdf(
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text("TRANSFERENCIA DE BODEGA", marginX + 16, 107);
+  doc.text("GUÍA INTERNA", marginX + 16, 107);
   doc.setFontSize(10);
   doc.text(`No. ${text(transfer.codigo, "SIN CÓDIGO")}`, rightX - 16, 107, {
     align: "right",
@@ -392,5 +392,5 @@ export async function downloadWarehouseTransferPdf(
     doc.text(`Página ${page} de ${pageCount}`, rightX, pageHeight - 23, { align: "right" });
   }
 
-  doc.save(`${fileName(transfer.codigo)}-transferencia-bodega.pdf`);
+  doc.save(`${fileName(transfer.codigo)}-guia-interna.pdf`);
 }

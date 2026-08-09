@@ -771,7 +771,8 @@ function syncStockTotals() {
   }
   const stockTotal =
     toSafeNumber(form.stock_nuevo) +
-    (Boolean(form.es_usado) ? toSafeNumber(form.stock_usado) : 0);
+    (Boolean(form.es_usado) ? toSafeNumber(form.stock_usado) : 0) +
+    toSafeNumber(form.stock_critico);
   form.stock_actual = String(Number(stockTotal.toFixed(6)));
   form.diferencia = String(
     Number(
@@ -981,7 +982,8 @@ function hydrateFormFromItem(item: Record<string, any> | null | undefined) {
     if (
       toSafeNumber(form.stock_nuevo) === 0 &&
       toSafeNumber(item?.stock_actual) > 0 &&
-      toSafeNumber(item?.stock_usado) === 0
+      toSafeNumber(item?.stock_usado) === 0 &&
+      toSafeNumber(item?.stock_critico) === 0
     ) {
       form.stock_nuevo = formatNumberFieldForForm(item?.stock_actual);
     }
@@ -1014,7 +1016,26 @@ function isAutoManagedWarehouse(item: any) {
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const base = cfg.fields.slice(0, 6).map((f) => ({ title: f.label, key: f.key }));
+  const stockTableFieldKeys = [
+    "bodega_id",
+    "producto_id",
+    "stock_min_bodega",
+    "stock_max_bodega",
+    "stock_critico",
+    "stock_nuevo",
+    "stock_usado",
+    "stock_actual",
+    "es_usado",
+  ];
+  const tableFields = isStockBodegaModule.value
+    ? stockTableFieldKeys
+        .map((key) => cfg.fields.find((field) => field.key === key))
+        .filter((field): field is MaintenanceField => Boolean(field))
+    : cfg.fields.slice(0, 6);
+  const base = tableFields.map((field) => ({
+    title: field.label,
+    key: field.key,
+  }));
   if (!canEdit.value && !canDelete.value) return base;
   return [...base, { title: "Acciones", key: "actions", sortable: false }];
 });
@@ -1125,8 +1146,9 @@ function buildStockWarehouseReport(sourceRows: any[]): ReportDefinition {
     bodega: stockWarehouseLabel(row),
     material: stockProductLabel(row),
     condicion: row?.es_usado ? "Con usado" : "Solo nuevo",
-    stock_nuevo: Number(row?.stock_nuevo || row?.stock_actual || 0),
+    stock_nuevo: Number(row?.stock_nuevo ?? row?.stock_actual ?? 0),
     stock_usado: Number(row?.stock_usado || 0),
+    stock_critico: Number(row?.stock_critico || 0),
     stock_actual: Number(row?.stock_actual || 0),
     stock_minimo: Number(row?.stock_min_bodega || 0),
     stock_maximo: Number(row?.stock_max_bodega || 0),
@@ -1156,6 +1178,7 @@ function buildStockWarehouseReport(sourceRows: any[]): ReportDefinition {
           { key: "condicion", header: "Condicion", width: 14 },
           { key: "stock_nuevo", header: "Stock nuevo", width: 14, format: "number" },
           { key: "stock_usado", header: "Stock usado", width: 14, format: "number" },
+          { key: "stock_critico", header: "Stock crítico", width: 14, format: "number" },
           { key: "stock_actual", header: "Stock actual total", width: 16, format: "number" },
           { key: "stock_minimo", header: "Stock minimo", width: 14, format: "number" },
           { key: "stock_maximo", header: "Stock maximo", width: 14, format: "number" },
@@ -1213,8 +1236,12 @@ function sanitizePayload() {
   if (cfg.key === "stock-bodega") {
     const stockNuevo = toSafeNumber(payload.stock_nuevo);
     const stockUsado = Boolean(payload.es_usado) ? toSafeNumber(payload.stock_usado) : 0;
+    const stockCritico = toSafeNumber(payload.stock_critico);
     payload.stock_usado = String(stockUsado);
-    payload.stock_actual = String(Number((stockNuevo + stockUsado).toFixed(6)));
+    payload.stock_critico = String(stockCritico);
+    payload.stock_actual = String(
+      Number((stockNuevo + stockUsado + stockCritico).toFixed(6)),
+    );
   }
 
   return payload;
@@ -1235,8 +1262,12 @@ function validateForm() {
     }
   }
   if (cfg.key === "stock-bodega") {
-    if (toSafeNumber(form.stock_nuevo) < 0 || toSafeNumber(form.stock_usado) < 0) {
-      ui.error("El stock nuevo y usado no pueden ser negativos.");
+    if (
+      toSafeNumber(form.stock_nuevo) < 0 ||
+      toSafeNumber(form.stock_usado) < 0 ||
+      toSafeNumber(form.stock_critico) < 0
+    ) {
+      ui.error("El stock nuevo, usado y crítico no pueden ser negativos.");
       return false;
     }
     if (Boolean(form.es_usado) && toSafeNumber(form.stock_usado) <= 0) {
@@ -1579,6 +1610,7 @@ watch(
     isStockBodegaModule.value,
     form.stock_nuevo,
     form.stock_usado,
+    form.stock_critico,
     form.stock_fisico,
     form.es_usado,
   ],
