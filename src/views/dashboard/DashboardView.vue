@@ -290,7 +290,7 @@
                   <tr>
                     <th>Material</th>
                     <th>Bodega</th>
-                    <th>Stock</th>
+                    <th>Disponible</th>
                     <th>Mín.</th>
                     <th>Déficit</th>
                   </tr>
@@ -844,9 +844,16 @@ const workOrderStatusCards = computed(() => [
   { key: "CLOSED", label: "Cerradas", value: workOrdersByStatus.value.CLOSED },
 ]);
 
+function inventoryAvailableForMinimum(item: AnyRow) {
+  return Math.max(
+    Number(item?.stock_actual || 0) - Number(item?.stock_critico || 0),
+    0,
+  );
+}
+
 const lowStockItems = computed(() =>
   stockRows.value.filter((item) => {
-    const stock = Number(item?.stock_actual || 0);
+    const stock = inventoryAvailableForMinimum(item);
     const min = Number(item?.stock_min_bodega || 0);
     return min > 0 && stock <= min;
   }),
@@ -1016,7 +1023,7 @@ const recentWorkOrdersTableRows = computed(() =>
 const criticalInventoryRows = computed(() =>
   [...lowStockItems.value]
     .map((item) => {
-      const stock = Number(item?.stock_actual || 0);
+      const stock = inventoryAvailableForMinimum(item);
       const min = Number(item?.stock_min_bodega || 0);
       return {
         id: item.id,
@@ -1215,7 +1222,9 @@ const dashboardReportDefinition = computed(() =>
     inventory: lowStockItems.value.map((item) => ({
       producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || ""),
       bodega: resolveWarehouseLabel(item),
-      stock_actual: item?.stock_actual || 0,
+      stock_actual: inventoryAvailableForMinimum(item),
+      stock_total: item?.stock_actual || 0,
+      stock_critico: item?.stock_critico || 0,
       stock_minimo: item?.stock_min_bodega || 0,
       observacion: "Bajo stock mínimo",
     })),

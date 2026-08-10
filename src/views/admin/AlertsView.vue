@@ -160,7 +160,9 @@
                   <tr>
                     <th>Material</th>
                     <th>Bodega</th>
-                    <th>Actual</th>
+                    <th>Total</th>
+                    <th>Crítico</th>
+                    <th>Disponible</th>
                     <th>Mínimo</th>
                     <th>Observación</th>
                   </tr>
@@ -173,6 +175,8 @@
                     <td>{{ inventoryItem.producto_label || "-" }}</td>
                     <td>{{ inventoryItem.bodega_label || "-" }}</td>
                     <td>{{ formatInventoryNumber(inventoryItem.stock_actual) }}</td>
+                    <td>{{ formatInventoryNumber(inventoryItem.stock_critico) }}</td>
+                    <td>{{ formatInventoryNumber(inventoryAvailableStock(inventoryItem)) }}</td>
                     <td>{{ formatInventoryNumber(inventoryItem.stock_min_bodega) }}</td>
                     <td>{{ inventoryItem.observacion || "-" }}</td>
                   </tr>
@@ -368,6 +372,15 @@ function resolveRow(item: any) {
 function inventoryAlertItems(item: any) {
   const payload = item?.payload_json;
   return Array.isArray(payload?.inventory_items) ? payload.inventory_items : [];
+}
+
+function inventoryAvailableStock(item: any) {
+  const explicit = Number(item?.stock_disponible_minimo);
+  if (Number.isFinite(explicit)) return explicit;
+  return Math.max(
+    Number(item?.stock_actual || 0) - Number(item?.stock_critico || 0),
+    0,
+  );
 }
 
 function levelColor(level: unknown) {
