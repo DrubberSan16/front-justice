@@ -132,7 +132,7 @@
         </v-card>
       </v-col>
 
-      <v-col cols="12">
+      <v-col v-if="canCreate" cols="12">
         <v-card rounded="xl" class="pa-4 enterprise-surface kardex-upload-card">
           <div class="d-flex align-start justify-space-between flex-wrap mb-4" style="gap:16px">
             <div><div class="text-h6 font-weight-bold">Carga masiva de inventario</div><div class="text-body-2 text-medium-emphasis mt-1">Usa la plantilla actualizada para crear materiales nuevos o ajustar stock por diferencia.</div></div>

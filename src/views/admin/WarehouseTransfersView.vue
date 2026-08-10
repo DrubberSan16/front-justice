@@ -1172,11 +1172,14 @@ const perms = computed(() =>
 );
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
+const canEdit = computed(() => perms.value.isEdited);
 const canManageAdministrativeDocuments = computed(() =>
   canManageAdministrativeOperations(auth.user),
 );
 const canConfigureSri = canManageAdministrativeDocuments;
-const canManageSriSignature = computed(() => isSuperAdministrator(auth.user));
+const canManageSriSignature = computed(
+  () => (canCreate.value || canEdit.value) && isSuperAdministrator(auth.user),
+);
 
 const loading = ref(false);
 const saving = ref(false);

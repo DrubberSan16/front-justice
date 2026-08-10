@@ -599,6 +599,7 @@
                           {{ getTaskEvidenceRequirementLabel(requirement) }}
                         </div>
                         <v-file-input
+                          v-if="canManageWorkOrderUploads"
                           :key="getTaskEvidenceInputKey(item._raw ?? item, requirement)"
                           :label="`Subir ${getTaskEvidenceRequirementLabel(requirement).toLowerCase()}`"
                           density="compact"
@@ -621,7 +622,7 @@
                             size="small"
                             color="secondary"
                             variant="tonal"
-                            closable
+                            :closable="canManageWorkOrderUploads"
                             @click="openTaskEvidenceAttachment(attachment)"
                             @click:close="removeTaskEvidenceAttachment(item._raw ?? item, attachment)"
                           >
@@ -704,7 +705,7 @@
           </v-window-item>
 
           <v-window-item value="adjuntos">
-            <v-row dense class="pt-2">
+            <v-row v-if="canManageWorkOrderUploads" dense class="pt-2">
               <v-col cols="12" md="3"><v-text-field v-model="attachmentForm.tipo" label="Tipo" variant="outlined" /></v-col>
               <v-col cols="12" md="3"><v-text-field v-model="attachmentForm.nombre" label="Nombre" variant="outlined" /></v-col>
               <v-col cols="12" md="3"><v-text-field v-model="attachmentForm.mime_type" label="Mime type" variant="outlined" /></v-col>
@@ -726,7 +727,7 @@
                 </div>
               </v-col>
             </v-row>
-            <div class="d-flex justify-end mb-3"><v-btn color="primary" :disabled="isReadOnlyWorkflow" @click="createAttachment">Agregar</v-btn></div>
+            <div v-if="canManageWorkOrderUploads" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createAttachment">Agregar</v-btn></div>
             <v-data-table
               :headers="attachmentHeaders"
               :items="attachmentRows"
@@ -746,7 +747,7 @@
                 </a>
               </template>
               <template #item.actions="{ item }">
-                <v-btn icon="mdi-delete" variant="text" color="error" @click="deleteAttachment(item._raw ?? item)" />
+                <v-btn v-if="canManageWorkOrderUploads" icon="mdi-delete" variant="text" color="error" @click="deleteAttachment(item._raw ?? item)" />
               </template>
             </v-data-table>
           </v-window-item>
@@ -1925,6 +1926,9 @@ const canCloseOrVoidCurrent = computed(() =>
   editingId.value ? canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) : true,
 );
 const isReadOnlyWorkflow = computed(() => isPersistedBlocked.value || (isPersistedClosed.value && !closingFlow.value));
+const canManageWorkOrderUploads = computed(
+  () => canPersistHeader.value && !isReadOnlyWorkflow.value,
+);
 const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || isInProcess.value || isClosed.value));
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
@@ -3864,8 +3868,8 @@ function buildTaskEvidenceAttachmentRef(draftAttachment: any, requirement: strin
 }
 
 async function handleTaskEvidenceFiles(task: any, requirement: string, value: File | File[] | null) {
-  if (isReadOnlyWorkflow.value) {
-    ui.error(readOnlyWorkflowMessage());
+  if (!canManageWorkOrderUploads.value) {
+    ui.error("No tienes permisos para agregar evidencias a la orden.");
     return;
   }
 
@@ -3951,8 +3955,8 @@ function unlinkAttachmentFromTaskEvidence(attachmentId?: string | null, draftAtt
 }
 
 function removeTaskEvidenceAttachment(task: any, attachment: any) {
-  if (isReadOnlyWorkflow.value) {
-    ui.error(readOnlyWorkflowMessage());
+  if (!canManageWorkOrderUploads.value) {
+    ui.error("No tienes permisos para eliminar evidencias de la orden.");
     return;
   }
   const payload = getTaskJsonObject(task);
@@ -5847,7 +5851,7 @@ async function deleteTask(item: any) {
 }
 
 async function createAttachment(showToast = true) {
-  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
+  if (!canManageWorkOrderUploads.value) return ui.error("No tienes permisos para agregar adjuntos a la orden.");
   if (!attachmentForm.nombre || !attachmentForm.contenido_base64) return ui.error("Debes seleccionar un archivo.");
 
   const draftId = `draft-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -5874,7 +5878,7 @@ async function createAttachment(showToast = true) {
 }
 
 async function deleteAttachment(item: any) {
-  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
+  if (!canManageWorkOrderUploads.value) return ui.error("No tienes permisos para eliminar adjuntos de la orden.");
   if (item?._isDraft) {
     unlinkAttachmentFromTaskEvidence(null, String(item?.id || ""));
     attachmentRows.value = attachmentRows.value.filter((row) => row.id !== item.id);

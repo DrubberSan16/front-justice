@@ -91,7 +91,7 @@
           </div>
 
           <v-row dense>
-            <v-col cols="12" md="12" lg="12" xl="5">
+            <v-col v-if="canCreate" cols="12" md="12" lg="12" xl="5">
               <v-file-input
                 v-model="monthlyImportFile"
                 accept=".pdf,.docx,.xlsx,.xls,.csv"
@@ -103,7 +103,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col v-if="requiresExplicitSucursalSelection" cols="12" sm="6" md="4" lg="4" xl="2">
+            <v-col v-if="canCreate && requiresExplicitSucursalSelection" cols="12" sm="6" md="4" lg="4" xl="2">
               <v-select
                 v-model="monthlyImportSucursalId"
                 :items="sucursalSelectItems"
@@ -342,7 +342,7 @@
           </div>
 
           <v-row dense>
-            <v-col cols="12" md="12" lg="12" xl="4">
+            <v-col v-if="canCreate" cols="12" md="12" lg="12" xl="4">
               <v-file-input
                 v-model="weeklyImportFile"
                 accept=".xlsx,.xls"
@@ -354,7 +354,7 @@
                 hide-details="auto"
               />
             </v-col>
-            <v-col v-if="requiresExplicitSucursalSelection" cols="12" sm="6" md="4" lg="4" xl="2">
+            <v-col v-if="canCreate && requiresExplicitSucursalSelection" cols="12" sm="6" md="4" lg="4" xl="2">
               <v-select
                 v-model="weeklyImportSucursalId"
                 :items="sucursalSelectItems"

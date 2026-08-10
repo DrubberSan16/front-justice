@@ -33,6 +33,7 @@
             PDF reporte
           </v-btn>
           <v-btn
+            v-if="canCreate"
             color="secondary"
             variant="tonal"
             prepend-icon="mdi-file-excel"
@@ -42,6 +43,7 @@
             Cargar Excel
           </v-btn>
           <v-btn
+            v-if="canCreate"
             color="secondary"
             variant="text"
             prepend-icon="mdi-download"
@@ -67,7 +69,7 @@
 
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
 
-      <v-row dense class="mt-3">
+      <v-row v-if="canCreate" dense class="mt-3">
         <v-col cols="12" md="4">
           <v-text-field
             v-model="tableSearch"
@@ -139,7 +141,7 @@
         </v-chip>
       </div>
 
-      <v-row dense class="mt-3">
+      <v-row v-if="canCreate" dense class="mt-3">
         <v-col cols="12" md="8">
           <v-file-input
             v-model="importFile"
@@ -159,7 +161,7 @@
         </v-col>
       </v-row>
 
-      <v-card v-if="importJob" class="mt-4" rounded="lg" variant="tonal">
+      <v-card v-if="canCreate && importJob" class="mt-4" rounded="lg" variant="tonal">
         <v-card-text>
           <div class="responsive-header page-wrap mb-2">
             <div>
@@ -1413,6 +1415,10 @@ async function fetchImportJobStatus(jobId: string) {
 }
 
 async function processWorkbookImport() {
+  if (!canCreate.value) {
+    ui.error("No tienes permisos para importar análisis de lubricante.");
+    return;
+  }
   const file = getSelectedImportFile();
   if (!file) {
     ui.error("Debes seleccionar un archivo Excel para importar.");
@@ -1908,7 +1914,7 @@ watch(
 
 onMounted(async () => {
   await loadAll();
-  await restoreActiveImportJob();
+  if (canCreate.value) await restoreActiveImportJob();
 });
 
 onUnmounted(() => {
