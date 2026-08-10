@@ -84,7 +84,7 @@
               >
                 Colores
               </v-btn>
-              <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-file-excel" :loading="importingMonthly" @click="importMonthlyWorkbook">
+              <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-file-upload-outline" :loading="importingMonthly" @click="importMonthlyWorkbook">
                 Cargar mensual
               </v-btn>
             </div>
@@ -94,11 +94,11 @@
             <v-col cols="12" md="12" lg="12" xl="5">
               <v-file-input
                 v-model="monthlyImportFile"
-                accept=".xlsx,.xls"
-                label="Excel mensual MPG"
+                accept=".pdf,.docx,.xlsx,.xls,.csv"
+                label="Programación mensual (PDF, Word o Excel)"
                 variant="outlined"
                 density="compact"
-                prepend-icon="mdi-file-excel"
+                prepend-icon="mdi-file-document-multiple-outline"
                 show-size
                 hide-details="auto"
               />
@@ -213,7 +213,7 @@
                             class="mb-1"
                             :style="{ backgroundColor: monthlyCellColor(item), color: monthlyCellTextColor(item) }"
                           >
-                            {{ item.valor_crudo }}
+                            {{ monthlyCellDisplayLabel(item) }}
                           </v-chip>
                         </button>
                         <button
@@ -251,7 +251,7 @@
                     variant="flat"
                     :style="{ backgroundColor: monthlyCellColor(item as any), color: monthlyCellTextColor(item as any) }"
                   >
-                    {{ (item as any).valor_crudo }}
+                    {{ monthlyCellDisplayLabel(item as any) }}
                   </v-chip>
                   <span class="text-caption text-medium-emphasis">
                     <template v-if="isMonthlyWeeklyAggregate(item as any)">
@@ -262,6 +262,9 @@
                     </template>
                   </span>
                 </div>
+              </template>
+              <template #item.horas_mantenimiento="{ item }">
+                {{ resolveMonthlyMaintenanceHours(item as any) !== null ? `${formatHourInput(resolveMonthlyMaintenanceHours(item as any))} h` : "N/D" }}
               </template>
               <template #item.work_order_code="{ item }">
                 <div class="font-weight-medium">{{ resolveMonthlyDetailWorkOrderLabel(item as any) }}</div>
@@ -764,6 +767,17 @@
             </v-col>
             <v-col cols="12" md="6">
               <v-text-field
+                v-model="monthlyCell.equipo_codigo"
+                label="Unidad, sistema o actividad"
+                variant="outlined"
+                :readonly="Boolean(monthlyCell.equipo_id)"
+                :disabled="monthlyCellRequiresReprogramToggle"
+                hint="Úsalo cuando la fila no corresponda a un equipo catalogado."
+                persistent-hint
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
                 v-model="monthlyCell.fecha_programada"
                 type="date"
                 :label="monthlyCellIsReprogramming ? 'Nueva fecha de la orden' : 'Fecha programada'"
@@ -805,6 +819,20 @@
                 label="Total horas OT"
                 variant="outlined"
                 readonly
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="monthlyCell.horas_mantenimiento"
+                type="number"
+                min="0.01"
+                step="0.25"
+                label="Horas de mantenimiento"
+                variant="outlined"
+                :readonly="Boolean(monthlyCell.work_order_id && monthlyCell.total_horas_ot > 0)"
+                :hint="monthlyCell.work_order_id && monthlyCell.total_horas_ot > 0 ? 'Se toman de las horas asignadas en la OT.' : 'Duración efectiva de esta actividad en este día.'"
+                persistent-hint
+                :disabled="monthlyCellRequiresReprogramToggle"
               />
             </v-col>
             <v-col cols="12" md="6">
@@ -1454,6 +1482,7 @@ const monthlyCell = reactive<any>({
   equipo_codigo: "",
   work_order_id: "",
   total_horas_ot: null,
+  horas_mantenimiento: "",
   horometro_actual: "",
   original_fecha_programada: "",
   fecha_programada: "",
@@ -1536,6 +1565,7 @@ const monthlyDetailHeaders = [
   { title: "Fecha", key: "fecha_programada" },
   { title: "Equipo", key: "equipo_codigo" },
   { title: "Actividad", key: "valor_crudo" },
+  { title: "Horas mant.", key: "horas_mantenimiento" },
   { title: "Tipo", key: "tipo_mantenimiento" },
   { title: "OT vinculada", key: "work_order_code" },
   { title: "Estado", key: "estado_programacion" },
@@ -2375,6 +2405,16 @@ async function resolveWorkOrderTaskHours(workOrderId: string) {
 }
 
 watch(
+  () => monthlyCell.equipo_id,
+  (value) => {
+    const selected = equipmentCatalog.value.find(
+      (item: any) => String(item?.id || "") === String(value || ""),
+    );
+    if (selected) monthlyCell.equipo_codigo = selected.codigo || monthlyCell.equipo_codigo;
+  },
+);
+
+watch(
   () => monthlyCell.work_order_id,
   async (value) => {
     const selected = workOrderCatalog.value.find(
@@ -2398,6 +2438,7 @@ watch(
     }
     const hours = await resolveWorkOrderTaskHours(String(value));
     monthlyCell.total_horas_ot = hours;
+    if (hours > 0) monthlyCell.horas_mantenimiento = formatHourInput(hours);
     if (hours > 0 && (!monthlyCell.id || !String(monthlyCell.valor_crudo || "").trim())) {
       monthlyCell.valor_crudo = `${hours.toFixed(2)} h`;
     }
@@ -2656,6 +2697,22 @@ function formatMonthlyHoursLabel(value: unknown) {
   return formatted ? `${formatted} h` : "";
 }
 
+function resolveMonthlyMaintenanceHours(item: any) {
+  return numericOrNull(
+    item?.horas_mantenimiento ??
+      item?.payload_json?.horas_mantenimiento ??
+      item?.payload_json?.horas_programadas,
+  );
+}
+
+function monthlyCellDisplayLabel(item: any) {
+  const value = String(item?.valor_crudo || item?.tipo_mantenimiento || "").trim();
+  const hours = resolveMonthlyMaintenanceHours(item);
+  if (!value || hours === null || hours <= 0 || isMonthlyWeeklyAggregate(item)) return value;
+  const formatted = Number.isInteger(hours) ? String(hours) : String(Number(hours.toFixed(2)));
+  return `${value} - ${formatted}H`;
+}
+
 const dynamicMonthlyProgramacionDetails = computed(() => {
   const period = String(selectedMonthlyPeriod.value || "").trim();
   if (!period) return [];
@@ -2808,7 +2865,7 @@ const monthlyReportMatrixRows = computed(() =>
     };
     for (const day of monthlyDays.value) {
       base[`dia_${String(day.day).padStart(2, "0")}`] = (row.cells[day.date] || [])
-        .map((item: any) => item.valor_crudo || item.tipo_mantenimiento || "")
+        .map((item: any) => monthlyCellDisplayLabel(item))
         .filter(Boolean)
         .join(" | ");
     }
@@ -3493,6 +3550,7 @@ function resetMonthlyCell() {
   monthlyCell.equipo_codigo = "";
   monthlyCell.work_order_id = "";
   monthlyCell.total_horas_ot = null;
+  monthlyCell.horas_mantenimiento = "";
   monthlyCell.horometro_actual = "";
   monthlyCell.original_fecha_programada = "";
   monthlyCell.fecha_programada = selectedMonthlyPeriod.value ? `${selectedMonthlyPeriod.value}-01` : formatDate(new Date());
@@ -3553,6 +3611,13 @@ function openMonthlyCellEdit(item: any) {
   monthlyCell.equipo_codigo = item.equipo_codigo || "";
   monthlyCell.work_order_id = item.payload_json?.work_order_id || item.work_order_id || "";
   monthlyCell.total_horas_ot = item.payload_json?.total_horas_ot ?? item.payload_json?.horas_programadas ?? null;
+  monthlyCell.horas_mantenimiento = formatHourInput(
+    item.horas_mantenimiento ??
+      item.payload_json?.horas_mantenimiento ??
+      item.payload_json?.horas_programadas ??
+      item.payload_json?.total_horas_ot ??
+      "",
+  );
   monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(item));
   monthlyCell.original_fecha_programada = item.fecha_programada || "";
   monthlyCell.fecha_programada = item.fecha_programada || "";
@@ -3647,8 +3712,8 @@ async function saveMonthlyCell() {
     ui.error("Selecciona un calendario mensual antes de guardar.");
     return;
   }
-  if (!monthlyCell.equipo_id) {
-    ui.error("Debes seleccionar un equipo.");
+  if (!monthlyCell.equipo_id && !String(monthlyCell.equipo_codigo || "").trim()) {
+    ui.error("Debes seleccionar un equipo o indicar la unidad, sistema o actividad.");
     return;
   }
   if (!monthlyCell.fecha_programada) {
@@ -3657,6 +3722,11 @@ async function saveMonthlyCell() {
   }
   if (!String(monthlyCell.valor_crudo || "").trim()) {
     ui.error("Debes indicar el valor mensual, por ejemplo 325, 650, 975, R20 o una cantidad de horas.");
+    return;
+  }
+  const maintenanceHours = numericOrNull(monthlyCell.horas_mantenimiento);
+  if (maintenanceHours !== null && maintenanceHours <= 0) {
+    ui.error("Las horas de mantenimiento deben ser mayores que cero.");
     return;
   }
   if (monthlyCell.id && monthlyCellHasLinkedWorkOrder.value && monthlyCellDateChanged.value && !monthlyCellIsReprogramming.value) {
@@ -3691,14 +3761,18 @@ async function saveMonthlyCell() {
   try {
     const payload = {
       equipo_id: monthlyCell.equipo_id,
+      equipo_codigo: String(monthlyCell.equipo_codigo || "").trim() || undefined,
       fecha_programada: monthlyCell.fecha_programada,
       valor_crudo: String(monthlyCell.valor_crudo || "").trim(),
+      horas_mantenimiento: maintenanceHours ?? undefined,
       procedimiento_id: monthlyCell.procedimiento_id || undefined,
       observacion: monthlyCell.observacion || undefined,
       payload_json: {
         ...buildAuditPayload(Boolean(monthlyCell.id)),
         work_order_id: monthlyCell.work_order_id || null,
         total_horas_ot: monthlyCell.total_horas_ot ?? null,
+        horas_mantenimiento: maintenanceHours ?? null,
+        horas_programadas: maintenanceHours ?? null,
         ...(monthlyReprogramHorometer !== null
           ? { horometro_actual: monthlyReprogramHorometer }
           : {}),
@@ -4032,11 +4106,10 @@ async function importMonthlyWorkbook() {
   if (!canCreate.value) return;
   const file = resolveSingleFile(monthlyImportFile.value as File | File[] | null);
   if (!file) {
-    ui.error("Selecciona el archivo Excel mensual.");
+    ui.error("Selecciona el archivo mensual en PDF, Word o Excel.");
     return;
   }
-  const sucursalId = ensureSucursalId(monthlyImportSucursalId.value, "importar el calendario mensual");
-  if (!sucursalId) return;
+  const sucursalId = resolveSucursalId(monthlyImportSucursalId.value);
   importingMonthly.value = true;
   try {
     const formData = new FormData();
@@ -4044,12 +4117,17 @@ async function importMonthlyWorkbook() {
     formData.append("requested_by", currentUserName());
     if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
     if (currentUserId()) formData.append("requested_user_id", currentUserId());
-    formData.append("sucursal_id", sucursalId);
+    if (sucursalId) formData.append("sucursal_id", sucursalId);
     const { data } = await api.post("/kpi_maintenance/programaciones/import/mensual/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     monthlyWarnings.value = Array.isArray(data?.data?.warnings) ? data.data.warnings : [];
-    ui.success("Programación mensual importada.");
+    const importedCalendars = Number(data?.data?.total_calendarios || 1);
+    ui.success(
+      importedCalendars > 1
+        ? `${importedCalendars} calendarios mensuales importados por sucursal.`
+        : "Programación mensual importada.",
+    );
     monthlyImportFile.value = null;
     await Promise.all([loadMonthlyImports(), loadAgendaRows()]);
     if (data?.data?.id) {
@@ -4059,7 +4137,7 @@ async function importMonthlyWorkbook() {
     monthlyImportDetailCache.value = {};
     await loadAgendaMonthContext();
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || "No se pudo importar el Excel mensual.");
+    ui.error(e?.response?.data?.message || "No se pudo importar el archivo mensual.");
   } finally {
     importingMonthly.value = false;
   }
