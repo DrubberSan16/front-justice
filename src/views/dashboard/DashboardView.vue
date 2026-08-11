@@ -1755,11 +1755,13 @@ watch([selectedYear, selectedMonth], () => {
 }
 
 .dashboard-table-shell {
+  position: relative;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
   overflow: auto;
   max-height: 410px;
-  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 91%, transparent);
+  box-shadow: inset 0 1px 0 rgba(var(--v-theme-on-surface), 0.035);
   scrollbar-color: rgba(var(--v-theme-primary), 0.3) transparent;
   scrollbar-width: thin;
 }
@@ -1768,31 +1770,67 @@ watch([selectedYear, selectedMonth], () => {
   background: transparent;
 }
 
+.dashboard-mini-table :deep(table) {
+  min-width: 680px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
 .dashboard-mini-table :deep(th) {
   position: sticky;
   z-index: 1;
   top: 0;
-  padding-block: 11px;
-  font-size: 0.74rem;
+  height: 45px;
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(var(--v-theme-primary), 0.13);
+  font-size: 0.69rem;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.065em;
   color: var(--app-muted-text);
   white-space: nowrap;
-  background: color-mix(in srgb, var(--surface-soft) 95%, transparent);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-primary), 0.075), rgba(var(--v-theme-primary), 0.025)),
+    color-mix(in srgb, var(--surface-soft) 96%, transparent);
 }
 
 .dashboard-mini-table :deep(td) {
   max-width: 280px;
-  padding-block: 11px;
-  vertical-align: top;
+  min-height: 48px;
+  padding: 12px 13px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.065);
+  color: color-mix(in srgb, var(--app-text) 91%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  vertical-align: middle;
 }
 
 .dashboard-mini-table :deep(tbody tr) {
-  transition: background 140ms ease;
+  background: transparent;
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+
+.dashboard-mini-table :deep(tbody tr:nth-child(even)) {
+  background: rgba(var(--v-theme-primary), 0.018);
 }
 
 .dashboard-mini-table :deep(tbody tr:hover) {
-  background: rgba(var(--v-theme-primary), 0.045);
+  background: rgba(var(--v-theme-primary), 0.065);
+  box-shadow: inset 3px 0 0 rgba(var(--v-theme-primary), 0.72);
+}
+
+.dashboard-mini-table :deep(tbody tr:last-child td) {
+  border-bottom: 0;
+}
+
+.dashboard-mini-table :deep(th:first-child),
+.dashboard-mini-table :deep(td:first-child) {
+  padding-left: 17px;
+}
+
+.dashboard-mini-table :deep(th:last-child),
+.dashboard-mini-table :deep(td:last-child) {
+  padding-right: 17px;
 }
 
 .dashboard-mini-bars {

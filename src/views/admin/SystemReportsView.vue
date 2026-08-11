@@ -1,7 +1,7 @@
 <template>
   <div class="system-reports-page">
     <v-alert v-if="!canRead" type="warning" variant="tonal">
-      No tienes permisos para visualizar este mÃ³dulo.
+      No tienes permisos para visualizar este módulo.
     </v-alert>
 
     <v-alert v-else-if="!canAccessSystemReports" type="warning" variant="tonal">
@@ -9,18 +9,26 @@
     </v-alert>
 
     <template v-else>
-      <v-card rounded="xl" class="pa-5 enterprise-surface hero-card">
-        <div class="d-flex align-center justify-space-between hero-wrap">
-          <div>
-            <div class="text-h6 font-weight-bold">Reportes del sistema</div>
-            <div class="text-body-2 text-medium-emphasis">
-              Consolida horas trabajadas, costos de mantenimiento, responsables, stock valorizado e inventario consumido en una sola vista.
+      <v-card rounded="xl" class="enterprise-surface hero-card">
+        <div class="system-hero__glow system-hero__glow--one" />
+        <div class="system-hero__glow system-hero__glow--two" />
+
+        <div class="hero-wrap">
+          <div class="system-hero__copy">
+            <div class="system-hero__eyebrow">
+              <span class="system-hero__pulse" />
+              Centro de reportes operativos
+            </div>
+            <h1 class="system-hero__title">Reportes del sistema</h1>
+            <p class="system-hero__description">
+              Consolida horas, costos, responsables e inventario en vistas listas para analizar y exportar.
+            </p>
+            <div class="system-hero__meta">
+              <span><v-icon icon="mdi-clock-check-outline" size="16" />{{ generatedAtLabel }}</span>
+              <span><v-icon icon="mdi-calendar-range-outline" size="16" />{{ filters.from }} a {{ filters.to }}</span>
             </div>
           </div>
-          <div class="d-flex align-center hero-actions">
-            <v-chip label color="primary" variant="tonal">
-              {{ generatedAtLabel }}
-            </v-chip>
+          <div class="hero-actions">
             <v-btn
               color="secondary"
               variant="tonal"
@@ -49,8 +57,15 @@
 
         <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
 
-        <v-row dense class="mt-4">
-          <v-col cols="12" md="3">
+        <div class="system-filter-panel">
+          <div class="system-filter-panel__heading">
+            <div class="system-filter-panel__icon"><v-icon icon="mdi-tune-variant" size="21" /></div>
+            <div>
+              <strong>Configura la consulta</strong>
+              <span>Combina periodo, ubicación, equipo y agrupación.</span>
+            </div>
+          </div>
+          <div class="system-filter-grid">
             <v-text-field
               v-model="filters.from"
               type="date"
@@ -59,8 +74,6 @@
               density="comfortable"
               hide-details
             />
-          </v-col>
-          <v-col cols="12" md="3">
             <v-text-field
               v-model="filters.to"
               type="date"
@@ -69,8 +82,6 @@
               density="comfortable"
               hide-details
             />
-          </v-col>
-          <v-col cols="12" md="3">
             <v-select
               v-model="filters.bodega_id"
               :items="warehouseOptions"
@@ -82,8 +93,6 @@
               hide-details
               clearable
             />
-          </v-col>
-          <v-col cols="12" md="3">
             <v-select
               v-model="filters.equipment_id"
               :items="equipmentOptions"
@@ -95,8 +104,6 @@
               hide-details
               clearable
             />
-          </v-col>
-          <v-col cols="12" md="3">
             <v-select
               v-model="filters.group_by"
               :items="groupOptions"
@@ -107,29 +114,33 @@
               density="comfortable"
               hide-details
             />
-          </v-col>
-        </v-row>
+          </div>
 
-        <div class="d-flex align-center filter-actions mt-4">
-          <v-btn color="primary" prepend-icon="mdi-filter-outline" :loading="loading" @click="loadReports">
-            Aplicar filtros
-          </v-btn>
-          <v-btn variant="text" @click="clearFilters">
-            Limpiar
-          </v-btn>
+          <div class="filter-actions">
+            <v-btn color="primary" prepend-icon="mdi-filter-outline" :loading="loading" @click="loadReports">
+              Aplicar filtros
+            </v-btn>
+            <v-btn variant="text" prepend-icon="mdi-filter-off-outline" @click="clearFilters">
+              Limpiar
+            </v-btn>
+          </div>
         </div>
       </v-card>
 
       <v-row dense class="mt-2">
         <v-col v-for="card in summaryCards" :key="card.label" cols="12" sm="6" xl="2">
-          <v-card rounded="lg" variant="outlined" class="pa-4 summary-card h-100">
-            <div class="text-caption text-medium-emphasis">{{ card.label }}</div>
-            <div class="text-h5 font-weight-bold mt-2">{{ card.valueLabel }}</div>
+          <v-card rounded="xl" :class="['summary-card', `summary-card--${card.tone}`, 'h-100']">
+            <div class="summary-card__top">
+              <div class="summary-card__icon"><v-icon :icon="card.icon" size="21" /></div>
+              <span>INDICADOR</span>
+            </div>
+            <div class="summary-card__value">{{ card.valueLabel }}</div>
+            <div class="summary-card__label">{{ card.label }}</div>
           </v-card>
         </v-col>
       </v-row>
 
-      <v-card rounded="xl" class="pa-5 enterprise-surface mt-4">
+      <v-card rounded="xl" class="enterprise-surface mt-4 system-data-card">
         <LoadingTableState
           v-if="loading"
           message="Generando reportes del sistema..."
@@ -138,18 +149,39 @@
         />
 
         <template v-else>
+          <div class="system-data-card__header">
+            <div class="system-data-card__heading">
+              <div class="system-data-card__icon"><v-icon icon="mdi-chart-box-multiple-outline" size="22" /></div>
+              <div>
+                <div class="text-subtitle-1 font-weight-bold">Detalle de indicadores</div>
+                <div class="text-caption text-medium-emphasis">Explora cada reporte sin perder el contexto de tus filtros.</div>
+              </div>
+            </div>
+            <v-chip label color="primary" variant="tonal">
+              {{ reportSections.length }} vistas
+            </v-chip>
+          </div>
+
           <v-tabs v-model="activeTab" color="primary" class="system-tabs">
-            <v-tab v-for="section in reportSections" :key="section.key" :value="section.key">
+            <v-tab
+              v-for="section in reportSections"
+              :key="section.key"
+              :value="section.key"
+              :prepend-icon="section.icon"
+            >
               {{ section.title }} ({{ section.rawRows.length }})
             </v-tab>
           </v-tabs>
 
-          <v-window v-model="activeTab" class="mt-4">
+          <v-window v-model="activeTab" class="system-data-card__window">
             <v-window-item v-for="section in reportSections" :key="section.key" :value="section.key">
-              <div class="d-flex align-center justify-space-between section-head">
-                <div>
-                  <div class="text-subtitle-1 font-weight-bold">{{ section.title }}</div>
-                  <div class="text-body-2 text-medium-emphasis">{{ section.subtitle }}</div>
+              <div class="section-head">
+                <div class="section-head__copy">
+                  <div class="section-head__icon"><v-icon :icon="section.icon" size="20" /></div>
+                  <div>
+                    <div class="text-subtitle-1 font-weight-bold">{{ section.title }}</div>
+                    <div class="text-body-2 text-medium-emphasis">{{ section.subtitle }}</div>
+                  </div>
                 </div>
                 <v-chip label color="secondary" variant="tonal">
                   {{ section.groupLabel }}
@@ -169,9 +201,12 @@
                 v-else
                 :headers="section.headers"
                 :items="section.displayRows"
-                density="compact"
+                density="comfortable"
                 :items-per-page="10"
-                class="table-enterprise enterprise-table mt-4"
+                fixed-header
+                height="540"
+                hover
+                class="table-enterprise enterprise-table mt-4 system-report-table"
               >
                 <template #item.responsables="{ item }">
                   <div class="responsibles-inline-table">
@@ -441,10 +476,27 @@ function formatSummaryValue(label: string, value: unknown) {
 
 const summaryCards = computed(() =>
   (Array.isArray(reportPayload.value?.summary) ? reportPayload.value?.summary : []).map(
-    (item: AnyRow) => ({
-      label: String(item?.label || "Indicador"),
-      valueLabel: formatSummaryValue(String(item?.label || ""), item?.value),
-    }),
+    (item: AnyRow, index: number) => {
+      const label = String(item?.label || "Indicador");
+      const normalizedLabel = label.toLowerCase();
+      const presentation = normalizedLabel.includes("hora")
+        ? { icon: "mdi-timer-outline", tone: "info" }
+        : normalizedLabel.includes("costo") || normalizedLabel.includes("valor")
+          ? { icon: "mdi-cash-multiple", tone: "success" }
+          : normalizedLabel.includes("material") || normalizedLabel.includes("repuesto")
+            ? { icon: "mdi-package-variant-closed", tone: "warning" }
+            : normalizedLabel.includes("orden") || normalizedLabel.includes("ot")
+              ? { icon: "mdi-clipboard-text-clock-outline", tone: "purple" }
+              : [
+                  { icon: "mdi-chart-box-outline", tone: "primary" },
+                  { icon: "mdi-database-outline", tone: "orange" },
+                ][index % 2];
+      return {
+        label,
+        valueLabel: formatSummaryValue(label, item?.value),
+        ...presentation,
+      };
+    },
   ),
 );
 
@@ -473,36 +525,43 @@ const SECTION_DEFS = [
     key: "horas_trabajadas",
     title: "Horas trabajadas",
     subtitle: "Cantidad de horas registradas por OT, responsable o agrupación seleccionada.",
+    icon: "mdi-timer-outline",
   },
   {
     key: "costo_mantenimiento",
     title: "Costo de mantenimiento",
     subtitle: "Valor total de materiales utilizados en órdenes de trabajo tipo mantenimiento.",
+    icon: "mdi-cash-wrench",
   },
   {
     key: "responsables_ot",
     title: "Quiénes trabajaron",
     subtitle: "Responsables con horas registradas por orden de trabajo.",
+    icon: "mdi-account-hard-hat-outline",
   },
   {
     key: "costo_inventario",
     title: "Costo del inventario",
     subtitle: "Snapshot actual del inventario valorizado por bodega o material.",
+    icon: "mdi-warehouse",
   },
   {
     key: "repuestos_cambiados",
     title: "Repuestos cambiados",
     subtitle: "Materiales utilizados en equipos para cada OT de mantenimiento.",
+    icon: "mdi-cog-transfer-outline",
   },
   {
     key: "inventario_consumido",
     title: "Inventario consumido",
     subtitle: "Materiales usados en todas las órdenes de trabajo según la agrupación activa.",
+    icon: "mdi-package-variant-minus",
   },
   {
     key: "top_materiales_utilizados",
     title: "Top 10 materiales",
     subtitle: "Materiales más usados en las órdenes del rango consultado.",
+    icon: "mdi-podium-gold",
   },
 ];
 
@@ -827,54 +886,357 @@ onMounted(() => {
 
 <style scoped>
 .system-reports-page {
+  --system-primary: 37, 99, 235;
+  --system-success: 22, 163, 74;
+  --system-warning: 217, 119, 6;
+  --system-info: 8, 145, 178;
+  --system-purple: 124, 58, 237;
+  --system-orange: 234, 88, 12;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .hero-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(22px, 3vw, 34px);
+  border: 1px solid rgba(var(--system-primary), 0.18);
   background:
-    radial-gradient(circle at top right, rgba(73, 141, 255, 0.16), transparent 32%),
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--surface-soft) 92%, rgb(var(--v-theme-primary)) 8%),
-      color-mix(in srgb, var(--surface-soft) 98%, transparent)
-    );
-  border: 1px solid var(--surface-border);
+    linear-gradient(130deg, rgba(var(--system-primary), 0.12), transparent 48%),
+    rgb(var(--v-theme-surface));
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.system-hero__glow {
+  position: absolute;
+  z-index: -1;
+  width: 290px;
+  height: 290px;
+  border-radius: 50%;
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.system-hero__glow--one {
+  top: -200px;
+  right: 5%;
+  background: rgba(var(--system-primary), 0.16);
+}
+
+.system-hero__glow--two {
+  right: 34%;
+  bottom: -255px;
+  background: rgba(var(--system-purple), 0.1);
 }
 
 .hero-wrap {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
 }
 
 .hero-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.system-hero__copy {
+  max-width: 730px;
+}
+
+.system-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.system-hero__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 0 rgba(var(--system-primary), 0.35);
+  animation: system-pulse 2.2s infinite;
+}
+
+.system-hero__title {
+  margin: 8px 0 5px;
+  font-size: clamp(1.65rem, 3vw, 2.25rem);
+  font-weight: 850;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+.system-hero__description {
+  max-width: 680px;
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.94rem;
+  line-height: 1.6;
+}
+
+.system-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 17px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.system-hero__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.system-filter-panel {
+  margin-top: 27px;
+  padding: 16px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 18px;
+  background: rgba(var(--v-theme-surface), 0.74);
+  backdrop-filter: blur(12px);
+}
+
+.system-filter-panel__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.system-filter-panel__icon,
+.system-data-card__icon,
+.section-head__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--system-primary), 0.11);
+}
+
+.system-filter-panel__heading strong,
+.system-filter-panel__heading span {
+  display: block;
+}
+
+.system-filter-panel__heading strong {
+  font-size: 0.87rem;
+}
+
+.system-filter-panel__heading span {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.75rem;
+}
+
+.system-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 10px;
 }
 
 .filter-actions {
+  display: flex;
+  justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 14px;
 }
 
 .summary-card {
-  border-color: var(--surface-border);
+  --summary-tone: var(--system-primary);
+  position: relative;
+  overflow: hidden;
+  min-height: 142px;
+  padding: 18px;
+  border: 1px solid rgba(var(--summary-tone), 0.17);
   background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-soft) 96%, rgb(var(--v-theme-primary)) 4%),
-      color-mix(in srgb, var(--surface-soft) 90%, transparent)
-    );
+    radial-gradient(circle at 100% 0%, rgba(var(--summary-tone), 0.14), transparent 44%),
+    rgb(var(--v-theme-surface));
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.summary-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--summary-tone), 0.34);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.1);
+}
+
+.summary-card--success { --summary-tone: var(--system-success); }
+.summary-card--warning { --summary-tone: var(--system-warning); }
+.summary-card--primary { --summary-tone: var(--system-primary); }
+.summary-card--orange { --summary-tone: var(--system-orange); }
+.summary-card--info { --summary-tone: var(--system-info); }
+.summary-card--purple { --summary-tone: var(--system-purple); }
+
+.summary-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(var(--summary-tone), 0.95);
+}
+
+.summary-card__top > span {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+}
+
+.summary-card__icon {
+  display: grid;
+  width: 39px;
+  height: 39px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(var(--summary-tone), 0.12);
+}
+
+.summary-card__value {
+  margin-top: 15px;
+  font-size: clamp(1.35rem, 2.3vw, 1.85rem);
+  font-weight: 850;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.summary-card__label {
+  margin-top: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.77rem;
+  font-weight: 600;
+}
+
+.system-data-card {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  box-shadow: 0 15px 42px rgba(15, 23, 42, 0.07);
+}
+
+.system-data-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 21px 22px 17px;
+}
+
+.system-data-card__heading,
+.section-head__copy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+  padding: 3px 2px 2px;
+}
+
+.section-head__copy {
+  max-width: 760px;
+}
+
+.section-head__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
 }
 
 .system-tabs {
-  border-bottom: 1px solid rgba(115, 149, 202, 0.14);
+  margin: 0 18px;
+  padding: 5px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  border-radius: 14px;
+  background: rgba(var(--v-theme-on-surface), 0.025);
+}
+
+.system-tabs :deep(.v-tab) {
+  min-height: 41px;
+  border-radius: 10px;
+  font-size: 0.73rem;
+  font-weight: 750;
+  letter-spacing: 0.012em;
+  text-transform: none;
+}
+
+.system-tabs :deep(.v-tab--selected) {
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+}
+
+.system-data-card__window {
+  padding: 18px 18px 20px;
+}
+
+.system-report-table {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.system-report-table :deep(.v-table__wrapper) {
+  scrollbar-color: rgba(var(--system-primary), 0.24) transparent;
+}
+
+.system-report-table :deep(thead th) {
+  height: 48px !important;
+  border-bottom: 1px solid rgba(var(--system-primary), 0.16) !important;
+  background: linear-gradient(180deg, rgba(var(--system-primary), 0.1), rgba(var(--system-primary), 0.045)) !important;
+  color: rgba(var(--v-theme-on-surface), 0.74) !important;
+  font-size: 0.68rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.055em !important;
+  text-transform: uppercase !important;
+}
+
+.system-report-table :deep(tbody td) {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  border-bottom-color: rgba(var(--v-theme-on-surface), 0.055) !important;
+  color: rgba(var(--v-theme-on-surface), 0.79);
+  font-size: 0.78rem;
+}
+
+.system-report-table :deep(tbody tr:nth-child(even)) {
+  background: rgba(var(--v-theme-on-surface), 0.018);
+}
+
+.system-report-table :deep(tbody tr) {
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.system-report-table :deep(tbody tr:hover) {
+  background: rgba(var(--system-primary), 0.07) !important;
+  box-shadow: inset 3px 0 rgb(var(--v-theme-primary));
+}
+
+.system-report-table :deep(.v-data-table-footer) {
+  min-height: 58px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+  background: rgba(var(--v-theme-on-surface), 0.018);
 }
 
 .responsibles-inline-table {
@@ -887,8 +1249,61 @@ onMounted(() => {
   padding: 6px 8px;
   border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--surface-soft) 86%, transparent);
+  background: rgba(var(--system-primary), 0.045);
   line-height: 1.3;
   white-space: normal;
+}
+
+@keyframes system-pulse {
+  70% { box-shadow: 0 0 0 8px rgba(var(--system-primary), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--system-primary), 0); }
+}
+
+@media (max-width: 1279px) {
+  .system-filter-grid {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 959px) {
+  .system-filter-grid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .hero-actions,
+  .filter-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 599px) {
+  .hero-card {
+    padding: 20px 16px;
+  }
+
+  .system-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions,
+  .hero-actions .v-btn,
+  .filter-actions,
+  .filter-actions .v-btn {
+    width: 100%;
+  }
+
+  .system-data-card__header,
+  .section-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-tabs {
+    margin-inline: 12px;
+  }
+
+  .system-data-card__window {
+    padding: 14px 12px 16px;
+  }
 }
 </style>
