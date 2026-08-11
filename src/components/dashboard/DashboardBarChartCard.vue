@@ -1,9 +1,14 @@
 <template>
-  <v-card rounded="xl" class="pa-5 enterprise-surface h-100 dashboard-chart-card">
-    <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
-      <div>
-        <div class="text-subtitle-1 font-weight-bold">{{ title }}</div>
-        <div v-if="subtitle" class="text-body-2 text-medium-emphasis">{{ subtitle }}</div>
+  <v-card rounded="xl" class="enterprise-surface h-100 dashboard-chart-card">
+    <div class="dashboard-chart-card__header">
+      <div class="dashboard-chart-card__heading">
+        <div class="dashboard-chart-card__icon">
+          <v-icon icon="mdi-chart-bar-stacked" size="21" />
+        </div>
+        <div>
+          <div class="text-subtitle-1 font-weight-bold">{{ title }}</div>
+          <div v-if="subtitle" class="text-body-2 text-medium-emphasis">{{ subtitle }}</div>
+        </div>
       </div>
       <v-chip v-if="chipLabel" label :color="chipColor" variant="tonal">{{ chipLabel }}</v-chip>
     </div>
@@ -102,7 +107,60 @@ const normalizedItems = computed(() => {
 
 <style scoped>
 .dashboard-chart-card {
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
   border: 1px solid var(--surface-border);
+  background:
+    linear-gradient(145deg, rgba(var(--v-theme-primary), 0.055), transparent 46%),
+    var(--surface-base);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.dashboard-chart-card::after {
+  position: absolute;
+  right: -55px;
+  bottom: -70px;
+  width: 180px;
+  height: 180px;
+  border: 32px solid rgba(var(--v-theme-primary), 0.04);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+
+.dashboard-chart-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--v-theme-primary), 0.2);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.1);
+}
+
+.dashboard-chart-card__header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 17px;
+  flex-wrap: wrap;
+}
+
+.dashboard-chart-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.dashboard-chart-card__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 13px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.1);
 }
 
 .dashboard-bar-chart {
@@ -113,6 +171,14 @@ const normalizedItems = computed(() => {
 .dashboard-bar-chart__row {
   display: grid;
   gap: 6px;
+  padding: 9px 10px;
+  border-radius: 13px;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.dashboard-bar-chart__row:hover {
+  transform: translateX(2px);
+  background: rgba(var(--v-theme-primary), 0.045);
 }
 
 .dashboard-bar-chart__meta {
@@ -136,7 +202,7 @@ const normalizedItems = computed(() => {
 
 .dashboard-bar-chart__track {
   position: relative;
-  height: 10px;
+  height: 9px;
   width: 100%;
   border-radius: 999px;
   overflow: hidden;
@@ -148,6 +214,7 @@ const normalizedItems = computed(() => {
   height: 100%;
   border-radius: 999px;
   box-shadow: 0 8px 20px rgba(19, 33, 53, 0.18);
+  transition: width 360ms ease;
 }
 
 .dashboard-bar-chart__helper {
@@ -156,6 +223,31 @@ const normalizedItems = computed(() => {
 }
 
 .dashboard-bar-chart__empty {
-  padding: 0.35rem 0;
+  display: grid;
+  min-height: 126px;
+  padding: 22px;
+  place-items: center;
+  border: 1px dashed var(--surface-border);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-soft) 74%, transparent);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-chart-card,
+  .dashboard-bar-chart__row,
+  .dashboard-bar-chart__fill {
+    transition: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-chart-card {
+    padding: 16px;
+  }
+
+  .dashboard-chart-card__header {
+    align-items: flex-start;
+  }
 }
 </style>

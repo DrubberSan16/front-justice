@@ -9,23 +9,32 @@
     </v-alert>
 
     <div v-else class="intelligence-page__content">
-    <v-card rounded="xl" class="pa-5 enterprise-surface intelligence-hero">
-      <div class="d-flex align-center justify-space-between intelligence-wrap">
-        <div>
-          <div class="text-h6 font-weight-bold">Inteligencia operativa de mantenimiento</div>
-          <div class="text-body-2 text-medium-emphasis">
-            Consolida procedimientos MPG, analisis de lubricante, cronogramas, reportes diarios y eventos KPI.
+    <v-card rounded="xl" class="enterprise-surface intelligence-hero">
+      <div class="intelligence-hero__glow intelligence-hero__glow--one" />
+      <div class="intelligence-hero__glow intelligence-hero__glow--two" />
+
+      <div class="intelligence-hero__header">
+        <div class="intelligence-hero__copy">
+          <div class="intelligence-hero__eyebrow">
+            <span class="intelligence-hero__pulse" />
+            Analítica y mantenimiento predictivo
+          </div>
+          <h1 class="intelligence-hero__title">Inteligencia operativa</h1>
+          <p class="intelligence-hero__description">
+            Convierte procedimientos MPG, lubricantes, cronogramas y eventos en decisiones operativas claras.
+          </p>
+          <div class="intelligence-hero__meta">
+            <span><v-icon icon="mdi-database-sync-outline" size="16" />{{ generatedAtLabel }}</span>
+            <span><v-icon icon="mdi-calendar-range-outline" size="16" />{{ selectedPeriodLabel }}</span>
           </div>
         </div>
-        <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
-          <v-chip label color="primary" variant="tonal">
-            {{ generatedAtLabel }}
-          </v-chip>
+
+        <div class="intelligence-hero__actions">
           <v-btn color="secondary" variant="tonal" prepend-icon="mdi-file-excel" :loading="isExporting('indicadores', 'excel')" @click="exportModule('indicadores', 'excel')">
-            Excel KPI
+            Exportar Excel
           </v-btn>
           <v-btn color="secondary" variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="isExporting('indicadores', 'pdf')" @click="exportModule('indicadores', 'pdf')">
-            PDF KPI
+            Exportar PDF
           </v-btn>
           <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="loadIntelligence">
             Actualizar
@@ -35,7 +44,14 @@
 
       <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
 
-      <div class="d-flex align-center flex-wrap intelligence-filter-toolbar mt-4">
+      <div class="intelligence-filter-toolbar">
+        <div class="intelligence-filter-toolbar__intro">
+          <div class="intelligence-filter-toolbar__icon"><v-icon icon="mdi-tune-variant" size="21" /></div>
+          <div>
+            <strong>Ventana de análisis</strong>
+            <span>Selecciona el período para recalcular todos los indicadores.</span>
+          </div>
+        </div>
         <v-select
           v-model="selectedYear"
           :items="yearOptions"
@@ -59,12 +75,12 @@
         </v-chip>
       </div>
 
-      <v-row dense class="mt-3">
-        <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="2">
+      <div class="intelligence-kpi-grid">
           <v-card
+            v-for="card in kpiCards"
+            :key="card.key"
             rounded="lg"
-            variant="outlined"
-            :class="['pa-4', 'kpi-card', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName || card.key === 'lubricantes-dashboard') }]"
+            :class="['kpi-card', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName || card.key === 'lubricantes-dashboard') }]"
             :style="{ '--kpi-accent': card.accent }"
             :role="card.routeName || card.key === 'lubricantes-dashboard' ? 'button' : undefined"
             :tabindex="card.routeName || card.key === 'lubricantes-dashboard' ? 0 : undefined"
@@ -72,19 +88,22 @@
             @keydown.enter="openCard(card)"
             @keydown.space.prevent="openCard(card)"
           >
-            <div class="d-flex align-center justify-space-between mb-2">
-              <div class="text-subtitle-2 text-medium-emphasis">{{ card.label }}</div>
-              <v-icon :icon="card.icon" size="20" />
+            <div class="kpi-card__top">
+              <div class="kpi-card__icon"><v-icon :icon="card.icon" size="22" /></div>
+              <v-icon
+                :icon="card.routeName || card.key === 'lubricantes-dashboard' ? 'mdi-arrow-top-right' : 'mdi-chart-box-outline'"
+                size="18"
+                class="kpi-card__arrow"
+              />
             </div>
             <div class="kpi-card__value-row">
-              <div class="text-h4 font-weight-bold">{{ card.value }}</div>
-              <div class="kpi-card__orb" />
+              <div class="kpi-card__value">{{ card.value }}</div>
             </div>
-            <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
-            <div v-if="card.routeName || card.key === 'lubricantes-dashboard'" class="text-caption text-primary mt-3">Abrir detalle</div>
+            <div class="kpi-card__label">{{ card.label }}</div>
+            <div class="kpi-card__helper">{{ card.helper }}</div>
+            <div v-if="card.routeName || card.key === 'lubricantes-dashboard'" class="kpi-card__link">Explorar módulo</div>
           </v-card>
-        </v-col>
-      </v-row>
+      </div>
     </v-card>
 
     <v-row>
@@ -811,7 +830,7 @@
     :fullscreen="isDashboardDialogFullscreen"
     :max-width="isDashboardDialogFullscreen ? undefined : 1400"
   >
-    <v-card rounded="xl" class="enterprise-dialog">
+    <v-card rounded="xl" class="enterprise-dialog intelligence-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Dashboard de lubricantes</v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
@@ -894,7 +913,7 @@
     :fullscreen="isDashboardDialogFullscreen"
     :max-width="isDashboardDialogFullscreen ? undefined : 1500"
   >
-    <v-card rounded="xl" class="enterprise-dialog">
+    <v-card rounded="xl" class="enterprise-dialog intelligence-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Detalle reporte consumo de aceite</v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
@@ -2257,16 +2276,146 @@ watch(
 
 <style scoped>
 .intelligence-page {
+  --intelligence-blue: 47, 108, 171;
+  --intelligence-purple: 132, 81, 201;
+  --intelligence-green: 15, 143, 114;
+  --intelligence-orange: 225, 122, 0;
   display: grid;
-  gap: 20px;
+  gap: 16px;
+}
+
+.intelligence-page__content {
+  display: grid;
+  gap: 4px;
 }
 
 .intelligence-hero {
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
+  padding: 29px;
+  background:
+    linear-gradient(118deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 16%, var(--surface-base)), var(--surface-base) 66%),
+    var(--surface-base);
+}
+
+.intelligence-hero::after {
+  position: absolute;
+  z-index: -1;
+  right: -78px;
+  bottom: -118px;
+  width: 330px;
+  height: 330px;
+  border: 48px solid rgba(var(--v-theme-primary), 0.055);
+  border-radius: 50%;
+  content: "";
+}
+
+.intelligence-hero__glow {
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.intelligence-hero__glow--one {
+  top: -150px;
+  left: 30%;
+  width: 330px;
+  height: 330px;
+  background: rgba(var(--v-theme-primary), 0.1);
+}
+
+.intelligence-hero__glow--two {
+  right: 9%;
+  bottom: -135px;
+  width: 270px;
+  height: 270px;
+  background: rgba(var(--v-theme-secondary), 0.085);
+}
+
+.intelligence-hero__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 26px;
+}
+
+.intelligence-hero__copy {
+  max-width: 760px;
+}
+
+.intelligence-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.105em;
+  text-transform: uppercase;
+}
+
+.intelligence-hero__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-success));
+  box-shadow: 0 0 0 6px rgba(var(--v-theme-success), 0.12);
+  animation: intelligence-pulse 2.2s ease-out infinite;
+}
+
+.intelligence-hero__title {
+  margin: 0;
+  font-size: clamp(1.7rem, 2.8vw, 2.45rem);
+  font-weight: 800;
+  letter-spacing: -0.037em;
+  line-height: 1.12;
+}
+
+.intelligence-hero__description {
+  max-width: 700px;
+  margin: 9px 0 13px;
+  color: var(--app-muted-text);
+  font-size: 0.95rem;
+}
+
+.intelligence-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+  color: var(--app-muted-text);
+  font-size: 0.75rem;
+}
+
+.intelligence-hero__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.intelligence-hero__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.intelligence-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(145px, 1fr));
+  gap: 9px;
+  margin-top: 14px;
 }
 
 .kpi-card {
-  border-color: var(--surface-border);
+  position: relative;
+  overflow: hidden;
+  min-height: 174px;
+  padding: 16px;
+  border: 1px solid var(--surface-border);
   background:
     linear-gradient(
       180deg,
@@ -2274,8 +2423,41 @@ watch(
       color-mix(in srgb, var(--surface-soft) 82%, transparent)
     ),
     var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
-  overflow: hidden;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
+}
+
+.kpi-card::after {
+  position: absolute;
+  right: -38px;
+  bottom: -46px;
+  width: 126px;
+  height: 126px;
+  border: 24px solid rgba(var(--v-theme-primary), 0.04);
+  border-radius: 50%;
+  content: "";
+}
+
+.kpi-card__top {
   position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kpi-card__icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+  border-radius: 13px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-surface), 0.56);
+}
+
+.kpi-card__arrow {
+  color: rgba(var(--v-theme-on-surface), 0.42);
 }
 
 .kpi-card__value-row {
@@ -2285,12 +2467,39 @@ watch(
   gap: 12px;
 }
 
-.kpi-card__orb {
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 8px rgba(var(--v-theme-primary), 0.16);
+.kpi-card__value {
+  position: relative;
+  z-index: 1;
+  margin-top: 13px;
+  font-size: 1.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.kpi-card__label {
+  position: relative;
+  z-index: 1;
+  margin-top: 8px;
+  font-size: 0.79rem;
+  font-weight: 750;
+}
+
+.kpi-card__helper {
+  position: relative;
+  z-index: 1;
+  margin-top: 3px;
+  color: var(--app-muted-text);
+  font-size: 0.67rem;
+  line-height: 1.35;
+}
+
+.kpi-card__link {
+  position: relative;
+  z-index: 1;
+  margin-top: 9px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.65rem;
+  font-weight: 750;
 }
 
 .intelligence-kpi--clickable {
@@ -2300,7 +2509,7 @@ watch(
 
 .intelligence-kpi--clickable:hover,
 .intelligence-kpi--clickable:focus-visible {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   border-color: rgba(var(--v-theme-primary), 0.3);
   box-shadow: 0 14px 28px rgba(var(--v-theme-primary), 0.12);
   outline: none;
@@ -2312,7 +2521,50 @@ watch(
 }
 
 .intelligence-filter-toolbar {
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(120px, 0.35fr) minmax(180px, 0.48fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 21px;
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+}
+
+.intelligence-filter-toolbar__intro {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.intelligence-filter-toolbar__intro > div:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.intelligence-filter-toolbar__intro strong {
+  font-size: 0.78rem;
+}
+
+.intelligence-filter-toolbar__intro span {
+  overflow: hidden;
+  color: var(--app-muted-text);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.intelligence-filter-toolbar__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.1);
 }
 
 .intelligence-filter-toolbar__select {
@@ -2330,10 +2582,33 @@ watch(
 }
 
 .indicator-tile {
-  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+  min-height: 105px;
+  padding: 15px 16px;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  background: var(--surface-soft);
+  background:
+    linear-gradient(140deg, rgba(var(--v-theme-primary), 0.065), transparent 68%),
+    var(--surface-soft);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.indicator-tile::after {
+  position: absolute;
+  right: -22px;
+  bottom: -28px;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: rgba(var(--v-theme-primary), 0.045);
+  content: "";
+}
+
+.indicator-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--v-theme-primary), 0.22);
+  box-shadow: 0 12px 25px rgba(var(--v-theme-primary), 0.08);
 }
 
 .breakdown-grid {
@@ -2343,10 +2618,18 @@ watch(
 }
 
 .breakdown-chip {
-  padding: 14px 16px;
+  padding: 15px 16px;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  background: var(--surface-soft);
+  background:
+    linear-gradient(140deg, rgba(var(--v-theme-secondary), 0.065), transparent 72%),
+    var(--surface-soft);
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.breakdown-chip:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--v-theme-secondary), 0.22);
 }
 
 .summary-strip {
@@ -2356,10 +2639,14 @@ watch(
 }
 
 .oil-summary-card {
-  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  padding: 18px 20px;
   border-radius: 18px;
-  border: 1px solid var(--surface-border);
-  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  background:
+    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.095), rgba(var(--v-theme-secondary), 0.035)),
+    color-mix(in srgb, var(--surface-soft) 82%, transparent);
   cursor: pointer;
   transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -2375,8 +2662,11 @@ watch(
 .dashboard-table-shell {
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: 430px;
   background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  scrollbar-color: rgba(var(--v-theme-primary), 0.3) transparent;
+  scrollbar-width: thin;
 }
 
 .dashboard-mini-table {
@@ -2384,16 +2674,30 @@ watch(
 }
 
 .dashboard-mini-table :deep(th) {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding-block: 11px;
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--app-muted-text);
   white-space: nowrap;
+  background: color-mix(in srgb, var(--surface-soft) 95%, transparent);
 }
 
 .dashboard-mini-table :deep(td) {
   max-width: 280px;
+  padding-block: 11px;
   vertical-align: top;
+}
+
+.dashboard-mini-table :deep(tbody tr) {
+  transition: background 140ms ease;
+}
+
+.dashboard-mini-table :deep(tbody tr:hover) {
+  background: rgba(var(--v-theme-primary), 0.045);
 }
 
 .dashboard-mini-bars {
@@ -2404,6 +2708,13 @@ watch(
 .dashboard-mini-bars__row {
   display: grid;
   gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  transition: background 140ms ease;
+}
+
+.dashboard-mini-bars__row:hover {
+  background: rgba(var(--v-theme-primary), 0.045);
 }
 
 .dashboard-mini-bars__meta {
@@ -2445,11 +2756,22 @@ watch(
 }
 
 .schedule-day {
+  position: relative;
+  overflow: hidden;
   padding: 16px;
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  background: var(--surface-soft);
+  background:
+    linear-gradient(150deg, rgba(var(--v-theme-primary), 0.055), transparent 48%),
+    var(--surface-soft);
   min-height: 180px;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.schedule-day:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--v-theme-primary), 0.2);
+  box-shadow: 0 13px 27px rgba(15, 23, 42, 0.075);
 }
 
 .schedule-item {
@@ -2458,6 +2780,12 @@ watch(
   border: 1px solid var(--chart-guide);
   background: var(--chart-empty-bg);
   margin-bottom: 10px;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.schedule-item:hover {
+  border-color: rgba(var(--v-theme-primary), 0.2);
+  background: rgba(var(--v-theme-primary), 0.075);
 }
 
 .oil-kpi-filter-hint {
@@ -2470,6 +2798,35 @@ watch(
   background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
   color: var(--app-muted-text);
   font-size: 0.82rem;
+}
+
+.intelligence-page__content > .v-row .enterprise-surface {
+  position: relative;
+  border-color: var(--surface-border);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.18), transparent 44%),
+    var(--surface-base);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.intelligence-page__content > .v-row .enterprise-surface:hover {
+  border-color: rgba(var(--v-theme-primary), 0.18);
+  box-shadow: 0 19px 38px rgba(15, 23, 42, 0.105);
+}
+
+.intelligence-page__content > .v-row .enterprise-surface :deep(.text-subtitle-1.font-weight-bold) {
+  letter-spacing: -0.015em;
+}
+
+.intelligence-page__content :deep(.v-chip) {
+  font-weight: 650;
+}
+
+.intelligence-dialog :deep(.v-card-title) {
+  padding: 20px 22px;
+  background:
+    linear-gradient(105deg, rgba(var(--v-theme-primary), 0.1), transparent 55%),
+    var(--surface-base);
 }
 
 .oil-kpi-table-shell {
@@ -2485,9 +2842,64 @@ watch(
   height: 100%;
 }
 
+@keyframes intelligence-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(var(--v-theme-success), 0.32); }
+  65% { box-shadow: 0 0 0 8px rgba(var(--v-theme-success), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--v-theme-success), 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intelligence-hero__pulse {
+    animation: none;
+  }
+
+  .intelligence-kpi--clickable,
+  .indicator-tile,
+  .breakdown-chip,
+  .oil-summary-card,
+  .schedule-day,
+  .schedule-item,
+  .dashboard-mini-bars__row {
+    transition: none;
+  }
+}
+
+@media (max-width: 1700px) {
+  .intelligence-kpi-grid {
+    grid-template-columns: repeat(4, minmax(155px, 1fr));
+  }
+}
+
+@media (max-width: 1280px) {
+  .intelligence-hero__header {
+    flex-direction: column;
+  }
+
+  .intelligence-hero__actions {
+    justify-content: flex-start;
+  }
+
+  .intelligence-filter-toolbar {
+    grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.4fr) minmax(170px, 0.55fr);
+  }
+
+  .intelligence-filter-toolbar > .v-chip {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .intelligence-kpi-grid {
+    grid-template-columns: repeat(3, minmax(155px, 1fr));
+  }
+}
+
 @media (max-width: 960px) {
   .intelligence-page {
     gap: 14px;
+  }
+
+  .intelligence-kpi-grid {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
   }
 
   .indicator-grid,
@@ -2498,10 +2910,34 @@ watch(
 }
 
 @media (max-width: 600px) {
+  .intelligence-hero {
+    padding: 19px;
+  }
+
+  .intelligence-hero__actions,
+  .intelligence-hero__actions > .v-btn {
+    width: 100%;
+  }
+
+  .intelligence-filter-toolbar,
+  .intelligence-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .intelligence-filter-toolbar > .v-chip {
+    grid-column: auto;
+    justify-self: stretch;
+  }
+
   .indicator-tile,
   .breakdown-chip,
   .schedule-day {
     padding: 12px;
+  }
+
+  .dashboard-table-shell,
+  .report-table {
+    border-radius: 14px;
   }
 }
 

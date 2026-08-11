@@ -5,19 +5,29 @@
     </v-alert>
 
     <div v-else class="dashboard-content">
-    <v-row class="mb-4" align="stretch">
+    <v-row class="mb-4 dashboard-hero-grid" align="stretch">
       <v-col cols="12" lg="8">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="d-flex align-center justify-space-between" style="gap: 12px; flex-wrap: wrap;">
-            <div>
-              <div class="text-h6 font-weight-bold">Panel ejecutivo KPI</div>
-              <div class="text-body-2 text-medium-emphasis">
-                Resumen operativo consolidado desde seguridad, inventario y mantenimiento.
+        <v-card rounded="xl" class="dashboard-hero enterprise-surface h-100">
+          <div class="dashboard-hero__glow dashboard-hero__glow--primary" />
+          <div class="dashboard-hero__glow dashboard-hero__glow--secondary" />
+
+          <div class="dashboard-hero__header">
+            <div class="dashboard-hero__copy">
+              <div class="dashboard-hero__eyebrow">
+                <span class="dashboard-hero__pulse" />
+                Centro de control ejecutivo
+              </div>
+              <h1 class="dashboard-hero__title">Panel ejecutivo KPI</h1>
+              <p class="dashboard-hero__description">
+                Una lectura consolidada de mantenimiento, inventario, seguridad y operación.
+              </p>
+              <div class="dashboard-hero__identity">
+                <span><v-icon icon="mdi-account-circle-outline" size="16" />{{ auth.user?.nameUser || "Usuario" }}</span>
+                <span><v-icon icon="mdi-shield-account-outline" size="16" />{{ auth.user?.role?.nombre || "Sin rol" }}</span>
               </div>
             </div>
-            <div class="d-flex align-center" style="gap: 8px; flex-wrap: wrap;">
-              <v-chip label prepend-icon="mdi-account-circle-outline">{{ auth.user?.nameUser || "Usuario" }}</v-chip>
-              <v-chip label prepend-icon="mdi-shield-account-outline">{{ auth.user?.role?.nombre || "Sin rol" }}</v-chip>
+
+            <div class="dashboard-hero__actions">
               <v-btn
                 v-if="canAccessDashboardReports"
                 color="secondary"
@@ -26,7 +36,7 @@
                 :loading="isExporting('excel')"
                 @click="exportDashboard('excel')"
               >
-                Excel
+                Exportar Excel
               </v-btn>
               <v-btn
                 v-if="canAccessDashboardReports"
@@ -36,7 +46,7 @@
                 :loading="isExporting('pdf')"
                 @click="exportDashboard('pdf')"
               >
-                PDF
+                Exportar PDF
               </v-btn>
               <v-btn
                 color="secondary"
@@ -45,19 +55,24 @@
                 :disabled="!canAccessIntelligenceView"
                 @click="router.push({ name: 'inteligencia-mantenimiento' })"
               >
-                Inteligencia
+                Ver inteligencia
               </v-btn>
-              <v-btn color="primary" variant="tonal" prepend-icon="mdi-refresh" :loading="loading" @click="loadDashboard">
+              <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="loadDashboard">
                 Actualizar
               </v-btn>
             </div>
           </div>
 
-          <v-divider class="my-4" />
-
           <v-alert v-if="error" type="warning" variant="tonal" class="mb-3" :text="error" />
 
-          <div class="d-flex align-center flex-wrap period-toolbar mb-4">
+          <div class="period-toolbar">
+            <div class="period-toolbar__intro">
+              <div class="period-toolbar__icon"><v-icon icon="mdi-calendar-filter-outline" size="21" /></div>
+              <div>
+                <strong>Período de análisis</strong>
+                <span>Los indicadores se actualizan automáticamente.</span>
+              </div>
+            </div>
             <v-select
               v-model="selectedYear"
               :items="yearOptions"
@@ -81,23 +96,22 @@
             </v-chip>
           </div>
 
-          <v-row dense>
+          <v-row dense class="dashboard-kpi-grid">
             <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="3">
               <v-card
-                rounded="lg"
-                variant="outlined"
-                class="pa-4 kpi-card h-100"
+                rounded="xl"
+                class="kpi-card h-100"
                 :style="{ '--kpi-accent': card.accent }"
               >
-                <div class="d-flex align-center justify-space-between mb-2">
-                  <div class="text-subtitle-2 text-medium-emphasis">{{ card.label }}</div>
-                  <v-icon :icon="card.icon" size="20" />
+                <div class="kpi-card__top">
+                  <div class="kpi-card__icon"><v-icon :icon="card.icon" size="22" /></div>
+                  <span class="kpi-card__index">KPI</span>
                 </div>
                 <div class="kpi-card__value-row">
-                  <div class="text-h4 font-weight-bold">{{ card.value }}</div>
-                  <div class="kpi-card__orb" />
+                  <div class="kpi-card__value">{{ card.value }}</div>
                 </div>
-                <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
+                <div class="kpi-card__label">{{ card.label }}</div>
+                <div class="kpi-card__helper">{{ card.helper }}</div>
               </v-card>
             </v-col>
           </v-row>
@@ -105,33 +119,51 @@
       </v-col>
 
       <v-col cols="12" lg="4">
-        <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
-          <div class="text-subtitle-1 font-weight-bold mb-3">Estado operativo</div>
-
-          <div class="status-row" v-for="status in workOrderStatusCards" :key="status.key">
+        <v-card rounded="xl" class="dashboard-status-card enterprise-surface h-100">
+          <div class="dashboard-status-card__header">
+            <div class="dashboard-status-card__title-icon"><v-icon icon="mdi-pulse" size="22" /></div>
             <div>
-              <div class="text-body-1 font-weight-medium">{{ status.label }}</div>
-              <div class="text-caption text-medium-emphasis">Órdenes de trabajo</div>
+              <div class="text-subtitle-1 font-weight-bold">Estado operativo</div>
+              <div class="text-caption text-medium-emphasis">Avance de órdenes del período</div>
             </div>
-            <v-chip label>{{ status.value }}</v-chip>
           </div>
 
-          <v-divider class="my-4" />
-
-          <div class="status-row">
-            <div>
-              <div class="text-body-1 font-weight-medium">Módulos principales</div>
-              <div class="text-caption text-medium-emphasis">Menú raíz cargado</div>
+          <div
+            v-for="status in workOrderStatusCards"
+            :key="status.key"
+            :class="['status-row', `status-row--${status.tone}`]"
+          >
+            <div class="status-row__main">
+              <div class="status-row__icon"><v-icon :icon="status.icon" size="19" /></div>
+              <div>
+                <div class="text-body-2 font-weight-bold">{{ status.label }}</div>
+                <div class="text-caption text-medium-emphasis">Órdenes de trabajo</div>
+              </div>
             </div>
-            <v-chip label>{{ menu.tree.length }}</v-chip>
+            <strong class="status-row__value">{{ status.value }}</strong>
+            <div class="status-row__track">
+              <div
+                class="status-row__fill"
+                :style="{ width: `${status.value ? Math.max(5, (status.value / Math.max(filteredWorkOrders.length, 1)) * 100) : 0}%` }"
+              />
+            </div>
           </div>
 
-          <div class="status-row">
-            <div>
-              <div class="text-body-1 font-weight-medium">Última actualización</div>
-              <div class="text-caption text-medium-emphasis">Sincronización del tablero</div>
+          <div class="dashboard-status-card__footer">
+            <div class="dashboard-status-meta">
+              <v-icon icon="mdi-view-grid-outline" size="19" />
+              <div>
+                <span>Módulos principales</span>
+                <strong>{{ menu.tree.length }}</strong>
+              </div>
             </div>
-            <v-chip label>{{ lastUpdatedLabel }}</v-chip>
+            <div class="dashboard-status-meta">
+              <v-icon icon="mdi-clock-check-outline" size="19" />
+              <div>
+                <span>Última actualización</span>
+                <strong>{{ lastUpdatedLabel }}</strong>
+              </div>
+            </div>
           </div>
         </v-card>
       </v-col>
@@ -839,9 +871,27 @@ const kpiCards = computed(() => [
 ]);
 
 const workOrderStatusCards = computed(() => [
-  { key: "PLANNED", label: "Planificadas", value: workOrdersByStatus.value.PLANNED },
-  { key: "IN_PROGRESS", label: "En proceso", value: workOrdersByStatus.value.IN_PROGRESS },
-  { key: "CLOSED", label: "Cerradas", value: workOrdersByStatus.value.CLOSED },
+  {
+    key: "PLANNED",
+    label: "Planificadas",
+    value: workOrdersByStatus.value.PLANNED,
+    tone: "planned",
+    icon: "mdi-calendar-clock-outline",
+  },
+  {
+    key: "IN_PROGRESS",
+    label: "En proceso",
+    value: workOrdersByStatus.value.IN_PROGRESS,
+    tone: "progress",
+    icon: "mdi-progress-wrench",
+  },
+  {
+    key: "CLOSED",
+    label: "Cerradas",
+    value: workOrdersByStatus.value.CLOSED,
+    tone: "closed",
+    icon: "mdi-check-decagram-outline",
+  },
 ]);
 
 function inventoryAvailableForMinimum(item: AnyRow) {
@@ -1289,11 +1339,182 @@ watch([selectedYear, selectedMonth], () => {
 
 <style scoped>
 .dashboard-page {
-  gap: 12px;
+  --dashboard-blue: 47, 108, 171;
+  --dashboard-cyan: 39, 164, 190;
+  --dashboard-green: 15, 143, 114;
+  --dashboard-orange: 225, 122, 0;
+  --dashboard-purple: 132, 81, 201;
+  padding: 0;
+}
+
+.dashboard-content {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-hero,
+.dashboard-status-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.dashboard-hero {
+  padding: 28px;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 14%, var(--surface-base)), var(--surface-base) 68%),
+    var(--surface-base);
+}
+
+.dashboard-hero::after {
+  position: absolute;
+  z-index: -1;
+  right: -78px;
+  bottom: -118px;
+  width: 330px;
+  height: 330px;
+  border: 48px solid rgba(var(--v-theme-primary), 0.055);
+  border-radius: 50%;
+  content: "";
+}
+
+.dashboard-hero__glow {
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.dashboard-hero__glow--primary {
+  top: -150px;
+  left: 30%;
+  width: 330px;
+  height: 330px;
+  background: rgba(var(--v-theme-primary), 0.09);
+}
+
+.dashboard-hero__glow--secondary {
+  right: 8%;
+  bottom: -135px;
+  width: 260px;
+  height: 260px;
+  background: rgba(var(--v-theme-secondary), 0.08);
+}
+
+.dashboard-hero__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 26px;
+}
+
+.dashboard-hero__copy {
+  max-width: 690px;
+}
+
+.dashboard-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.105em;
+  text-transform: uppercase;
+}
+
+.dashboard-hero__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-success));
+  box-shadow: 0 0 0 6px rgba(var(--v-theme-success), 0.12);
+  animation: dashboard-pulse 2.2s ease-out infinite;
+}
+
+.dashboard-hero__title {
+  margin: 0;
+  font-size: clamp(1.65rem, 2.7vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+
+.dashboard-hero__description {
+  max-width: 620px;
+  margin: 9px 0 13px;
+  color: var(--app-muted-text);
+  font-size: 0.94rem;
+}
+
+.dashboard-hero__identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+  color: var(--app-muted-text);
+  font-size: 0.75rem;
+}
+
+.dashboard-hero__identity span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-hero__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .period-toolbar {
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(120px, 0.4fr) minmax(170px, 0.55fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: 21px 0 15px;
+  padding: 12px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--surface-soft) 80%, transparent);
+}
+
+.period-toolbar__intro {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.period-toolbar__intro > div:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.period-toolbar__intro strong {
+  font-size: 0.78rem;
+}
+
+.period-toolbar__intro span {
+  overflow: hidden;
+  color: var(--app-muted-text);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-toolbar__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.1);
 }
 
 .period-toolbar__select {
@@ -1305,12 +1526,59 @@ watch([selectedYear, selectedMonth], () => {
 }
 
 .kpi-card {
-  border-color: rgba(255, 255, 255, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
-    var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
-  overflow: hidden;
   position: relative;
+  overflow: hidden;
+  min-height: 158px;
+  padding: 16px;
+  border: 1px solid var(--surface-border);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.025)),
+    var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.kpi-card::after {
+  position: absolute;
+  right: -34px;
+  bottom: -45px;
+  width: 125px;
+  height: 125px;
+  border: 24px solid rgba(var(--v-theme-primary), 0.045);
+  border-radius: 50%;
+  content: "";
+}
+
+.kpi-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--v-theme-primary), 0.25);
+  box-shadow: 0 15px 30px rgba(var(--v-theme-primary), 0.1);
+}
+
+.kpi-card__top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.kpi-card__icon {
+  display: grid;
+  width: 41px;
+  height: 41px;
+  place-items: center;
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+  border-radius: 13px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-surface), 0.55);
+}
+
+.kpi-card__index {
+  color: var(--app-muted-text);
+  font-size: 0.61rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
 }
 
 .kpi-card__value-row {
@@ -1320,20 +1588,142 @@ watch([selectedYear, selectedMonth], () => {
   gap: 12px;
 }
 
-.kpi-card__orb {
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.84);
-  box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.12);
+.kpi-card__value {
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.kpi-card__label {
+  position: relative;
+  z-index: 1;
+  margin-top: 7px;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.kpi-card__helper {
+  position: relative;
+  z-index: 1;
+  margin-top: 3px;
+  color: var(--app-muted-text);
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.dashboard-status-card {
+  padding: 24px;
+  background:
+    linear-gradient(145deg, rgba(var(--v-theme-primary), 0.075), transparent 58%),
+    var(--surface-base);
+}
+
+.dashboard-status-card__header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 15px;
+}
+
+.dashboard-status-card__title-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.105);
 }
 
 .status-row {
+  --status-color: var(--dashboard-blue);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 11px 0;
+}
+
+.status-row--planned { --status-color: var(--dashboard-blue); }
+.status-row--progress { --status-color: var(--dashboard-orange); }
+.status-row--closed { --status-color: var(--dashboard-green); }
+
+.status-row__main {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
+  gap: 9px;
+}
+
+.status-row__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 11px;
+  color: rgb(var(--status-color));
+  background: rgba(var(--status-color), 0.1);
+}
+
+.status-row__value {
+  font-size: 1.05rem;
+}
+
+.status-row__track {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(var(--status-color), 0.09);
+}
+
+.status-row__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(var(--status-color), 0.64), rgb(var(--status-color)));
+  transition: width 320ms ease;
+}
+
+.dashboard-status-card__footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 13px;
+  padding-top: 14px;
+  border-top: 1px solid var(--surface-border);
+}
+
+.dashboard-status-meta {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 9px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
+}
+
+.dashboard-status-meta > .v-icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+}
+
+.dashboard-status-meta > div {
+  display: grid;
+  min-width: 0;
+}
+
+.dashboard-status-meta span {
+  color: var(--app-muted-text);
+  font-size: 0.61rem;
+}
+
+.dashboard-status-meta strong {
+  overflow: hidden;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
 }
 
 .process-indicator-grid {
@@ -1343,10 +1733,20 @@ watch([selectedYear, selectedMonth], () => {
 }
 
 .process-indicator-item {
-  padding: 14px;
+  position: relative;
+  overflow: hidden;
+  padding: 15px;
   border: 1px solid var(--surface-border);
   border-radius: 16px;
-  background: var(--surface-soft);
+  background:
+    linear-gradient(135deg, rgba(var(--v-theme-primary), 0.06), transparent 68%),
+    var(--surface-soft);
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.process-indicator-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--v-theme-primary), 0.22);
 }
 
 .dashboard-stack {
@@ -1357,8 +1757,11 @@ watch([selectedYear, selectedMonth], () => {
 .dashboard-table-shell {
   border: 1px solid var(--surface-border);
   border-radius: 18px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: 410px;
   background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+  scrollbar-color: rgba(var(--v-theme-primary), 0.3) transparent;
+  scrollbar-width: thin;
 }
 
 .dashboard-mini-table {
@@ -1366,16 +1769,30 @@ watch([selectedYear, selectedMonth], () => {
 }
 
 .dashboard-mini-table :deep(th) {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding-block: 11px;
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--app-muted-text);
   white-space: nowrap;
+  background: color-mix(in srgb, var(--surface-soft) 95%, transparent);
 }
 
 .dashboard-mini-table :deep(td) {
   max-width: 280px;
+  padding-block: 11px;
   vertical-align: top;
+}
+
+.dashboard-mini-table :deep(tbody tr) {
+  transition: background 140ms ease;
+}
+
+.dashboard-mini-table :deep(tbody tr:hover) {
+  background: rgba(var(--v-theme-primary), 0.045);
 }
 
 .dashboard-mini-bars {
@@ -1386,6 +1803,13 @@ watch([selectedYear, selectedMonth], () => {
 .dashboard-mini-bars__row {
   display: grid;
   gap: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  transition: background 140ms ease;
+}
+
+.dashboard-mini-bars__row:hover {
+  background: rgba(var(--v-theme-primary), 0.045);
 }
 
 .dashboard-mini-bars__meta {
@@ -1423,14 +1847,108 @@ watch([selectedYear, selectedMonth], () => {
   flex-wrap: wrap;
 }
 
+.dashboard-content > .v-row:not(.dashboard-hero-grid) .enterprise-surface {
+  position: relative;
+  border-color: var(--surface-border);
+  background:
+    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.18), transparent 44%),
+    var(--surface-base);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.dashboard-content > .v-row:not(.dashboard-hero-grid) .enterprise-surface:hover {
+  border-color: rgba(var(--v-theme-primary), 0.18);
+  box-shadow: 0 19px 38px rgba(15, 23, 42, 0.105);
+}
+
+.dashboard-content > .v-row:not(.dashboard-hero-grid) .enterprise-surface :deep(.text-subtitle-1.font-weight-bold) {
+  letter-spacing: -0.015em;
+}
+
+.dashboard-content :deep(.v-chip) {
+  font-weight: 650;
+}
+
 .h-100 {
   height: 100%;
 }
 
+@keyframes dashboard-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(var(--v-theme-success), 0.32); }
+  65% { box-shadow: 0 0 0 8px rgba(var(--v-theme-success), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--v-theme-success), 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-hero__pulse {
+    animation: none;
+  }
+
+  .kpi-card,
+  .process-indicator-item,
+  .dashboard-mini-bars__row,
+  .status-row__fill {
+    transition: none;
+  }
+}
+
+@media (max-width: 1280px) {
+  .dashboard-hero__header {
+    flex-direction: column;
+  }
+
+  .dashboard-hero__actions {
+    justify-content: flex-start;
+  }
+
+  .period-toolbar {
+    grid-template-columns: minmax(200px, 1fr) minmax(110px, 0.45fr) minmax(160px, 0.6fr);
+  }
+
+  .period-toolbar > .v-chip {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
 @media (max-width: 768px) {
+  .dashboard-hero,
+  .dashboard-status-card {
+    padding: 20px;
+  }
+
+  .dashboard-hero__actions,
+  .dashboard-hero__actions > .v-btn {
+    width: 100%;
+  }
+
+  .period-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .period-toolbar > .v-chip {
+    grid-column: auto;
+    justify-self: stretch;
+  }
+
   .period-toolbar__select,
   .period-toolbar__select--month {
     min-width: 100%;
+  }
+
+  .dashboard-status-card__footer,
+  .process-indicator-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 500px) {
+  .dashboard-hero__identity {
+    flex-direction: column;
+  }
+
+  .dashboard-table-shell {
+    border-radius: 14px;
   }
 }
 </style>
