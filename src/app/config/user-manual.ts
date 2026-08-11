@@ -21,6 +21,13 @@ export type UserManualStep = {
   checks: string[];
 };
 
+export type UserManualIssue = {
+  title: string;
+  whatHappens: string;
+  why: string;
+  howToResolve: string;
+};
+
 export type UserManualDefinition = {
   routeName: string;
   title: string;
@@ -32,13 +39,15 @@ export type UserManualDefinition = {
   fields: UserManualFieldGuide[];
   tips: string[];
   warnings: string[];
+  commonErrors: UserManualIssue[];
   checklist: string[];
   relatedRoutes: string[];
 };
 
-type ManualOverride = Omit<UserManualDefinition, "fields"> & {
+type ManualOverride = Omit<UserManualDefinition, "fields" | "commonErrors"> & {
   moduleKey?: string;
   extraFields?: UserManualFieldGuide[];
+  commonErrors?: UserManualIssue[];
 };
 
 const moduleCatalog = new Map<string, MaintenanceModuleConfig>(
@@ -134,44 +143,44 @@ function formatManualFieldLabel(field: MaintenanceField): string {
 
 function fieldTypeLabel(field: MaintenanceField): string {
   if (isStructuredUiField(field)) {
-    return "Carga asistida";
+    return "Detalle guiado";
   }
   switch (field.type) {
     case "select":
-      return "Seleccion";
+      return "Elegir una opción";
     case "number":
-      return "Numero";
+      return "Cantidad";
     case "boolean":
-      return "Si/No";
+      return "Activar o desactivar";
     case "date":
       return "Fecha";
     case "json":
-      return "Carga asistida";
+      return "Detalle guiado";
     default:
-      return "Texto";
+      return "Escribir información";
   }
 }
 
 function fieldNote(field: MaintenanceField): string {
   if (isStructuredUiField(field)) {
-    return "El usuario carga la informacion mediante inputs guiados del modulo; el sistema la convierte a JSON internamente.";
+    return "Completa cada fila o sección que aparece en pantalla; el sistema organiza el detalle automáticamente.";
   }
   if (field.relation?.endpoint) {
-    return "Se selecciona desde un catalogo relacionado.";
+    return "Elige una opción existente. Si no aparece, primero créala o actívala en el módulo correspondiente.";
   }
   if (field.options?.length) {
-    return "Se recomienda escoger una opcion valida del listado.";
+    return "Escoge la opción que corresponda al proceso que estás realizando.";
   }
   if (field.type === "boolean") {
-    return "Activa la opcion solo cuando aplique al flujo.";
+    return "Activa esta opción únicamente cuando la condición realmente se cumpla.";
   }
   if (field.type === "number") {
-    return "Ingresa valores numericos consistentes con el proceso.";
+    return "Ingresa la cantidad real y revisa la unidad antes de continuar.";
   }
   if (field.type === "date") {
-    return "Usa una fecha valida para mantener la trazabilidad.";
+    return "Selecciona la fecha real en que ocurrió o se realizará la actividad.";
   }
-  return "Carga el valor operativo que realmente usara el proceso.";
+  return "Escribe información clara que otra persona pueda entender al revisar el registro.";
 }
 
 function buildFieldGuides(config?: MaintenanceModuleConfig | null): UserManualFieldGuide[] {
@@ -199,38 +208,68 @@ function buildGenericFlow(config: MaintenanceModuleConfig): UserManualStep[] {
   return [
     {
       id: "prepare",
-      title: "Prepara catalogos previos",
+      title: "Confirma la información previa",
       description:
         relationFields.length > 0
-          ? "Antes de guardar, valida que los catalogos relacionados ya existan y esten activos."
-          : "Antes de registrar, confirma que el proceso y el permiso del usuario sean correctos.",
+          ? "Antes de empezar, comprueba que las opciones que vas a seleccionar ya estén creadas y activas."
+          : "Antes de registrar, confirma que estás en la sucursal correcta y que el proceso corresponde a tu trabajo.",
       fields: relationFields.slice(0, 5),
       checks: [
-        "Revisa que el modulo tenga permisos de lectura y creacion.",
-        "Confirma que no falten catalogos base para evitar errores al guardar.",
+        "Comprueba que puedes ver y crear registros en este módulo.",
+        "Si una opción no aparece, créala primero en su módulo de origen o solicita apoyo al administrador.",
       ],
     },
     {
       id: "capture",
-      title: "Carga la informacion principal",
+      title: "Completa el registro",
       description:
-        "Completa primero los campos obligatorios y luego los datos complementarios que ayudan al seguimiento del proceso.",
+        "Llena primero los datos obligatorios y después agrega la información que ayudará a identificar y seguir el registro.",
       fields: requiredFields.slice(0, 8),
       checks: [
-        "Evita duplicar codigos o nombres si el registro ya existe.",
-        "Si un campo viene de otro catalogo, selecciona el valor exacto del listado.",
+        "Busca antes de crear para evitar registros repetidos.",
+        "Elige del listado la opción que corresponda exactamente a la operación.",
       ],
     },
     {
       id: "validate",
-      title: "Guarda y valida el resultado",
+      title: "Guarda y confirma el resultado",
       description:
-        "Despues de guardar, revisa el listado, filtros y paginacion para confirmar que el registro quedo disponible para el siguiente flujo.",
+        "Después de guardar, busca el registro y confirma que quedó disponible para el siguiente paso del proceso.",
       fields: [],
       checks: [
-        "Si el modulo impacta otro proceso, revisa el modulo relacionado inmediatamente.",
-        "Usa editar solo para corregir informacion real, no para duplicar registros.",
+        "Si este registro alimenta otro proceso, abre el módulo relacionado y comprueba que ya aparece.",
+        "Edita únicamente para corregir información; no crees otro registro para reemplazarlo.",
       ],
+    },
+  ];
+}
+
+function buildGenericErrors(config?: MaintenanceModuleConfig | null): UserManualIssue[] {
+  const relationFields = (config?.fields ?? [])
+    .filter((field) => field.type === "select" && !field.hidden)
+    .map((field) => formatManualFieldLabel(field));
+  const relatedLabel = relationFields.slice(0, 4).join(", ");
+
+  return [
+    {
+      title: "La opción que necesitas no aparece",
+      whatHappens: relatedLabel
+        ? `No encuentras una opción en ${relatedLabel}.`
+        : "No encuentras la información necesaria para completar el registro.",
+      why: "La información previa todavía no fue creada, está inactiva o pertenece a otra sucursal.",
+      howToResolve: "Créala o actívala en el módulo correspondiente, verifica la sucursal seleccionada y vuelve a abrir este formulario.",
+    },
+    {
+      title: "El sistema no permite guardar",
+      whatHappens: "Presionas Guardar, pero el registro no se completa.",
+      why: "Falta un dato obligatorio, existe un registro igual o alguna cantidad no es válida.",
+      howToResolve: "Revisa los campos resaltados, busca posibles duplicados y confirma que fechas y cantidades sean válidas.",
+    },
+    {
+      title: "El registro guardado no aparece",
+      whatHappens: "El sistema confirmó el guardado, pero no ves el registro en la tabla.",
+      why: "Puede estar oculto por un filtro, otra página, periodo o sucursal.",
+      howToResolve: "Limpia los filtros, actualiza la tabla y selecciona la sucursal o periodo donde realizaste el registro.",
     },
   ];
 }
@@ -241,7 +280,7 @@ function buildGenericChecklist(config: MaintenanceModuleConfig): string[] {
     .map((field) => formatManualFieldLabel(field));
 
   return [
-    "Revise permisos y catalogos base antes de crear el registro.",
+    "Revise su acceso y la información previa antes de crear el registro.",
     requiredFields.length
       ? `Complete los campos obligatorios: ${requiredFields.slice(0, 5).join(", ")}.`
       : "Complete la informacion minima del registro.",
@@ -293,7 +332,7 @@ const manualOverrides: Record<string, ManualOverride> = {
         fields: ["Excel", "PDF", "Actualizar"],
         checks: [
           "Exporta solo despues de validar el filtro activo.",
-          "Abre el modulo fuente si necesitas corregir datos maestros o transaccionales.",
+          "Abre el proceso de origen si necesitas corregir la información.",
         ],
       },
     ],
@@ -439,6 +478,26 @@ const manualOverrides: Record<string, ManualOverride> = {
       "No cierres la planificacion semanal si las horas no cuadran con el mensual.",
       "Si un bloque horario no tiene fin, el dashboard no podra calcular horas reales.",
     ],
+    commonErrors: [
+      {
+        title: "La OT no aparece para programarla",
+        whatHappens: "Buscas una orden de trabajo en el calendario mensual o semanal y no está disponible.",
+        why: "La OT todavía no fue creada, pertenece a otra sucursal, ya está cerrada o no tiene el equipo y la plantilla necesarios.",
+        howToResolve: "Revisa la OT, confirma su equipo, plantilla, sucursal y estado; después actualiza Programaciones.",
+      },
+      {
+        title: "No se puede guardar la programación",
+        whatHappens: "El calendario rechaza la fecha, las horas o la actividad seleccionada.",
+        why: "Puede existir la misma OT en ese día, faltar la bodega de la sucursal o haber una fecha fuera del periodo elegido.",
+        howToResolve: "Confirma el mes, la sucursal y la fecha; elimina duplicados y verifica que la sucursal tenga su BOD-001 activa.",
+      },
+      {
+        title: "El semanal no coincide con el mensual",
+        whatHappens: "Una actividad mensual no aparece o muestra horas diferentes en el cronograma semanal.",
+        why: "La actividad no quedó vinculada a la misma OT, equipo o fecha, o la importación mensual aún no terminó.",
+        howToResolve: "Revisa el detalle del día en el mensual, espera la confirmación de la carga y vuelve a generar el semanal.",
+      },
+    ],
     checklist: [
       "Defini el anio, mes y semana correctos.",
       "Valide que mensual, semanal y agenda muestren la misma realidad operativa.",
@@ -464,7 +523,7 @@ const manualOverrides: Record<string, ManualOverride> = {
         title: "Crea o actualiza la cabecera",
         description:
           "Completa codigo, equipo, estado, tipo de mantenimiento, plantilla MPG, plan operativo, alerta, causa, accion y prevencion.",
-        fields: ["Codigo", "Equipo", "Estado workflow", "Tipo mantenimiento", "Plantilla MPG", "Plan operativo", "Alerta", "Causa", "Accion", "Prevencion"],
+        fields: ["Código", "Equipo", "Estado de la orden", "Tipo de mantenimiento", "Plantilla MPG", "Plan operativo", "Alerta", "Causa", "Acción", "Prevención"],
         checks: [
           "La OT debe quedar ligada al equipo correcto y, si aplica, al compartimiento oficial.",
           "No cierres la OT con informacion incompleta en cabecera.",
@@ -515,6 +574,32 @@ const manualOverrides: Record<string, ManualOverride> = {
     warnings: [
       "No registres salida de materiales si primero no validaste la reserva o el stock real.",
       "No cierres una OT sin subir las evidencias obligatorias.",
+    ],
+    commonErrors: [
+      {
+        title: "La OT no puede pasar a En proceso",
+        whatHappens: "Intentas iniciar la orden y el sistema no permite cambiar su estado.",
+        why: "La OT todavía no tiene una fecha de programación asignada o no está completa la información que define el trabajo.",
+        howToResolve: "Asigna primero la OT a una fecha en Programaciones, confirma equipo y plantilla, vuelve a abrir la OT y presiona Iniciar proceso.",
+      },
+      {
+        title: "No se pueden registrar tareas o evidencias",
+        whatHappens: "Las opciones de tareas o adjuntos están bloqueadas o el guardado falla.",
+        why: "La cabecera de la OT aún no fue guardada, falta una plantilla o la orden ya está cerrada, bloqueada o anulada.",
+        howToResolve: "Guarda primero la cabecera con equipo y plantilla. Si ya está cerrada, bloqueada o anulada, consulta el historial y no intentes modificarla.",
+      },
+      {
+        title: "No se puede emitir un material",
+        whatHappens: "El sistema rechaza la salida o no habilita el botón para emitir.",
+        why: "La OT no está En proceso, no existe una reserva pendiente o la cantidad supera lo reservado y disponible.",
+        howToResolve: "Inicia la OT, registra o revisa la reserva, selecciona la condición Nuevo o Usado y emite solo la cantidad pendiente disponible.",
+      },
+      {
+        title: "La OT no puede cerrarse",
+        whatHappens: "El sistema mantiene la orden abierta al intentar finalizarla.",
+        why: "Faltan causa, acción o prevención; hay tareas o evidencias obligatorias pendientes; existe una OT bloqueante; o el usuario no es responsable autorizado.",
+        howToResolve: "Completa el resultado del trabajo y sus evidencias, cierra primero la OT bloqueante y solicita el cierre al responsable o administrador autorizado.",
+      },
     ],
     checklist: [
       "Cabecera completa y ligada al equipo correcto.",
@@ -581,6 +666,26 @@ const manualOverrides: Record<string, ManualOverride> = {
       "No registres salidas manuales si el stock real no alcanza.",
       "Si una carga masiva esta en proceso, evita ejecutar decisiones sobre alertas de inventario hasta que termine.",
     ],
+    commonErrors: [
+      {
+        title: "El material no aparece en la bodega",
+        whatHappens: "Seleccionas una bodega, pero no encuentras el material que necesitas mover.",
+        why: "El material no está asignado a esa sucursal y bodega, está inactivo o el filtro mantiene otro valor.",
+        howToResolve: "Comprueba la sucursal, limpia el filtro y revisa en Stock de bodega que el material esté asignado a la BOD-001 correspondiente.",
+      },
+      {
+        title: "La salida es rechazada",
+        whatHappens: "El sistema no permite guardar una salida manual.",
+        why: "La cantidad supera el stock utilizable. El stock crítico está reservado para emergencias y no cuenta como disponibilidad normal.",
+        howToResolve: "Revisa el stock Nuevo y Usado disponible, reduce la cantidad o solicita un ajuste autorizado si se trata de una emergencia.",
+      },
+      {
+        title: "La carga masiva no termina correctamente",
+        whatHappens: "El archivo muestra filas rechazadas o no refleja todos los cambios.",
+        why: "Hay códigos duplicados, bodegas o unidades inexistentes, cantidades inválidas o columnas diferentes al formato esperado.",
+        howToResolve: "Descarga el resumen, corrige únicamente las filas indicadas y vuelve a cargar el archivo sin modificar los encabezados.",
+      },
+    ],
     checklist: [
       "Seleccione primero la bodega y luego el material.",
       "Valide cantidades antes de guardar.",
@@ -640,6 +745,20 @@ const manualOverrides: Record<string, ManualOverride> = {
     ],
     warnings: [
       "La OC no genera kardex directo; el movimiento real ocurre al transferir o ingresar segun el flujo aprobado.",
+    ],
+    commonErrors: [
+      {
+        title: "No se puede crear la orden de compra",
+        whatHappens: "Falta el proveedor, la bodega destino o algún material del detalle.",
+        why: "Esos datos deben existir antes de elaborar la compra y corresponder a la sucursal seleccionada.",
+        howToResolve: "Crea o activa primero el proveedor, los materiales y la BOD-001 de la sucursal; luego vuelve a completar la orden.",
+      },
+      {
+        title: "La orden no aparece en Transferencias",
+        whatHappens: "Buscas una orden de compra guardada para recibir o transferir sus materiales y no aparece.",
+        why: "La orden ya fue utilizada, está anulada, no tiene saldo pendiente o pertenece a otra sucursal.",
+        howToResolve: "Revisa su estado y saldo, confirma la sucursal y utiliza únicamente órdenes vigentes con cantidades pendientes.",
+      },
     ],
     checklist: [
       "Cabecera completa con proveedor y bodega destino.",
@@ -710,6 +829,20 @@ const manualOverrides: Record<string, ManualOverride> = {
     warnings: [
       "No uses este modulo para materiales fisicos comunes; el detalle debe quedar reservado a servicios.",
     ],
+    commonErrors: [
+      {
+        title: "El servicio no aparece en el detalle",
+        whatHappens: "No encuentras el concepto que deseas solicitar.",
+        why: "El material no está marcado como servicio o se encuentra inactivo.",
+        howToResolve: "Abre Materiales, activa la opción Es servicio en el registro correspondiente y vuelve a abrir la orden de servicio.",
+      },
+      {
+        title: "No se puede guardar la orden de servicio",
+        whatHappens: "El sistema rechaza el documento o no calcula el total esperado.",
+        why: "Falta el destinatario o emisor, no existen filas de servicio válidas o hay cantidades y precios en cero.",
+        howToResolve: "Selecciona Para y De, agrega al menos un servicio y revisa cantidad, precio, descuento e IVA antes de guardar.",
+      },
+    ],
     checklist: [
       "Destinatario seleccionado.",
       "Usuario emisor activo seleccionado.",
@@ -772,6 +905,26 @@ const manualOverrides: Record<string, ManualOverride> = {
       "No intentes transferir una cantidad mayor al disponible.",
       "Si la transferencia viene de OC, el control debe hacerse con stock preaprobado, no con kardex previo.",
     ],
+    commonErrors: [
+      {
+        title: "No hay stock para transferir",
+        whatHappens: "El material aparece sin disponibilidad o la cantidad es rechazada.",
+        why: "La bodega origen no tiene stock Nuevo o Usado suficiente; el stock crítico permanece reservado para emergencias.",
+        howToResolve: "Revisa Stock de bodega y Kardex, confirma la condición del material y transfiere únicamente la cantidad utilizable.",
+      },
+      {
+        title: "Origen y destino no son válidos",
+        whatHappens: "El sistema no permite continuar con las bodegas seleccionadas.",
+        why: "Se eligió la misma bodega, una bodega inactiva o una ubicación que no corresponde a la sucursal del proceso.",
+        howToResolve: "Selecciona dos bodegas activas y distintas, verificando la sucursal de origen y destino.",
+      },
+      {
+        title: "La orden de compra no está disponible",
+        whatHappens: "No aparece la OC que debería abastecer la transferencia.",
+        why: "Ya fue consumida, está anulada, no tiene saldo pendiente o no coincide con la bodega seleccionada.",
+        howToResolve: "Revisa la OC y usa una orden vigente que conserve cantidades pendientes para esa bodega.",
+      },
+    ],
     checklist: [
       "Defini si la transferencia es por OC o directa.",
       "Valide el disponible antes de guardar.",
@@ -805,10 +958,10 @@ const manualOverrides: Record<string, ManualOverride> = {
       },
       {
         id: "detalle",
-        title: "Carga detalle tecnico",
+        title: "Registra resultados y diagnóstico",
         description:
-          "Registra payload auxiliar, detalles del analisis y cualquier marca o nombre del lubricante analizado.",
-        fields: ["Payload auxiliar", "Detalle del analisis"],
+          "Completa los resultados de la muestra, el diagnóstico y la identificación del lubricante analizado.",
+        fields: ["Resultados de la muestra", "Detalle del análisis", "Diagnóstico"],
         checks: [
           "El detalle debe permitir comparar condicion, viscosidad y hallazgos reales.",
         ],
@@ -833,7 +986,7 @@ const manualOverrides: Record<string, ManualOverride> = {
     ],
     checklist: [
       "Registre el analisis con codigo y fechas reales.",
-      "Cargue el detalle tecnico y diagnostico.",
+      "Complete los resultados de la muestra y el diagnóstico.",
       "Revise la tendencia por rango de fechas antes de decidir mantenimiento.",
     ],
     relatedRoutes: ["equipos", "work-orders", "dashboard"],
@@ -885,6 +1038,46 @@ const manualOverrides: Record<string, ManualOverride> = {
     relatedRoutes: ["dashboard", "work-orders", "stock-bodega", "programaciones"],
   },
 };
+
+const routeSpecificErrors: Record<string, UserManualIssue[]> = {
+  productos: [
+    {
+      title: "El material no aparece en un documento",
+      whatHappens: "El material existe, pero no se muestra en compras, servicios, transferencias, Kardex u órdenes de trabajo.",
+      why: "Puede estar inactivo, sin unidad, sin asignación de bodega o marcado de forma incorrecta como material o servicio.",
+      howToResolve: "Revisa que esté activo, tenga unidad y categoría, confirma si es servicio y asígnalo al stock de la sucursal correspondiente.",
+    },
+  ],
+  "stock-bodega": [
+    {
+      title: "No se puede asignar el material a la bodega",
+      whatHappens: "El sistema no permite crear o actualizar el stock del material.",
+      why: "El material o la BOD-001 de la sucursal no existe, está inactiva o ya hay una asignación para esa misma combinación.",
+      howToResolve: "Confirma material, sucursal y BOD-001; si la asignación ya existe, edítala en lugar de crear otra.",
+    },
+    {
+      title: "El total de stock parece mayor al disponible",
+      whatHappens: "El total incluye unidades que no se pueden usar en una operación normal.",
+      why: "El total suma stock Nuevo, Usado y Crítico, pero el stock Crítico queda reservado para emergencias.",
+      howToResolve: "Para operaciones normales usa Nuevo + Usado. Libera o consume stock Crítico únicamente mediante el flujo autorizado de emergencia.",
+    },
+    {
+      title: "Se genera una alerta de stock mínimo",
+      whatHappens: "El material figura bajo mínimo aunque el total mostrado parezca suficiente.",
+      why: "La alerta compara el stock utilizable y descuenta la reserva crítica; por eso el stock Crítico no evita la alerta normal.",
+      howToResolve: "Repón stock Nuevo o Usado, o ajusta el mínimo si fue configurado incorrectamente. No aumentes el crítico para ocultar la alerta.",
+    },
+  ],
+  equipos: [
+    {
+      title: "El equipo no aparece en una OT o programación",
+      whatHappens: "No encuentras el equipo al planificar o crear una orden.",
+      why: "Está inactivo, pertenece a otra sucursal o todavía no tiene la información básica y el plan de mantenimiento relacionados.",
+      howToResolve: "Activa el equipo, revisa su sucursal y completa su plantilla o plan antes de volver al proceso.",
+    },
+  ],
+};
+
 function buildGenericDefinition(
   routeName: string,
   config: MaintenanceModuleConfig,
@@ -898,10 +1091,10 @@ function buildGenericDefinition(
     category,
     summary: `Manual operativo para ${config.title.toLowerCase()}.`,
     purpose:
-      "Usa este modulo para registrar o consultar informacion base del proceso y dejarla disponible para los modulos transaccionales relacionados.",
+      "Usa este módulo para registrar o consultar información necesaria y dejarla disponible para los procesos que continúan después.",
     prerequisites: [
-      "Confirma que el usuario tenga permisos sobre el modulo.",
-      "Valida catalogos relacionados antes de guardar.",
+      "Confirma que puedes consultar y crear información en este módulo.",
+      "Verifica que las opciones que necesitas ya estén creadas y activas.",
     ],
     flow: buildGenericFlow(config),
     fields,
@@ -912,6 +1105,7 @@ function buildGenericDefinition(
     warnings: [
       "No dupliques registros con el mismo codigo o nombre si ya existen.",
     ],
+    commonErrors: [...(routeSpecificErrors[routeName] ?? []), ...buildGenericErrors(config)],
     checklist: buildGenericChecklist(config),
     relatedRoutes: [],
   };
@@ -923,6 +1117,16 @@ function mergeManualOverride(override: ManualOverride): UserManualDefinition {
   return {
     ...override,
     fields: [...configFields, ...(override.extraFields ?? [])],
+    commonErrors: [
+      ...(routeSpecificErrors[override.routeName] ?? []),
+      ...(override.commonErrors ?? []),
+      ...buildGenericErrors(config).filter(
+        (fallback) => ![
+          ...(routeSpecificErrors[override.routeName] ?? []),
+          ...(override.commonErrors ?? []),
+        ].some((item) => item.title === fallback.title),
+      ),
+    ],
   };
 }
 

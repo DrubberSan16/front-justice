@@ -47,6 +47,7 @@ export type ReportDefinition = {
   summary?: ReportSummaryItem[];
   sheets: ReportSheet[];
   orientation?: "portrait" | "landscape";
+  continuousSections?: boolean;
 };
 
 const REPORT_THEME = {
@@ -330,8 +331,12 @@ function resolvePdfColumnWidth(column: { width?: number }, compactTable: boolean
   );
 }
 
-export async function downloadReportExcel(report: ReportDefinition) {
-  const { Workbook } = await import("exceljs");
+export async function buildReportExcelBlob(report: ReportDefinition) {
+  const excelJsModule = await import("exceljs");
+  const Workbook = excelJsModule.Workbook ?? (excelJsModule.default as any)?.Workbook;
+  if (!Workbook) {
+    throw new Error("No se pudo iniciar el generador de Excel.");
+  }
   const workbook = new Workbook();
   workbook.creator = "KPI Justice";
   workbook.company = "Justice Company";
@@ -459,14 +464,17 @@ export async function downloadReportExcel(report: ReportDefinition) {
         groupCell.font = { name: "Arial", size: 10, bold: true, color: { argb: REPORT_THEME.text } };
         groupCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.accentSoft } };
         groupCell.alignment = { horizontal: "left", vertical: "middle" };
+        worksheet.getRow(rowIndex).height = 22;
         rowIndex += 1;
         continue;
       }
 
       const row = worksheet.getRow(rowIndex);
+      let estimatedLineCount = 1;
       columns.forEach((column, columnIndex) => {
         const cell = row.getCell(columnIndex + 1);
-        cell.value = formatSheetValue(resolveColumnValue(entry.row ?? {}, column));
+        const formattedValue = formatSheetValue(resolveColumnValue(entry.row ?? {}, column));
+        cell.value = formattedValue;
         applyCellFormat(cell, column.format);
         cell.border = {
           top: { style: "thin", color: { argb: REPORT_THEME.border } },
@@ -476,6 +484,25 @@ export async function downloadReportExcel(report: ReportDefinition) {
         };
         if (zebraIndex % 2 === 1) {
           cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.zebra } };
+        }
+
+        const textValue = typeof formattedValue === "object" ? "" : String(formattedValue ?? "");
+        const usableCharacters = Math.max(8, Math.floor((column.width ?? 14) * 1.25));
+        const lineCount = textValue.split(/\r?\n/).reduce(
+          (total, line) => total + Math.max(1, Math.ceil(line.length / usableCharacters)),
+          0,
+        );
+        estimatedLineCount = Math.max(estimatedLineCount, lineCount);
+
+        if (repairText(column.header).trim().toLowerCase() === "estado") {
+          const normalizedStatus = repairText(textValue).trim().toLowerCase();
+          if (["completado", "completa", "completo", "realizado", "listo"].includes(normalizedStatus)) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.success } };
+            cell.font = { name: "Arial", size: 9, bold: true, color: { argb: REPORT_THEME.text } };
+          } else if (["pendiente", "por completar", "requiere atención"].includes(normalizedStatus)) {
+            cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.warning } };
+            cell.font = { name: "Arial", size: 9, bold: true, color: { argb: REPORT_THEME.text } };
+          }
         }
       });
 
@@ -512,7 +539,8 @@ export async function downloadReportExcel(report: ReportDefinition) {
         }
       }
 
-      row.height = Math.max(row.height ?? 0, 20);
+      const contentHeight = 20 + Math.max(0, estimatedLineCount - 1) * 12;
+      row.height = Math.max(row.height ?? 0, Math.min(contentHeight, 104));
       zebraIndex += 1;
       rowIndex += 1;
     }
@@ -521,16 +549,18 @@ export async function downloadReportExcel(report: ReportDefinition) {
       from: { row: headerRowIndex, column: 1 },
       to: { row: headerRowIndex, column: lastColumnIndex },
     };
-    worksheet.views = [{ state: "frozen", ySplit: headerRowIndex, xSplit: 0 }];
+    worksheet.views = [{ state: "frozen", ySplit: headerRowIndex, xSplit: 0, showGridLines: false }];
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
-  saveBlob(
-    new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    }),
-    `${report.fileName}.xlsx`,
-  );
+  return new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+export async function downloadReportExcel(report: ReportDefinition) {
+  const blob = await buildReportExcelBlob(report);
+  saveBlob(blob, `${report.fileName}.xlsx`);
 }
 
 export async function buildReportPdfBlob(report: ReportDefinition) {
@@ -588,11 +618,13 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
   let cursorY = 118;
 
   if (report.summary?.length) {
-    const cardWidth = (pageWidth - marginX * 2 - 16) / 2;
+    const cardsPerRow = (report.orientation ?? "landscape") === "landscape" ? 3 : 2;
+    const cardGap = 12;
+    const cardWidth = (pageWidth - marginX * 2 - cardGap * (cardsPerRow - 1)) / cardsPerRow;
     let cardIndex = 0;
     for (const item of report.summary) {
-      const x = marginX + (cardIndex % 2) * (cardWidth + 16);
-      const y = cursorY + Math.floor(cardIndex / 2) * 56;
+      const x = marginX + (cardIndex % cardsPerRow) * (cardWidth + cardGap);
+      const y = cursorY + Math.floor(cardIndex / cardsPerRow) * 56;
       doc.setFillColor(217, 234, 247);
       doc.roundedRect(x, y, cardWidth, 44, 8, 8, "F");
       doc.setTextColor(91, 107, 123);
@@ -605,7 +637,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       doc.setFont("helvetica", "normal");
       cardIndex += 1;
     }
-    cursorY += Math.ceil(report.summary.length / 2) * 56 + 8;
+    cursorY += Math.ceil(report.summary.length / cardsPerRow) * 56 + 8;
   }
 
   for (const [index, sheet] of report.sheets.entries()) {
@@ -651,7 +683,16 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       }
     }
 
-    if (index > 0) {
+    const noteLines = sheet.note
+      ? doc.splitTextToSize(repairText(sheet.note), pageWidth - marginX * 2 - 20)
+      : [];
+    const minimumSectionHeight = 34 + (noteLines.length ? 28 + noteLines.length * 10 : 0) + 62;
+    const needsNewPage = cursorY + minimumSectionHeight > pageHeight - 36;
+
+    if (
+      (index > 0 && !report.continuousSections) ||
+      (needsNewPage && (index > 0 || cursorY > 118))
+    ) {
       doc.addPage(report.orientation ?? "landscape");
       drawPageHeader(report.title, report.subtitle, repairText(sheet.name));
       cursorY = 118;
@@ -667,7 +708,6 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
 
     if (sheet.note) {
       doc.setFillColor(252, 228, 214);
-      const noteLines = doc.splitTextToSize(repairText(sheet.note), pageWidth - marginX * 2 - 20);
       const noteHeight = 18 + noteLines.length * 10;
       doc.roundedRect(marginX, cursorY, pageWidth - marginX * 2, noteHeight, 6, 6, "F");
       doc.setFont("helvetica", "italic");
@@ -774,7 +814,6 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     });
 
     cursorY = (doc as any).lastAutoTable.finalY + 12;
-    if (cursorY > pageHeight - 40) cursorY = 118;
   }
 
   const pageCount = doc.getNumberOfPages();
@@ -1194,11 +1233,13 @@ export function buildWorkOrderReport(payload: {
       { label: "Salidas", value: payload.issues.length },
       { label: "Desechos", value: payload.scraps.length },
     ],
+    continuousSections: true,
     sheets: [
       {
         name: "Cabecera",
         rows: [mainHeaderRow],
         note: "Datos principales de la orden de trabajo. La trazabilidad operativa y de aprobacion se muestra en la hoja siguiente.",
+        fitColumnsToPage: true,
         columns: [
           { key: "codigo", header: "Codigo", width: 12 },
           { key: "estado", header: "Estado", width: 12 },
@@ -1219,6 +1260,7 @@ export function buildWorkOrderReport(payload: {
         name: "Trazabilidad",
         rows: [traceabilityRow],
         note: "Responsables y fechas de creacion, ejecucion, aprobacion y bloqueo de la orden.",
+        fitColumnsToPage: true,
         columns: [
           { key: "creado_por", header: "Creado por", width: 16 },
           { key: "fecha_creacion", header: "Fecha creacion", width: 18, format: "datetime" },
@@ -1235,6 +1277,7 @@ export function buildWorkOrderReport(payload: {
         name: "Tareas",
         rows: payload.tasks,
         note: "Detalle de tareas ejecutadas con etiquetas de captura pensadas para el usuario final.",
+        fitColumnsToPage: true,
         columns: [
           { key: "plan", header: "Plan", width: 20 },
           { key: "tarea", header: "Tarea", width: 28 },
@@ -1249,6 +1292,7 @@ export function buildWorkOrderReport(payload: {
         name: "Adjuntos",
         rows: payload.attachments,
         note: "Las imagenes se muestran dentro del reporte y los documentos o videos quedan con su enlace directo.",
+        fitColumnsToPage: true,
         columns: [
           { key: "tipo_archivo", header: "Tipo archivo", width: 14 },
           { key: "origen", header: "Origen", width: 24 },
@@ -1263,10 +1307,10 @@ export function buildWorkOrderReport(payload: {
           rowHeight: 62,
         },
       },
-      { name: "Consumos", rows: payload.consumos },
-      { name: "Salidas material", rows: payload.issues },
-      { name: "Desechos chatarra", rows: payload.scraps },
-      { name: "Histórico", rows: payload.history },
+      { name: "Consumos", rows: payload.consumos, fitColumnsToPage: true },
+      { name: "Salidas material", rows: payload.issues, fitColumnsToPage: true },
+      { name: "Desechos chatarra", rows: payload.scraps, fitColumnsToPage: true },
+      { name: "Histórico", rows: payload.history, fitColumnsToPage: true },
     ],
   } satisfies ReportDefinition;
 }

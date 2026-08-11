@@ -183,7 +183,7 @@ function amountToWords(value: unknown) {
   return `${numberToSpanishText(integer)} CON ${cents}/100 DOLARES`;
 }
 
-export async function downloadServiceOrderPdf(
+export async function buildServiceOrderPdfBlob(
   order: ServiceOrderLike,
   userName = "Sistema",
 ) {
@@ -215,26 +215,43 @@ export async function downloadServiceOrderPdf(
     maxHeight: 34,
   };
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  SERVICE_ORDER_TEMPLATE.addressLines.forEach((line, index) => {
-    doc.text(
-      index === 0 ? SERVICE_ORDER_TEMPLATE.companyName : line,
-      rightX,
-      38 + index * 12,
-      { align: "right" },
-    );
-  });
+  function drawDocumentHeader() {
+    doc.setFillColor(31, 78, 120);
+    doc.rect(0, 0, pageWidth, 12, "F");
+    drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("ORDEN DE SERVICIO", pageWidth / 2, 110, { align: "center" });
-  doc.setFontSize(10);
-  doc.text(`No. ${safeText(order.codigo, "JCTI-OS-SIN-CODIGO")}`, pageWidth / 2, 128, {
-    align: "center",
-  });
+    doc.setTextColor(31, 41, 55);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.4);
+    SERVICE_ORDER_TEMPLATE.addressLines.forEach((line, index) => {
+      doc.text(
+        index === 0 ? SERVICE_ORDER_TEMPLATE.companyName : line,
+        rightX,
+        38 + index * 11.5,
+        { align: "right" },
+      );
+    });
 
-  let cursorY = 165;
+    doc.setFillColor(236, 244, 251);
+    doc.roundedRect(marginLeft, 99, usableWidth, 42, 7, 7, "F");
+    doc.setTextColor(31, 78, 120);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13.5);
+    doc.text("ORDEN DE SERVICIO", marginLeft + 14, 117);
+    doc.setFontSize(9.5);
+    doc.text(`No. ${safeText(order.codigo, "JCTI-OS-SIN-CODIGO")}`, rightX - 14, 117, {
+      align: "right",
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(91, 107, 123);
+    doc.text("Documento de solicitud y autorización de servicios", marginLeft + 14, 132);
+    doc.setTextColor(31, 41, 55);
+  }
+
+  drawDocumentHeader();
+
+  let cursorY = 166;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   doc.text("PARA:", marginLeft + 20, cursorY);
@@ -267,8 +284,11 @@ export async function downloadServiceOrderPdf(
 
   autoTable(doc, {
     startY: cursorY + 10,
-    margin: { left: marginLeft, right: marginRight, top: 88, bottom: 60 },
+    tableWidth: "wrap",
+    margin: { left: marginLeft, right: marginRight, top: 152, bottom: 46 },
     theme: "grid",
+    rowPageBreak: "auto",
+    showHead: "everyPage",
     styles: {
       font: "helvetica",
       fontSize: 8,
@@ -279,18 +299,20 @@ export async function downloadServiceOrderPdf(
       valign: "middle",
     },
     headStyles: {
-      fillColor: [255, 255, 255],
-      textColor: [0, 0, 0],
+      fillColor: [31, 78, 120],
+      textColor: [255, 255, 255],
       fontStyle: "bold",
       halign: "center",
+      lineColor: [31, 78, 120],
     },
+    alternateRowStyles: { fillColor: [247, 250, 252] },
     columnStyles: {
-      0: { cellWidth: 34, halign: "center" },
-      1: { cellWidth: 82 },
-      2: { cellWidth: 64, halign: "right" },
-      3: { cellWidth: 212 },
-      4: { cellWidth: 72, halign: "right" },
-      5: { cellWidth: 72, halign: "right" },
+      0: { cellWidth: 30, halign: "center" },
+      1: { cellWidth: 74 },
+      2: { cellWidth: 54, halign: "right" },
+      3: { cellWidth: 197 },
+      4: { cellWidth: 82, halign: "right" },
+      5: { cellWidth: 80, halign: "right" },
     },
     head: [[
       "ITEM",
@@ -311,7 +333,7 @@ export async function downloadServiceOrderPdf(
         ])
       : [["1", "", "0.00", "Sin servicios cargados", "0.00", "0.00"]],
     didDrawPage: () => {
-      drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
+      drawDocumentHeader();
     },
   });
 
@@ -329,9 +351,42 @@ export async function downloadServiceOrderPdf(
     ["TOTAL", order.total],
   ] as const;
 
+  const amountLines = doc.splitTextToSize(amountToWords(totalAmount), usableWidth - 76);
+  const deliveryLines = doc.splitTextToSize(safeText(order.lugar_entrega, "-"), usableWidth - 142);
+  const paymentLines = doc.splitTextToSize(safeText(order.forma_pago, "-"), usableWidth - 128);
+  const observationLines = order.observacion
+    ? doc.splitTextToSize(safeText(order.observacion), usableWidth - 124)
+    : [];
+  const closingBlockHeight =
+    totals.length * 16 +
+    22 + amountLines.length * 11 +
+    14 + deliveryLines.length * 11 +
+    10 + paymentLines.length * 11 +
+    (observationLines.length ? 12 + observationLines.length * 11 : 0) +
+    142;
+
+  if (cursorY + closingBlockHeight > pageHeight - 42) {
+    doc.addPage();
+    drawDocumentHeader();
+    cursorY = 166;
+  }
+
+  const totalsBoxX = totalsXLabel - 12;
+  const totalsBoxWidth = rightX - totalsBoxX;
+  const totalsBoxHeight = totals.length * 16 + 14;
+  doc.setFillColor(247, 250, 252);
+  doc.setDrawColor(183, 201, 214);
+  doc.roundedRect(totalsBoxX, cursorY - 13, totalsBoxWidth, totalsBoxHeight, 6, 6, "FD");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  totals.forEach(([label, value]) => {
+  totals.forEach(([label, value], index) => {
+    if (index === totals.length - 1) {
+      doc.setFillColor(217, 234, 247);
+      doc.rect(totalsBoxX, cursorY - 11, totalsBoxWidth, 17, "F");
+      doc.setTextColor(31, 78, 120);
+    } else {
+      doc.setTextColor(31, 41, 55);
+    }
     doc.text(label, totalsXLabel, cursorY);
     doc.text("US$", totalsXCurrency, cursorY, { align: "right" });
     doc.text(formatMoney(value), totalsXValue, cursorY, { align: "right" });
@@ -339,41 +394,34 @@ export async function downloadServiceOrderPdf(
   });
 
   cursorY += 12;
+  doc.setTextColor(31, 41, 55);
   doc.setFont("helvetica", "bold");
   doc.text("SON:", marginLeft + 20, cursorY);
   doc.setFont("helvetica", "normal");
-  doc.text(amountToWords(totalAmount), marginLeft + 56, cursorY, {
-    maxWidth: usableWidth - 60,
-  });
+  doc.text(amountLines, marginLeft + 56, cursorY);
 
-  cursorY += 26;
+  cursorY += Math.max(20, amountLines.length * 11 + 8);
   doc.setFont("helvetica", "bold");
   doc.text("LUGAR DE ENTREGA:", marginLeft + 20, cursorY);
   doc.setFont("helvetica", "normal");
-  doc.text(safeText(order.lugar_entrega, "-"), marginLeft + 130, cursorY);
+  doc.text(deliveryLines, marginLeft + 130, cursorY);
 
-  cursorY += 20;
+  cursorY += Math.max(20, deliveryLines.length * 11 + 7);
   doc.setFont("helvetica", "bold");
   doc.text("FORMA DE PAGO:", marginLeft + 20, cursorY);
   doc.setFont("helvetica", "normal");
-  doc.text(safeText(order.forma_pago, "-"), marginLeft + 116, cursorY);
+  doc.text(paymentLines, marginLeft + 116, cursorY);
+  cursorY += Math.max(18, paymentLines.length * 11 + 6);
 
-  if (order.observacion) {
-    cursorY += 20;
+  if (observationLines.length) {
     doc.setFont("helvetica", "bold");
     doc.text("OBSERVACION:", marginLeft + 20, cursorY);
     doc.setFont("helvetica", "normal");
-    doc.text(safeText(order.observacion), marginLeft + 112, cursorY, {
-      maxWidth: usableWidth - 120,
-    });
+    doc.text(observationLines, marginLeft + 112, cursorY);
+    cursorY += observationLines.length * 11 + 7;
   }
 
-  let signatureY = cursorY + 72;
-  if (signatureY > pageHeight - 90) {
-    doc.addPage();
-    drawPdfCompanyLogo(doc, companyLogoAsset, logoOptions);
-    signatureY = 140;
-  }
+  const signatureY = cursorY + 32;
   doc.setFont("helvetica", "normal");
   doc.text("Atte,", marginLeft + 20, signatureY);
   doc.line(marginLeft + 20, signatureY + 56, marginLeft + 220, signatureY + 56);
@@ -381,12 +429,30 @@ export async function downloadServiceOrderPdf(
   doc.text(SERVICE_ORDER_TEMPLATE.companyName, marginLeft + 20, signatureY + 90);
   doc.text(`RUC: ${SERVICE_ORDER_TEMPLATE.ruc}`, marginLeft + 20, signatureY + 106);
 
-  doc.setFontSize(8);
-  doc.text(
-    `Generado por: ${safeText(userName, "Sistema")}`,
-    marginLeft,
-    pageHeight - 26,
-  );
+  const pageCount = doc.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(183, 201, 214);
+    doc.line(marginLeft, pageHeight - 34, rightX, pageHeight - 34);
+    doc.setTextColor(91, 107, 123);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(`Generado por: ${safeText(userName, "Sistema")}`, marginLeft, pageHeight - 20);
+    doc.text(`Página ${page} de ${pageCount}`, rightX, pageHeight - 20, { align: "right" });
+  }
 
-  doc.save(`${safeText(order.codigo, "orden_servicio")}.pdf`);
+  return doc.output("blob");
+}
+
+export async function downloadServiceOrderPdf(
+  order: ServiceOrderLike,
+  userName = "Sistema",
+) {
+  const blob = await buildServiceOrderPdfBlob(order, userName);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${safeText(order.codigo, "orden_servicio")}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

@@ -1,51 +1,76 @@
 <template>
   <v-row dense class="manual-layout">
     <v-col cols="12">
-      <v-card rounded="xl" class="pa-4 enterprise-surface manual-hero">
+      <v-card rounded="xl" class="enterprise-surface manual-hero">
+        <div class="manual-hero__glow manual-hero__glow--one" />
+        <div class="manual-hero__glow manual-hero__glow--two" />
         <div class="manual-hero__content">
-          <div>
-            <div class="text-overline manual-hero__eyebrow">Manual operativo</div>
-            <div class="text-h5 font-weight-bold">Manual de usuario dinamico</div>
-            <div class="text-body-1 text-medium-emphasis mt-2">
-              El contenido se arma segun los modulos que el usuario tiene permiso de lectura.
+          <div class="manual-hero__copy">
+            <div class="manual-hero__eyebrow">
+              <span class="manual-hero__pulse" />
+              Centro de ayuda operativo
+            </div>
+            <h1 class="manual-hero__title">Guía de trabajo paso a paso</h1>
+            <p class="manual-hero__description">
+              Aprende qué hacer, qué debe existir antes y cómo resolver los inconvenientes más comunes de cada proceso.
+            </p>
+            <div class="manual-hero__meta">
+              <span><v-icon icon="mdi-account-check-outline" size="16" />Contenido según tus módulos disponibles</span>
+              <span><v-icon icon="mdi-shield-check-outline" size="16" />Explicado sin términos técnicos</span>
             </div>
           </div>
 
-          <div class="manual-hero__stats">
-            <v-chip color="primary" variant="tonal" label>
-              {{ filteredManuals.length }} modulos visibles
-            </v-chip>
-            <v-chip color="secondary" variant="tonal" label>
-              {{ categoryOptions.length - 1 }} categorias
-            </v-chip>
-            <v-chip color="success" variant="tonal" label>
-              {{ completedChecklistCount }} checklist completados
-            </v-chip>
+          <div class="manual-hero__actions">
             <v-btn
               color="primary"
-              variant="tonal"
               prepend-icon="mdi-file-pdf-box"
               :loading="exportingPdf"
               :disabled="!accessibleManuals.length"
               @click="downloadManualPdf"
             >
-              Descargar manual PDF
+              Descargar PDF
+            </v-btn>
+            <v-btn
+              color="success"
+              variant="tonal"
+              prepend-icon="mdi-file-excel"
+              :loading="exportingExcel"
+              :disabled="!accessibleManuals.length"
+              @click="downloadManualExcel"
+            >
+              Descargar Excel
             </v-btn>
           </div>
         </div>
 
-        <v-row dense class="mt-3">
-          <v-col cols="12" md="6">
+        <div class="manual-summary-grid">
+          <div class="manual-summary-card manual-summary-card--primary">
+            <div class="manual-summary-card__icon"><v-icon icon="mdi-book-open-page-variant-outline" size="21" /></div>
+            <div><strong>{{ filteredManuals.length }}</strong><span>Módulos disponibles</span></div>
+          </div>
+          <div class="manual-summary-card manual-summary-card--info">
+            <div class="manual-summary-card__icon"><v-icon icon="mdi-shape-outline" size="21" /></div>
+            <div><strong>{{ categoryOptions.length - 1 }}</strong><span>Áreas de trabajo</span></div>
+          </div>
+          <div class="manual-summary-card manual-summary-card--success">
+            <div class="manual-summary-card__icon"><v-icon icon="mdi-check-decagram-outline" size="21" /></div>
+            <div><strong>{{ completedChecklistCount }}</strong><span>Guías completadas</span></div>
+          </div>
+        </div>
+
+        <div class="manual-filter-panel">
+          <div class="manual-filter-panel__search">
             <v-text-field
               v-model="search"
-              label="Buscar modulo, campo o flujo"
+              label="¿Qué proceso necesitas consultar?"
               variant="outlined"
               density="comfortable"
               prepend-inner-icon="mdi-magnify"
               clearable
+              hide-details
             />
-          </v-col>
-          <v-col cols="12" md="6" class="d-flex align-center justify-end flex-wrap" style="gap: 8px;">
+          </div>
+          <div class="manual-filter-panel__categories">
             <v-chip
               v-for="category in categoryOptions"
               :key="category"
@@ -57,8 +82,8 @@
             >
               {{ category }}
             </v-chip>
-          </v-col>
-        </v-row>
+          </div>
+        </div>
       </v-card>
     </v-col>
 
@@ -70,9 +95,13 @@
 
     <template v-else>
       <v-col cols="12" md="4" lg="3">
-        <v-card rounded="xl" class="pa-2 enterprise-surface manual-nav-card">
-          <div class="px-3 pt-2 pb-1 text-subtitle-2 font-weight-bold">
-            Modulos disponibles
+        <v-card rounded="xl" class="enterprise-surface manual-nav-card">
+          <div class="manual-nav-card__header">
+            <div>
+              <strong>Rutas disponibles</strong>
+              <span>Selecciona el proceso que deseas aprender.</span>
+            </div>
+            <v-icon icon="mdi-map-marker-path" color="primary" />
           </div>
           <v-list density="comfortable" nav>
             <v-list-item
@@ -91,12 +120,18 @@
                 {{ manual.title }}
               </v-list-item-title>
               <v-list-item-subtitle>
-                {{ manual.category }} · {{ manual.flow.length }} pasos
+                {{ manual.category }} · {{ manual.flow.length }} pasos · {{ manual.commonErrors.length }} soluciones
               </v-list-item-subtitle>
               <template #append>
-                <v-chip size="small" variant="tonal" color="primary">
-                  {{ checklistProgress(manual) }}/{{ manual.checklist.length }}
-                </v-chip>
+                <div class="manual-nav-progress">
+                  <span>{{ checklistProgress(manual) }}/{{ manual.checklist.length }}</span>
+                  <v-progress-linear
+                    :model-value="checklistPercent(manual)"
+                    color="success"
+                    height="4"
+                    rounded
+                  />
+                </div>
               </template>
             </v-list-item>
           </v-list>
@@ -104,16 +139,17 @@
       </v-col>
 
       <v-col cols="12" md="8" lg="9">
-        <v-card v-if="activeManual" rounded="xl" class="pa-4 enterprise-surface">
+        <v-card v-if="activeManual" rounded="xl" class="enterprise-surface manual-detail-card">
           <div class="manual-detail__header">
-            <div>
+            <div class="manual-detail__copy">
+              <div class="manual-detail__eyebrow">Guía del proceso</div>
               <div class="d-flex align-center flex-wrap" style="gap: 10px;">
-                <div class="text-h6 font-weight-bold">{{ activeManual.title }}</div>
+                <h2 class="manual-detail__title">{{ activeManual.title }}</h2>
                 <v-chip color="primary" variant="tonal" label>
                   {{ activeManual.category }}
                 </v-chip>
               </div>
-              <div class="text-body-1 text-medium-emphasis mt-2">
+              <div class="manual-detail__summary">
                 {{ activeManual.summary }}
               </div>
             </div>
@@ -143,27 +179,36 @@
             </div>
           </div>
 
-          <div class="mt-4 text-body-2 text-medium-emphasis">
-            {{ activeManual.purpose }}
-          </div>
-
-          <div class="mt-4">
-            <div class="text-subtitle-1 font-weight-bold mb-2">Requisitos previos</div>
-            <div class="d-flex flex-wrap" style="gap: 8px;">
-              <v-chip
-                v-for="item in activeManual.prerequisites"
-                :key="item"
-                variant="tonal"
-                color="secondary"
-                label
-              >
-                {{ item }}
-              </v-chip>
+          <div class="manual-purpose-card">
+            <div class="manual-purpose-card__icon"><v-icon icon="mdi-bullseye-arrow" size="22" /></div>
+            <div>
+              <strong>¿Para qué sirve?</strong>
+              <span>{{ activeManual.purpose }}</span>
             </div>
           </div>
 
-          <div class="mt-5">
-            <div class="text-subtitle-1 font-weight-bold mb-3">Flujo recomendado</div>
+          <div class="manual-prerequisites">
+            <div class="manual-section-heading">
+              <div class="manual-section-heading__icon manual-section-heading__icon--warning"><v-icon icon="mdi-sign-caution" size="20" /></div>
+              <div><strong>Antes de empezar</strong><span>Estos pasos previos evitan bloqueos durante el proceso.</span></div>
+            </div>
+            <div class="manual-prerequisites__grid">
+              <div
+                v-for="item in activeManual.prerequisites"
+                :key="item"
+                class="manual-prerequisite"
+              >
+                <v-icon icon="mdi-check-circle-outline" size="18" />
+                <span>{{ item }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="manual-process-section">
+            <div class="manual-section-heading">
+              <div class="manual-section-heading__icon"><v-icon icon="mdi-directions-fork" size="20" /></div>
+              <div><strong>Ruta recomendada</strong><span>Sigue el orden para evitar devolverte o perder información.</span></div>
+            </div>
             <div class="manual-flow">
               <div
                 v-for="(step, index) in activeManual.flow"
@@ -172,13 +217,14 @@
               >
                 <div class="manual-flow__step-index">{{ index + 1 }}</div>
                 <div class="manual-flow__step-card">
-                  <div class="text-subtitle-2 font-weight-bold">{{ step.title }}</div>
+                  <div class="manual-flow__step-kicker">PASO {{ index + 1 }}</div>
+                  <div class="text-subtitle-1 font-weight-bold">{{ step.title }}</div>
                   <div class="text-body-2 text-medium-emphasis mt-2">
                     {{ step.description }}
                   </div>
 
                   <div v-if="step.fields.length" class="mt-3">
-                    <div class="text-caption text-medium-emphasis mb-1">Campos o acciones clave</div>
+                    <div class="text-caption text-medium-emphasis mb-1">Lo que vas a usar</div>
                     <div class="d-flex flex-wrap" style="gap: 6px;">
                       <v-chip
                         v-for="field in step.fields"
@@ -204,7 +250,10 @@
           <v-row dense class="mt-4">
             <v-col cols="12" lg="7">
               <v-card rounded="xl" class="pa-4 manual-section-card">
-                <div class="text-subtitle-1 font-weight-bold mb-3">Campos a cargar</div>
+                <div class="manual-section-heading manual-section-heading--compact">
+                  <div class="manual-section-heading__icon"><v-icon icon="mdi-form-select" size="20" /></div>
+                  <div><strong>Información que debes completar</strong><span>Empieza por los datos marcados como obligatorios.</span></div>
+                </div>
                 <div class="manual-fields">
                   <div
                     v-for="field in sortedFields(activeManual)"
@@ -214,9 +263,6 @@
                     <div class="d-flex align-center justify-space-between" style="gap: 8px;">
                       <div class="font-weight-medium">{{ field.label }}</div>
                       <div class="d-flex flex-wrap justify-end" style="gap: 6px;">
-                        <v-chip size="x-small" variant="tonal" color="info" label>
-                          {{ field.type }}
-                        </v-chip>
                         <v-chip
                           size="x-small"
                           :color="field.required ? 'error' : 'secondary'"
@@ -237,14 +283,20 @@
 
             <v-col cols="12" lg="5">
               <v-card rounded="xl" class="pa-4 manual-section-card mb-3">
-                <div class="text-subtitle-1 font-weight-bold mb-3">Buenas practicas</div>
+                <div class="manual-section-heading manual-section-heading--compact">
+                  <div class="manual-section-heading__icon manual-section-heading__icon--success"><v-icon icon="mdi-lightbulb-on-outline" size="20" /></div>
+                  <div><strong>Recomendaciones útiles</strong><span>Pequeñas verificaciones que previenen reprocesos.</span></div>
+                </div>
                 <ul class="manual-list">
                   <li v-for="tip in activeManual.tips" :key="tip">{{ tip }}</li>
                 </ul>
               </v-card>
 
               <v-card rounded="xl" class="pa-4 manual-section-card">
-                <div class="text-subtitle-1 font-weight-bold mb-3">Alertas al usuario</div>
+                <div class="manual-section-heading manual-section-heading--compact">
+                  <div class="manual-section-heading__icon manual-section-heading__icon--warning"><v-icon icon="mdi-alert-outline" size="20" /></div>
+                  <div><strong>Cuidados importantes</strong><span>Revísalos antes de confirmar una operación.</span></div>
+                </div>
                 <ul class="manual-list">
                   <li v-for="warning in activeManual.warnings" :key="warning">{{ warning }}</li>
                 </ul>
@@ -252,11 +304,50 @@
             </v-col>
           </v-row>
 
+          <div class="manual-errors-section">
+            <div class="manual-section-heading">
+              <div class="manual-section-heading__icon manual-section-heading__icon--error"><v-icon icon="mdi-alert-decagram-outline" size="20" /></div>
+              <div>
+                <strong>Si el proceso no te deja continuar</strong>
+                <span>Busca el caso que se parece a tu problema y completa primero el paso que falta.</span>
+              </div>
+              <v-chip color="error" variant="tonal" label>{{ activeManual.commonErrors.length }} casos frecuentes</v-chip>
+            </div>
+
+            <div class="manual-errors-grid">
+              <article
+                v-for="(issue, index) in activeManual.commonErrors"
+                :key="`${activeManual.routeName}-issue-${index}`"
+                class="manual-error-card"
+              >
+                <div class="manual-error-card__header">
+                  <span>{{ index + 1 }}</span>
+                  <strong>{{ issue.title }}</strong>
+                </div>
+                <div class="manual-error-card__row">
+                  <b>Qué ocurre</b>
+                  <span>{{ issue.whatHappens }}</span>
+                </div>
+                <div class="manual-error-card__row">
+                  <b>Por qué ocurre</b>
+                  <span>{{ issue.why }}</span>
+                </div>
+                <div class="manual-error-card__solution">
+                  <v-icon icon="mdi-check-circle-outline" size="18" />
+                  <div><b>Cómo resolverlo</b><span>{{ issue.howToResolve }}</span></div>
+                </div>
+              </article>
+            </div>
+          </div>
+
           <v-row dense class="mt-2">
             <v-col cols="12" lg="7">
               <v-card rounded="xl" class="pa-4 manual-section-card">
                 <div class="d-flex align-center justify-space-between flex-wrap" style="gap: 8px;">
-                  <div class="text-subtitle-1 font-weight-bold">Checklist interactivo</div>
+                  <div class="manual-section-heading manual-section-heading--compact mb-0">
+                    <div class="manual-section-heading__icon manual-section-heading__icon--success"><v-icon icon="mdi-clipboard-check-outline" size="20" /></div>
+                    <div><strong>Verificación final</strong><span>Marca cada punto antes de cerrar el proceso.</span></div>
+                  </div>
                   <v-chip color="success" variant="tonal" label>
                     {{ checklistProgress(activeManual) }}/{{ activeManual.checklist.length }} completado
                   </v-chip>
@@ -281,7 +372,10 @@
 
             <v-col cols="12" lg="5">
               <v-card rounded="xl" class="pa-4 manual-section-card">
-                <div class="text-subtitle-1 font-weight-bold mb-3">Modulos relacionados</div>
+                <div class="manual-section-heading manual-section-heading--compact">
+                  <div class="manual-section-heading__icon"><v-icon icon="mdi-link-variant" size="20" /></div>
+                  <div><strong>Procesos relacionados</strong><span>Ábrelos cuando necesites completar un paso previo.</span></div>
+                </div>
                 <div v-if="resolvedRelatedManuals(activeManual).length" class="d-flex flex-wrap" style="gap: 8px;">
                   <v-chip
                     v-for="related in resolvedRelatedManuals(activeManual)"
@@ -296,7 +390,7 @@
                   </v-chip>
                 </div>
                 <div v-else class="text-body-2 text-medium-emphasis">
-                  Este modulo no tiene relaciones directas visibles para el usuario actual.
+                  Este proceso no tiene relaciones directas visibles para tu usuario.
                 </div>
               </v-card>
             </v-col>
@@ -321,6 +415,15 @@ import {
 import type { MenuNode } from "@/app/types/menu.types";
 import { findMenuRouteByValue } from "@/app/utils/menu-route-catalog";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import {
+  downloadReportExcel,
+  type ReportDefinition,
+} from "@/app/utils/maintenance-intelligence-reports";
+import {
+  buildUserManualExcelReport,
+  buildUserManualPdfBlob,
+  userManualFileName,
+} from "@/app/utils/user-manual-documents";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -332,6 +435,7 @@ const selectedCategory = ref("Todas");
 const activeManualId = ref("");
 const checklistState = ref<Record<string, boolean>>({});
 const exportingPdf = ref(false);
+const exportingExcel = ref(false);
 
 function flattenMenu(nodes: MenuNode[]): MenuNode[] {
   return (nodes ?? []).flatMap((node) => [node, ...flattenMenu(node.children ?? [])]);
@@ -397,6 +501,12 @@ const filteredManuals = computed(() => {
       ...manual.prerequisites,
       ...manual.tips,
       ...manual.warnings,
+      ...manual.commonErrors.flatMap((issue) => [
+        issue.title,
+        issue.whatHappens,
+        issue.why,
+        issue.howToResolve,
+      ]),
       ...manual.checklist,
       ...manual.flow.flatMap((item) => [item.title, item.description, ...item.fields, ...item.checks]),
       ...manual.fields.flatMap((field) => [field.label, field.type, field.note]),
@@ -437,6 +547,11 @@ function updateChecklist(manual: UserManualDefinition, index: number, checked: b
 
 function checklistProgress(manual: UserManualDefinition) {
   return manual.checklist.filter((_, index) => isChecklistChecked(manual, index)).length;
+}
+
+function checklistPercent(manual: UserManualDefinition) {
+  if (!manual.checklist.length) return 0;
+  return (checklistProgress(manual) / manual.checklist.length) * 100;
 }
 
 function markChecklist(manual: UserManualDefinition, checked: boolean) {
@@ -514,6 +629,116 @@ function buildManualModuleGroups(manuals: UserManualDefinition[]) {
   return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, "es"));
 }
 
+function buildManualExcelReportLegacy(manuals: UserManualDefinition[]): ReportDefinition {
+  const userLabel = String(auth.user?.nameSurname || auth.user?.nameUser || "Usuario");
+  const roleLabel = String(auth.user?.role?.nombre || "Sin rol asignado");
+
+  return {
+    fileName: `manual_usuario_${manualFileSlug(roleLabel)}_${new Date().toISOString().slice(0, 10)}`,
+    title: "Manual de usuario KPI Justice",
+    subtitle: `Guía paso a paso para ${userLabel}. Incluye únicamente los procesos disponibles para su perfil.`,
+    generatedAt: new Date().toISOString(),
+    summary: [
+      { label: "Usuario", value: userLabel },
+      { label: "Perfil", value: roleLabel },
+      { label: "Procesos incluidos", value: manuals.length },
+      { label: "Guías completadas", value: completedChecklistCount.value },
+    ],
+    sheets: [
+      {
+        name: "Ruta de trabajo",
+        note: "Sigue los pasos en el orden indicado. La columna Verifica antes de avanzar ayuda a prevenir errores.",
+        groupBy: ["modulo", "categoria"],
+        rows: manuals.flatMap((manual) =>
+          manual.flow.map((step, index) => ({
+            modulo: manual.title,
+            categoria: manual.category,
+            paso: index + 1,
+            accion: step.title,
+            que_hacer: step.description,
+            elementos_a_usar: step.fields.join(" | ") || "No aplica",
+            verifica_antes_de_avanzar: step.checks.join(" | ") || "Continúa con el siguiente paso",
+          })),
+        ),
+      },
+      {
+        name: "Antes de empezar",
+        note: "Si falta alguno de estos puntos, completa primero el proceso de origen.",
+        groupBy: ["modulo", "categoria"],
+        rows: manuals.flatMap((manual) =>
+          manual.prerequisites.map((item, index) => ({
+            modulo: manual.title,
+            categoria: manual.category,
+            orden: index + 1,
+            requisito_previo: item,
+          })),
+        ),
+      },
+      {
+        name: "Datos a completar",
+        note: "Los datos obligatorios deben completarse antes de guardar. Las indicaciones explican cómo utilizarlos.",
+        groupBy: ["modulo", "categoria"],
+        rows: manuals.flatMap((manual) =>
+          sortedFields(manual).map((field) => ({
+            modulo: manual.title,
+            categoria: manual.category,
+            dato: field.label,
+            es_obligatorio: field.required ? "Sí" : "No",
+            como_completarlo: field.note,
+          })),
+        ),
+      },
+      {
+        name: "Solución de problemas",
+        note: "Identifica qué ocurre, revisa el proceso anterior y aplica la solución recomendada.",
+        groupBy: ["modulo", "categoria"],
+        rows: manuals.flatMap((manual) =>
+          manual.commonErrors.map((issue) => ({
+            modulo: manual.title,
+            categoria: manual.category,
+            inconveniente: issue.title,
+            que_ocurre: issue.whatHappens,
+            por_que_ocurre: issue.why,
+            como_resolverlo: issue.howToResolve,
+          })),
+        ),
+      },
+      {
+        name: "Verificación final",
+        note: "Utiliza esta lista para confirmar que el proceso quedó completo y listo para el siguiente paso.",
+        groupBy: ["modulo", "categoria"],
+        rows: manuals.flatMap((manual) =>
+          manual.checklist.map((item, index) => ({
+            modulo: manual.title,
+            categoria: manual.category,
+            estado: isChecklistChecked(manual, index) ? "Completado" : "Pendiente",
+            verificacion: item,
+          })),
+        ),
+      },
+    ],
+    orientation: "landscape",
+  };
+}
+
+async function downloadManualExcelLegacy() {
+  const manuals = accessibleManuals.value;
+  if (!manuals.length) {
+    ui.error("No hay módulos disponibles para generar el manual.");
+    return;
+  }
+
+  exportingExcel.value = true;
+  try {
+    await downloadReportExcel(buildManualExcelReportLegacy(manuals));
+    ui.success("Manual descargado en Excel.");
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo descargar el manual en Excel.");
+  } finally {
+    exportingExcel.value = false;
+  }
+}
+
 function addManualPdfFooter(doc: any) {
   const totalPages = doc.getNumberOfPages();
   for (let page = 1; page <= totalPages; page += 1) {
@@ -532,7 +757,7 @@ function addManualPdfFooter(doc: any) {
   }
 }
 
-async function downloadManualPdf() {
+async function downloadManualPdfLegacy() {
   const manuals = accessibleManuals.value;
   if (!manuals.length) {
     ui.error("No hay modulos disponibles para generar el manual.");
@@ -559,10 +784,12 @@ async function downloadManualPdf() {
 
     function drawHeader() {
       doc.setFillColor(31, 78, 120);
-      doc.rect(0, 0, pageWidth, 48, "F");
+      doc.rect(0, 0, pageWidth, 56, "F");
+      doc.setFillColor(244, 177, 131);
+      doc.rect(0, 56, pageWidth, 4, "F");
       drawPdfCompanyLogo(doc, companyLogoAsset, {
         marginX,
-        y: 10,
+        y: 12,
         maxWidth: 94,
         maxHeight: 28,
       });
@@ -570,9 +797,9 @@ async function downloadManualPdf() {
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.text("KPI Justice", headerTextX, 29);
+      doc.text("KPI Justice", headerTextX, 32);
       doc.setFont("helvetica", "normal");
-      doc.text("Manual de usuario", pageWidth - marginX, 29, { align: "right" });
+      doc.text("Guía de trabajo paso a paso", pageWidth - marginX, 32, { align: "right" });
       doc.setTextColor(31, 41, 55);
     }
 
@@ -585,14 +812,14 @@ async function downloadManualPdf() {
 
     function sectionTitle(title: string, y: number) {
       y = ensureSpace(y, 42);
+      doc.setFillColor(236, 244, 251);
+      doc.roundedRect(marginX, y - 15, contentWidth, 28, 6, 6, "F");
       doc.setTextColor(31, 78, 120);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(13);
-      doc.text(pdfText(title), marginX, y);
-      doc.setDrawColor(31, 78, 120);
-      doc.line(marginX, y + 6, pageWidth - marginX, y + 6);
+      doc.setFontSize(11.5);
+      doc.text(pdfText(title), marginX + 10, y + 3);
       doc.setTextColor(31, 41, 55);
-      return y + 24;
+      return y + 25;
     }
 
     function paragraph(text: unknown, y: number, fontSize = 9) {
@@ -616,11 +843,12 @@ async function downloadManualPdf() {
         margin: { left: marginX, right: marginX, top: headerTop, bottom: 58 },
         styles: {
           font: "helvetica",
-          fontSize: 7.8,
-          cellPadding: 5,
+          fontSize: 7.6,
+          cellPadding: 5.5,
           lineColor: [183, 201, 214],
-          lineWidth: 0.4,
+          lineWidth: 0.25,
           valign: "top",
+          overflow: "linebreak",
         },
         headStyles: {
           fillColor: [31, 78, 120],
@@ -634,7 +862,9 @@ async function downloadManualPdf() {
     }
 
     doc.setFillColor(31, 78, 120);
-    doc.rect(0, 0, pageWidth, 150, "F");
+    doc.rect(0, 0, pageWidth, 174, "F");
+    doc.setFillColor(244, 177, 131);
+    doc.rect(0, 174, pageWidth, 6, "F");
     drawPdfCompanyLogo(doc, companyLogoAsset, {
       marginX,
       y: 24,
@@ -644,24 +874,24 @@ async function downloadManualPdf() {
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(24);
-    doc.text("Manual de Usuario", marginX, 92);
+    doc.text("Guía de Usuario", marginX, 96);
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
-    doc.text("Guia operativa consolidada por permisos de acceso", marginX, 116);
-    doc.text("KPI Justice", marginX, 136);
+    doc.text("Procesos explicados paso a paso, con requisitos y soluciones", marginX, 122);
+    doc.text("KPI Justice", marginX, 146);
 
     doc.setTextColor(31, 41, 55);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("Informacion del documento", marginX, 196);
+    doc.text("Tu guía personalizada", marginX, 212);
     autoTable(doc, {
-      startY: 216,
+      startY: 230,
       body: [
         ["Usuario", userLabel],
-        ["Rol", roleLabel],
+        ["Perfil de trabajo", roleLabel],
         ["Generado", generatedAt],
-        ["Modulos incluidos", manuals.length],
-        ["Alcance", "Solo se incluyen modulos con permiso de lectura para el usuario actual."],
+        ["Procesos incluidos", manuals.length],
+        ["Contenido", "Se muestran únicamente los procesos disponibles para este usuario."],
       ],
       theme: "grid",
       margin: { left: marginX, right: marginX },
@@ -671,19 +901,19 @@ async function downloadManualPdf() {
         1: { cellWidth: contentWidth - 150 },
       },
     });
-    let y = ((doc as any).lastAutoTable?.finalY ?? 290) + 28;
-    y = sectionTitle("Proposito", y);
+    let y = ((doc as any).lastAutoTable?.finalY ?? 304) + 28;
+    y = sectionTitle("Cómo utilizar esta guía", y);
     y = paragraph(
-      "Este manual consolida los flujos de uso, campos principales, controles esperados y recomendaciones operativas de los modulos disponibles para el usuario. Debe utilizarse como guia de consulta para ejecutar procesos con trazabilidad y consistencia.",
+      "Busca el proceso que deseas realizar, confirma primero los requisitos, sigue los pasos en orden y utiliza la sección de solución de problemas cuando el sistema no te permita continuar. Finaliza marcando la lista de verificación.",
       y,
       10,
     );
 
     doc.addPage();
     drawHeader();
-    y = sectionTitle("Indice general", headerTop);
+    y = sectionTitle("Índice general", headerTop);
     y = paragraph(
-      "Los modulos se agrupan por categoria funcional. Cada capitulo contiene objetivo, requisitos previos, flujo operativo, campos a cargar, buenas practicas, alertas y checklist.",
+      "Los procesos están agrupados por área de trabajo. Cada capítulo explica para qué sirve, qué debe existir antes, qué información completar, errores frecuentes y cómo confirmar que todo quedó listo.",
       y,
     );
     for (const [category, items] of buildManualModuleGroups(manuals)) {
@@ -709,16 +939,16 @@ async function downloadManualPdf() {
       moduleY += 18;
       moduleY = paragraph(manual.summary, moduleY, 9);
 
-      moduleY = sectionTitle("Objetivo y alcance", moduleY + 4);
+      moduleY = sectionTitle("¿Para qué sirve?", moduleY + 4);
       moduleY = paragraph(manual.purpose, moduleY, 9);
 
-      moduleY = sectionTitle("Requisitos previos", moduleY + 4);
+      moduleY = sectionTitle("Antes de empezar", moduleY + 4);
       moduleY = paragraph(manualListText(manual.prerequisites), moduleY, 9);
 
-      moduleY = sectionTitle("Flujo operativo", moduleY + 4);
+      moduleY = sectionTitle("Ruta recomendada", moduleY + 4);
       moduleY = table(
         moduleY,
-        ["No.", "Paso", "Descripcion", "Campos o acciones", "Controles"],
+        ["No.", "Paso", "Qué hacer", "Lo que vas a usar", "Verifica antes de avanzar"],
         manual.flow.map((step, index) => [
           index + 1,
           step.title,
@@ -728,29 +958,40 @@ async function downloadManualPdf() {
         ]),
       );
 
-      moduleY = sectionTitle("Campos a cargar", moduleY + 4);
+      moduleY = sectionTitle("Información que debes completar", moduleY + 4);
       moduleY = table(
         moduleY,
-        ["Campo", "Tipo", "Requerido", "Observacion"],
+        ["Dato", "Obligatorio", "Cómo completarlo"],
         sortedFields(manual).map((field) => [
           field.label,
-          field.type,
           field.required ? "Si" : "No",
           field.note,
         ]),
       );
 
-      moduleY = sectionTitle("Buenas practicas y alertas", moduleY + 4);
+      moduleY = sectionTitle("Recomendaciones y cuidados", moduleY + 4);
       moduleY = table(
         moduleY,
         ["Tipo", "Detalle"],
         [
-          ...manual.tips.map((item) => ["Buena practica", item]),
-          ...manual.warnings.map((item) => ["Alerta", item]),
+          ...manual.tips.map((item) => ["Recomendación", item]),
+          ...manual.warnings.map((item) => ["Cuidado", item]),
         ],
       );
 
-      moduleY = sectionTitle("Checklist operativo", moduleY + 4);
+      moduleY = sectionTitle("Si el proceso no te deja continuar", moduleY + 4);
+      moduleY = table(
+        moduleY,
+        ["Inconveniente", "Qué ocurre", "Por qué ocurre", "Cómo resolverlo"],
+        manual.commonErrors.map((issue) => [
+          issue.title,
+          issue.whatHappens,
+          issue.why,
+          issue.howToResolve,
+        ]),
+      );
+
+      moduleY = sectionTitle("Verificación final", moduleY + 4);
       table(
         moduleY,
         ["Estado", "Verificacion"],
@@ -763,6 +1004,61 @@ async function downloadManualPdf() {
 
     addManualPdfFooter(doc);
     doc.save(`manual_usuario_${manualFileSlug(roleLabel)}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    ui.success("Manual completo descargado en PDF.");
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo descargar el manual en PDF.");
+  } finally {
+    exportingPdf.value = false;
+  }
+}
+
+// Conserva los generadores anteriores como respaldo mientras las descargas activas
+// utilizan el formato unificado y validado en user-manual-documents.
+void downloadManualExcelLegacy;
+void downloadManualPdfLegacy;
+
+function manualDocumentContext() {
+  return {
+    manuals: accessibleManuals.value,
+    userLabel: String(auth.user?.nameSurname || auth.user?.nameUser || "Usuario"),
+    roleLabel: String(auth.user?.role?.nombre || "Sin rol asignado"),
+    generatedAt: new Date(),
+    isChecklistChecked,
+  };
+}
+
+async function downloadManualExcel() {
+  const context = manualDocumentContext();
+  if (!context.manuals.length) {
+    ui.error("No hay módulos disponibles para generar el manual.");
+    return;
+  }
+  exportingExcel.value = true;
+  try {
+    await downloadReportExcel(buildUserManualExcelReport(context));
+    ui.success("Manual descargado en Excel.");
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo descargar el manual en Excel.");
+  } finally {
+    exportingExcel.value = false;
+  }
+}
+
+async function downloadManualPdf() {
+  const context = manualDocumentContext();
+  if (!context.manuals.length) {
+    ui.error("No hay módulos disponibles para generar el manual.");
+    return;
+  }
+  exportingPdf.value = true;
+  try {
+    const blob = await buildUserManualPdfBlob(context);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${userManualFileName(context.roleLabel, context.generatedAt)}.pdf`;
+    anchor.click();
+    URL.revokeObjectURL(url);
     ui.success("Manual completo descargado en PDF.");
   } catch (error: any) {
     ui.error(error?.message || "No se pudo descargar el manual en PDF.");
@@ -811,14 +1107,46 @@ watch(manualStorageKey, loadChecklistState, { immediate: true });
 
 <style scoped>
 .manual-layout {
+  --manual-primary: 37, 99, 235;
+  --manual-info: 8, 145, 178;
+  --manual-success: 22, 163, 74;
+  --manual-warning: 217, 119, 6;
+  --manual-error: 220, 38, 38;
   align-items: flex-start;
 }
 
 .manual-hero {
-  border: 1px solid var(--surface-border);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(22px, 3vw, 34px);
+  border: 1px solid rgba(var(--manual-primary), 0.18);
   background:
-    radial-gradient(circle at top right, rgba(var(--v-theme-primary), 0.1), transparent 32%),
-    linear-gradient(180deg, rgba(var(--v-theme-surface), 0.98), rgba(var(--v-theme-surface), 0.92));
+    linear-gradient(132deg, rgba(var(--manual-primary), 0.13), transparent 48%),
+    rgb(var(--v-theme-surface));
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.manual-hero__glow {
+  position: absolute;
+  z-index: -1;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.manual-hero__glow--one {
+  top: -215px;
+  right: 3%;
+  background: rgba(var(--manual-primary), 0.17);
+}
+
+.manual-hero__glow--two {
+  right: 34%;
+  bottom: -270px;
+  background: rgba(var(--manual-info), 0.11);
 }
 
 .manual-hero__content {
@@ -829,27 +1157,217 @@ watch(manualStorageKey, loadChecklistState, { immediate: true });
   flex-wrap: wrap;
 }
 
-.manual-hero__eyebrow {
-  color: var(--app-muted-text);
-  letter-spacing: 0.12em;
+.manual-hero__copy {
+  max-width: 760px;
 }
 
-.manual-hero__stats {
+.manual-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.manual-hero__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 0 0 rgba(var(--manual-primary), 0.36);
+  animation: manual-pulse 2.2s infinite;
+}
+
+.manual-hero__title {
+  margin: 9px 0 6px;
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
+  font-weight: 850;
+  letter-spacing: -0.04em;
+  line-height: 1.08;
+}
+
+.manual-hero__description {
+  max-width: 700px;
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.96rem;
+  line-height: 1.6;
+}
+
+.manual-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin-top: 17px;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.manual-hero__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.manual-hero__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
 }
 
+.manual-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 27px;
+}
+
+.manual-summary-card {
+  --summary-tone: var(--manual-primary);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--summary-tone), 0.17);
+  border-radius: 16px;
+  background: rgba(var(--v-theme-surface), 0.72);
+  backdrop-filter: blur(10px);
+}
+
+.manual-summary-card--info { --summary-tone: var(--manual-info); }
+.manual-summary-card--success { --summary-tone: var(--manual-success); }
+
+.manual-summary-card__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 13px;
+  color: rgba(var(--summary-tone), 0.96);
+  background: rgba(var(--summary-tone), 0.12);
+}
+
+.manual-summary-card strong,
+.manual-summary-card span {
+  display: block;
+}
+
+.manual-summary-card strong {
+  font-size: 1.2rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.manual-summary-card span {
+  margin-top: 5px;
+  color: rgba(var(--v-theme-on-surface), 0.58);
+  font-size: 0.73rem;
+  font-weight: 600;
+}
+
+.manual-filter-panel {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(360px, 1.5fr);
+  gap: 16px;
+  align-items: center;
+  margin-top: 13px;
+  padding: 14px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 18px;
+  background: rgba(var(--v-theme-surface), 0.76);
+}
+
+.manual-filter-panel__categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
 .manual-nav-card {
   position: sticky;
   top: 88px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
+}
+
+.manual-nav-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 16px 12px;
+}
+
+.manual-nav-card__header strong,
+.manual-nav-card__header span {
+  display: block;
+}
+
+.manual-nav-card__header strong {
+  font-size: 0.9rem;
+}
+
+.manual-nav-card__header span {
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-size: 0.7rem;
+}
+
+.manual-nav-card :deep(.v-list) {
+  padding: 6px 8px 12px;
+  background: transparent;
+}
+
+.manual-nav-card :deep(.v-list-item) {
+  min-height: 66px;
+  margin-top: 5px;
+  border: 1px solid transparent;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.manual-nav-card :deep(.v-list-item:hover) {
+  transform: translateX(2px);
+  border-color: rgba(var(--manual-primary), 0.12);
+  background: rgba(var(--manual-primary), 0.055);
+}
+
+.manual-nav-card :deep(.v-list-item--active) {
+  border-color: rgba(var(--manual-primary), 0.2);
+  background: rgba(var(--manual-primary), 0.09);
 }
 
 .manual-nav-avatar {
-  border: 1px solid var(--surface-border);
-  background: rgba(var(--v-theme-primary), 0.08);
+  border: 1px solid rgba(var(--manual-primary), 0.18);
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--manual-primary), 0.1);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.manual-nav-progress {
+  display: grid;
+  width: 42px;
+  gap: 5px;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-size: 0.65rem;
   font-weight: 700;
+  text-align: right;
+}
+
+.manual-detail-card {
+  overflow: hidden;
+  padding: clamp(18px, 2.5vw, 28px);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  box-shadow: 0 15px 42px rgba(15, 23, 42, 0.07);
 }
 
 .manual-detail__header {
@@ -860,48 +1378,231 @@ watch(manualStorageKey, loadChecklistState, { immediate: true });
   align-items: flex-start;
 }
 
+.manual-detail__copy {
+  max-width: 760px;
+}
+
+.manual-detail__eyebrow,
+.manual-flow__step-kicker {
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.manual-detail__title {
+  margin: 4px 0 0;
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.manual-detail__summary {
+  margin-top: 9px;
+  color: rgba(var(--v-theme-on-surface), 0.64);
+  font-size: 0.87rem;
+  line-height: 1.55;
+}
+
+.manual-purpose-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid rgba(var(--manual-info), 0.16);
+  border-radius: 16px;
+  background: linear-gradient(115deg, rgba(var(--manual-info), 0.09), rgba(var(--manual-primary), 0.035));
+}
+
+.manual-purpose-card__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 12px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--manual-primary), 0.11);
+}
+
+.manual-purpose-card strong,
+.manual-purpose-card span {
+  display: block;
+}
+
+.manual-purpose-card strong {
+  font-size: 0.82rem;
+}
+
+.manual-purpose-card span {
+  margin-top: 4px;
+  color: rgba(var(--v-theme-on-surface), 0.66);
+  font-size: 0.81rem;
+  line-height: 1.55;
+}
+
+.manual-prerequisites,
+.manual-process-section,
+.manual-errors-section {
+  margin-top: 24px;
+}
+
+.manual-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
+}
+
+.manual-section-heading > div:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.manual-section-heading strong,
+.manual-section-heading span {
+  display: block;
+}
+
+.manual-section-heading strong {
+  font-size: 0.9rem;
+}
+
+.manual-section-heading span {
+  margin-top: 2px;
+  color: rgba(var(--v-theme-on-surface), 0.56);
+  font-size: 0.72rem;
+}
+
+.manual-section-heading--compact {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.manual-section-heading--compact.mb-0 {
+  margin-bottom: 0;
+}
+
+.manual-section-heading__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 39px;
+  height: 39px;
+  place-items: center;
+  border-radius: 12px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--manual-primary), 0.11);
+}
+
+.manual-section-heading__icon--success {
+  color: rgb(var(--manual-success));
+  background: rgba(var(--manual-success), 0.11);
+}
+
+.manual-section-heading__icon--warning {
+  color: rgb(var(--manual-warning));
+  background: rgba(var(--manual-warning), 0.11);
+}
+
+.manual-section-heading__icon--error {
+  color: rgb(var(--manual-error));
+  background: rgba(var(--manual-error), 0.1);
+}
+
+.manual-prerequisites__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.manual-prerequisite {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px 13px;
+  border: 1px solid rgba(var(--manual-warning), 0.15);
+  border-radius: 13px;
+  color: rgba(var(--v-theme-on-surface), 0.71);
+  background: rgba(var(--manual-warning), 0.045);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.manual-prerequisite .v-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: rgb(var(--manual-warning));
+}
+
 .manual-flow {
   display: grid;
-  gap: 14px;
+  gap: 11px;
 }
 
 .manual-flow__step {
+  position: relative;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 12px;
-  align-items: stretch;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 13px;
 }
 
 .manual-flow__step-index {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 14px;
-  border-radius: 18px;
-  background: rgba(var(--v-theme-primary), 0.1);
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgba(var(--manual-primary), 0.18);
+  border-radius: 14px;
+  background: rgba(var(--manual-primary), 0.1);
   color: rgb(var(--v-theme-primary));
-  font-weight: 700;
+  font-weight: 850;
 }
 
 .manual-flow__step-card,
 .manual-section-card,
 .manual-field {
-  border: 1px solid var(--surface-border);
-  background: rgba(var(--v-theme-surface), 0.82);
-  border-radius: 20px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: rgba(var(--v-theme-surface), 0.9);
 }
 
 .manual-flow__step-card {
-  padding: 16px;
+  padding: 17px;
+  border-radius: 17px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.manual-flow__step-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--manual-primary), 0.22);
+}
+
+.manual-flow__step-kicker {
+  margin-bottom: 3px;
+  font-size: 0.6rem;
 }
 
 .manual-fields {
   display: grid;
-  gap: 12px;
+  gap: 9px;
 }
 
 .manual-field {
-  padding: 14px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.manual-field:hover {
+  border-color: rgba(var(--manual-primary), 0.18);
+  background: rgba(var(--manual-primary), 0.035);
+}
+
+.manual-section-card {
+  border-radius: 18px !important;
+  box-shadow: 0 9px 28px rgba(15, 23, 42, 0.045);
 }
 
 .manual-list {
@@ -909,19 +1610,172 @@ watch(manualStorageKey, loadChecklistState, { immediate: true });
   padding-left: 18px;
   display: grid;
   gap: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font-size: 0.79rem;
+  line-height: 1.5;
+}
+
+.manual-errors-section {
+  padding: 18px;
+  border: 1px solid rgba(var(--manual-error), 0.13);
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(var(--manual-error), 0.045), rgba(var(--v-theme-surface), 0.9) 46%);
+}
+
+.manual-errors-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.manual-error-card {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.045);
+}
+
+.manual-error-card__header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(var(--manual-error), 0.1);
+  background: rgba(var(--manual-error), 0.055);
+}
+
+.manual-error-card__header > span {
+  display: grid;
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 8px;
+  color: rgb(var(--manual-error));
+  background: rgba(var(--manual-error), 0.12);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.manual-error-card__header strong {
+  font-size: 0.82rem;
+}
+
+.manual-error-card__row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 9px;
+  padding: 11px 14px 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.manual-error-card__row b {
+  color: rgba(var(--v-theme-on-surface), 0.72);
+}
+
+.manual-error-card__row span {
+  color: rgba(var(--v-theme-on-surface), 0.59);
+}
+
+.manual-error-card__solution {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 12px 13px 13px;
+  padding: 11px;
+  border-radius: 12px;
+  color: rgb(var(--manual-success));
+  background: rgba(var(--manual-success), 0.075);
+}
+
+.manual-error-card__solution .v-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.manual-error-card__solution b,
+.manual-error-card__solution span {
+  display: block;
+}
+
+.manual-error-card__solution b {
+  font-size: 0.72rem;
+}
+
+.manual-error-card__solution span {
+  margin-top: 3px;
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  font-size: 0.74rem;
+  line-height: 1.45;
 }
 
 .cursor-pointer {
   cursor: pointer;
 }
 
+@keyframes manual-pulse {
+  70% { box-shadow: 0 0 0 8px rgba(var(--manual-primary), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--manual-primary), 0); }
+}
+
 @media (max-width: 960px) {
+  .manual-filter-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-filter-panel__categories,
+  .manual-hero__actions {
+    justify-content: flex-start;
+  }
+
+  .manual-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .manual-nav-card {
     position: static;
   }
 
   .manual-flow__step {
     grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .manual-prerequisites__grid,
+  .manual-errors-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 599px) {
+  .manual-hero,
+  .manual-detail-card {
+    padding: 20px 15px;
+  }
+
+  .manual-hero__actions,
+  .manual-hero__actions .v-btn {
+    width: 100%;
+  }
+
+  .manual-detail__header {
+    flex-direction: column;
+  }
+
+  .manual-detail__header > div:last-child,
+  .manual-detail__header .v-btn {
+    width: 100%;
+  }
+
+  .manual-section-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .manual-error-card__row {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 }
 </style>
