@@ -727,6 +727,23 @@
             </v-col>
           </template>
 
+          <v-col cols="12">
+            <v-autocomplete
+              v-model="guideTransporterSelection"
+              :search="guideTransporterSearch"
+              :items="guideTransporterOptions"
+              item-title="title"
+              item-value="value"
+              label="Seleccionar transportista guardado"
+              variant="outlined"
+              :loading="guideTransportersLoading"
+              clearable
+              auto-select-first
+              no-data-text="Sin transportistas registrados"
+              @update:search="handleGuideTransporterSearch"
+              @update:model-value="handleGuideTransporterSelection"
+            />
+          </v-col>
           <v-col cols="12" md="6">
             <v-text-field v-model="guideForm.razon_social_transportista" label="Razón social transportista" variant="outlined" />
           </v-col>
@@ -1158,6 +1175,19 @@ type GuideRecipientOption = GuideRecipientCatalogRow & {
   title: string;
 };
 
+type GuideTransporterCatalogRow = {
+  razon_social_transportista?: string | null;
+  tipo_identificacion_transportista?: string | null;
+  identificacion_transportista?: string | null;
+  placa?: string | null;
+  last_used_at?: string | null;
+};
+
+type GuideTransporterOption = GuideTransporterCatalogRow & {
+  value: string;
+  title: string;
+};
+
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
@@ -1213,6 +1243,11 @@ const guideRecipientsLoading = ref(false);
 const guideRecipientSearch = ref("");
 const guideRecipientCatalogHydrating = ref(false);
 let guideRecipientSearchTimer: ReturnType<typeof setTimeout> | null = null;
+const guideTransporters = ref<GuideTransporterCatalogRow[]>([]);
+const guideTransportersLoading = ref(false);
+const guideTransporterSelection = ref("");
+const guideTransporterSearch = ref("");
+let guideTransporterSearchTimer: ReturnType<typeof setTimeout> | null = null;
 const guideProviderLookupLoading = ref(false);
 const guideProviderLookupMessage = ref("");
 const guideProviderLookupError = ref("");
@@ -1469,6 +1504,24 @@ const guideRecipientOptions = computed<GuideRecipientOption[]>(() =>
       };
     })
     .filter((item): item is GuideRecipientOption => Boolean(item)),
+);
+
+const guideTransporterOptions = computed<GuideTransporterOption[]>(() =>
+  guideTransporters.value
+    .map((item) => {
+      const identification = String(item.identificacion_transportista || "").trim();
+      if (!identification) return null;
+      const plate = String(item.placa || "").trim();
+      const businessName = String(item.razon_social_transportista || "").trim();
+      return {
+        ...item,
+        value: `${identification}::${plate}`,
+        title: [businessName || "Sin razón social", identification, plate]
+          .filter(Boolean)
+          .join(" - "),
+      };
+    })
+    .filter((item): item is GuideTransporterOption => Boolean(item)),
 );
 
 const currentStockByProduct = computed(() => {
@@ -1927,6 +1980,12 @@ function clearGuideRecipientSearchTimer() {
   guideRecipientSearchTimer = null;
 }
 
+function clearGuideTransporterSearchTimer() {
+  if (!guideTransporterSearchTimer) return;
+  clearTimeout(guideTransporterSearchTimer);
+  guideTransporterSearchTimer = null;
+}
+
 function clearGuideRecipientLookupFeedback() {
   guideRecipientLookupMessage.value = "";
   guideRecipientLookupError.value = "";
@@ -2205,6 +2264,58 @@ function applyGuideRecipientAutofill(payload: Record<string, unknown> | null | u
   }
 }
 
+function handleGuideTransporterSelection(value: unknown) {
+  const selectedValue = String(value || "");
+  const option = guideTransporterOptions.value.find(
+    (item) => item.value === selectedValue,
+  );
+  if (!option) return;
+  guideForm.razon_social_transportista = String(
+    option.razon_social_transportista || "",
+  );
+  guideForm.tipo_identificacion_transportista = String(
+    option.tipo_identificacion_transportista || "04",
+  );
+  guideForm.identificacion_transportista = String(
+    option.identificacion_transportista || "",
+  );
+  guideForm.placa = String(option.placa || "");
+}
+
+function handleGuideTransporterSearch(value: string) {
+  guideTransporterSearch.value = value || "";
+  clearGuideTransporterSearchTimer();
+  guideTransporterSearchTimer = setTimeout(() => {
+    void loadGuideTransporters(guideTransporterSearch.value);
+  }, 300);
+}
+
+async function loadGuideTransporters(
+  search = guideTransporterSearch.value,
+  force = false,
+) {
+  if (guideTransportersLoading.value && !force) return;
+  guideTransportersLoading.value = true;
+  try {
+    const { data } = await api.get(
+      "/kpi_inventory/guias-remision-sri/transportistas",
+      {
+        params: {
+          search: String(search || "").trim() || undefined,
+          limit: 25,
+        },
+        meta: { skipGlobalLoading: true },
+      } as any,
+    );
+    const payload = data?.data ?? data;
+    guideTransporters.value = Array.isArray(payload) ? payload : [];
+  } catch {
+    guideTransporters.value = [];
+  } finally {
+    guideTransportersLoading.value = false;
+  }
+}
+
 function findGuideRecipientOption(value: unknown) {
   const candidate = typeof value === "object" && value
     ? String((value as GuideRecipientOption).value || (value as GuideRecipientOption).identificacion_destinatario || "")
@@ -2419,8 +2530,11 @@ function resetSriConfigForm() {
 function resetGuideForm() {
   clearGuideRecipientLookupTimer();
   clearGuideRecipientSearchTimer();
+  clearGuideTransporterSearchTimer();
   clearGuideProviderLookupTimer();
   guideRecipientSearch.value = "";
+  guideTransporterSearch.value = "";
+  guideTransporterSelection.value = "";
   guideRecipientCatalogHydrating.value = false;
   guideForm.ambiente = "PRUEBAS";
   guideForm.fecha_emision = formatDateForInput();
@@ -2990,6 +3104,7 @@ async function openGuideDialog(item: TransferRow) {
   resetGuideForm();
   resetGuidePreview();
   void loadGuideRecipients("", true);
+  void loadGuideTransporters("", true);
   try {
     const { data } = await api.get(`/kpi_inventory/guias-remision-sri/prepare/${item.id}`);
     const payload = (data?.data ?? data) as GuideContext;
@@ -3141,7 +3256,10 @@ async function generateGuide() {
       },
     };
     await buildGuidePreview(payload);
-    await loadGuideRecipients("", true);
+    await Promise.all([
+      loadGuideRecipients("", true),
+      loadGuideTransporters("", true),
+    ]);
     ui.success("Guía generada correctamente. Revisa la vista previa y luego autorízala en el SRI.");
     await loadTransfers();
   } catch (error: any) {
@@ -3656,6 +3774,7 @@ onBeforeUnmount(() => {
   clearSriTaxpayerLookupTimer();
   clearGuideRecipientLookupTimer();
   clearGuideRecipientSearchTimer();
+  clearGuideTransporterSearchTimer();
   clearGuideProviderLookupTimer();
   disconnectGuideStatusSocket();
   revokeGuidePreviewUrl();

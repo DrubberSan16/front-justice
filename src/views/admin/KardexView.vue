@@ -268,14 +268,14 @@
             </div>
             <div class="document-editor-table">
               <table class="document-editor-grid">
-                <thead><tr><th class="line-col">#</th><th class="material-col">Material</th><th class="stock-col">Stock actual</th><th class="qty-col">Cantidad</th><th class="obs-col">Observacion</th><th class="action-col"></th></tr></thead>
+                <thead><tr><th class="line-col">#</th><th class="material-col">Material</th><th class="stock-col">Stock actual</th><th class="qty-col">Cantidad</th><th class="obs-col">{{ documentForm.tipo === 'SALIDA' ? 'Responsable' : 'Observacion' }}</th><th class="action-col"></th></tr></thead>
                 <tbody>
                   <tr v-for="(detail, index) in movementDetails" :key="detail.localId">
                     <td class="line-col font-weight-bold">{{ index + 1 }}</td>
                     <td class="material-col"><v-autocomplete v-model="detail.productoId" :items="getProductOptions()" item-title="title" item-value="value" label="Material" variant="outlined" density="comfortable" clearable :loading="movementCatalogLoading" :disabled="movementCatalogLoading || !documentForm.bodegaId || savingDocument" :menu-props="{ maxHeight: 320 }" :no-data-text="documentForm.tipo === 'INGRESO' ? 'No hay materiales registrados' : 'No hay materiales con stock disponible en esta bodega'" /></td>
                     <td class="stock-col"><v-text-field :model-value="getDetailStockLabel(detail)" label="Disponible" variant="outlined" density="comfortable" readonly /></td>
                     <td class="qty-col"><v-text-field v-model="detail.cantidad" type="number" min="0" label="Cantidad" variant="outlined" density="comfortable" :disabled="savingDocument" /><div v-if="detailExceedsStock(detail)" class="text-caption text-error mt-1">Supera el disponible de {{ formatNumberForDisplay(getDetailAvailableStock(detail)) }}.</div></td>
-                    <td class="obs-col"><v-text-field v-model="detail.observacion" label="Observacion" variant="outlined" density="comfortable" :disabled="savingDocument" /></td>
+                    <td class="obs-col"><v-text-field v-model="detail.observacion" :label="documentForm.tipo === 'SALIDA' ? 'Responsable' : 'Observacion'" variant="outlined" density="comfortable" :disabled="savingDocument" /></td>
                     <td class="action-col"><v-btn icon="mdi-delete-outline" variant="text" color="error" density="comfortable" :disabled="movementDetails.length === 1 || savingDocument" @click="removeMovementDetail(detail.localId)" /></td>
                   </tr>
                 </tbody>
