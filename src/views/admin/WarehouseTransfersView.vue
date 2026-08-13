@@ -51,7 +51,7 @@
         <v-autocomplete v-model="sourceWarehouseFilter" :items="sourceWarehouseOptions" item-title="title" item-value="value" label="Bodega origen" variant="outlined" density="compact" clearable />
       </v-col>
       <v-col cols="12" sm="6" md="4">
-        <v-autocomplete v-model="destinationWarehouseFilter" :items="sourceWarehouseOptions" item-title="title" item-value="value" label="Bodega destino" variant="outlined" density="compact" clearable />
+        <v-autocomplete v-model="destinationWarehouseFilter" :items="allDestinationWarehouseOptions" item-title="title" item-value="value" label="Bodega destino" variant="outlined" density="compact" clearable />
       </v-col>
       <v-col cols="12" sm="6" md="3">
         <v-select v-model="transferStatusFilter" :items="transferStatusOptions" label="Estado" variant="outlined" density="compact" clearable />
@@ -1233,9 +1233,11 @@ const transferDateToFilter = ref("");
 const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
+const destinationWarehouses = ref<any[]>([]);
 const products = ref<ProductRow[]>([]);
 const stockRows = ref<StockRow[]>([]);
 const warehousesLoaded = ref(false);
+const destinationWarehousesLoaded = ref(false);
 const productsLoaded = ref(false);
 const pendingOrdersLoaded = ref(false);
 const stockRowsLoaded = ref(false);
@@ -1410,6 +1412,13 @@ const sourceWarehouseOptions = computed<CatalogOption[]>(() =>
   })),
 );
 
+const allDestinationWarehouseOptions = computed<CatalogOption[]>(() =>
+  destinationWarehouses.value.map((item) => ({
+    value: String(item.id),
+    title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
+  })),
+);
+
 const effectiveSourceWarehouseId = computed(
   () => String(selectedOrder.value?.bodega_destino_id || form.bodega_origen_id || ""),
 );
@@ -1422,7 +1431,7 @@ const sourceWarehouseLabel = computed(() => {
 });
 
 const destinationWarehouseOptions = computed<CatalogOption[]>(() =>
-  warehouses.value
+  destinationWarehouses.value
     .filter((item) => String(item.id) !== effectiveSourceWarehouseId.value)
     .map((item) => ({
       value: String(item.id),
@@ -2733,6 +2742,16 @@ async function ensureWarehousesLoaded(force = false) {
   warehousesLoaded.value = true;
 }
 
+async function ensureDestinationWarehousesLoaded(force = false) {
+  if (destinationWarehousesLoaded.value && !force) return;
+  destinationWarehouses.value = await listAllPages(
+    "/kpi_inventory/bodegas/destinos-transferencia",
+    {},
+    { cacheTtlMs: force ? 0 : DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
+  destinationWarehousesLoaded.value = true;
+}
+
 async function ensurePendingOrdersLoaded(force = false) {
   if (pendingOrdersLoaded.value && !force) return;
   await loadPendingOrders();
@@ -2771,6 +2790,7 @@ async function hydrateView() {
     await Promise.all([
       loadTransfers(),
       ensureWarehousesLoaded(true),
+      ensureDestinationWarehousesLoaded(true),
       ensurePendingOrdersLoaded(true),
     ]);
   } catch (error: any) {
@@ -2801,6 +2821,7 @@ async function openCreate() {
   dialog.value = true;
   await Promise.all([
     ensureWarehousesLoaded(),
+    ensureDestinationWarehousesLoaded(true),
     ensurePendingOrdersLoaded(),
     ensureProductsLoaded(),
   ]);
