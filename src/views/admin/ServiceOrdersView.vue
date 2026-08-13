@@ -252,9 +252,20 @@
               Solo se listan materiales con el check <strong>Es servicio</strong>.
             </div>
           </div>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addDetail">
-            Agregar servicio
-          </v-btn>
+          <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <v-btn
+              variant="text"
+              prepend-icon="mdi-refresh"
+              :loading="isRefreshingProducts"
+              :disabled="saving"
+              @click="refreshCatalogProducts"
+            >
+              Actualizar servicios
+            </v-btn>
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addDetail">
+              Agregar servicio
+            </v-btn>
+          </div>
         </div>
 
         <div class="order-details-table">
@@ -284,6 +295,9 @@
                     variant="outlined"
                     density="comfortable"
                     hide-details
+                    :loading="isRefreshingProducts"
+                    :disabled="isRefreshingProducts"
+                    no-data-text="No hay servicios registrados"
                     @update:model-value="handleDetailProductChange(detail)"
                   />
                 </td>
@@ -499,6 +513,7 @@ const suppliersLoaded = ref(false);
 const productsLoaded = ref(false);
 const usersLoaded = ref(false);
 const equipmentsLoaded = ref(false);
+const isRefreshingProducts = ref(false);
 const serviceStatusOptions = [
   { title: "Emitida", value: "EMITIDA" },
   { title: "Servicio realizado", value: "SERVICIO_REALIZADO" },
@@ -793,10 +808,27 @@ async function ensureProductsLoaded(force = false) {
   if (productsLoaded.value && !force) return;
   products.value = await listAllPages(
     "/kpi_inventory/productos",
-    {},
-    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+    { es_servicio: true },
+    { cacheTtlMs: force ? 0 : DEFAULT_CATALOG_CACHE_TTL_MS },
   );
   productsLoaded.value = true;
+}
+
+async function refreshCatalogProducts() {
+  if (isRefreshingProducts.value) return;
+  isRefreshingProducts.value = true;
+  try {
+    await ensureProductsLoaded(true);
+    ui.success("Listado de servicios actualizado.");
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo actualizar el listado de servicios.",
+    );
+  } finally {
+    isRefreshingProducts.value = false;
+  }
 }
 
 async function ensureUsersLoaded(force = false) {
@@ -826,10 +858,10 @@ async function ensureEquipmentsLoaded(force = false) {
   equipmentsLoaded.value = true;
 }
 
-async function loadCatalogs() {
+async function loadCatalogs(forceProducts = false) {
   await Promise.all([
     ensureSuppliersLoaded(),
-    ensureProductsLoaded(),
+    ensureProductsLoaded(forceProducts),
     ensureUsersLoaded(),
     ensureEquipmentsLoaded(),
   ]);
@@ -901,14 +933,14 @@ async function openCreate() {
   editingId.value = null;
   resetForm();
   dialog.value = true;
-  await loadCatalogs();
+  await loadCatalogs(true);
 }
 
 async function openEdit(item: ServiceOrderRow) {
   editingId.value = item.id;
   loading.value = true;
   try {
-    await loadCatalogs();
+    await loadCatalogs(true);
     const { data } = await api.get(`/kpi_inventory/ordenes-servicio/${item.id}`);
     const order = (data?.data ?? data) as any;
     form.codigo = String(order.codigo || "");

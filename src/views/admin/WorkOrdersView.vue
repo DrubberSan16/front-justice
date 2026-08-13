@@ -800,16 +800,27 @@
                   <div class="text-caption text-medium-emphasis">
                     {{ consumoProductOptions.length }} de {{ consumoProductsTotal || 0 }} materiales cargados
                   </div>
-                  <v-btn
-                    v-if="consumoProductsPage < consumoProductsTotalPages"
-                    size="x-small"
-                    variant="text"
-                    prepend-icon="mdi-chevron-down"
-                    :loading="loadingConsumoProducts"
-                    @click="loadMoreConsumoProducts"
-                  >
-                    Cargar más
-                  </v-btn>
+                  <div class="d-flex align-center flex-wrap" style="gap: 6px;">
+                    <v-btn
+                      size="x-small"
+                      variant="text"
+                      prepend-icon="mdi-refresh"
+                      :loading="loadingConsumoProducts"
+                      @click="refreshConsumoProducts"
+                    >
+                      Actualizar
+                    </v-btn>
+                    <v-btn
+                      v-if="consumoProductsPage < consumoProductsTotalPages"
+                      size="x-small"
+                      variant="text"
+                      prepend-icon="mdi-chevron-down"
+                      :loading="loadingConsumoProducts"
+                      @click="loadMoreConsumoProducts"
+                    >
+                      Cargar más
+                    </v-btn>
+                  </div>
                 </div>
               </v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
@@ -953,6 +964,16 @@
                       </div>
                     </div>
                     <div class="d-flex align-center" style="gap:8px; flex-wrap:wrap;">
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        prepend-icon="mdi-refresh"
+                        :loading="loadingScrapProducts"
+                        :disabled="!scrapForm.bodega_origen_id"
+                        @click="refreshScrapProducts"
+                      >
+                        Actualizar materiales
+                      </v-btn>
                       <v-btn
                         v-if="scrapProductsPage < scrapProductsTotalPages"
                         size="small"
@@ -2988,6 +3009,11 @@ async function loadMoreConsumoProducts() {
   await loadConsumoProducts();
 }
 
+async function refreshConsumoProducts() {
+  if (!effectiveConsumoWarehouseId.value || loadingConsumoProducts.value) return;
+  await loadConsumoProducts({ reset: true, search: consumoProductSearch.value });
+}
+
 async function loadScrapProducts(options?: { reset?: boolean }) {
   const warehouseId = String(scrapForm.bodega_origen_id || "").trim();
   if (!warehouseId) {
@@ -3051,6 +3077,11 @@ async function loadMoreScrapProducts() {
   if (scrapProductsPage.value >= scrapProductsTotalPages.value) return;
   scrapProductsPage.value += 1;
   await loadScrapProducts();
+}
+
+async function refreshScrapProducts() {
+  if (!scrapForm.bodega_origen_id || loadingScrapProducts.value) return;
+  await loadScrapProducts({ reset: true });
 }
 
 const consumoRows = computed(() => localConsumos.value.map((item: any) => ({

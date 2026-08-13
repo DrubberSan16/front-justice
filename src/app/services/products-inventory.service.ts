@@ -64,7 +64,7 @@ function toText(v: any): string {
 
 export async function fetchProductsWithStock() {
   const [productos, bodegas, stocks, sucursales, lineas, categorias] = await Promise.all([
-    listAll("/kpi_inventory/productos"),
+    listAllPages("/kpi_inventory/productos", { es_servicio: false }),
     listAll("/kpi_inventory/bodegas"),
     listAll("/kpi_inventory/stock-bodega"),
     listAll("/kpi_inventory/sucursales"),

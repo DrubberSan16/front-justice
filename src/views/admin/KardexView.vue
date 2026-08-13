@@ -244,8 +244,27 @@
             </v-row>
             <v-alert v-if="!documentForm.bodegaId" type="info" variant="tonal" class="mb-4">Selecciona una bodega para habilitar el detalle de materiales.</v-alert>
             <div class="d-flex align-center justify-space-between flex-wrap mb-3" style="gap:12px">
-              <div><div class="text-subtitle-1 font-weight-bold">Detalle de materiales</div><div class="text-body-2 text-medium-emphasis">Agrega los materiales en formato lineal para revisar mejor cada fila.</div></div>
-              <v-btn v-if="canCreate" color="primary" variant="tonal" prepend-icon="mdi-plus" :disabled="movementCatalogLoading || savingDocument" @click="addMovementDetail">Agregar material</v-btn>
+              <div>
+                <div class="text-subtitle-1 font-weight-bold">Detalle de materiales</div>
+                <div class="text-body-2 text-medium-emphasis">
+                  {{ documentForm.tipo === 'INGRESO'
+                    ? 'Puedes seleccionar cualquier material registrado que no sea un servicio.'
+                    : 'Solo se muestran materiales con stock disponible en la bodega seleccionada.' }}
+                </div>
+              </div>
+              <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+                <v-btn
+                  v-if="canCreate"
+                  variant="text"
+                  prepend-icon="mdi-refresh"
+                  :loading="movementCatalogLoading"
+                  :disabled="savingDocument"
+                  @click="refreshMovementCatalogs"
+                >
+                  Actualizar materiales
+                </v-btn>
+                <v-btn v-if="canCreate" color="primary" variant="tonal" prepend-icon="mdi-plus" :disabled="movementCatalogLoading || savingDocument" @click="addMovementDetail">Agregar material</v-btn>
+              </div>
             </div>
             <div class="document-editor-table">
               <table class="document-editor-grid">
@@ -253,7 +272,7 @@
                 <tbody>
                   <tr v-for="(detail, index) in movementDetails" :key="detail.localId">
                     <td class="line-col font-weight-bold">{{ index + 1 }}</td>
-                    <td class="material-col"><v-autocomplete v-model="detail.productoId" :items="getProductOptions()" item-title="title" item-value="value" label="Material" variant="outlined" density="comfortable" clearable :disabled="movementCatalogLoading || !documentForm.bodegaId || savingDocument" :menu-props="{ maxHeight: 320 }" no-data-text="No hay materiales disponibles para esta bodega" /></td>
+                    <td class="material-col"><v-autocomplete v-model="detail.productoId" :items="getProductOptions()" item-title="title" item-value="value" label="Material" variant="outlined" density="comfortable" clearable :loading="movementCatalogLoading" :disabled="movementCatalogLoading || !documentForm.bodegaId || savingDocument" :menu-props="{ maxHeight: 320 }" :no-data-text="documentForm.tipo === 'INGRESO' ? 'No hay materiales registrados' : 'No hay materiales con stock disponible en esta bodega'" /></td>
                     <td class="stock-col"><v-text-field :model-value="getDetailStockLabel(detail)" label="Disponible" variant="outlined" density="comfortable" readonly /></td>
                     <td class="qty-col"><v-text-field v-model="detail.cantidad" type="number" min="0" label="Cantidad" variant="outlined" density="comfortable" :disabled="savingDocument" /><div v-if="detailExceedsStock(detail)" class="text-caption text-error mt-1">Supera el disponible de {{ formatNumberForDisplay(getDetailAvailableStock(detail)) }}.</div></td>
                     <td class="obs-col"><v-text-field v-model="detail.observacion" label="Observacion" variant="outlined" density="comfortable" :disabled="savingDocument" /></td>
@@ -440,7 +459,44 @@ function removeMovementDetail(localId: string) { movementDetails.value = movemen
 function resetMovementDocumentForm() { documentForm.tipo = "INGRESO"; documentForm.fecha = formatDateForInput(); documentForm.bodegaId = ""; documentForm.referencia = ""; documentForm.observacion = ""; movementDetails.value = [createMovementDetail()]; }
 function openMovementDialog(type: MovementType) { if (!canCreate.value) { ui.error("No tienes permisos para registrar ingresos o egresos."); return; } documentForm.tipo = type; movementDialog.open = true; }
 function closeMovementDialog() { if (!savingDocument.value) movementDialog.open = false; }
-async function ensureMovementCatalogsLoaded(force = false) { if (inventoryCatalogLoaded.value && !force) return; movementCatalogLoading.value = true; try { const inventory = await fetchProductsWithStock(); products.value = inventory.productos; bodegas.value = inventory.bodegas; stocks.value = inventory.stocks as StockRow[]; sucursales.value = inventory.sucursales ?? []; lineas.value = inventory.lineas ?? []; categorias.value = inventory.categorias ?? []; inventoryCatalogLoaded.value = true; } catch (error: any) { inventoryCatalogLoaded.value = false; products.value = []; bodegas.value = []; stocks.value = []; sucursales.value = []; lineas.value = []; categorias.value = []; ui.error(error?.response?.data?.message || error?.message || "No se pudieron cargar los catalogos de inventario."); } finally { movementCatalogLoading.value = false; } }
+async function ensureMovementCatalogsLoaded(force = false) {
+  if (inventoryCatalogLoaded.value && !force) return;
+  movementCatalogLoading.value = true;
+  try {
+    const inventory = await fetchProductsWithStock();
+    products.value = (inventory.productos ?? []).filter(
+      (product: any) => !Boolean(product?.es_servicio),
+    );
+    bodegas.value = inventory.bodegas;
+    stocks.value = inventory.stocks as StockRow[];
+    sucursales.value = inventory.sucursales ?? [];
+    lineas.value = inventory.lineas ?? [];
+    categorias.value = inventory.categorias ?? [];
+    inventoryCatalogLoaded.value = true;
+  } catch (error: any) {
+    inventoryCatalogLoaded.value = false;
+    products.value = [];
+    bodegas.value = [];
+    stocks.value = [];
+    sucursales.value = [];
+    lineas.value = [];
+    categorias.value = [];
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudieron cargar los catalogos de inventario.",
+    );
+  } finally {
+    movementCatalogLoading.value = false;
+  }
+}
+
+async function refreshMovementCatalogs() {
+  await ensureMovementCatalogsLoaded(true);
+  if (inventoryCatalogLoaded.value) {
+    ui.success("Listado de materiales actualizado.");
+  }
+}
 function getProductOptions() { if (!documentForm.bodegaId) return []; return products.value.filter((product) => documentForm.tipo !== "SALIDA" || Number(stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`)?.stock_disponible ?? stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`)?.stock_actual ?? 0) > 0).map((product) => { const stock = stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`); const available = stock?.stock_disponible ?? stock?.stock_actual; const stockLabel = stock ? ` · stock disponible ${formatNumberForDisplay(available)}` : ""; return { value: product.id, title: `${buildProductDisplayTitle(product)}${stockLabel}` }; }); }
 function getDetailStockRow(detail: MovementDetailForm) { return !documentForm.bodegaId || !detail.productoId ? null : stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${detail.productoId}`) ?? null; }
 function getDetailAvailableStock(detail: MovementDetailForm) { const stock = getDetailStockRow(detail); return Number(stock?.stock_disponible ?? stock?.stock_actual ?? 0); }
@@ -801,7 +857,7 @@ function startImportPolling(jobId: string) { stopImportPolling(); importPollHand
 async function restoreImportJob() { const jobId = getPersistedImportJobId(); if (!jobId) return; try { await fetchImportJobStatus(jobId); if (importJob.value) startImportPolling(jobId); } catch { persistImportJobId(null); importJob.value = null; } }
 async function processXlsx() { if (!canCreate.value) return ui.error("No tienes permisos para procesar cargas masivas."); const file = getSelectedImportFile(); if (!file) return ui.error("Debes seleccionar un archivo CSV o XLSX."); uploading.value = true; try { const formData = new FormData(); formData.append("file", file); formData.append("requested_by", getUserName()); const { data } = await api.post("/kpi_inventory/kardex/import/upload", formData, { headers: { "Content-Type": "multipart/form-data" } }); const job = data?.data ?? data; importJob.value = job; lastBulkSummary.value = null; xlsxFile.value = null; if (job?.id) { persistImportJobId(job.id); notifyImportLifecycle({ title: "Carga de inventario iniciada", message: "Archivo recibido. El sistema lo esta procesando en segundo plano.", variant: "info", requestPermission: true, tag: "inventory-import-started" }); startImportPolling(job.id); await fetchImportJobStatus(job.id); } else { ui.open("La carga fue recibida, pero no se pudo identificar el job.", "warning"); } } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo procesar la carga masiva."); } finally { uploading.value = false; } }
 async function downloadTemplate() { downloadingTemplate.value = true; try { const response = await api.post("/kpi_inventory/kardex/import/template", null, { responseType: "blob" }); const blob = new Blob([response.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const url = window.URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "FORMATO_CARGA_MASIVA_INVENTARIO.xlsx"; link.click(); window.URL.revokeObjectURL(url); } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo descargar el formato."); } finally { downloadingTemplate.value = false; } }
-watch(() => movementDialog.open, async (open) => { if (open) await ensureMovementCatalogsLoaded(); else if (!savingDocument.value) resetMovementDocumentForm(); });
+watch(() => movementDialog.open, async (open) => { if (open) await ensureMovementCatalogsLoaded(true); else if (!savingDocument.value) resetMovementDocumentForm(); });
 watch(() => documentForm.tipo, () => { if (documentForm.tipo !== "SALIDA") return; movementDetails.value = movementDetails.value.map((detail) => !detail.productoId || getDetailAvailableStock(detail) > 0 ? detail : { ...detail, productoId: "", cantidad: "" }); });
 watch(() => documentForm.bodegaId, () => { if (!documentForm.bodegaId) movementDetails.value = movementDetails.value.map((detail) => ({ ...detail, productoId: "", cantidad: "" })); });
 watch(expandedMaterials, (current, previous) => { const previousSet = new Set((previous ?? []).map((item) => String(item))); current.map((item) => String(item)).filter((item) => !previousSet.has(item)).forEach((productoId) => void loadMaterialDetail(productoId)); }, { deep: true });

@@ -12,28 +12,15 @@
         </div>
       </div>
       <div class="d-flex flex-wrap" style="gap: 8px;">
-        <v-chip
-          v-if="defaultWarehouseLabel"
-          color="info"
-          variant="tonal"
-          prepend-icon="mdi-warehouse"
-        >
+        <v-chip v-if="defaultWarehouseLabel" color="info" variant="tonal" prepend-icon="mdi-warehouse">
           {{ defaultWarehouseLabel }}
         </v-chip>
-        <MassPurgeButton
-          endpoint="/kpi_inventory/ordenes-compra/purge-all"
-          module-title="Ordenes de compra"
-          @purged="hydrateView"
-        />
+        <MassPurgeButton endpoint="/kpi_inventory/ordenes-compra/purge-all" module-title="Ordenes de compra"
+          @purged="hydrateView" />
         <v-btn variant="text" prepend-icon="mdi-refresh" :loading="loading" @click="hydrateView">
           Recargar
         </v-btn>
-        <v-btn
-          v-if="canCreate"
-          color="primary"
-          prepend-icon="mdi-plus"
-          @click="openCreate"
-        >
+        <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
           Nueva orden
         </v-btn>
       </div>
@@ -41,47 +28,38 @@
 
     <v-row dense class="mb-2">
       <v-col cols="12" md="4">
-        <v-text-field
-          v-model="search"
-          label="Buscar por código, proveedor o referencia"
-          variant="outlined"
-          density="compact"
-          prepend-inner-icon="mdi-magnify"
-          clearable
-        />
+        <v-text-field v-model="search" label="Buscar por código, proveedor o referencia" variant="outlined"
+          density="compact" prepend-inner-icon="mdi-magnify" clearable />
       </v-col>
       <v-col cols="12" sm="6" md="4">
-        <v-autocomplete v-model="supplierFilter" :items="supplierOptions" item-title="title" item-value="value" label="Proveedor" variant="outlined" density="compact" clearable />
+        <v-autocomplete v-model="supplierFilter" :items="supplierOptions" item-title="title" item-value="value"
+          label="Proveedor" variant="outlined" density="compact" clearable />
       </v-col>
       <v-col cols="12" sm="6" md="4">
-        <v-autocomplete v-model="warehouseFilter" :items="warehouseOptions" item-title="title" item-value="value" label="Bodega destino" variant="outlined" density="compact" clearable />
+        <v-autocomplete v-model="warehouseFilter" :items="warehouseOptions" item-title="title" item-value="value"
+          label="Bodega destino" variant="outlined" density="compact" clearable />
       </v-col>
       <v-col cols="12" sm="6" md="3">
-        <v-select v-model="statusFilter" :items="purchaseStatusOptions" label="Estado" variant="outlined" density="compact" clearable />
+        <v-select v-model="statusFilter" :items="purchaseStatusOptions" label="Estado" variant="outlined"
+          density="compact" clearable />
       </v-col>
       <v-col cols="12" sm="6" md="3">
-        <v-text-field v-model="dateFromFilter" type="date" label="Desde" variant="outlined" density="compact" clearable />
+        <v-text-field v-model="dateFromFilter" type="date" label="Desde" variant="outlined" density="compact"
+          clearable />
       </v-col>
       <v-col cols="12" sm="6" md="3">
         <v-text-field v-model="dateToFilter" type="date" label="Hasta" variant="outlined" density="compact" clearable />
       </v-col>
       <v-col cols="12" md="3" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
         <v-btn variant="tonal" prepend-icon="mdi-filter-check" :loading="loading" @click="applyFilters">Aplicar</v-btn>
-        <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveFilters" @click="clearFilters">Limpiar</v-btn>
+        <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveFilters"
+          @click="clearFilters">Limpiar</v-btn>
       </v-col>
     </v-row>
 
-    <v-data-table-server
-      :headers="headers"
-      :items="tableRows"
-      :items-length="serverTotalItems"
-      :loading="loading"
-      loading-text="Obteniendo órdenes de compra..."
-      :items-per-page="serverItemsPerPage"
-      :page="serverPage"
-      class="elevation-0 enterprise-table"
-      @update:options="handleServerOptionsUpdate"
-    >
+    <v-data-table-server :headers="headers" :items="tableRows" :items-length="serverTotalItems" :loading="loading"
+      loading-text="Obteniendo órdenes de compra..." :items-per-page="serverItemsPerPage" :page="serverPage"
+      class="elevation-0 enterprise-table" @update:options="handleServerOptionsUpdate">
       <template #item.estado="{ item }">
         <div class="d-flex flex-column" style="gap: 3px; min-width: 180px;">
           <v-chip size="small" variant="tonal" :color="orderStateColor(item.estado)">
@@ -99,40 +77,19 @@
       </template>
 
       <template #item.tiene_transferencia="{ item }">
-        <v-chip
-          size="small"
-          variant="tonal"
-          :color="item.tiene_transferencia ? 'success' : 'warning'"
-        >
+        <v-chip size="small" variant="tonal" :color="item.tiene_transferencia ? 'success' : 'warning'">
           {{ item.tiene_transferencia ? item.transferencia_codigo || "Transferida" : "Pendiente" }}
         </v-chip>
       </template>
 
       <template #item.actions="{ item }">
         <div class="responsive-actions">
-          <v-btn
-            icon="mdi-file-pdf-box"
-            variant="text"
-            color="error"
-            :disabled="!canDownloadPdf"
-            @click="downloadPdf(item)"
-          />
-          <v-btn
-            v-if="canEdit"
-            icon="mdi-pencil"
-            variant="text"
-            :disabled="item.tiene_transferencia || isAnnulled(item)"
-            @click="openEdit(item)"
-          />
-          <v-btn
-            v-if="canAnnulDocuments && !isAnnulled(item)"
-            size="small"
-            prepend-icon="mdi-cancel"
-            variant="tonal"
-            color="error"
-            :disabled="item.tiene_transferencia"
-            @click="openDelete(item)"
-          >
+          <v-btn icon="mdi-file-pdf-box" variant="text" color="error" :disabled="!canDownloadPdf"
+            @click="downloadPdf(item)" />
+          <v-btn v-if="canEdit" icon="mdi-pencil" variant="text"
+            :disabled="item.tiene_transferencia || isAnnulled(item)" @click="openEdit(item)" />
+          <v-btn v-if="canAnnulDocuments && !isAnnulled(item)" size="small" prepend-icon="mdi-cancel" variant="tonal"
+            color="error" :disabled="item.tiene_transferencia" @click="openDelete(item)">
             Anular
           </v-btn>
         </div>
@@ -140,11 +97,7 @@
     </v-data-table-server>
   </v-card>
 
-  <v-dialog
-    v-model="dialog"
-    :fullscreen="isDialogFullscreen"
-    :max-width="isDialogFullscreen ? undefined : 1440"
-  >
+  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 1440">
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
         {{ editingId ? "Editar orden de compra" : "Nueva orden de compra" }}
@@ -153,101 +106,42 @@
       <v-card-text class="pt-4 section-surface">
         <v-row dense>
           <v-col cols="12" md="3">
-            <v-text-field
-              v-model="form.codigo"
-              readonly
-              label="Código"
-              variant="outlined"
-              hint="Si lo dejas vacío, el sistema lo genera automáticamente."
-              persistent-hint
-            />
+            <v-text-field v-model="form.codigo" readonly label="Código" variant="outlined"
+              hint="Si lo dejas vacío, el sistema lo genera automáticamente." persistent-hint />
           </v-col>
           <v-col cols="12" md="3">
-            <v-text-field
-              v-model="form.fecha_emision"
-              type="date"
-              label="Fecha de emisión"
-              variant="outlined"
-            />
+            <v-text-field v-model="form.fecha_emision" type="date" label="Fecha de emisión" variant="outlined" />
           </v-col>
           <v-col cols="12" md="3">
-            <v-text-field
-              v-model="form.fecha_requerida"
-              type="date"
-              label="Fecha requerida"
-              variant="outlined"
-            />
+            <v-text-field v-model="form.fecha_requerida" type="date" label="Fecha requerida" variant="outlined" />
           </v-col>
           <v-col cols="12" md="3">
-            <v-autocomplete
-              v-model="form.proveedor_id"
-              :items="supplierOptions"
-              item-title="title"
-              item-value="value"
-              label="Proveedor"
-              variant="outlined"
-              clearable
-            />
+            <v-autocomplete v-model="form.proveedor_id" :items="supplierOptions" item-title="title" item-value="value"
+              label="Proveedor" variant="outlined" clearable />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select
-              v-model="form.bodega_destino_id"
-              :items="warehouseOptions"
-              item-title="title"
-              item-value="value"
-              label="Bodega destino"
-              variant="outlined"
-            />
+            <v-select v-model="form.bodega_destino_id" :items="warehouseOptions" item-title="title" item-value="value"
+              label="Bodega destino" variant="outlined" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field
-              v-model="form.vendedor"
-              label="Vendedor / sede emisora"
-              variant="outlined"
-            />
+            <v-text-field v-model="form.vendedor" label="Vendedor / sede emisora" variant="outlined" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field
-              v-model="form.condicion_pago"
-              label="Condición de pago"
-              variant="outlined"
-            />
+            <v-text-field v-model="form.condicion_pago" label="Condición de pago" variant="outlined" />
           </v-col>
           <v-col cols="12" md="4">
-            <v-text-field
-              v-model="form.referencia"
-              readonly
-              label="Referencia"
-              variant="outlined"
-              hint="Referencia autogenerada tipo IB-00000001."
-              persistent-hint
-            />
+            <v-text-field v-model="form.referencia" readonly label="Referencia" variant="outlined"
+              hint="Referencia autogenerada tipo IB-00000001." persistent-hint />
           </v-col>
           <v-col cols="12" md="2">
-            <v-text-field
-              v-model="form.moneda"
-              label="Moneda"
-              variant="outlined"
-            />
+            <v-text-field v-model="form.moneda" label="Moneda" variant="outlined" />
           </v-col>
           <v-col cols="12" md="2">
-            <v-text-field
-              v-model="form.tipo_cambio"
-              label="Tipo de cambio"
-              type="number"
-              min="0"
-              step="0.0001"
-              variant="outlined"
-            />
+            <v-text-field v-model="form.tipo_cambio" label="Tipo de cambio" type="number" min="0" step="0.0001"
+              variant="outlined" />
           </v-col>
           <v-col cols="12">
-            <v-textarea
-              v-model="form.observacion"
-              label="Observación"
-              variant="outlined"
-              rows="2"
-              auto-grow
-            />
+            <v-textarea v-model="form.observacion" label="Observación" variant="outlined" rows="2" auto-grow />
           </v-col>
         </v-row>
 
@@ -258,9 +152,20 @@
               Los materiales se asociarán a la bodega destino seleccionada.
             </div>
           </div>
-          <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addDetail">
-            Agregar material
-          </v-btn>
+          <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+            <v-btn
+              variant="text"
+              prepend-icon="mdi-refresh"
+              :loading="isRefreshingProducts"
+              :disabled="saving"
+              @click="refreshCatalogProducts"
+            >
+              Actualizar materiales
+            </v-btn>
+            <v-btn color="primary" variant="tonal" prepend-icon="mdi-plus" @click="addDetail">
+              Agregar material
+            </v-btn>
+          </div>
         </div>
 
         <div class="order-details-table">
@@ -290,76 +195,40 @@
                     variant="outlined"
                     density="comfortable"
                     hide-details
+                    :loading="isRefreshingProducts"
+                    :disabled="isRefreshingProducts"
+                    no-data-text="No hay materiales registrados"
                     @update:model-value="handleDetailProductChange(detail)"
                   />
                 </td>
                 <td class="compact-column">
-                  <v-text-field
-                    v-model="detail.cantidad"
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    variant="outlined"
-                    hide-details
-                  />
+                  <v-text-field v-model="detail.cantidad" type="number" min="0" step="0.0001" variant="outlined"
+                    hide-details />
                 </td>
                 <td class="compact-column">
-                  <v-text-field
-                    v-model="detail.costo_unitario"
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    variant="outlined"
-                    hide-details
-                  />
+                  <v-text-field v-model="detail.costo_unitario" type="number" min="0" step="0.0001" variant="outlined"
+                    hide-details />
                 </td>
                 <td class="compact-column">
-                  <v-text-field
-                    v-model="detail.descuento"
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    variant="outlined"
-                    hide-details
-                  />
+                  <v-text-field v-model="detail.descuento" type="number" min="0" step="0.0001" variant="outlined"
+                    hide-details />
                 </td>
                 <td class="compact-column">
-                  <v-text-field
-                    v-model="detail.porcentaje_descuento"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    variant="outlined"
-                    hide-details
-                  />
+                  <v-text-field v-model="detail.porcentaje_descuento" type="number" min="0" step="0.01"
+                    variant="outlined" hide-details />
                 </td>
                 <td class="compact-column">
-                  <v-text-field
-                    v-model="detail.iva_porcentaje"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    variant="outlined"
-                    hide-details
-                  />
+                  <v-text-field v-model="detail.iva_porcentaje" type="number" min="0" step="0.01" variant="outlined"
+                    hide-details />
                 </td>
                 <td class="text-right font-weight-bold total-column">
                   {{ formatCurrency(detailGrandTotal(detail)) }}
                 </td>
                 <td class="observation-column">
-                  <v-text-field
-                    v-model="detail.observacion"
-                    variant="outlined"
-                    hide-details
-                  />
+                  <v-text-field v-model="detail.observacion" variant="outlined" hide-details />
                 </td>
                 <td class="text-center">
-                  <v-btn
-                    icon="mdi-delete"
-                    variant="text"
-                    color="error"
-                    @click="removeDetail(detail.local_id)"
-                  />
+                  <v-btn icon="mdi-delete" variant="text" color="error" @click="removeDetail(detail.local_id)" />
                 </td>
               </tr>
             </tbody>
@@ -384,11 +253,7 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog
-    v-model="deleteDialog"
-    :fullscreen="smAndDown"
-    :max-width="smAndDown ? undefined : 520"
-  >
+  <v-dialog v-model="deleteDialog" :fullscreen="smAndDown" :max-width="smAndDown ? undefined : 520">
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">Anular orden de compra</v-card-title>
       <v-card-text>
@@ -531,6 +396,8 @@ const form = reactive({
   detalles: [] as OrderDetailForm[],
 });
 
+const isRefreshingProducts = ref(false);
+
 const headers = [
   { title: "Código", key: "codigo" },
   { title: "Fecha", key: "fecha_emision_label" },
@@ -574,29 +441,29 @@ const purchaseProducts = computed(() =>
   products.value.filter((item) => !item?.es_servicio),
 );
 
-const productOptions = computed<CatalogOption[]>(() =>
+const catalogProductOptions = computed<CatalogOption[]>(() =>
   purchaseProducts.value.map((item) => ({
-    value: String(item.id),
-    title: `${item.codigo || ""} - ${item.nombre || item.id} · costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
-  })),
-);
-
-const displayProductOptions = computed<CatalogOption[]>(() =>
-  purchaseProducts.value.map((item) => ({
-    value: String(item.id),
-    title: `${buildProductDisplayTitle(item)} Â· costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
-  })),
-);
-
-const catalogProductOptions = computed<CatalogOption[]>(() => {
-  void productOptions.value;
-  void displayProductOptions.value;
-  return purchaseProducts.value.map((item) => ({
     value: String(item.id),
     title: `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
-  }));
-});
+  })),
+);
 
+async function refreshCatalogProducts() {
+  if (isRefreshingProducts.value) return;
+  isRefreshingProducts.value = true;
+  try {
+    await ensureProductsLoaded(true);
+    ui.success("Listado de materiales actualizado.");
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+      error?.message ||
+      "No se pudo actualizar el listado de materiales.",
+    );
+  } finally {
+    isRefreshingProducts.value = false;
+  }
+}
 const tableRows = computed(() => {
   return orders.value
     .map((item) => ({
@@ -788,10 +655,10 @@ function handleDetailProductChange(detail: OrderDetailForm) {
   }
 }
 
-async function loadCatalogs() {
+async function loadCatalogs(forceProducts = false) {
   await Promise.all([
     ensureSuppliersLoaded(),
-    ensureProductsLoaded(),
+    ensureProductsLoaded(forceProducts),
     ensureWarehousesLoaded(),
   ]);
 }
@@ -832,8 +699,8 @@ async function ensureProductsLoaded(force = false) {
   if (productsLoaded.value && !force) return;
   products.value = await listAllPages(
     "/kpi_inventory/productos",
-    {},
-    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+    { es_servicio: false },
+    { cacheTtlMs: force ? 0 : DEFAULT_CATALOG_CACHE_TTL_MS },
   );
   productsLoaded.value = true;
 }
@@ -860,8 +727,8 @@ async function hydrateView() {
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo cargar el módulo de órdenes de compra.",
+      error?.message ||
+      "No se pudo cargar el módulo de órdenes de compra.",
     );
   } finally {
     loading.value = false;
@@ -920,14 +787,14 @@ async function openCreate() {
   editingId.value = null;
   resetForm();
   dialog.value = true;
-  await loadCatalogs();
+  await loadCatalogs(true);
 }
 
 async function openEdit(item: PurchaseOrderRow) {
   editingId.value = item.id;
   loading.value = true;
   try {
-    await loadCatalogs();
+    await loadCatalogs(true);
     const { data } = await api.get(`/kpi_inventory/ordenes-compra/${item.id}`);
     const order = (data?.data ?? data) as any;
     form.codigo = String(order.codigo || "");
@@ -943,24 +810,24 @@ async function openEdit(item: PurchaseOrderRow) {
     form.tipo_cambio = String(order.tipo_cambio || "1");
     form.detalles = Array.isArray(order.detalles) && order.detalles.length
       ? order.detalles.map((detail: any) => ({
-          local_id: createLocalId(),
-          producto_id: String(detail.producto_id || ""),
-          cantidad: String(detail.cantidad || "1"),
-          costo_unitario: String(detail.costo_unitario || "0"),
-          descuento: String(detail.descuento || "0"),
-          porcentaje_descuento: String(detail.porcentaje_descuento || "0"),
-          iva_porcentaje: String(
-            detail.iva_porcentaje || String(PURCHASE_ORDER_DEFAULT_IVA),
-          ),
-          observacion: String(detail.observacion || ""),
-        }))
+        local_id: createLocalId(),
+        producto_id: String(detail.producto_id || ""),
+        cantidad: String(detail.cantidad || "1"),
+        costo_unitario: String(detail.costo_unitario || "0"),
+        descuento: String(detail.descuento || "0"),
+        porcentaje_descuento: String(detail.porcentaje_descuento || "0"),
+        iva_porcentaje: String(
+          detail.iva_porcentaje || String(PURCHASE_ORDER_DEFAULT_IVA),
+        ),
+        observacion: String(detail.observacion || ""),
+      }))
       : [createEmptyDetail()];
     dialog.value = true;
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo cargar la orden de compra.",
+      error?.message ||
+      "No se pudo cargar la orden de compra.",
     );
   } finally {
     loading.value = false;
@@ -1053,8 +920,8 @@ async function saveOrder() {
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo guardar la orden de compra.",
+      error?.message ||
+      "No se pudo guardar la orden de compra.",
     );
   } finally {
     saving.value = false;
@@ -1073,8 +940,8 @@ async function confirmDelete() {
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo anular la orden de compra.",
+      error?.message ||
+      "No se pudo anular la orden de compra.",
     );
   } finally {
     saving.value = false;
@@ -1092,8 +959,8 @@ async function downloadPdf(item: PurchaseOrderRow) {
   } catch (error: any) {
     ui.error(
       error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo generar el PDF de la orden de compra.",
+      error?.message ||
+      "No se pudo generar el PDF de la orden de compra.",
     );
   }
 }
