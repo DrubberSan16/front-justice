@@ -179,7 +179,7 @@
             Consultar SRI
           </v-btn>
           <v-btn
-            v-if="item.guia_remision_id"
+            v-if="item.guia_remision_id && isGuideAuthorizedSummary(item)"
             size="small"
             variant="text"
             prepend-icon="mdi-download"
@@ -874,6 +874,27 @@
           >
             La guia fue enviada a autorizar. Espera a que el SRI confirme la autorizacion; el sistema actualizara esta vista automaticamente.
           </v-alert>
+          <v-alert
+            v-if="isCurrentGuideZeroStatus"
+            type="warning"
+            variant="tonal"
+            density="comfortable"
+            class="mt-3"
+          >
+            El SRI devolvió estado 0. Regenera la guía antes de volver a solicitar autorización.
+          </v-alert>
+          <v-checkbox
+            v-if="isCurrentGuideZeroStatus && canManuallyConfirmGuideAuthorization"
+            v-model="manualSriAuthorizationConfirmed"
+            class="mt-2"
+            color="warning"
+            density="comfortable"
+            hide-details
+            :disabled="manualSriAuthorizationLoading"
+            :loading="manualSriAuthorizationLoading"
+            label="Confirmo que validé esta guía directamente en el portal SRI y consta como autorizada"
+            @update:model-value="confirmManualSriAuthorization"
+          />
         </div>
 
         <div v-if="guidePreviewLoading" class="guide-preview-loading mt-4">
@@ -928,7 +949,7 @@
           XML autorizado SRI
         </v-btn>
         <v-btn
-          v-if="generatedGuide?.id && generatedGuide.has_xml_signed"
+          v-if="generatedGuide?.id && generatedGuide.has_xml_signed && isCurrentGuideAuthorized"
           variant="text"
           prepend-icon="mdi-download"
           @click="downloadCurrentGuideXml('signed')"
@@ -976,6 +997,7 @@ import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { downloadWarehouseTransferPdf } from "@/app/utils/warehouse-transfer-documents";
 import {
   canManageAdministrativeOperations,
+  isAdministrator,
   isSuperAdministrator,
 } from "@/app/utils/role-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
@@ -1207,6 +1229,9 @@ const canManageAdministrativeDocuments = computed(() =>
   canManageAdministrativeOperations(auth.user),
 );
 const canConfigureSri = canManageAdministrativeDocuments;
+const canManuallyConfirmGuideAuthorization = computed(
+  () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
+);
 const canManageSriSignature = computed(
   () => (canCreate.value || canEdit.value) && isSuperAdministrator(auth.user),
 );
@@ -1222,6 +1247,8 @@ const sriConfigDialog = ref(false);
 const guideDialog = ref(false);
 const guideSaving = ref(false);
 const guideAuthorizing = ref(false);
+const manualSriAuthorizationLoading = ref(false);
+const manualSriAuthorizationConfirmed = ref(false);
 const guidePreviewLoading = ref(false);
 const sriConfigLoading = ref(false);
 const sriConfigSaving = ref(false);
@@ -1569,6 +1596,7 @@ const canAuthorizeCurrentGuide = computed(() => {
     !generatedGuide.value?.id ||
     guideSaving.value ||
     guidePreviewLoading.value ||
+    isGuideZeroStatusSummary(generatedGuide.value) ||
     isGuideAuthorizationPendingSummary(generatedGuide.value)
   ) {
     return false;
@@ -1580,6 +1608,14 @@ const canAuthorizeCurrentGuide = computed(() => {
 
 const isCurrentGuideAuthorizationPending = computed(() =>
   isGuideAuthorizationPendingSummary(generatedGuide.value),
+);
+
+const isCurrentGuideZeroStatus = computed(() =>
+  isGuideZeroStatusSummary(
+    generatedGuide.value ||
+      (guideContext.value.guia_existente as Record<string, unknown> | null) ||
+      selectedTransfer.value,
+  ),
 );
 
 const isCurrentGuideAuthorized = computed(() =>
@@ -1709,6 +1745,22 @@ function isGuideAuthorizedSummary(
     .trim()
     .toUpperCase();
   return emission === "AUTORIZADA" || sri === "AUTORIZADO";
+}
+
+function isGuideZeroStatusSummary(
+  value?: Record<string, unknown> | GuideResponse | TransferGuideSummary | null,
+) {
+  const emission = String(
+    (value as any)?.estado_emision ||
+      (value as any)?.guia_remision_estado ||
+      "",
+  ).trim();
+  const sri = String(
+    (value as any)?.sri_estado ||
+      (value as any)?.guia_remision_sri_estado ||
+      "",
+  ).trim();
+  return emission === "0" || sri === "0";
 }
 
 function isGuidePendingSriSummary(
@@ -2558,6 +2610,7 @@ function resetGuideForm() {
   guideForm.info_adicional_email = "";
   guideForm.info_adicional_telefono = "";
   guideForm.forzar_regeneracion = true;
+  manualSriAuthorizationConfirmed.value = false;
   guideRecipientLookupLoading.value = false;
   guideRecipientLookupHydrating.value = false;
   guideProviderLookupLoading.value = false;
@@ -3278,6 +3331,12 @@ async function authorizeGuide() {
     ui.error("Primero debes generar la guía antes de autorizarla.");
     return;
   }
+  if (isGuideZeroStatusSummary(generatedGuide.value)) {
+    ui.error(
+      "La guía tiene estado SRI 0. Debes regenerarla antes de solicitar autorización nuevamente.",
+    );
+    return;
+  }
   const guideId = generatedGuide.value.id;
   setGuideAuthorizationPending(guideId, true);
   ui.open(
@@ -3314,6 +3373,47 @@ async function authorizeGuide() {
     setGuideAuthorizationPending(guideId, false);
   } finally {
     guideAuthorizing.value = false;
+  }
+}
+
+async function confirmManualSriAuthorization(value: boolean | null) {
+  manualSriAuthorizationConfirmed.value = Boolean(value);
+  if (!value) return;
+  if (
+    !canManuallyConfirmGuideAuthorization.value ||
+    !generatedGuide.value?.id ||
+    !isGuideZeroStatusSummary(generatedGuide.value)
+  ) {
+    manualSriAuthorizationConfirmed.value = false;
+    return;
+  }
+
+  manualSriAuthorizationLoading.value = true;
+  try {
+    const response = await api.post(
+      `/kpi_inventory/guias-remision-sri/${generatedGuide.value.id}/confirmar-autorizacion-manual`,
+      {
+        confirmed: true,
+        updated_by: getUserName(),
+      },
+    );
+    const payload = (response.data?.data ?? response.data) as GuideResponse;
+    generatedGuide.value = payload;
+    setGuideAuthorizationPending(payload.id, false);
+    await buildGuidePreview(payload);
+    await loadTransfers();
+    ui.success(
+      "Guía marcada como autorizada con validación administrativa registrada.",
+    );
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo confirmar administrativamente la autorización SRI.",
+    );
+  } finally {
+    manualSriAuthorizationConfirmed.value = false;
+    manualSriAuthorizationLoading.value = false;
   }
 }
 
