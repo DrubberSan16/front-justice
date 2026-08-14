@@ -957,10 +957,10 @@
           XML firmado
         </v-btn>
         <v-btn
-          v-if="!isCurrentGuideAuthorized"
+          v-if="!isCurrentGuideAuthorized || isSuperAdministrator(auth.user)"
           color="primary"
           :loading="guideSaving"
-          :disabled="isCurrentGuideAuthorizationPending"
+          :disabled="!canGenerateOrRegenerateCurrentGuide"
           @click="generateGuide"
         >
           {{ isGuideRegenerationFlow ? "Regenerar guía" : "Generar guía" }}
@@ -1618,6 +1618,18 @@ const isCurrentGuideZeroStatus = computed(() =>
   ),
 );
 
+const canGenerateOrRegenerateCurrentGuide = computed(() => {
+  if (isSuperAdministrator(auth.user)) return true;
+  const currentGuide =
+    generatedGuide.value ||
+    (guideContext.value.guia_existente as Record<string, unknown> | null) ||
+    selectedTransfer.value;
+  if (isGuideAuthorizedSummary(currentGuide)) {
+    return false;
+  }
+  return !isCurrentGuideAuthorizationPending.value;
+});
+
 const isCurrentGuideAuthorized = computed(() =>
   isGuideAuthorizedSummary(
     generatedGuide.value ||
@@ -1807,7 +1819,11 @@ function isGuideAuthorizationPendingSummary(
 }
 
 function guideActionLabel(item: TransferRow) {
-  if (isGuideAuthorizedSummary(item)) return "Ver guía";
+  if (isGuideAuthorizedSummary(item)) {
+    return isSuperAdministrator(auth.user)
+      ? "Ver / regenerar guía"
+      : "Ver guía";
+  }
   return item.guia_remision_id ? "Regenerar guía" : "Generar guía";
 }
 
@@ -3230,8 +3246,12 @@ async function generateGuide() {
     return;
   }
   if (isCurrentGuideAuthorized.value) {
-    ui.error("La guía ya fue autorizada. Solo puedes visualizarla o descargar el XML autorizado y el RIDE.");
-    return;
+    if (!isSuperAdministrator(auth.user)) {
+      ui.error(
+        "Solo el Super Administrador puede regenerar una guía autorizada.",
+      );
+      return;
+    }
   }
   const isRegeneration = isGuideRegenerationFlow.value;
   guideForm.forzar_regeneracion = isRegeneration;
