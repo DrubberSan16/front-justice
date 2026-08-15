@@ -297,7 +297,7 @@ const filters = reactive({
 const movementHeaders = [
   { title: "Fecha", key: "fecha" },
   { title: "Fuente", key: "source_label" },
-  { title: "Material", key: "producto_nombre" },
+  { title: "Material", key: "producto_label" },
   { title: "Bodega", key: "bodega_label" },
   { title: "Entrada", key: "entrada_cantidad" },
   { title: "Salida", key: "salida_cantidad" },
@@ -440,7 +440,7 @@ function buildDailyOperationsPdfReport(): ReportDefinition {
         columns: [
           { key: "fecha", header: "Fecha", format: "datetime", width: 18 },
           { key: "source_label", header: "Fuente", width: 18 },
-          { key: "producto_nombre", header: "Material", width: 26 },
+          { key: "producto_label", header: "Material", width: 34 },
           { key: "bodega_label", header: "Bodega", width: 24 },
           { key: "entrada_cantidad", header: "Entrada", format: "number", width: 12 },
           { key: "salida_cantidad", header: "Salida", format: "number", width: 12 },
