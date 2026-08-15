@@ -701,7 +701,7 @@ async function loadRelations(mode: "table" | "form" = "table") {
       const rows = await listAll(productField.relation.endpoint);
       nextRelationOptions.producto_id = rows.map((r: any) => ({
         value: r.id,
-        title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+        title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}${r?.descripcion ? ` (${String(r.descripcion).trim()})` : ""}`,
         bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
       }));
     }
@@ -724,7 +724,7 @@ async function loadRelations(mode: "table" | "form" = "table") {
     const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
     nextRelationOptions[field.key] = rows.map((r: any) => ({
       value: r.id,
-      title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
+      title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}${r?.descripcion ? ` (${String(r.descripcion).trim()})` : ""}`,
       bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
