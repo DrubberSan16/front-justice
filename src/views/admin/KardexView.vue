@@ -31,6 +31,7 @@
             <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.producto_id" :items="kardexProductOptions" item-title="title" item-value="value" label="Material" variant="outlined" hide-details clearable /></v-col>
             <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.linea_id" :items="lineFilterOptions" item-title="title" item-value="value" label="Línea" variant="outlined" hide-details clearable /></v-col>
             <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.categoria_id" :items="categoryFilterOptions" item-title="title" item-value="value" label="Categoría" variant="outlined" hide-details clearable /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-select v-model="kardexFilters.tipo_movimiento" :items="kardexMovementTypeOptions" item-title="title" item-value="value" label="Tipo movimiento" variant="outlined" hide-details clearable /></v-col>
             <v-col cols="12" sm="6" md="3"><v-text-field v-model="kardexFilters.desde" type="date" label="Desde" variant="outlined" hide-details /></v-col>
             <v-col cols="12" sm="6" md="3"><v-text-field v-model="kardexFilters.hasta" type="date" label="Hasta" variant="outlined" hide-details /></v-col>
             <v-col cols="12" sm="6" md="3"><v-select v-model="inventoryGroupBy" :items="inventoryGroupingOptions" item-title="title" item-value="value" label="Agrupar exportación" variant="outlined" hide-details /></v-col>
@@ -334,6 +335,7 @@ type KardexFilterState = {
   producto_id: string;
   linea_id: string;
   categoria_id: string;
+  tipo_movimiento?: string;
 };
 
 const ui = useUiStore();
@@ -392,10 +394,16 @@ const kardexFilters = reactive<KardexFilterState>({
   producto_id: "",
   linea_id: "",
   categoria_id: "",
+  tipo_movimiento: "",
 });
 const appliedKardexFilters = reactive<KardexFilterState>({ ...kardexFilters });
 const kardexTotals = reactive({ materiales: 0, movimientos: 0, entradas: 0, salidas: 0 });
 const movementTypes = [{ value: "INGRESO", title: "Ingreso de Bodega" }, { value: "SALIDA", title: "Egreso de Bodega" }];
+const kardexMovementTypeOptions = [
+  { value: "", title: "Todos" },
+  { value: "INGRESO", title: "Ingreso de bodega" },
+  { value: "SALIDA", title: "Egreso de bodega" },
+];
 const kardexPageSizeOptions = [{ title: "10", value: 10 }, { title: "25", value: 25 }, { title: "50", value: 50 }, { title: "100", value: 100 }];
 const inventoryGroupingOptions = [{ value: "bodega", title: "Bodega" }, { value: "sucursal", title: "Sucursal" }, { value: "linea", title: "Linea" }, { value: "categoria", title: "Categoria" }, { value: "material", title: "Material" }];
 const warehouseOptions = computed(() => bodegas.value.map((bodega) => ({ value: bodega.id, title: `${bodega.codigo} - ${bodega.nombre}` })));
@@ -424,6 +432,7 @@ const hasActiveKardexFilters = computed(() =>
       kardexFilters.producto_id ||
       kardexFilters.linea_id ||
       kardexFilters.categoria_id ||
+      kardexFilters.tipo_movimiento ||
       kardexFilters.desde !== defaultKardexDateFrom ||
       kardexFilters.hasta !== defaultKardexDateTo,
   ),
@@ -515,6 +524,7 @@ function buildKardexRequestParams(filters: KardexFilterState) {
     producto_id: filters.producto_id || undefined,
     linea_id: filters.linea_id || undefined,
     categoria_id: filters.categoria_id || undefined,
+    tipo_movimiento: filters.tipo_movimiento || undefined,
   };
 }
 async function loadMaterialDetail(productoId: string, force = false) { const normalizedId = String(productoId || "").trim(); if (!normalizedId || materialDetailLoading[normalizedId] || (materialDetailLoaded[normalizedId] && !force)) return; materialDetailLoading[normalizedId] = true; materialDetailErrors[normalizedId] = ""; try { const { data } = await api.get(`/kpi_inventory/kardex/resumen-material/${normalizedId}/detalle`, { params: buildKardexRequestParams(appliedKardexFilters) }); const payload = data?.data ?? data ?? {}; materialMovements[normalizedId] = Array.isArray(payload.movements) ? payload.movements : []; materialDetailLoaded[normalizedId] = true; } catch (error: any) { materialMovements[normalizedId] = []; materialDetailErrors[normalizedId] = error?.response?.data?.message || error?.message || "No se pudo cargar el detalle del material."; } finally { materialDetailLoading[normalizedId] = false; } }
@@ -598,6 +608,7 @@ function buildKardexFilterDescription(filters: KardexFilterState) {
   if (filters.producto_id) labels.push(`Material: ${kardexProductOptions.value.find((item) => item.value === filters.producto_id)?.title || filters.producto_id}`);
   if (filters.linea_id) labels.push(`Linea: ${lineFilterOptions.value.find((item) => item.value === filters.linea_id)?.title || filters.linea_id}`);
   if (filters.categoria_id) labels.push(`Categoria: ${categoryFilterOptions.value.find((item) => item.value === filters.categoria_id)?.title || filters.categoria_id}`);
+  if (filters.tipo_movimiento) labels.push(`Tipo: ${filters.tipo_movimiento === 'INGRESO' ? 'Ingreso' : filters.tipo_movimiento === 'SALIDA' ? 'Egreso' : filters.tipo_movimiento}`);
   return labels.join(" | ");
 }
 function sanitizeKardexPdfFileName(value: unknown) {
@@ -827,6 +838,7 @@ function clearKardexFilters() {
   kardexFilters.producto_id = "";
   kardexFilters.linea_id = "";
   kardexFilters.categoria_id = "";
+  kardexFilters.tipo_movimiento = "";
   kardexFilters.desde = defaultKardexDateFrom;
   kardexFilters.hasta = defaultKardexDateTo;
   applyKardexFilters();
