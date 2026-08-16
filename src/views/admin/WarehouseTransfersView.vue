@@ -349,6 +349,7 @@
               <tr>
                 <th>Código</th>
                 <th>Material</th>
+                <th>Condición</th>
                 <th>Cantidad</th>
                 <th>Disponible</th>
                 <th>Costo ref.</th>
@@ -371,6 +372,19 @@
                     hide-details
                     :disabled="Boolean(selectedOrder)"
                     @update:model-value="handleDetailProductChange(detail)"
+                  />
+                </td>
+                <td>
+                  <v-select
+                    v-model="detail.condicion_material"
+                    :items="getTransferConditionOptions(detail)"
+                    item-title="title"
+                    item-value="value"
+                    label="Condición"
+                    variant="outlined"
+                    hide-details
+                    :disabled="Boolean(selectedOrder) || getTransferConditionOptions(detail).length <= 1"
+                    @update:model-value="handleTransferConditionChange(detail)"
                   />
                 </td>
                 <td>
@@ -398,13 +412,16 @@
                 <td>
                   <v-text-field
                     :model-value="formatNumber(getCurrentStock(detail))"
-                    :label="selectedOrder ? 'Saldo preaprobado' : 'Stock actual'"
+                    :label="selectedOrder ? 'Saldo preaprobado' : 'Transferible'"
                     variant="outlined"
                     readonly
                     :disabled="Boolean(selectedOrder) || orderLoading"
                     class="available-stock-field"
                     hide-details
                   />
+                  <div v-if="!selectedOrder && detail.producto_id" class="text-caption text-medium-emphasis mt-1">
+                    {{ getStockAvailabilityCaption(detail) }}
+                  </div>
                 </td>
                 <td class="text-right font-weight-medium">
                   {{ formatCurrency(detail.costo_unitario) }}
@@ -1029,8 +1046,12 @@ type StockRow = {
   bodega_id: string;
   producto_id: string;
   stock_actual?: string | number | null;
-  stock_disponible?: string | number | null;
+  stock_nuevo?: string | number | null;
+  stock_usado?: string | number | null;
   stock_critico?: string | number | null;
+  stock_disponible?: string | number | null;
+  cantidad_reservada_activa?: string | number | null;
+  es_usado?: boolean | null;
 };
 
 type PurchaseOrderDetailRow = {
@@ -1098,12 +1119,15 @@ type TransferRow = TransferGuideSummary & {
   detalles?: TransferDetailRow[];
 };
 
+type StockCondition = "NUEVO" | "USADO" | "CRITICO";
+
 type TransferDetailForm = {
   local_id: string;
   orden_compra_det_id: string;
   producto_id: string;
   codigo_producto: string;
   nombre_producto: string;
+  condicion_material: StockCondition;
   cantidad: string;
   costo_unitario: string;
   observacion: string;
@@ -1563,15 +1587,12 @@ const guideTransporterOptions = computed<GuideTransporterOption[]>(() =>
 );
 
 const currentStockByProduct = computed(() => {
-  const map = new Map<string, number>();
+  const map = new Map<string, StockRow>();
   const sourceWarehouseId = effectiveSourceWarehouseId.value;
   if (!sourceWarehouseId) return map;
   for (const row of stockRows.value) {
     if (String(row.bodega_id || "") !== sourceWarehouseId) continue;
-    map.set(
-      String(row.producto_id || ""),
-      toNumber(row.stock_disponible ?? row.stock_actual),
-    );
+    map.set(String(row.producto_id || ""), row);
   }
   return map;
 });
@@ -1863,6 +1884,7 @@ function createEmptyDetail(): TransferDetailForm {
     producto_id: "",
     codigo_producto: "",
     nombre_producto: "",
+    condicion_material: "NUEVO",
     cantidad: "1",
     costo_unitario: "0",
     observacion: "",
@@ -2541,12 +2563,91 @@ function getOrderDetailAvailable(detail: TransferDetailForm) {
   return orderDetailAvailabilityMap.value.get(detailId) ?? 0;
 }
 
+function getTransferStockRow(detail: TransferDetailForm) {
+  if (!detail.producto_id) return null;
+  return currentStockByProduct.value.get(String(detail.producto_id || "")) ?? null;
+}
+
+function normalizeTransferCondition(value: unknown): StockCondition {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "USADO") return "USADO";
+  if (normalized === "CRITICO") return "CRITICO";
+  return "NUEVO";
+}
+
+function usesCriticalStockFallback(row?: StockRow | null) {
+  if (!row) return false;
+  return (
+    toNumber(row.stock_nuevo) <= 0 &&
+    toNumber(row.stock_usado) <= 0 &&
+    toNumber(row.stock_critico) > 0
+  );
+}
+
+function getTransferConditionOptions(detail: TransferDetailForm) {
+  if (selectedOrder.value) return [{ title: "Nuevo", value: "NUEVO" as StockCondition }];
+  const stock = getTransferStockRow(detail);
+  if (usesCriticalStockFallback(stock)) {
+    return [{ title: "Crítico (automático)", value: "CRITICO" as StockCondition }];
+  }
+  const options: Array<{ title: string; value: StockCondition }> = [
+    { title: "Nuevo", value: "NUEVO" },
+  ];
+  if (Boolean(stock?.es_usado)) {
+    options.push({ title: "Usado", value: "USADO" });
+  }
+  return options;
+}
+
+function syncTransferDetailCondition(detail: TransferDetailForm) {
+  if (selectedOrder.value) {
+    detail.condicion_material = "NUEVO";
+    return;
+  }
+  const options = getTransferConditionOptions(detail);
+  const current = normalizeTransferCondition(detail.condicion_material);
+  detail.condicion_material = options.some((item) => item.value === current)
+    ? current
+    : options[0]?.value ?? "NUEVO";
+}
+
+function handleTransferConditionChange(detail: TransferDetailForm) {
+  syncTransferDetailCondition(detail);
+}
+
+function getConditionStock(row: StockRow | null, condition: StockCondition) {
+  if (!row) return 0;
+  if (condition === "USADO") return toNumber(row.stock_usado);
+  if (condition === "CRITICO") return toNumber(row.stock_critico);
+  const explicitNew = row.stock_nuevo;
+  if (explicitNew !== null && explicitNew !== undefined) return toNumber(explicitNew);
+  return Math.max(
+    toNumber(row.stock_actual) - toNumber(row.stock_usado) - toNumber(row.stock_critico),
+    0,
+  );
+}
+
 function getCurrentStock(detail: TransferDetailForm) {
   if (selectedOrder.value) {
     return getOrderDetailAvailable(detail);
   }
-  if (!detail.producto_id) return 0;
-  return currentStockByProduct.value.get(String(detail.producto_id || "")) ?? 0;
+  const stock = getTransferStockRow(detail);
+  if (!stock) return 0;
+  const condition = normalizeTransferCondition(detail.condicion_material);
+  const conditionStock = getConditionStock(stock, condition);
+  const totalTransferable = toNumber(stock.stock_disponible ?? stock.stock_actual);
+  return Math.max(Math.min(conditionStock, totalTransferable), 0);
+}
+
+function getStockAvailabilityCaption(detail: TransferDetailForm) {
+  const stock = getTransferStockRow(detail);
+  if (!stock) return "Sin stock en la bodega origen";
+  const nuevo = toNumber(stock.stock_nuevo ?? stock.stock_actual);
+  const usado = toNumber(stock.stock_usado);
+  const critico = toNumber(stock.stock_critico);
+  const reservado = toNumber(stock.cantidad_reservada_activa);
+  const total = toNumber(stock.stock_actual);
+  return `Total ${formatNumber(total)} · Nuevo ${formatNumber(nuevo)} · Usado ${formatNumber(usado)} · Crítico ${formatNumber(critico)} · Reservado OT ${formatNumber(reservado)}`;
 }
 
 function getRequestedQuantity(detail: TransferDetailForm) {
@@ -2560,14 +2661,38 @@ function getRequestedQuantity(detail: TransferDetailForm) {
       .reduce((sum, row) => sum + toNumber(row.cantidad), 0);
   }
 
+  const condition = normalizeTransferCondition(detail.condicion_material);
   return form.detalles
-    .filter((row) => String(row.producto_id || "") === String(detail.producto_id || ""))
+    .filter(
+      (row) =>
+        String(row.producto_id || "") === String(detail.producto_id || "") &&
+        normalizeTransferCondition(row.condicion_material) === condition,
+    )
     .reduce((sum, row) => sum + toNumber(row.cantidad), 0);
+}
+
+function getRequestedProductQuantity(detail: TransferDetailForm) {
+  if (selectedOrder.value || !detail.producto_id) return getRequestedQuantity(detail);
+  return form.detalles
+    .filter(
+      (row) => String(row.producto_id || "") === String(detail.producto_id || ""),
+    )
+    .reduce((sum, row) => sum + toNumber(row.cantidad), 0);
+}
+
+function getTotalTransferableStock(detail: TransferDetailForm) {
+  if (selectedOrder.value) return getOrderDetailAvailable(detail);
+  const stock = getTransferStockRow(detail);
+  return stock ? toNumber(stock.stock_disponible ?? stock.stock_actual) : 0;
 }
 
 function detailExceedsStock(detail: TransferDetailForm) {
   if (!detail.producto_id) return false;
-  return getRequestedQuantity(detail) > getCurrentStock(detail);
+  const exceedsCondition = getRequestedQuantity(detail) > getCurrentStock(detail);
+  const exceedsTotal =
+    !selectedOrder.value &&
+    getRequestedProductQuantity(detail) > getTotalTransferableStock(detail);
+  return exceedsCondition || exceedsTotal;
 }
 
 function resetForm() {
@@ -2736,6 +2861,7 @@ function handleDetailProductChange(detail: TransferDetailForm) {
   detail.codigo_producto = String(product.codigo || "");
   detail.nombre_producto = String(product.nombre || "");
   detail.costo_unitario = String(product.costo_promedio || product.ultimo_costo || 0);
+  syncTransferDetailCondition(detail);
 }
 
 function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
@@ -2746,6 +2872,7 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
         producto_id: String(detail.producto_id || ""),
         codigo_producto: String(detail.codigo_producto || ""),
         nombre_producto: String(detail.nombre_producto || ""),
+        condicion_material: "NUEVO" as StockCondition,
         cantidad: String(
           detail.cantidad_preaprobada_disponible ??
             detail.cantidad_preaprobada ??
@@ -3680,6 +3807,7 @@ function validateForm() {
     return false;
   }
   for (const detail of form.detalles) {
+    syncTransferDetailCondition(detail);
     if (!detail.producto_id) {
       ui.error("Todos los materiales de la transferencia deben estar seleccionados.");
       return false;
@@ -3692,7 +3820,7 @@ function validateForm() {
       const materialLabel =
         detail.codigo_producto || detail.nombre_producto || "el material seleccionado";
       ui.error(
-        `La cantidad ingresada para ${materialLabel} es mayor a la que hay en la bodega.`,
+        `La cantidad ingresada para ${materialLabel} supera el stock transferible de la condición seleccionada o el total disponible de la bodega.`,
       );
       return false;
     }
@@ -3720,6 +3848,7 @@ async function saveTransfer() {
       detalles: form.detalles.map((detail) => ({
         orden_compra_det_id: detail.orden_compra_det_id || undefined,
         producto_id: detail.producto_id,
+        condicion_material: selectedOrder.value ? "NUEVO" : detail.condicion_material,
         cantidad: toNumber(detail.cantidad),
         observacion: detail.observacion || undefined,
       })),
