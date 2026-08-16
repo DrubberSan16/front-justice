@@ -82,11 +82,9 @@
               <v-expansion-panel-title class="kardex-group-title" @click="prefetchMaterialDetail(group.producto_id)">
                 <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap:12px">
                   <div>
-                    <div class="text-subtitle-1 font-weight-bold">{{ formatKardexProductName(group.producto_id,
-                      group.producto_nombre || 'Sin nombre') }}</div>
+                    <div class="text-subtitle-1 font-weight-bold">{{ formatKardexProductName(group.producto_id, group.producto_nombre || 'Sin nombre') }}</div>
                     <div class="text-caption text-medium-emphasis mt-1">Linea: {{ group.linea_label || 'Sin linea' }} ·
-                      Categoria: {{ group.categoria_label || 'Sin categoria' }} · Unidad: {{ group.unidad_label || 'Sin
-                      unidad' }}</div>
+                      Categoria: {{ group.categoria_label || 'Sin categoria' }} · Unidad: {{ group.unidad_label || 'Sin unidad' }}</div>
                   </div>
                   <div class="d-flex flex-wrap justify-end" style="gap:8px">
                     <v-chip size="small" color="info" variant="tonal">Stock inicial {{
