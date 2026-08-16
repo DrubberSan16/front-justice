@@ -193,10 +193,10 @@
             color="error"
             variant="tonal"
             prepend-icon="mdi-cancel"
-            :disabled="isGuideAuthorizedSummary(item)"
+            :disabled="isGuideAuthorizedSummary(item) && !isSuperAdministrator(auth.user)"
             @click="openAnnulTransfer(item)"
           >
-            Anular
+            {{ isGuideAuthorizedSummary(item) ? "Forzar anulación" : "Anular" }}
           </v-btn>
         </div>
       </template>
@@ -212,12 +212,21 @@
         ¿Seguro que deseas anular la transferencia
         <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se generará el reverso
         del stock y se conservará la auditoría del usuario y la fecha de anulación.
+        <v-alert
+          v-if="isForcedAuthorizedGuideAnnulment"
+          type="warning"
+          variant="tonal"
+          class="mt-4"
+        >
+          La guía continuará autorizada en el SRI. Esta acción forzada solo anula la
+          transferencia y genera los movimientos inversos de stock y Kardex.
+        </v-alert>
       </v-card-text>
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="annulDialog = false">Cancelar</v-btn>
         <v-btn color="error" :loading="annullingTransferId !== ''" @click="confirmAnnulTransfer">
-          Anular
+          {{ isForcedAuthorizedGuideAnnulment ? "Anular obligatoriamente" : "Anular" }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -1001,10 +1010,7 @@ import {
   isSuperAdministrator,
 } from "@/app/utils/role-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
-import {
-  appendOilIndicator,
-  buildProductDisplayTitle,
-} from "@/app/utils/product-display";
+import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
@@ -1243,6 +1249,11 @@ const dialog = ref(false);
 const annulDialog = ref(false);
 const annullingTransfer = ref<TransferRow | null>(null);
 const annullingTransferId = ref("");
+const isForcedAuthorizedGuideAnnulment = computed(
+  () =>
+    Boolean(annullingTransfer.value) &&
+    isGuideAuthorizedSummary(annullingTransfer.value as TransferRow),
+);
 const sriConfigDialog = ref(false);
 const guideDialog = ref(false);
 const guideSaving = ref(false);
@@ -1728,10 +1739,7 @@ function formatTransferProductLabel(productId: unknown, fallbackLabel?: unknown)
   const key = String(productId || "").trim();
   const product = products.value.find((item) => String(item.id || "") === key);
   if (!product) return String(fallbackLabel || "-");
-  return appendOilIndicator(
-    String(fallbackLabel || product.nombre || product.codigo || product.id || "-"),
-    product.es_aceite,
-  );
+  return buildProductDisplayTitle(product, { fallbackLabel });
 }
 
 function formatDate(value: unknown) {
@@ -3457,7 +3465,7 @@ function openAnnulTransfer(item: TransferRow) {
   if (
     !canManageAdministrativeDocuments.value ||
     isAnnulledTransfer(item) ||
-    isGuideAuthorizedSummary(item)
+    (isGuideAuthorizedSummary(item) && !isSuperAdministrator(auth.user))
   ) {
     return;
   }
@@ -3470,7 +3478,15 @@ async function confirmAnnulTransfer() {
   if (!transferId || annullingTransferId.value) return;
   annullingTransferId.value = transferId;
   try {
-    await api.patch(`/kpi_inventory/transferencias-bodega/${transferId}/anular`);
+    await api.patch(
+      `/kpi_inventory/transferencias-bodega/${transferId}/anular`,
+      undefined,
+      {
+        params: {
+          forzar_guia_autorizada: isForcedAuthorizedGuideAnnulment.value || undefined,
+        },
+      },
+    );
     ui.success("Transferencia anulada y stock revertido correctamente.");
     annulDialog.value = false;
     annullingTransfer.value = null;

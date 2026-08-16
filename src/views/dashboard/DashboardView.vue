@@ -526,6 +526,7 @@ import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime } from "@/app/utils/date-time";
+import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import {
   buildExecutiveDashboardReport,
   downloadReportExcel,
@@ -911,7 +912,7 @@ const lowStockItems = computed(() =>
 
 const productNameMap = computed(() =>
   productos.value.reduce((acc: Record<string, string>, item) => {
-    acc[String(item.id)] = item?.nombre || item?.codigo || item?.id;
+    acc[String(item.id)] = buildProductDisplayTitle(item);
     return acc;
   }, {}),
 );

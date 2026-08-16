@@ -57,7 +57,7 @@
               <v-expansion-panel-title class="kardex-group-title" @click="prefetchMaterialDetail(group.producto_id)">
                 <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap:12px">
                   <div>
-                    <div class="text-subtitle-1 font-weight-bold">[{{ group.producto_codigo || 'SIN CODIGO' }}] {{ formatKardexProductName(group.producto_id, group.producto_nombre || 'Sin nombre') }}</div>
+                    <div class="text-subtitle-1 font-weight-bold">{{ formatKardexProductName(group.producto_id, group.producto_nombre || 'Sin nombre') }}</div>
                     <div class="text-caption text-medium-emphasis mt-1">Linea: {{ group.linea_label || 'Sin linea' }} · Categoria: {{ group.categoria_label || 'Sin categoria' }} · Unidad: {{ group.unidad_label || 'Sin unidad' }}</div>
                   </div>
                   <div class="d-flex flex-wrap justify-end" style="gap:8px">
@@ -317,10 +317,7 @@ import {
   downloadReportPdf,
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
-import {
-  appendOilIndicator,
-  buildProductDisplayTitle,
-} from "@/app/utils/product-display";
+import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type MovementType = "INGRESO" | "SALIDA";
@@ -455,10 +452,7 @@ function getUserName() { return auth.user?.nameUser || auth.user?.nameSurname ||
 function formatKardexProductName(productId: unknown, fallbackName?: unknown) {
   const product = productMap.value.get(String(productId || ""));
   if (!product) return String(fallbackName || productId || "");
-  return appendOilIndicator(
-    String(fallbackName || product.nombre || product.codigo || product.id || ""),
-    product.es_aceite,
-  );
+  return buildProductDisplayTitle(product, { fallbackLabel: fallbackName });
 }
 function getSelectedImportFile() { return Array.isArray(xlsxFile.value) ? xlsxFile.value[0] ?? null : xlsxFile.value ?? null; }
 function clearRecord(record: Record<string, unknown>) { Object.keys(record).forEach((key) => delete record[key]); }
@@ -595,7 +589,7 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
 function getKardexExportGrouping(group: any, filters: KardexFilterState) {
   if (inventoryGroupBy.value === "linea") return group.linea_label || "Sin linea";
   if (inventoryGroupBy.value === "categoria") return group.categoria_label || "Sin categoria";
-  if (inventoryGroupBy.value === "material") return `${group.producto_codigo || ""} - ${group.producto_nombre || ""}`.trim();
+  if (inventoryGroupBy.value === "material") return formatKardexProductName(group.producto_id, group.producto_nombre || "");
   if (inventoryGroupBy.value === "bodega") {
     return warehouseOptions.value.find((item) => item.value === filters.bodega_id)?.title || "Todas las bodegas filtradas";
   }
@@ -620,7 +614,7 @@ function sanitizeKardexPdfFileName(value: unknown) {
     .slice(0, 80) || "material";
 }
 function buildKardexGroupReport(group: any, movementRows: any[], filters: KardexFilterState): ReportDefinition {
-  const materialLabel = `[${group.producto_codigo || "SIN CODIGO"}] ${formatKardexProductName(group.producto_id, group.producto_nombre || "Sin nombre")}`;
+  const materialLabel = formatKardexProductName(group.producto_id, group.producto_nombre || "Sin nombre");
   const fileName = `kardex_${sanitizeKardexPdfFileName(group.producto_codigo || group.producto_nombre)}_${formatDateForInput()}`;
   return {
     fileName,
@@ -686,7 +680,7 @@ async function openKardexGroupPdfPreview(group: any) {
   kardexPdfPreview.loading = true;
   kardexPdfPreview.error = "";
   kardexPdfPreview.productoId = productoId;
-  kardexPdfPreview.materialLabel = `[${group.producto_codigo || "SIN CODIGO"}] ${formatKardexProductName(productoId, group.producto_nombre || "Sin nombre")}`;
+  kardexPdfPreview.materialLabel = formatKardexProductName(productoId, group.producto_nombre || "Sin nombre");
   kardexPdfPreview.fileName = "";
   try {
     await ensureMovementCatalogsLoaded();

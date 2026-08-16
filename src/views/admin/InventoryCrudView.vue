@@ -418,7 +418,7 @@ import { isSuperAdministrator } from "@/app/utils/role-access";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
-import { resolveProductDisplayName } from "@/app/utils/product-display";
+import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
 import {
   downloadReportExcel,
   type ReportDefinition,
@@ -701,7 +701,7 @@ async function loadRelations(mode: "table" | "form" = "table") {
       const rows = await listAll(productField.relation.endpoint);
       nextRelationOptions.producto_id = rows.map((r: any) => ({
         value: r.id,
-        title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}${r?.descripcion ? ` (${String(r.descripcion).trim()})` : ""}`,
+        title: buildProductDisplayTitle(r),
         bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
       }));
     }
@@ -724,7 +724,9 @@ async function loadRelations(mode: "table" | "form" = "table") {
     const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
     nextRelationOptions[field.key] = rows.map((r: any) => ({
       value: r.id,
-      title: `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}${r?.descripcion ? ` (${String(r.descripcion).trim()})` : ""}`,
+      title: field.relation?.endpoint === "/kpi_inventory/productos"
+        ? buildProductDisplayTitle(r)
+        : `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`,
       bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
@@ -1070,7 +1072,7 @@ const rows = computed(() => {
         }
       }
       if (cfg.key === "productos") {
-        out.nombre = resolveProductDisplayName(r, r?.nombre ?? out.nombre);
+        out.nombre = buildProductDisplayTitle(r, { fallbackLabel: r?.nombre ?? out.nombre });
       }
       out._search = JSON.stringify({ ...r, ...out }).toLowerCase();
       return out;
@@ -1101,7 +1103,12 @@ function stockWarehouseLabel(row: any) {
 function stockProductLabel(row: any) {
   return (
     row?.producto_label ||
-    [row?.producto_codigo, row?.producto_nombre].filter(Boolean).join(" - ") ||
+    buildProductDisplayTitle({
+      codigo: row?.producto_codigo,
+      nombre: row?.producto_nombre,
+      descripcion: row?.producto_descripcion,
+      es_aceite: row?.es_aceite,
+    }) ||
     resolveRelationTitle("producto_id", row?.producto_id)
   );
 }

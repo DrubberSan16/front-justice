@@ -383,7 +383,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
-import { resolveProductDisplayName } from "@/app/utils/product-display";
+import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
 import { isSuperAdministrator } from "@/app/utils/role-access";
 
 const props = defineProps<{ moduleKey: string }>();
@@ -999,9 +999,7 @@ function buildStockScopedMaterialOptions(productos: any[], stockRows: any[]) {
       if (seen.has(dedupeKey)) return null;
       seen.add(dedupeKey);
       const producto = productMap.get(productoId);
-      const baseLabel = repairText(
-        `${producto?.codigo ? `${producto.codigo} - ` : ""}${normalizeLabel(producto || row)}`,
-      );
+      const baseLabel = repairText(buildProductDisplayTitle(producto || row));
       return {
         value: productoId,
         title: `${baseLabel} · Stock: ${row?.stock_actual ?? 0}`,
@@ -1030,7 +1028,9 @@ async function loadRelations(mode: "table" | "form" = "table") {
     const rows = endpointRows.get(String(field.relation?.endpoint || "")) ?? [];
     nextRelationOptions[field.key] = rows.map((r: any) => ({
       value: r.id,
-      title: repairText(`${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
+      title: repairText(field.relation?.endpoint === "/kpi_inventory/productos"
+        ? buildProductDisplayTitle(r)
+        : `${r.codigo ? `${r.codigo} - ` : ""}${normalizeLabel(r)}`),
       bodegaId: r?.bodega_id ? String(r.bodega_id) : null,
     }));
   }
