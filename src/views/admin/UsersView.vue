@@ -12,7 +12,7 @@
         </div>
       </div>
 
-      <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
+      <div class="d-flex flex-wrap justify-end" style="gap: 8px">
         <MassPurgeButton
           endpoint="/kpi_security/users/purge-all"
           module-title="Usuarios"
@@ -66,7 +66,12 @@
         />
       </v-col>
 
-      <v-col v-if="canManageDeleted" cols="12" md="1" class="d-flex align-center">
+      <v-col
+        v-if="canManageDeleted"
+        cols="12"
+        md="1"
+        class="d-flex align-center"
+      >
         <v-checkbox
           v-model="users.includeDeleted"
           label="Eliminados"
@@ -99,7 +104,11 @@
       </template>
 
       <template #item.isDeleted="{ item }">
-        <v-chip size="small" :color="item.isDeleted ? 'red' : 'green'" variant="tonal">
+        <v-chip
+          size="small"
+          :color="item.isDeleted ? 'red' : 'green'"
+          variant="tonal"
+        >
           {{ item.isDeleted ? "Si" : "No" }}
         </v-chip>
       </template>
@@ -137,7 +146,8 @@
       <template #bottom>
         <div class="responsive-header px-2 py-2">
           <div class="text-caption text-medium-emphasis users-table__summary">
-            Mostrando {{ pageFrom }}-{{ pageTo }} de {{ filteredTotal }} usuarios
+            Mostrando {{ pageFrom }}-{{ pageTo }} de
+            {{ filteredTotal }} usuarios
           </div>
 
           <div class="responsive-actions users-table__footer">
@@ -147,7 +157,7 @@
               label="Por página"
               variant="outlined"
               density="compact"
-              style="max-width: 140px;"
+              style="max-width: 140px"
               hide-details
             />
             <v-pagination
@@ -248,7 +258,12 @@ const selectedUser = ref<User | null>(null);
 const busy = ref(false);
 const filteredTotal = computed(() => users.filtered.length);
 const pageCount = computed(() =>
-  Math.max(1, Math.ceil(filteredTotal.value / Math.max(1, Number(itemsPerPage.value || 10)))),
+  Math.max(
+    1,
+    Math.ceil(
+      filteredTotal.value / Math.max(1, Number(itemsPerPage.value || 10)),
+    ),
+  ),
 );
 const pageFrom = computed(() => {
   if (!filteredTotal.value) return 0;
@@ -256,7 +271,10 @@ const pageFrom = computed(() => {
 });
 const pageTo = computed(() => {
   if (!filteredTotal.value) return 0;
-  return Math.min(filteredTotal.value, tablePage.value * Number(itemsPerPage.value || 10));
+  return Math.min(
+    filteredTotal.value,
+    tablePage.value * Number(itemsPerPage.value || 10),
+  );
 });
 
 onMounted(async () => {
@@ -307,7 +325,11 @@ function formatSucursales(
   rows?: Array<{ id: string; codigo: string; nombre: string }>,
 ) {
   const text = (rows ?? [])
-    .map((branch) => `${branch.codigo || ""} - ${branch.nombre || ""}`.replace(/^\s*-\s*/, "").trim())
+    .map((branch) =>
+      `${branch.codigo || ""} - ${branch.nombre || ""}`
+        .replace(/^\s*-\s*/, "")
+        .trim(),
+    )
     .filter(Boolean)
     .join(", ");
   return text || "Sin asignar";
@@ -366,11 +388,18 @@ async function onSubmitForm(payload: any) {
         email: payload.email,
         status: payload.status,
         dateBirthday: payload.dateBirthday,
+        esDestinatario: payload.esDestinatario,
+        identificacion: payload.esDestinatario
+          ? payload.identificacion
+          : undefined,
         reportes: payload.reportes,
         sucursales: payload.sucursales,
       });
 
-      await menuUsersProfile.createProfileForUser(created.id, currentUserName());
+      await menuUsersProfile.createProfileForUser(
+        created.id,
+        currentUserName(),
+      );
       ui.success("Guardado con exito");
     } else {
       const updatePayload: any = {
@@ -380,6 +409,10 @@ async function onSubmitForm(payload: any) {
         email: payload.email,
         status: payload.status,
         dateBirthday: payload.dateBirthday,
+        esDestinatario: payload.esDestinatario,
+        identificacion: payload.esDestinatario
+          ? payload.identificacion
+          : undefined,
         reportes: payload.reportes,
         sucursales: payload.sucursales,
       };

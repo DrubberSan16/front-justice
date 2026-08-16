@@ -10,6 +10,8 @@ export type User = {
   role?: Role | null;
   email: string;
   status: "ACTIVE" | "INACTIVE" | string;
+  esDestinatario?: boolean;
+  identificacion?: string | null;
   reportes?: string[];
   sucursales?: string[];
   effectiveSucursales?: Array<{
@@ -35,6 +37,8 @@ export type CreateUserRequest = {
   email: string;
   status: "ACTIVE" | "INACTIVE" | string;
   dateBirthday: string;
+  esDestinatario?: boolean;
+  identificacion?: string;
   createdBy: string;
   reportes?: string[];
   sucursales?: string[];

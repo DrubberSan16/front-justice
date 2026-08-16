@@ -1,5 +1,9 @@
 <template>
-  <v-dialog v-model="model" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 980">
+  <v-dialog
+    v-model="model"
+    :fullscreen="isDialogFullscreen"
+    :max-width="isDialogFullscreen ? undefined : 980"
+  >
     <v-card rounded="xl" class="user-form-dialog-card">
       <v-card-title class="responsive-header">
         <div class="text-subtitle-1 font-weight-bold">
@@ -14,19 +18,41 @@
         <v-form @submit.prevent="submit">
           <v-row dense>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.nameUser" label="Usuario" variant="outlined" required />
+              <v-text-field
+                v-model="form.nameUser"
+                label="Usuario"
+                variant="outlined"
+                required
+              />
             </v-col>
 
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.email" label="Email" type="email" variant="outlined" required />
+              <v-text-field
+                v-model="form.email"
+                label="Email"
+                type="email"
+                variant="outlined"
+                required
+              />
             </v-col>
 
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.nameSurname" label="Nombres y Apellidos" variant="outlined" required />
+              <v-text-field
+                v-model="form.nameSurname"
+                label="Nombres y Apellidos"
+                variant="outlined"
+                required
+              />
             </v-col>
 
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.dateBirthday" label="Fecha nacimiento" type="date" variant="outlined" required />
+              <v-text-field
+                v-model="form.dateBirthday"
+                label="Fecha nacimiento"
+                type="date"
+                variant="outlined"
+                required
+              />
             </v-col>
 
             <v-col cols="12" md="6">
@@ -41,6 +67,34 @@
               />
             </v-col>
 
+            <v-col cols="12" md="6" class="d-flex align-center">
+              <v-checkbox
+                v-model="form.esDestinatario"
+                label="Es destinatario"
+                color="primary"
+                hide-details
+              />
+            </v-col>
+
+            <v-col v-if="form.esDestinatario" cols="12" md="6">
+              <v-text-field
+                v-model="form.identificacion"
+                label="Cédula o RUC"
+                variant="outlined"
+                inputmode="numeric"
+                maxlength="13"
+                counter="13"
+                required
+                hint="Ingresa 10 dígitos para cédula o 13 dígitos para RUC."
+                persistent-hint
+                :error-messages="
+                  recipientIdentificationError
+                    ? [recipientIdentificationError]
+                    : []
+                "
+              />
+            </v-col>
+
             <v-col cols="12" md="6">
               <v-select
                 v-model="form.roleId"
@@ -52,13 +106,17 @@
                 required
                 :loading="rolesLoading"
               />
-              <div class="text-caption text-medium-emphasis mt-1" v-if="rolesError">
+              <div
+                class="text-caption text-medium-emphasis mt-1"
+                v-if="rolesError"
+              >
                 {{ rolesError }}
               </div>
 
               <!-- Solo para CREATE: feedback de precarga desde rol -->
               <div class="text-caption text-medium-emphasis mt-1">
-                Al crear, se copiarán por defecto los menús/permisos del rol seleccionado.
+                Al crear, se copiarán por defecto los menús/permisos del rol
+                seleccionado.
               </div>
 
               <div v-if="roleProfileLoading" class="mt-2">
@@ -85,7 +143,10 @@
                 persistent-hint
               >
                 <template #item="{ props: itemProps, item }">
-                  <v-list-item v-bind="itemProps" :subtitle="item.raw.description" />
+                  <v-list-item
+                    v-bind="itemProps"
+                    :subtitle="item.raw.description"
+                  />
                 </template>
               </v-autocomplete>
             </v-col>
@@ -107,10 +168,16 @@
                 persistent-hint
               >
                 <template #item="{ props: itemProps, item }">
-                  <v-list-item v-bind="itemProps" :subtitle="item.raw.subtitle" />
+                  <v-list-item
+                    v-bind="itemProps"
+                    :subtitle="item.raw.subtitle"
+                  />
                 </template>
               </v-autocomplete>
-              <div class="text-caption text-medium-emphasis mt-1" v-if="branchError">
+              <div
+                class="text-caption text-medium-emphasis mt-1"
+                v-if="branchError"
+              >
                 {{ branchError }}
               </div>
             </v-col>
@@ -140,13 +207,20 @@
           <!-- PERFILERÍA SOLO EN EDICIÓN -->
           <div v-if="isEdit" class="mt-6">
             <div class="responsive-header mb-2">
-              <div class="text-subtitle-2 font-weight-bold">Permisos por menú (usuario)</div>
+              <div class="text-subtitle-2 font-weight-bold">
+                Permisos por menú (usuario)
+              </div>
               <v-chip size="small" variant="tonal">
                 UserId: {{ props.user?.id }}
               </v-chip>
             </div>
 
-            <v-alert v-if="menuUsersProfile.error" type="error" variant="tonal" class="mb-3">
+            <v-alert
+              v-if="menuUsersProfile.error"
+              type="error"
+              variant="tonal"
+              class="mb-3"
+            >
               {{ menuUsersProfile.error }}
             </v-alert>
 
@@ -186,7 +260,10 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useRolesStore } from "@/app/stores/roles.store";
 import { useMenusFullStore } from "@/app/stores/menus-full.store";
 import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store";
-import { getReportAccessOptionsForUser, normalizeReportAccess } from "@/app/config/report-access";
+import {
+  getReportAccessOptionsForUser,
+  normalizeReportAccess,
+} from "@/app/config/report-access";
 import {
   cachedGet,
   DEFAULT_CATALOG_CACHE_TTL_MS,
@@ -203,6 +280,8 @@ type FormModel = {
   email: string;
   status: "ACTIVE" | "INACTIVE";
   dateBirthday: string;
+  esDestinatario: boolean;
+  identificacion: string;
   reportes: string[];
   sucursales: string[];
 };
@@ -239,7 +318,7 @@ const statusItems = [
 ];
 
 const roleItems = computed(() =>
-  rolesStore.items.map((r) => ({ title: r.nombre, value: r.id }))
+  rolesStore.items.map((r) => ({ title: r.nombre, value: r.id })),
 );
 
 const rolesLoading = computed(() => rolesStore.loading);
@@ -247,13 +326,19 @@ const rolesError = computed(() => rolesStore.error);
 
 const loading = computed(() => props.loading ?? false);
 const error = computed(() => props.error ?? null);
-const reportAccessOptions = computed(() => getReportAccessOptionsForUser(auth.user));
-const allowedReportKeys = computed(() => new Set(reportAccessOptions.value.map((item) => item.value)));
+const reportAccessOptions = computed(() =>
+  getReportAccessOptionsForUser(auth.user),
+);
+const allowedReportKeys = computed(
+  () => new Set(reportAccessOptions.value.map((item) => item.value)),
+);
 
 const roleProfileLoading = ref(false);
 const roleProfileError = ref<string | null>(null);
 const hydratingForm = ref(false);
-const branchOptions = ref<Array<{ title: string; value: string; subtitle: string }>>([]);
+const branchOptions = ref<
+  Array<{ title: string; value: string; subtitle: string }>
+>([]);
 const branchLoading = ref(false);
 const branchError = ref<string | null>(null);
 
@@ -265,17 +350,36 @@ const form = reactive<FormModel>({
   email: "",
   status: "ACTIVE",
   dateBirthday: "",
+  esDestinatario: false,
+  identificacion: "",
   reportes: [],
   sucursales: [],
 });
 
-function collectVisibleMenuIds(nodes: Array<{ id: string; children?: any[] }> = []): string[] {
-  return nodes.flatMap((node) => [node.id, ...collectVisibleMenuIds(node.children ?? [])]);
+const recipientIdentificationError = computed(() => {
+  if (!form.esDestinatario) return "";
+  if (!form.identificacion)
+    return "La cédula o RUC es obligatorio para un destinatario.";
+  if (!/^(?:\d{10}|\d{13})$/.test(form.identificacion)) {
+    return "Ingresa una cédula de 10 dígitos o un RUC de 13 dígitos.";
+  }
+  return "";
+});
+
+function collectVisibleMenuIds(
+  nodes: Array<{ id: string; children?: any[] }> = [],
+): string[] {
+  return nodes.flatMap((node) => [
+    node.id,
+    ...collectVisibleMenuIds(node.children ?? []),
+  ]);
 }
 
 function roleDefaultReportes(roleId: string) {
   const role = rolesStore.items.find((item) => item.id === roleId);
-  return normalizeReportAccess(role?.reportes).filter((item) => allowedReportKeys.value.has(item));
+  return normalizeReportAccess(role?.reportes).filter((item) =>
+    allowedReportKeys.value.has(item),
+  );
 }
 
 /** Precarga menú/permiso desde rol */
@@ -305,20 +409,25 @@ async function loadBranches() {
   branchLoading.value = true;
   branchError.value = null;
   try {
-    const { data } = await cachedGet<Array<{ id: string; codigo: string; nombre: string }>>(
+    const { data } = await cachedGet<
+      Array<{ id: string; codigo: string; nombre: string }>
+    >(
       "/kpi_security/users/sucursales/catalogo",
       {},
       { ttlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
     );
     branchOptions.value = (data ?? []).map((item) => ({
-      title: `${item.codigo || ""} - ${item.nombre || ""}`.replace(/^\s*-\s*/, "").trim(),
+      title: `${item.codigo || ""} - ${item.nombre || ""}`
+        .replace(/^\s*-\s*/, "")
+        .trim(),
       value: item.id,
       subtitle: item.codigo || "",
     }));
   } catch (e: any) {
     branchOptions.value = [];
     branchError.value =
-      e?.response?.data?.message || "No se pudo cargar el catálogo de sucursales.";
+      e?.response?.data?.message ||
+      "No se pudo cargar el catálogo de sucursales.";
   } finally {
     branchLoading.value = false;
   }
@@ -338,7 +447,6 @@ watch(
       menusFull.fetchAll(true),
     ]);
 
-
     // 2) Menú completo (se usa para el cascade)
     const visibleMenuIds = collectVisibleMenuIds(menusFull.tree);
 
@@ -355,8 +463,12 @@ watch(
       form.email = props.user.email ?? "";
       form.status = (props.user.status as any) || "ACTIVE";
       form.dateBirthday = props.user.dateBirthday ?? "";
-      form.reportes = normalizeReportAccess(props.user.reportes).filter((item) =>
-        allowedReportKeys.value.has(item),
+      form.esDestinatario = props.user.esDestinatario === true;
+      form.identificacion = String(props.user.identificacion ?? "")
+        .replace(/\D/g, "")
+        .slice(0, 13);
+      form.reportes = normalizeReportAccess(props.user.reportes).filter(
+        (item) => allowedReportKeys.value.has(item),
       );
       form.sucursales = [...(props.user.sucursales ?? [])];
 
@@ -376,6 +488,8 @@ watch(
       form.email = "";
       form.status = "ACTIVE";
       form.dateBirthday = "";
+      form.esDestinatario = false;
+      form.identificacion = "";
       form.reportes = roleDefaultReportes(form.roleId);
       form.sucursales = [];
 
@@ -385,7 +499,7 @@ watch(
     }
     hydratingForm.value = false;
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 /** Si cambia el rol, recargar perfilería del rol */
@@ -399,7 +513,24 @@ watch(
       preserveOriginal: isEdit.value,
     });
     menuUsersProfile.restrictToMenuIds(collectVisibleMenuIds(menusFull.tree));
-  }
+  },
+);
+
+watch(
+  () => form.identificacion,
+  (value) => {
+    const normalized = String(value ?? "")
+      .replace(/\D/g, "")
+      .slice(0, 13);
+    if (normalized !== value) form.identificacion = normalized;
+  },
+);
+
+watch(
+  () => form.esDestinatario,
+  (enabled) => {
+    if (!enabled) form.identificacion = "";
+  },
 );
 
 function close() {
@@ -407,6 +538,7 @@ function close() {
 }
 
 function submit() {
+  if (recipientIdentificationError.value) return;
   emit("submit", { ...form });
 }
 </script>
