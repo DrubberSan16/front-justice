@@ -33,15 +33,6 @@
             <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="loadReport">
               Actualizar
             </v-btn>
-            <v-btn
-              variant="tonal"
-              prepend-icon="mdi-file-pdf-box"
-              :loading="exportingPdf"
-              :disabled="loading || !reportPayload"
-              @click="downloadDailyReportPdf"
-            >
-              Descargar PDF
-            </v-btn>
           </div>
         </div>
 
@@ -127,9 +118,28 @@
                 <div class="text-caption text-medium-emphasis">Selecciona una vista para revisar cada registro.</div>
               </div>
             </div>
-            <v-chip label color="primary" variant="tonal">
-              {{ movementRows.length + pendingRows.length + closedRows.length }} registros
-            </v-chip>
+            <div class="daily-detail-controls">
+              <v-select
+                v-model="detailWarehouseId"
+                :items="detailWarehouseOptions"
+                item-title="title"
+                item-value="value"
+                label="Bodega"
+                clearable
+                density="compact"
+                variant="outlined"
+                hide-details
+              />
+              <v-btn variant="tonal" prepend-icon="mdi-file-pdf-box" :loading="exportingPdf" :disabled="!reportPayload" @click="downloadDailyReportPdf">
+                PDF
+              </v-btn>
+              <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="exportingExcel" :disabled="!reportPayload" @click="downloadDailyReportExcel">
+                Excel
+              </v-btn>
+              <v-chip label color="primary" variant="tonal">
+                {{ movementRows.length + pendingRows.length + closedRows.length }} registros
+              </v-chip>
+            </div>
           </div>
 
           <v-tabs v-model="activeTab" color="primary" class="system-tabs">
@@ -158,13 +168,19 @@
                 class="table-enterprise enterprise-table report-data-table"
               >
                 <template #item.fecha="{ item }">
-                  {{ formatDateTime(item.fecha, "-") }}
+                  {{ formatMovementDate(item.fecha) }}
                 </template>
                 <template #item.entrada_cantidad="{ item }">
                   {{ formatNumber(item.entrada_cantidad) }}
                 </template>
                 <template #item.salida_cantidad="{ item }">
                   {{ formatNumber(item.salida_cantidad) }}
+                </template>
+                <template #item.stock_anterior="{ item }">
+                  {{ formatNumber(item.stock_anterior) }}
+                </template>
+                <template #item.stock_actual="{ item }">
+                  {{ formatNumber(item.stock_actual) }}
                 </template>
                 <template #item.source_label="{ item }">
                   <v-chip size="small" variant="tonal" :color="sourceChipColor(item.source_type)">
@@ -268,6 +284,7 @@ import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import { currentDateInputValue, formatDateTime } from "@/app/utils/date-time";
 import {
+  downloadReportExcel,
   downloadReportPdf,
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
@@ -286,9 +303,11 @@ const menuStore = useMenuStore();
 const ui = useUiStore();
 const loading = ref(false);
 const exportingPdf = ref(false);
+const exportingExcel = ref(false);
 const error = ref<string | null>(null);
 const reportPayload = ref<AnyRow | null>(null);
 const activeTab = ref("movimientos");
+const detailWarehouseId = ref("");
 
 const filters = reactive({
   fecha: currentDateInputValue(),
@@ -301,6 +320,8 @@ const movementHeaders = [
   { title: "Bodega", key: "bodega_label" },
   { title: "Entrada", key: "entrada_cantidad" },
   { title: "Salida", key: "salida_cantidad" },
+  { title: "Stock anterior", key: "stock_anterior" },
+  { title: "Stock actual", key: "stock_actual" },
   { title: "Documento", key: "documento" },
   { title: "OT", key: "work_order_code" },
 ];
@@ -309,6 +330,7 @@ const workOrderHeaders = [
   { title: "Codigo", key: "code" },
   { title: "Titulo", key: "title" },
   { title: "Equipo", key: "equipment_label" },
+  { title: "Bodega", key: "bodega_label" },
   { title: "Tipo", key: "maintenance_kind" },
   { title: "Estado", key: "status" },
   { title: "Fecha", key: "fecha_evento" },
@@ -337,11 +359,11 @@ const generatedAtLabel = computed(() =>
     : "Sin sincronizar",
 );
 
-const movementRows = computed<AnyRow[]>(() =>
+const allMovementRows = computed<AnyRow[]>(() =>
   Array.isArray(reportPayload.value?.movements) ? reportPayload.value.movements : [],
 );
 
-const pendingRows = computed<AnyRow[]>(() =>
+const allPendingRows = computed<AnyRow[]>(() =>
   Array.isArray(reportPayload.value?.work_orders_pending)
     ? reportPayload.value.work_orders_pending
     : Array.isArray(reportPayload.value?.work_orders_created)
@@ -349,10 +371,61 @@ const pendingRows = computed<AnyRow[]>(() =>
     : [],
 );
 
-const closedRows = computed<AnyRow[]>(() =>
+const allClosedRows = computed<AnyRow[]>(() =>
   Array.isArray(reportPayload.value?.work_orders_closed)
     ? reportPayload.value.work_orders_closed
     : [],
+);
+
+const detailWarehouseOptions = computed(() => {
+  const configuredOptions = Array.isArray(reportPayload.value?.warehouse_options)
+    ? reportPayload.value.warehouse_options
+    : [];
+  if (configuredOptions.length) return configuredOptions;
+
+  const options = new Map<string, { value: string; title: string }>();
+  for (const row of allMovementRows.value) {
+    const value = String(row?.bodega_id || "").trim();
+    if (value) options.set(value, { value, title: row?.bodega_label || "Sin bodega" });
+  }
+  return [...options.values()];
+});
+
+function matchesDetailWarehouse(row: AnyRow) {
+  const selectedWarehouseId = String(detailWarehouseId.value || "").trim();
+  if (!selectedWarehouseId) return true;
+  if (String(row?.bodega_id || "").trim() === selectedWarehouseId) return true;
+  return Array.isArray(row?.bodega_ids) && row.bodega_ids.includes(selectedWarehouseId);
+}
+
+const movementRows = computed<AnyRow[]>(() =>
+  allMovementRows.value.filter(matchesDetailWarehouse),
+);
+
+const pendingRows = computed<AnyRow[]>(() =>
+  allPendingRows.value.filter(matchesDetailWarehouse),
+);
+
+const closedRows = computed<AnyRow[]>(() =>
+  allClosedRows.value.filter(matchesDetailWarehouse),
+);
+
+const selectedWarehouseLabel = computed(() => {
+  const selectedWarehouseId = String(detailWarehouseId.value || "").trim();
+  if (!selectedWarehouseId) return "Todas las bodegas";
+  return detailWarehouseOptions.value.find(
+    (item: AnyRow) => String(item.value) === selectedWarehouseId,
+  )?.title || "Bodega seleccionada";
+});
+
+const detailMovementTotals = computed(() =>
+  movementRows.value.reduce(
+    (totals, row) => ({
+      entradas: totals.entradas + Number(row?.entrada_cantidad || 0),
+      salidas: totals.salidas + Number(row?.salida_cantidad || 0),
+    }),
+    { entradas: 0, salidas: 0 },
+  ),
 );
 
 const sourceChartItems = computed<DashboardChartItem[]>(() =>
@@ -393,10 +466,10 @@ const summaryCards = computed(() => {
     },
     { label: "OT cerradas", value: String(summary.ordenes_cerradas ?? 0), icon: "mdi-clipboard-check-outline", tone: "success" },
     {
-      label: "Materiales distintos",
-      value: `${summary.materiales_ingresados_distintos ?? 0} / ${summary.materiales_salidos_distintos ?? 0}`,
-      icon: "mdi-package-variant-closed",
-      tone: "primary",
+      label: "Balance neto del día",
+      value: `${Number(summary.total_entradas || 0) - Number(summary.total_salidas || 0) >= 0 ? "+" : ""}${formatNumber(Number(summary.total_entradas || 0) - Number(summary.total_salidas || 0))}`,
+      icon: "mdi-scale-balance",
+      tone: Number(summary.total_entradas || 0) >= Number(summary.total_salidas || 0) ? "success" : "warning",
     },
   ];
 });
@@ -410,6 +483,12 @@ function formatNumber(value: unknown, digits = 2) {
   }).format(numeric);
 }
 
+function formatMovementDate(value: unknown) {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  return formatDateTime(value, "-").split(" ")[0] || "-";
+}
+
 function sourceChipColor(sourceType: string) {
   const normalized = String(sourceType || "").toUpperCase();
   if (normalized === "INGRESO_COMPRA") return "success";
@@ -418,19 +497,18 @@ function sourceChipColor(sourceType: string) {
 }
 
 function buildDailyOperationsPdfReport(): ReportDefinition {
-  const summary = reportPayload.value?.summary ?? {};
   const label = reportPayload.value?.filters?.label || filters.fecha || "Sin fecha";
   return {
     fileName: `reporte_diario_${String(filters.fecha || "hoy").replace(/\W+/g, "_")}`,
     title: "Reporte diario",
-    subtitle: `Consolidado operativo del ${label}.`,
+    subtitle: `Consolidado operativo del ${label}. Bodega: ${selectedWarehouseLabel.value}.`,
     orientation: "landscape",
     summary: [
-      { label: "Entradas del dia", value: formatNumber(summary.total_entradas) },
-      { label: "Salidas del dia", value: formatNumber(summary.total_salidas) },
-      { label: "Salidas por OT", value: formatNumber(summary.salidas_ot) },
-      { label: "OT pendientes", value: String(summary.ordenes_pendientes ?? summary.ordenes_generadas ?? 0) },
-      { label: "OT cerradas", value: String(summary.ordenes_cerradas ?? 0) },
+      { label: "Bodega", value: selectedWarehouseLabel.value },
+      { label: "Entradas", value: formatNumber(detailMovementTotals.value.entradas) },
+      { label: "Salidas", value: formatNumber(detailMovementTotals.value.salidas) },
+      { label: "OT pendientes", value: String(pendingRows.value.length) },
+      { label: "OT cerradas", value: String(closedRows.value.length) },
     ],
     sheets: [
       {
@@ -438,12 +516,14 @@ function buildDailyOperationsPdfReport(): ReportDefinition {
         rows: movementRows.value,
         emptyMessage: "No hay movimientos de inventario para la fecha consultada.",
         columns: [
-          { key: "fecha", header: "Fecha", format: "datetime", width: 18 },
+          { key: "fecha", header: "Fecha", format: "date", width: 14 },
           { key: "source_label", header: "Fuente", width: 18 },
           { key: "producto_label", header: "Material", width: 34 },
           { key: "bodega_label", header: "Bodega", width: 24 },
           { key: "entrada_cantidad", header: "Entrada", format: "number", width: 12 },
           { key: "salida_cantidad", header: "Salida", format: "number", width: 12 },
+          { key: "stock_anterior", header: "Stock anterior", format: "number", width: 14 },
+          { key: "stock_actual", header: "Stock actual", format: "number", width: 14 },
           { key: "documento", header: "Documento", width: 18 },
           { key: "work_order_code", header: "OT", width: 16 },
         ],
@@ -488,6 +568,22 @@ async function downloadDailyReportPdf() {
   }
 }
 
+async function downloadDailyReportExcel() {
+  if (!reportPayload.value) {
+    await loadReport();
+  }
+  if (!reportPayload.value) return;
+  exportingExcel.value = true;
+  try {
+    await downloadReportExcel(buildDailyOperationsPdfReport());
+    ui.success("Reporte diario descargado en Excel.");
+  } catch (e: any) {
+    ui.error(e?.message || "No se pudo descargar el reporte diario en Excel.");
+  } finally {
+    exportingExcel.value = false;
+  }
+}
+
 async function loadReport() {
   if (!canRead.value) return;
   loading.value = true;
@@ -509,6 +605,7 @@ async function loadReport() {
 
 function clearFilters() {
   filters.fecha = currentDateInputValue();
+  detailWarehouseId.value = "";
   void loadReport();
 }
 
@@ -767,6 +864,18 @@ onMounted(async () => {
   padding: 21px 22px 17px;
 }
 
+.daily-detail-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.daily-detail-controls :deep(.v-input) {
+  min-width: 240px;
+}
+
 .daily-data-card__heading {
   display: flex;
   align-items: center;
@@ -924,6 +1033,11 @@ onMounted(async () => {
   .table-context-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .daily-detail-controls,
+  .daily-detail-controls :deep(.v-input) {
+    width: 100%;
   }
 
   .system-tabs {

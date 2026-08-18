@@ -105,6 +105,7 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
         type: "boolean",
         required: true,
       },
+      { key: "tiene_chatarra", label: "Chatarra", type: "boolean" },
     ],
   },
   {

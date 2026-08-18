@@ -32,6 +32,24 @@
           Descargar XLSX
         </v-btn>
         <v-btn
+          v-if="isProductModule"
+          variant="tonal"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="exportingProducts.pdf"
+          @click="exportProducts('pdf')"
+        >
+          Descargar PDF
+        </v-btn>
+        <v-btn
+          v-if="isProductModule"
+          variant="tonal"
+          prepend-icon="mdi-file-excel"
+          :loading="exportingProducts.excel"
+          @click="exportProducts('excel')"
+        >
+          Descargar XLSX
+        </v-btn>
+        <v-btn
           v-if="canPurgeModule"
           color="error"
           variant="tonal"
@@ -55,7 +73,7 @@
       <v-col cols="12" md="3">
         <v-text-field
           v-model="search"
-          :label="isProductModule ? 'Código, nombre, descripción, SKU o barras' : 'Buscar'"
+          :label="isProductModule ? 'Código, nombre, descripción, SKU o barras' : isStockBodegaModule ? 'Código, nombre o descripción' : 'Buscar'"
           variant="outlined"
           density="compact"
           prepend-inner-icon="mdi-magnify"
@@ -421,6 +439,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
 import {
   downloadReportExcel,
+  downloadReportPdf,
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
 
@@ -451,6 +470,7 @@ const loading = ref(false);
 const initialLoading = ref(false);
 const saving = ref(false);
 const exportingStock = ref(false);
+const exportingProducts = reactive({ pdf: false, excel: false });
 const error = ref<string | null>(null);
 const search = ref("");
 const stockWarehouseFilter = ref("");
@@ -1210,6 +1230,137 @@ async function exportStockWarehouseXlsx() {
     ui.error(e?.response?.data?.message || e?.message || "No se pudo descargar el stock por bodega.");
   } finally {
     exportingStock.value = false;
+  }
+}
+
+function productExportParams() {
+  return {
+    search: search.value.trim() || undefined,
+    status: productStatusFilter.value || undefined,
+    linea_id: productLineFilter.value || undefined,
+    categoria_id: productCategoryFilter.value || undefined,
+    marca_id: productBrandFilter.value || undefined,
+    unidad_medida_id: productUnitFilter.value || undefined,
+    es_aceite: productOilFilter.value || undefined,
+    es_servicio: productServiceFilter.value || undefined,
+  };
+}
+
+async function fetchAllProductRows() {
+  if (!moduleConfig.value) return [] as any[];
+  const limit = 100;
+  const params = productExportParams();
+  const firstPage = await fetchPaginatedResource(moduleConfig.value.endpoint, params, {
+    page: 1,
+    limit,
+  });
+  const allRows = [...firstPage.data];
+  const totalPages = Number(firstPage.pagination.totalPages || 1);
+  for (let page = 2; page <= totalPages; page += 1) {
+    const response = await fetchPaginatedResource(moduleConfig.value.endpoint, params, {
+      page,
+      limit,
+    });
+    allRows.push(...response.data);
+  }
+  return allRows;
+}
+
+function productFilterValueLabel(
+  value: unknown,
+  fieldKey?: string,
+  options?: Array<{ value: any; title: string }>,
+) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "Todos";
+  if (fieldKey) {
+    const relationTitle = resolveRelationTitle(fieldKey, normalized);
+    if (relationTitle && relationTitle !== normalized) return relationTitle;
+  }
+  return options?.find((item) => String(item.value) === normalized)?.title ?? normalized;
+}
+
+function buildProductsReport(sourceRows: any[]): ReportDefinition {
+  const reportRows = sourceRows.map((row) => ({
+    codigo: row?.codigo || "",
+    nombre: row?.nombre || "",
+    descripcion: row?.descripcion || "",
+    linea: resolveRelationTitle("linea_id", row?.linea_id),
+    categoria: resolveRelationTitle("categoria_id", row?.categoria_id),
+    marca: resolveRelationTitle("marca_id", row?.marca_id),
+    unidad_medida: resolveRelationTitle("unidad_medida_id", row?.unidad_medida_id),
+    tipo_material: row?.es_servicio ? "Servicio" : "Material",
+    es_aceite: row?.es_aceite ? "Sí" : "No",
+    sku: row?.sku || "",
+    codigo_barras: row?.codigo_barras || "",
+    ultimo_costo: Number(row?.ultimo_costo || 0),
+    costo_promedio: Number(row?.costo_promedio || 0),
+    precio_venta: Number(row?.precio_venta || 0),
+    porcentaje_utilidad: Number(row?.porcentaje_utilidad || 0),
+    estado: row?.status || "",
+  }));
+
+  return {
+    fileName: `materiales_${exportDateStamp()}`,
+    title: "Listado de materiales",
+    subtitle: "Exportación según los filtros aplicados en la consulta.",
+    orientation: "landscape",
+    summary: [
+      { label: "Búsqueda", value: search.value.trim() || "Sin búsqueda" },
+      { label: "Estado", value: productFilterValueLabel(productStatusFilter.value, undefined, recordStatusOptions) },
+      { label: "Línea", value: productFilterValueLabel(productLineFilter.value, "linea_id") },
+      { label: "Categoría", value: productFilterValueLabel(productCategoryFilter.value, "categoria_id") },
+      { label: "Marca", value: productFilterValueLabel(productBrandFilter.value, "marca_id") },
+      { label: "Unidad", value: productFilterValueLabel(productUnitFilter.value, "unidad_medida_id") },
+      { label: "Es aceite", value: productFilterValueLabel(productOilFilter.value, undefined, yesNoFilterOptions) },
+      { label: "Tipo de material", value: productFilterValueLabel(productServiceFilter.value, undefined, yesNoFilterOptions) },
+      { label: "Registros", value: reportRows.length },
+    ],
+    sheets: [
+      {
+        name: "Materiales",
+        rows: reportRows,
+        emptyMessage: "No hay materiales para los filtros seleccionados.",
+        columns: [
+          { key: "codigo", header: "Código", width: 15 },
+          { key: "nombre", header: "Nombre", width: 28 },
+          { key: "descripcion", header: "Descripción", width: 32 },
+          { key: "linea", header: "Línea", width: 18 },
+          { key: "categoria", header: "Categoría", width: 18 },
+          { key: "marca", header: "Marca", width: 18 },
+          { key: "unidad_medida", header: "Unidad de medida", width: 18 },
+          { key: "tipo_material", header: "Tipo", width: 14 },
+          { key: "es_aceite", header: "Es aceite", width: 12 },
+          { key: "sku", header: "SKU", width: 16 },
+          { key: "codigo_barras", header: "Código de barras", width: 18 },
+          { key: "ultimo_costo", header: "Último costo", format: "currency", width: 14 },
+          { key: "costo_promedio", header: "Costo promedio", format: "currency", width: 15 },
+          { key: "precio_venta", header: "Precio venta", format: "currency", width: 14 },
+          { key: "porcentaje_utilidad", header: "% utilidad", format: "number", width: 12 },
+          { key: "estado", header: "Estado", width: 12 },
+        ],
+      },
+    ],
+  };
+}
+
+async function exportProducts(format: "pdf" | "excel") {
+  if (!isProductModule.value || !moduleConfig.value) return;
+  exportingProducts[format] = true;
+  try {
+    await loadRelations("table");
+    const exportRows = await fetchAllProductRows();
+    const report = buildProductsReport(exportRows);
+    if (format === "pdf") {
+      await downloadReportPdf(report);
+    } else {
+      await downloadReportExcel(report);
+    }
+    ui.success(`Materiales descargados en ${format === "pdf" ? "PDF" : "XLSX"}.`);
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo descargar el reporte de materiales.");
+  } finally {
+    exportingProducts[format] = false;
   }
 }
 
