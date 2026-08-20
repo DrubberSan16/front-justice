@@ -798,7 +798,7 @@
                 hide-details
               />
               <div class="text-caption text-medium-emphasis mt-1">
-                Activa esta opciÃ³n para cambiar solo la fecha de la OT mensual y registrar el motivo de reprogramaciÃ³n.
+                Activa esta opción para cambiar solo la fecha de la OT mensual y registrar el motivo de reprogramación.
               </div>
             </v-col>
             <v-col v-if="monthlyCellIsReprogramming" cols="12" md="6">
@@ -1176,10 +1176,10 @@
               />
               <div class="text-caption text-medium-emphasis mt-1">
                 <template v-if="weeklyCellUsesMonthlyWorkOrderOptions">
-                  Se usarÃ¡ una OT ya programada en el mensual para este dÃ­a.
+                  Se usará una OT ya programada en el mensual para este día.
                 </template>
                 <template v-else>
-                  Si activas esta opciÃ³n podrÃ¡s vincular una OT planificada o en proceso.
+                  Si activas esta opción podrás vincular una OT planificada o en proceso.
                 </template>
               </div>
             </v-col>
@@ -1192,7 +1192,7 @@
                 label="Orden de trabajo a ejecutar"
                 variant="outlined"
                 clearable
-                :hint="weeklyCellUsesMonthlyWorkOrderOptions ? 'Se listan primero las OTs del mensual para este dÃ­a.' : 'Se listan OTs en estado planificado o en proceso.'"
+                :hint="weeklyCellUsesMonthlyWorkOrderOptions ? 'Se listan primero las OTs del mensual para este día.' : 'Se listan OTs en estado planificado o en proceso.'"
                 persistent-hint
               />
             </v-col>
@@ -1773,7 +1773,7 @@ const monthlyCellDialogTitleDisplay = computed(() => {
   return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
 });
 const resolvedMonthlyCellDialogTitle = computed(() => {
-  if (monthlyCellIsReprogramming.value) return "ReprogramaciÃ³n de orden";
+  if (monthlyCellIsReprogramming.value) return "Reprogramación de orden";
   return monthlyCell.id ? "Editar bloque mensual" : "Nuevo bloque mensual";
 });
 void resolvedMonthlyCellDialogTitle.value;
@@ -3754,7 +3754,7 @@ async function saveMonthlyCell() {
     excludeProgramacionId: sourceProgramacionId || null,
   });
   if (monthlyWorkOrderConflict) {
-    ui.error("La orden de trabajo ya estÃ¡ programada para ese dÃ­a.");
+    ui.error("La orden de trabajo ya está programada para ese día.");
     return;
   }
   savingMonthlyCell.value = true;
@@ -4049,7 +4049,7 @@ async function save() {
     excludeProgramacionId: editingId.value || null,
   });
   if (duplicateScheduledWorkOrder) {
-    ui.error("La orden de trabajo ya estÃ¡ programada para ese dÃ­a.");
+    ui.error("La orden de trabajo ya está programada para ese día.");
     return;
   }
   saving.value = true;
