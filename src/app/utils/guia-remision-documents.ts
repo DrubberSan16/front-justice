@@ -9,6 +9,7 @@ import {
 type GuideDetailLike = {
   codigo_producto?: string | null;
   nombre_producto?: string | null;
+  descripcion_producto?: string | null;
   cantidad?: string | number | null;
   observacion?: string | null;
 };
@@ -123,6 +124,18 @@ function formatFullDate(value: unknown) {
 
 function splitText(doc: any, text: string, width: number) {
   return doc.splitTextToSize(safeText(text, ""), width) as string[];
+}
+
+// Columna "Descripcion": nombre del material y, entre parentesis, su
+// descripcion. Las guias emitidas antes de que el snapshot incluyera
+// la descripcion siguen mostrando solo el nombre.
+function formatProductDescription(detail: GuideDetailLike) {
+  const nombre = repairText(detail.nombre_producto);
+  const descripcion = repairText(detail.descripcion_producto);
+  if (!nombre) return descripcion || "-";
+  if (!descripcion) return nombre;
+  if (descripcion.toLocaleLowerCase() === nombre.toLocaleLowerCase()) return nombre;
+  return `${nombre} (${descripcion})`;
 }
 
 async function buildAccessKeyBarcodeDataUrl(value: unknown) {
@@ -474,7 +487,7 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
     body: details.length
       ? details.map((detail) => [
           formatNumber(detail.cantidad, 2),
-          safeText(detail.nombre_producto),
+          formatProductDescription(detail),
           safeText(detail.codigo_producto),
           safeText(detail.codigo_producto, ""),
           safeText(detail.observacion, ""),
@@ -497,29 +510,49 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
       lineColor: [40, 40, 40],
       lineWidth: 0.8,
     },
+    // El ancho util en A4 con margenes de 32 pt es 531,28. La suma anterior
+    // era 533 y autoTable tenia que recortar la tabla. Se reparte para que
+    // encaje y la descripcion, que ahora lleva nombre y descripcion, gane
+    // el espacio sobrante.
     columnStyles: {
-      0: { cellWidth: 58, halign: "right" },
-      1: { cellWidth: 190 },
-      2: { cellWidth: 95 },
-      3: { cellWidth: 90 },
-      4: { cellWidth: 100 },
-    },
-    didDrawPage: () => {
-      if (doc.getCurrentPageInfo().pageNumber > 1) {
-        drawPdfCompanyLogo(doc, companyLogoAsset, cornerLogoOptions);
-      }
-      footer(doc, generatedBy);
+      0: { cellWidth: 52, halign: "right" },
+      1: { cellWidth: 209 },
+      2: { cellWidth: 90 },
+      3: { cellWidth: 85 },
+      4: { cellWidth: 95 },
     },
   });
 
-  doc.addPage();
-  const additionalTop = top + 52;
+  // La informacion adicional continua debajo de la tabla de materiales,
+  // a unas dos lineas de distancia. Solo se pasa a una pagina nueva
+  // cuando no cabe el titulo con su cabecera y al menos una fila; asi se
+  // evita la pagina en blanco que se generaba al saltar siempre.
+  const infoAdicionalSource =
+    guide.info_adicional && typeof guide.info_adicional === "object"
+      ? (guide.info_adicional as Record<string, unknown>)
+      : {};
+  const additionalRows = Object.entries(infoAdicionalSource)
+    .map(([label, value]) => [safeText(label, ""), safeText(value, "")])
+    .filter(([label, value]) => Boolean(label || value));
+
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const bottomMargin = 52;
+  const lastTable = (doc as any).lastAutoTable;
+  // Titulo (18) + separacion (4) + cabecera y primera fila (~48).
+  const minimumAdditionalBlock = 70;
+
+  let additionalTop = Number(lastTable?.finalY ?? cursorY) + 20;
+  if (additionalTop + minimumAdditionalBlock > pageHeight - bottomMargin) {
+    doc.addPage();
+    additionalTop = top + 52;
+  }
+
   drawSectionTitle(doc, "INFORMACION ADICIONAL", left, additionalTop, pageWidth - left * 2);
   autoTable(doc, {
     startY: additionalTop + 22,
     margin: { left, right: left, top: 72, bottom: 52 },
     head: [["Informacion Adicional", "Valor"]],
-    body: [["", ""]],
+    body: additionalRows.length ? additionalRows : [["", ""]],
     styles: {
       font: "helvetica",
       fontSize: 8.2,
@@ -541,11 +574,19 @@ export async function buildGuideRemisionPdfBlob(payload: GuidePdfPayload) {
       0: { cellWidth: 180, fontStyle: "bold" },
       1: { cellWidth: pageWidth - left * 2 - 180 },
     },
-    didDrawPage: () => {
-      drawPdfCompanyLogo(doc, companyLogoAsset, cornerLogoOptions);
-      footer(doc, generatedBy);
-    },
   });
+
+  // El pie se estampa al final, cuando ya se conoce el numero total de
+  // paginas. Hacerlo dentro de didDrawPage imprimia "Pagina 1 de 1" en la
+  // primera hoja porque las siguientes aun no existian.
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    if (page > 1) {
+      drawPdfCompanyLogo(doc, companyLogoAsset, cornerLogoOptions);
+    }
+    footer(doc, generatedBy);
+  }
 
   return doc.output("blob");
 }
