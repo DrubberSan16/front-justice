@@ -139,7 +139,15 @@
                       <tr v-for="movement in getMaterialMovements(group.producto_id)" :key="movement.id">
                         <td>{{ formatDateTime(movement.fecha_emision, '-') }}</td>
                         <td>{{ formatDateTime(movement.fecha_creacion, '-') }}</td>
-                        <td class="font-weight-bold">{{ movement.documento || '-' }}</td>
+                        <td class="font-weight-bold">
+                          <v-btn v-if="movement.documento_id" variant="text" color="primary" density="compact"
+                            class="kardex-document-link px-0" append-icon="mdi-open-in-new"
+                            :aria-label="`Abrir detalle del documento ${movement.documento || ''}`"
+                            @click.stop="openMovementDocumentDetail(movement)">
+                            {{ movement.documento || 'Ver documento' }}
+                          </v-btn>
+                          <span v-else>{{ movement.documento || '-' }}</span>
+                        </td>
                         <td>{{ movement.referencia || '-' }}</td>
                         <td>{{ movement.concepto || '-' }}</td>
                         <td>{{ movement.descripcion || '-' }}</td>
@@ -250,6 +258,157 @@
           </v-alert>
         </v-card>
       </v-col>
+
+      <v-dialog :model-value="movementDocumentDialog.open" max-width="1320" scrollable
+        :persistent="movementDocumentDialog.loading" @update:model-value="handleMovementDocumentDialogVisibility">
+        <v-card rounded="xl" class="enterprise-surface movement-document-card">
+          <v-card-title class="d-flex align-center justify-space-between flex-wrap px-5 py-4" style="gap:12px">
+            <div>
+              <div class="text-h6 font-weight-bold">Detalle del documento</div>
+              <div class="text-body-2 text-medium-emphasis">
+                {{ movementDocumentDialog.document?.numero_documento || movementDocumentDialog.documentNumber || 'Documento seleccionado' }}
+              </div>
+            </div>
+            <v-btn icon="mdi-close" variant="text" density="comfortable" @click="closeMovementDocumentDetail" />
+          </v-card-title>
+          <v-divider />
+
+          <v-card-text class="pa-0">
+            <div v-if="movementDocumentDialog.loading" class="pa-6">
+              <div class="text-body-2 font-weight-medium mb-3">Consultando el documento y sus materiales...</div>
+              <v-progress-linear indeterminate color="primary" rounded height="8" />
+            </div>
+            <v-alert v-else-if="movementDocumentDialog.error" type="error" variant="tonal" class="ma-5">
+              {{ movementDocumentDialog.error }}
+            </v-alert>
+
+            <template v-else-if="movementDocumentDialog.document">
+              <div class="pa-5 pb-3">
+                <div class="movement-document-summary-grid">
+                  <div class="movement-document-summary-item">
+                    <span>Tipo</span>
+                    <strong>{{ movementDocumentDialog.document.tipo_documento_label || movementDocumentDialog.document.tipo_documento || '-' }}</strong>
+                  </div>
+                  <div class="movement-document-summary-item">
+                    <span>Fecha</span>
+                    <strong>{{ formatDateTime(movementDocumentDialog.document.fecha_movimiento, '-') }}</strong>
+                  </div>
+                  <div class="movement-document-summary-item">
+                    <span>Bodega</span>
+                    <strong>{{ movementDocumentDialog.document.bodega_label || '-' }}</strong>
+                  </div>
+                  <div class="movement-document-summary-item">
+                    <span>Estado</span>
+                    <strong>{{ movementDocumentDialog.document.estado || movementDocumentDialog.document.status || '-' }}</strong>
+                  </div>
+                  <div class="movement-document-summary-item">
+                    <span>Referencia</span>
+                    <strong>{{ movementDocumentDialog.document.referencia || '-' }}</strong>
+                  </div>
+                  <div class="movement-document-summary-item">
+                    <span>Responsable</span>
+                    <strong>{{ movementDocumentDialog.document.created_by || 'SYSTEM' }}</strong>
+                  </div>
+                </div>
+                <v-alert v-if="movementDocumentDialog.document.observacion" type="info" variant="tonal"
+                  density="comfortable" class="mt-4">
+                  {{ movementDocumentDialog.document.observacion }}
+                </v-alert>
+              </div>
+
+              <v-divider />
+              <v-tabs v-model="movementDocumentDialog.tab" color="primary" align-tabs="start" class="px-4"
+                @update:model-value="handleMovementDocumentTabChange">
+                <v-tab value="detail" prepend-icon="mdi-format-list-bulleted">Detalle de materiales</v-tab>
+                <v-tab value="preview" prepend-icon="mdi-file-pdf-box">Previsualización PDF</v-tab>
+              </v-tabs>
+              <v-divider />
+
+              <v-window v-model="movementDocumentDialog.tab" class="movement-document-window">
+                <v-window-item value="detail">
+                  <div class="pa-5">
+                    <div class="d-flex align-center justify-space-between flex-wrap mb-3" style="gap:12px">
+                      <div class="text-subtitle-1 font-weight-bold">Materiales del documento</div>
+                      <div class="summary-chip-list">
+                        <v-chip size="small" color="primary" variant="tonal">
+                          {{ movementDocumentDialog.document.total_items || movementDocumentDialog.document.detalles?.length || 0 }} ítems
+                        </v-chip>
+                        <v-chip size="small" color="secondary" variant="tonal">
+                          {{ formatNumberForDisplay(movementDocumentDialog.document.total_cantidad || 0) }} unidades
+                        </v-chip>
+                      </div>
+                    </div>
+                    <div class="movement-document-detail-table">
+                      <table class="movement-document-detail-grid">
+                        <thead>
+                          <tr>
+                            <th>Material</th>
+                            <th>Unidad</th>
+                            <th>Condición</th>
+                            <th>Lote / serie</th>
+                            <th class="text-right">Cantidad</th>
+                            <th class="text-right">Costo unitario</th>
+                            <th class="text-right">Subtotal</th>
+                            <th>Observación</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="detail in movementDocumentDialog.document.detalles || []" :key="detail.id">
+                            <td>
+                              <div class="font-weight-medium">{{ detail.producto_nombre || 'Material' }}</div>
+                              <div class="text-caption text-medium-emphasis">{{ detail.producto_codigo || '-' }}</div>
+                            </td>
+                            <td>{{ detail.unidad_label || '-' }}</td>
+                            <td>{{ detail.condicion_material || '-' }}</td>
+                            <td>{{ [detail.lote, detail.serie].filter(Boolean).join(' / ') || '-' }}</td>
+                            <td class="text-right">{{ formatNumberForDisplay(detail.cantidad || 0) }}</td>
+                            <td class="text-right">{{ formatDocumentCurrency(detail.costo_unitario) }}</td>
+                            <td class="text-right font-weight-medium">{{ formatDocumentCurrency(detail.subtotal_costo) }}</td>
+                            <td>{{ detail.observacion || '-' }}</td>
+                          </tr>
+                          <tr v-if="!movementDocumentDialog.document.detalles?.length">
+                            <td colspan="8" class="text-center text-medium-emphasis">El documento no tiene materiales registrados.</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </v-window-item>
+
+                <v-window-item value="preview">
+                  <div class="movement-document-preview pa-4">
+                    <div v-if="movementDocumentDialog.pdfLoading" class="movement-document-preview-loading">
+                      <div class="text-body-2 font-weight-medium mb-3">Generando la previsualización PDF...</div>
+                      <v-progress-linear indeterminate color="primary" rounded height="8" />
+                    </div>
+                    <v-alert v-else-if="movementDocumentDialog.pdfError" type="error" variant="tonal">
+                      {{ movementDocumentDialog.pdfError }}
+                    </v-alert>
+                    <iframe v-else-if="movementDocumentPdfUrl" :src="movementDocumentPdfUrl"
+                      :title="`Previsualización del documento ${movementDocumentDialog.document.numero_documento || ''}`"
+                      class="movement-document-preview-frame" />
+                  </div>
+                </v-window-item>
+              </v-window>
+            </template>
+          </v-card-text>
+
+          <v-divider />
+          <v-card-actions class="justify-end px-5 py-4 flex-wrap" style="gap:8px">
+            <v-btn variant="text" @click="closeMovementDocumentDetail">Cerrar</v-btn>
+            <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="movementDocumentDialog.excelLoading"
+              :disabled="!movementDocumentDialog.document || movementDocumentDialog.loading"
+              @click="downloadMovementDocumentExcel">
+              Descargar Excel
+            </v-btn>
+            <v-btn color="primary" prepend-icon="mdi-file-pdf-box" :loading="movementDocumentDialog.pdfLoading"
+              :disabled="!movementDocumentDialog.document || movementDocumentDialog.loading"
+              @click="downloadMovementDocumentPdf">
+              Descargar PDF
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <v-dialog :model-value="kardexPdfPreview.open" max-width="1480" scrollable :persistent="kardexPdfPreview.loading"
         @update:model-value="handleKardexPdfPreviewVisibility">
@@ -438,7 +597,7 @@ import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 type MovementType = "INGRESO" | "SALIDA";
 type StockCondition = "NUEVO" | "USADO" | "CRITICO";
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_nuevo?: string | number; stock_usado?: string | number; stock_disponible?: string | number; stock_critico?: string | number; cantidad_reservada_activa?: string | number; es_usado?: boolean; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
-type KardexMovementRow = { id: string; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; };
+type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; };
 type MovementDetailForm = { localId: string; productoId: string; condicionMaterial: StockCondition; cantidad: string; observacion: string; };
 type KardexFilterState = {
   desde: string;
@@ -473,6 +632,21 @@ const kardexPdfPreview = reactive({
   fileName: "",
 });
 let kardexPdfPreviewRequestId = 0;
+const movementDocumentPdfUrl = ref("");
+const movementDocumentDialog = reactive({
+  open: false,
+  loading: false,
+  error: "",
+  documentId: "",
+  documentNumber: "",
+  document: null as any | null,
+  tab: "detail" as "detail" | "preview",
+  pdfLoading: false,
+  pdfError: "",
+  pdfFileName: "",
+  excelLoading: false,
+});
+let movementDocumentRequestId = 0;
 const xlsxFile = ref<File | File[] | null>(null);
 const lastBulkSummary = ref<any | null>(null);
 const inventoryGroupBy = ref("bodega");
@@ -853,6 +1027,166 @@ function buildKardexFilterDescription(filters: KardexFilterState) {
   if (filters.tipo_movimiento) labels.push(`Tipo: ${filters.tipo_movimiento === 'INGRESO' ? 'Ingreso' : filters.tipo_movimiento === 'SALIDA' ? 'Egreso' : filters.tipo_movimiento}`);
   return labels.join(" | ");
 }
+function formatDocumentCurrency(value: unknown) {
+  const amount = Number(value || 0);
+  const currency = String(movementDocumentDialog.document?.moneda || "USD").trim().toUpperCase() || "USD";
+  return new Intl.NumberFormat("es-EC", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+function revokeMovementDocumentPdfUrl() {
+  if (!movementDocumentPdfUrl.value) return;
+  window.URL.revokeObjectURL(movementDocumentPdfUrl.value);
+  movementDocumentPdfUrl.value = "";
+}
+function buildMovementDocumentReport(document: any): ReportDefinition {
+  const documentNumber = String(document?.numero_documento || "DOCUMENTO").trim();
+  const details = Array.isArray(document?.detalles) ? document.detalles : [];
+  const currency = String(document?.moneda || "USD").trim().toUpperCase() || "USD";
+  return {
+    fileName: `documento_kardex_${sanitizeKardexPdfFileName(documentNumber)}_${formatDateForInput()}`,
+    title: document?.tipo_documento_label || "Documento de inventario",
+    subtitle: `${documentNumber} | ${document?.bodega_label || "Bodega no especificada"}`,
+    orientation: "landscape",
+    summary: [
+      { label: "Fecha", value: formatDateTime(document?.fecha_movimiento, "-") },
+      { label: "Tipo", value: document?.tipo_movimiento || "-" },
+      { label: "Estado", value: document?.estado || document?.status || "-" },
+      { label: "Referencia", value: document?.referencia || "-" },
+      { label: "Ítems", value: document?.total_items || details.length },
+      { label: "Cantidad", value: Number(document?.total_cantidad || 0) },
+      { label: `Costo total (${currency})`, value: Number(document?.total_costos || 0) },
+      { label: "Responsable", value: document?.created_by || "SYSTEM" },
+    ],
+    sheets: [
+      {
+        name: "Detalle del documento",
+        fitColumnsToPage: true,
+        note: document?.observacion ? `Observación: ${document.observacion}` : undefined,
+        rows: details.map((detail: any, index: number) => ({
+          linea: index + 1,
+          codigo: detail.producto_codigo || "",
+          material: detail.producto_nombre || "",
+          unidad: detail.unidad_label || "",
+          condicion: detail.condicion_material || "",
+          lote: detail.lote || "",
+          serie: detail.serie || "",
+          vencimiento: detail.fecha_vencimiento || "",
+          cantidad: Number(detail.cantidad || 0),
+          costo_unitario: Number(detail.costo_unitario || 0),
+          subtotal: Number(detail.subtotal_costo || 0),
+          observacion: detail.observacion || "",
+        })),
+        columns: [
+          { key: "linea", header: "#", width: 6, format: "number" },
+          { key: "codigo", header: "Código", width: 14 },
+          { key: "material", header: "Material", width: 30 },
+          { key: "unidad", header: "Unidad", width: 12 },
+          { key: "condicion", header: "Condición", width: 12 },
+          { key: "lote", header: "Lote", width: 14 },
+          { key: "serie", header: "Serie", width: 14 },
+          { key: "vencimiento", header: "Vencimiento", width: 13, format: "date" },
+          { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
+          { key: "costo_unitario", header: `Costo unit. (${currency})`, width: 14, format: "currency" },
+          { key: "subtotal", header: `Subtotal (${currency})`, width: 14, format: "currency" },
+          { key: "observacion", header: "Observación", width: 24 },
+        ],
+      },
+    ],
+  };
+}
+async function openMovementDocumentDetail(movement: KardexMovementRow) {
+  const documentId = String(movement?.documento_id || "").trim();
+  if (!documentId) return;
+  const requestId = ++movementDocumentRequestId;
+  revokeMovementDocumentPdfUrl();
+  Object.assign(movementDocumentDialog, {
+    open: true,
+    loading: true,
+    error: "",
+    documentId,
+    documentNumber: movement.documento || "",
+    document: null,
+    tab: "detail",
+    pdfLoading: false,
+    pdfError: "",
+    pdfFileName: "",
+    excelLoading: false,
+  });
+  try {
+    const { data } = await api.get(`/kpi_inventory/kardex/documentos/${documentId}`);
+    if (requestId !== movementDocumentRequestId) return;
+    movementDocumentDialog.document = data?.data ?? data ?? null;
+    if (!movementDocumentDialog.document) throw new Error("El documento no devolvió información.");
+  } catch (error: any) {
+    if (requestId !== movementDocumentRequestId) return;
+    movementDocumentDialog.error = error?.response?.data?.message || error?.message || "No se pudo consultar el documento.";
+  } finally {
+    if (requestId === movementDocumentRequestId) movementDocumentDialog.loading = false;
+  }
+}
+async function ensureMovementDocumentPdfPreview() {
+  const document = movementDocumentDialog.document;
+  if (!document || movementDocumentPdfUrl.value || movementDocumentDialog.pdfLoading) return;
+  const requestId = movementDocumentRequestId;
+  movementDocumentDialog.pdfLoading = true;
+  movementDocumentDialog.pdfError = "";
+  try {
+    const report = buildMovementDocumentReport(document);
+    const blob = await buildReportPdfBlob(report);
+    if (requestId !== movementDocumentRequestId || !movementDocumentDialog.open) return;
+    movementDocumentDialog.pdfFileName = `${report.fileName}.pdf`;
+    movementDocumentPdfUrl.value = window.URL.createObjectURL(blob);
+  } catch (error: any) {
+    if (requestId !== movementDocumentRequestId) return;
+    movementDocumentDialog.pdfError = error?.message || "No se pudo generar la previsualización PDF.";
+  } finally {
+    if (requestId === movementDocumentRequestId) movementDocumentDialog.pdfLoading = false;
+  }
+}
+function handleMovementDocumentTabChange(value: unknown) {
+  if (value === "preview") void ensureMovementDocumentPdfPreview();
+}
+async function downloadMovementDocumentPdf() {
+  await ensureMovementDocumentPdfPreview();
+  if (!movementDocumentPdfUrl.value) return;
+  const link = document.createElement("a");
+  link.href = movementDocumentPdfUrl.value;
+  link.download = movementDocumentDialog.pdfFileName || "documento_kardex.pdf";
+  link.click();
+}
+async function downloadMovementDocumentExcel() {
+  if (!movementDocumentDialog.document || movementDocumentDialog.excelLoading) return;
+  movementDocumentDialog.excelLoading = true;
+  try {
+    await downloadReportExcel(buildMovementDocumentReport(movementDocumentDialog.document));
+  } catch (error: any) {
+    ui.error(error?.message || "No se pudo descargar el documento en Excel.");
+  } finally {
+    movementDocumentDialog.excelLoading = false;
+  }
+}
+function closeMovementDocumentDetail() {
+  movementDocumentRequestId += 1;
+  movementDocumentDialog.open = false;
+  movementDocumentDialog.loading = false;
+  movementDocumentDialog.error = "";
+  movementDocumentDialog.documentId = "";
+  movementDocumentDialog.documentNumber = "";
+  movementDocumentDialog.document = null;
+  movementDocumentDialog.tab = "detail";
+  movementDocumentDialog.pdfLoading = false;
+  movementDocumentDialog.pdfError = "";
+  movementDocumentDialog.pdfFileName = "";
+  movementDocumentDialog.excelLoading = false;
+  revokeMovementDocumentPdfUrl();
+}
+function handleMovementDocumentDialogVisibility(open: boolean) {
+  if (!open) closeMovementDocumentDetail();
+}
 function sanitizeKardexPdfFileName(value: unknown) {
   return String(value || "material")
     .normalize("NFD")
@@ -1209,6 +1543,8 @@ onBeforeUnmount(() => {
   stopImportPolling();
   kardexPdfPreviewRequestId += 1;
   revokeKardexPdfPreviewUrl();
+  movementDocumentRequestId += 1;
+  revokeMovementDocumentPdfUrl();
 });
 </script>
 
@@ -1255,9 +1591,114 @@ onBeforeUnmount(() => {
   min-height: 78px;
 }
 
+.kardex-document-link {
+  min-width: 0;
+  height: auto;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-transform: none;
+}
+
+.movement-document-card {
+  overflow: hidden;
+}
+
+.movement-document-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.movement-document-summary-item {
+  display: grid;
+  gap: 4px;
+  padding: 13px 14px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 14px;
+  background: rgba(var(--v-theme-primary), 0.035);
+}
+
+.movement-document-summary-item span {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.movement-document-summary-item strong {
+  overflow-wrap: anywhere;
+}
+
+.movement-document-window {
+  min-height: 360px;
+}
+
+.movement-document-detail-table {
+  overflow-x: auto;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 16px;
+}
+
+.movement-document-detail-grid {
+  width: 100%;
+  min-width: 1160px;
+  border-collapse: collapse;
+  background: rgba(var(--v-theme-surface), 0.96);
+}
+
+.movement-document-detail-grid th,
+.movement-document-detail-grid td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  vertical-align: top;
+}
+
+.movement-document-detail-grid th {
+  white-space: nowrap;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.movement-document-detail-grid tbody tr:nth-child(even) {
+  background: rgba(var(--v-theme-on-surface), 0.02);
+}
+
+.movement-document-preview {
+  min-height: 65vh;
+  background: rgba(var(--v-theme-on-surface), 0.035);
+}
+
+.movement-document-preview-loading {
+  max-width: 720px;
+  margin: 20vh auto 0;
+}
+
+.movement-document-preview-frame {
+  display: block;
+  width: 100%;
+  height: 65vh;
+  min-height: 560px;
+  border: 0;
+  border-radius: 14px;
+  background: white;
+}
+
 .kardex-pdf-preview-body {
   min-height: 70vh;
   background: rgba(var(--v-theme-on-surface), 0.035);
+}
+
+@media (max-width: 959px) {
+  .movement-document-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .movement-document-preview,
+  .movement-document-preview-frame {
+    min-height: 70vh;
+  }
 }
 
 .kardex-pdf-preview-loading {
