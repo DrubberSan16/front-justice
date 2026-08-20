@@ -813,9 +813,10 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
           linea: group.linea_label || "",
           categoria: group.categoria_label || "",
           unidad: group.unidad_label || "",
+          // Solo se exporta la fecha del movimiento. Las fechas de creacion
+          // y actualizacion, y el usuario que actualizo, son metadatos de
+          // auditoria que abultaban el reporte sin aportar al kardex.
           fecha_emision: movement.fecha_emision,
-          fecha_creacion: movement.fecha_creacion,
-          fecha_actualizacion: movement.fecha_actualizacion,
           documento: movement.documento || "",
           referencia: movement.referencia || "",
           concepto: movement.concepto || "",
@@ -823,7 +824,6 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
           bodega: movement.bodega || "",
           tipo_movimiento: movement.tipo_movimiento || (Number(movement.entrada || 0) > 0 ? "INGRESO" : "SALIDA"),
           usuario_responsable: movement.usuario_responsable || "SYSTEM",
-          usuario_actualizacion: movement.usuario_actualizacion || movement.usuario_responsable || "SYSTEM",
           entrada: Number(movement.entrada || 0),
           salida: Number(movement.salida || 0),
           stock: Number(movement.stock || 0),
@@ -881,7 +881,7 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
       {
         name: "Movimientos del material",
         fitColumnsToPage: true,
-        note: "Auditoría: Usuario responsable corresponde al creador del movimiento; última actualización muestra quién y cuándo realizó el cambio más reciente.",
+        note: "Auditoría: Usuario responsable corresponde al creador del movimiento.",
         rows: movementRows.map((movement) => ({
           fecha_emision: movement.fecha_emision || "",
           documento: movement.documento || "",
@@ -893,8 +893,6 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
           salida: Number(movement.salida || 0),
           stock: Number(movement.stock || 0),
           usuario_responsable: movement.usuario_responsable || "SYSTEM",
-          usuario_actualizacion: movement.usuario_actualizacion || movement.usuario_responsable || "SYSTEM",
-          fecha_actualizacion: movement.fecha_actualizacion || movement.fecha_creacion || "",
         })),
         columns: [
           { key: "fecha_emision", header: "Fecha emisión", width: 15, format: "datetime" },
@@ -907,8 +905,6 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
           { key: "salida", header: "Salida", width: 10, format: "number" },
           { key: "stock", header: "Stock", width: 10, format: "number" },
           { key: "usuario_responsable", header: "Usuario responsable", width: 16 },
-          { key: "usuario_actualizacion", header: "Actualizado por", width: 16 },
-          { key: "fecha_actualizacion", header: "Última actualización", width: 16, format: "datetime" },
         ],
       },
     ],
