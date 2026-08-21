@@ -395,6 +395,10 @@
 
           <v-divider />
           <v-card-actions class="justify-end px-5 py-4 flex-wrap" style="gap:8px">
+            <v-btn v-if="canAnnulMovementDocument" color="error" variant="tonal" prepend-icon="mdi-cancel"
+              :loading="annullingMovementDocument" @click="annulMovementDocument">
+              Anular movimiento
+            </v-btn>
             <v-btn variant="text" @click="closeMovementDocumentDetail">Cerrar</v-btn>
             <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="movementDocumentDialog.excelLoading"
               :disabled="!movementDocumentDialog.document || movementDocumentDialog.loading"
@@ -646,6 +650,7 @@ const movementDocumentDialog = reactive({
   pdfFileName: "",
   excelLoading: false,
 });
+const annullingMovementDocument = ref(false);
 let movementDocumentRequestId = 0;
 const xlsxFile = ref<File | File[] | null>(null);
 const lastBulkSummary = ref<any | null>(null);
@@ -667,6 +672,11 @@ const movementDialog = reactive({ open: false });
 const perms = computed(() => getPermissionsForAnyComponent(menuStore.tree, ["Kardex", "Movimientos de kardex", "Movimiento de kardex"]));
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
+const canDelete = computed(() => perms.value.permitDeleted);
+const canAnnulMovementDocument = computed(() =>
+  canDelete.value &&
+  String(movementDocumentDialog.document?.origen_documento || "").trim().toUpperCase() === "KARDEX_MANUAL",
+);
 const canAccessInventoryReports = computed(() => hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"));
 const KARDEX_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 const documentForm = reactive({ tipo: "INGRESO" as MovementType, fecha: formatDateForInput(), bodegaId: "", referencia: "", observacion: "" });
@@ -1167,6 +1177,22 @@ async function downloadMovementDocumentExcel() {
     ui.error(error?.message || "No se pudo descargar el documento en Excel.");
   } finally {
     movementDocumentDialog.excelLoading = false;
+  }
+}
+async function annulMovementDocument() {
+  const documentId = String(movementDocumentDialog.document?.id || movementDocumentDialog.documentId || "").trim();
+  if (!canAnnulMovementDocument.value || !documentId || annullingMovementDocument.value) return;
+  if (!window.confirm("¿Anular este movimiento? El stock de la bodega se revertirá a su estado anterior.")) return;
+  annullingMovementDocument.value = true;
+  try {
+    await api.patch(`/kpi_inventory/kardex/documentos/${documentId}/anular`);
+    ui.success("Movimiento anulado y stock revertido correctamente.");
+    closeMovementDocumentDetail();
+    await loadKardex();
+  } catch (error: any) {
+    ui.error(error?.response?.data?.message || error?.message || "No se pudo anular el movimiento.");
+  } finally {
+    annullingMovementDocument.value = false;
   }
 }
 function closeMovementDocumentDetail() {
