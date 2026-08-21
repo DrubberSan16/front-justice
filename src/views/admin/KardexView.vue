@@ -314,6 +314,10 @@
                   density="comfortable" class="mt-4">
                   {{ movementDocumentDialog.document.observacion }}
                 </v-alert>
+                <v-alert v-if="isKardexManualMovement && !canDelete" type="warning" variant="tonal"
+                  density="comfortable" class="mt-4">
+                  Este movimiento puede anularse, pero tu usuario requiere el permiso <strong>Eliminar</strong> en Kardex.
+                </v-alert>
               </div>
 
               <v-divider />
@@ -395,8 +399,8 @@
 
           <v-divider />
           <v-card-actions class="justify-end px-5 py-4 flex-wrap" style="gap:8px">
-            <v-btn v-if="canAnnulMovementDocument" color="error" variant="tonal" prepend-icon="mdi-cancel"
-              :loading="annullingMovementDocument" @click="annulMovementDocument">
+            <v-btn v-if="isKardexManualMovement" color="error" variant="tonal" prepend-icon="mdi-cancel"
+              :disabled="!canDelete" :loading="annullingMovementDocument" @click="annulMovementDocument">
               Anular movimiento
             </v-btn>
             <v-btn variant="text" @click="closeMovementDocumentDetail">Cerrar</v-btn>
@@ -673,9 +677,12 @@ const perms = computed(() => getPermissionsForAnyComponent(menuStore.tree, ["Kar
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
+const isKardexManualMovement = computed(() =>
+  String(movementDocumentDialog.document?.origen_documento || "").trim().toUpperCase() === "KARDEX_MANUAL",
+);
 const canAnnulMovementDocument = computed(() =>
   canDelete.value &&
-  String(movementDocumentDialog.document?.origen_documento || "").trim().toUpperCase() === "KARDEX_MANUAL",
+  isKardexManualMovement.value,
 );
 const canAccessInventoryReports = computed(() => hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"));
 const KARDEX_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
