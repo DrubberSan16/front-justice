@@ -678,7 +678,7 @@ const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
 const isKardexManualMovement = computed(() =>
-  String(movementDocumentDialog.document?.origen_documento || "").trim().toUpperCase() === "KARDEX_MANUAL",
+  movementDocumentDialog.document?.anulable_desde_kardex === true,
 );
 const canAnnulMovementDocument = computed(() =>
   canDelete.value &&
