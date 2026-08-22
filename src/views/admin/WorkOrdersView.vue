@@ -297,6 +297,19 @@
           <v-col cols="12" md="4">
             <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorRole" />
           </v-col>
+          <v-col v-if="requiresProgramacionDate" cols="12" md="4">
+            <v-text-field
+              v-model="headerForm.fecha_programacion"
+              type="date"
+              label="Fecha programación"
+              variant="outlined"
+              :disabled="isReadOnlyWorkflow"
+              :rules="[requiredWorkOrderOutcomeRule('Fecha programación')]"
+              :error-messages="programacionDateError"
+              hint="Obligatorio en Cebado: genera y reprograma automáticamente la programación de esta OT."
+              persistent-hint
+            />
+          </v-col>
           <v-col cols="12" md="4">
             <v-switch
               v-if="!editingId"
@@ -1711,6 +1724,7 @@ const headerForm = reactive<any>({
   equipment_id: "",
   equipo_componente_id: "",
   maintenance_kind: "CORRECTIVO",
+  fecha_programacion: "",
   is_emergency: false,
   emergency_reason: "",
   status_workflow: "PLANNED",
@@ -1884,8 +1898,20 @@ function getWorkOrderScheduledProgramDateLabel(item: any) {
 }
 
 const normalizedWorkflow = computed(() => normalizeWorkflowStatus(headerForm.status_workflow));
-const requiresOilProductsForCurrentWorkOrder = computed(
+const isCebadoWorkOrder = computed(
   () => normalizeMaintenanceKindValue(headerForm.maintenance_kind) === "CEBADO",
+);
+// Las OT de Cebado generan su programación desde la cabecera: la fecha es obligatoria.
+const requiresProgramacionDate = computed(() => isCebadoWorkOrder.value);
+const programacionDateError = computed(() => {
+  if (!requiresProgramacionDate.value) return [];
+  if (!workOrderOutcomeValidationTouched.value) return [];
+  return String(headerForm.fecha_programacion || "").trim()
+    ? []
+    : ["Fecha programación es obligatoria."];
+});
+const requiresOilProductsForCurrentWorkOrder = computed(
+  () => isCebadoWorkOrder.value,
 );
 const consumoProductHint = computed(() =>
   selectedProcedureWarehouseId.value
@@ -2263,6 +2289,17 @@ function toEditableNumber(value: unknown) {
   return String(Number(numeric.toFixed(2)));
 }
 
+// Normaliza a "YYYY-MM-DD", el formato que espera <input type="date">.
+function toEditableDateOnly(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const isoMatch = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  if (isoMatch) return isoMatch[1];
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+}
+
 function formatDecimalValue(value: unknown) {
   const numeric = parseNullableNumber(value);
   if (numeric == null) return "";
@@ -2383,6 +2420,10 @@ const workOrderPreviewMainInfo = computed(() => [
   { label: "Equipo", value: selectedEquipmentLabel.value },
   { label: "Compartimiento", value: selectedEquipmentComponentLabel.value },
   { label: "Tipo de mantenimiento", value: headerForm.maintenance_kind },
+  {
+    label: "Fecha programación",
+    value: isCebadoWorkOrder.value ? headerForm.fecha_programacion : "",
+  },
   { label: "Clase de orden", value: resolvedEmergencyOrderLabel.value },
   { label: "Motivo emergencia", value: headerForm.is_emergency ? headerForm.emergency_reason : "" },
   { label: "Procedimiento", value: selectedProcedureLabel.value },
@@ -4219,6 +4260,7 @@ function buildWorkOrderSaveBundlePayload() {
         horometro_actual: resolvedHorometroActual.value,
         horas_a_realizar: resolvedHorasARealizar.value,
         horometro_proyectado: resolvedHorometroProyectado.value,
+        ...buildProgramacionDatePayload(),
       },
     },
   };
@@ -4300,6 +4342,9 @@ function applySavedWorkOrderState(savedHeader: any) {
   );
   headerForm.horometro_proyectado = toEditableNumber(
     savedHeader?.horometro_proyectado ?? savedValorJson?.horometro_proyectado,
+  );
+  headerForm.fecha_programacion = toEditableDateOnly(
+    savedValorJson?.fecha_programacion ?? savedHeader?.linked_programacion_fecha,
   );
   taskForm.plan_id = headerForm.plan_id || "";
 }
@@ -4704,6 +4749,13 @@ function workOrderOutcomeError(key: WorkOrderOutcomeField, label: string) {
     : [`${label} es obligatorio.`];
 }
 
+// Solo las OT de Cebado envían fecha de programación; el backend la exige y con
+// ella crea o reprograma la programación vinculada.
+function buildProgramacionDatePayload() {
+  if (!isCebadoWorkOrder.value) return {};
+  return { fecha_programacion: String(headerForm.fecha_programacion || "").trim() || null };
+}
+
 function validateRequiredWorkOrderOutcomeFields() {
   workOrderOutcomeValidationTouched.value = true;
   const requiredFields = [
@@ -4718,6 +4770,16 @@ function validateRequiredWorkOrderOutcomeFields() {
 
   if (missingFields.length) {
     ui.error("Completa los campos obligatorios resaltados en la cabecera de la OT.");
+    return false;
+  }
+
+  if (
+    requiresProgramacionDate.value &&
+    !String(headerForm.fecha_programacion || "").trim()
+  ) {
+    ui.error(
+      "La fecha de programación es obligatoria en las órdenes de trabajo de tipo Cebado.",
+    );
     return false;
   }
 
@@ -5239,6 +5301,7 @@ function resetAllForms() {
   headerForm.equipment_id = "";
   headerForm.equipo_componente_id = "";
   headerForm.maintenance_kind = isOperatorRole.value ? "CEBADO" : "CORRECTIVO";
+  headerForm.fecha_programacion = "";
   headerForm.status_workflow = "PLANNED";
   headerForm.procedimiento_id = "";
   headerForm.plan_id = "";
@@ -5331,6 +5394,9 @@ async function openEdit(item: any) {
   headerForm.blocked_by_work_order_id = item.blocked_by_work_order_id ?? "";
   headerForm.blocked_reason = item.blocked_reason ?? "";
   const headerValorJson = parseValorJson(item?.valor_json);
+  headerForm.fecha_programacion = toEditableDateOnly(
+    headerValorJson?.fecha_programacion ?? item?.linked_programacion_fecha,
+  );
   headerForm.causa = headerValorJson?.causa ?? "";
   headerForm.accion = headerValorJson?.accion ?? "";
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
@@ -5540,6 +5606,7 @@ async function saveHeader(
       horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       horometro_proyectado: resolvedHorometroProyectado.value,
+      ...buildProgramacionDatePayload(),
       ...buildWorkOrderAuditPayload(false),
     },
   };
@@ -5622,6 +5689,7 @@ function buildWorkOrderHeaderComparableState() {
       horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       horometro_proyectado: resolvedHorometroProyectado.value,
+      ...buildProgramacionDatePayload(),
     },
   });
 }
