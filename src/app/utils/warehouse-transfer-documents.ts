@@ -187,7 +187,7 @@ export async function downloadWarehouseTransferPdf(
   });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
-  doc.text(`Generado: ${generatedAt}`, marginX + 16, 124);
+  doc.text(`Generado: ${generatedAt} - ${text(generatedBy, "Sistema")}`, marginX + 16, 124);
   doc.text(`Estado: ${text(transfer.estado, "COMPLETADA")}`, rightX - 16, 124, {
     align: "right",
   });
@@ -388,7 +388,7 @@ export async function downloadWarehouseTransferPdf(
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(...COLORS.muted);
-    doc.text(`Generado por: ${text(generatedBy, "Sistema")} · ${generatedAt}`, marginX, pageHeight - 23);
+    doc.text(`Generado: ${generatedAt} - ${text(generatedBy, "Sistema")}`, marginX, pageHeight - 23);
     doc.text(`Página ${page} de ${pageCount}`, rightX, pageHeight - 23, { align: "right" });
   }
 

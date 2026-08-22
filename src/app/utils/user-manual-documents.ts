@@ -284,7 +284,7 @@ export async function buildUserManualPdfBlob(context: UserManualDocumentContext)
     body: [
       ["Usuario", text(context.userLabel)],
       ["Perfil de trabajo", text(context.roleLabel)],
-      ["Generado", generatedAtLabel(generatedAt)],
+      ["Generado", `${generatedAtLabel(generatedAt)} - ${text(context.userLabel) || "Sistema"}`],
       ["Procesos incluidos", manuals.length],
       ["Contenido", "Se muestran únicamente los procesos disponibles para este usuario."],
     ],

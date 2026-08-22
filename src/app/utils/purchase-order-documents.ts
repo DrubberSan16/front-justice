@@ -333,7 +333,7 @@ export async function downloadPurchaseOrderPdf(
 
   doc.setFontSize(8);
   doc.text(
-    `Generado por: ${safeText(userName, "Sistema")} a la fecha ${generatedAt}`,
+    `Generado: ${generatedAt} - ${safeText(userName, "Sistema")}`,
     marginLeft,
     pageHeight - 26,
   );

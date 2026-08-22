@@ -1,4 +1,4 @@
-import { formatDateOnly } from "@/app/utils/date-time";
+import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 
 type ServiceOrderDetailLike = {
@@ -437,7 +437,11 @@ export async function buildServiceOrderPdfBlob(
     doc.setTextColor(91, 107, 123);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.text(`Generado por: ${safeText(userName, "Sistema")}`, marginLeft, pageHeight - 20);
+    doc.text(
+      `Generado: ${formatDateTime(new Date(), "-")} - ${safeText(userName, "Sistema")}`,
+      marginLeft,
+      pageHeight - 20,
+    );
     doc.text(`Página ${page} de ${pageCount}`, rightX, pageHeight - 20, { align: "right" });
   }
 

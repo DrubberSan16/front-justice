@@ -171,7 +171,7 @@ function footer(doc: any, generatedBy: string) {
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
   doc.text(
-    `Generado por ${safeText(generatedBy, "Sistema")} - ${formatFullDate(new Date())}`,
+    `Generado: ${formatFullDate(new Date())} - ${safeText(generatedBy, "Sistema")}`,
     36,
     pageHeight - 14,
   );

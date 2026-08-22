@@ -1606,6 +1606,7 @@ import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
   buildWorkOrdersListingReport,
   buildWorkOrderReport,
+  type WorkOrdersListingOrder,
   downloadReportExcel,
   downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
@@ -4873,6 +4874,7 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
       [item?.procedimiento_codigo, item?.procedimiento_nombre].filter(Boolean).join(" - ") || "-",
     plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
     fecha_operativa: getWorkOrderOperationalDate(item) || "",
+    fecha_programacion: getWorkOrderScheduledProgramDateLabel(item),
     creado_por: traceability.creado_por,
     fecha_creacion: traceability.fecha_creacion,
     realizado_por: traceability.realizado_por,
@@ -4885,12 +4887,8 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
   };
 }
 
-function buildListedConsumoRows(order: any, consumos: any[]) {
-  const orderCode = order?.code || order?.codigo || order?.id || "";
-  const orderTitle = getWorkOrderExportTitle(order);
+function buildListedConsumoRows(_order: any, consumos: any[]) {
   return consumos.map((item: any) => ({
-    orden_codigo: orderCode,
-    orden_titulo: orderTitle,
     bodega:
       item?.bodega_label ||
       item?.bodega_nombre ||
@@ -4917,14 +4915,10 @@ function buildListedConsumoRows(order: any, consumos: any[]) {
   }));
 }
 
-function buildListedIssueRows(order: any, issues: any[]) {
-  const orderCode = order?.code || order?.codigo || order?.id || "";
-  const orderTitle = getWorkOrderExportTitle(order);
+function buildListedIssueRows(_order: any, issues: any[]) {
   return issues.flatMap((issue: any) => {
     const rawItems = Array.isArray(issue?.items) ? issue.items : [];
     return rawItems.map((detail: any) => ({
-      orden_codigo: orderCode,
-      orden_titulo: orderTitle,
       salida: issue?.code || issue?.codigo || "Sin codigo",
       fecha: issue?.fecha || "",
       bodega:
@@ -4949,14 +4943,10 @@ function buildListedIssueRows(order: any, issues: any[]) {
   });
 }
 
-function buildListedScrapRows(order: any, scraps: any[]) {
-  const orderCode = order?.code || order?.codigo || order?.id || "";
-  const orderTitle = getWorkOrderExportTitle(order);
+function buildListedScrapRows(_order: any, scraps: any[]) {
   return scraps.flatMap((scrap: any) => {
     const rawItems = Array.isArray(scrap?.items) ? scrap.items : [];
     return rawItems.map((detail: any) => ({
-      orden_codigo: orderCode,
-      orden_titulo: orderTitle,
       transferencia:
         scrap?.transferencia_codigo || scrap?.code || scrap?.codigo || "Sin codigo",
       fecha: scrap?.fecha || "",
@@ -5014,14 +5004,9 @@ async function fetchWorkOrderExportBundle(order: any) {
   }));
   await ensureTaskLabelCacheForRows(normalizedTasks);
 
-  const orderCode = header?.code || header?.codigo || header?.id || "";
-  const orderTitle = getWorkOrderExportTitle(header);
-
   return {
     header: buildListedWorkOrderHeaderRow(header, history),
     tasks: normalizedTasks.map((item: any) => ({
-      orden_codigo: orderCode,
-      orden_titulo: orderTitle,
       plan: getPlanLabelForTask(item),
       tarea: getTaskLabelForTask(item),
       tipo_captura: getFriendlyTaskCaptureType(item),
@@ -5030,17 +5015,13 @@ async function fetchWorkOrderExportBundle(order: any) {
       observacion: item?.observacion ?? "",
       requisitos: getTaskRequirementChips(item).join(" | "),
     })),
-    attachments: asArray(attachmentsRes.data).map((item: any) => ({
-      orden_codigo: orderCode,
-      orden_titulo: orderTitle,
-      ...buildWorkOrderAttachmentReportRow(item),
-    })),
+    attachments: asArray(attachmentsRes.data).map((item: any) =>
+      buildWorkOrderAttachmentReportRow(item),
+    ),
     consumos: buildListedConsumoRows(header, consumos),
     issues: buildListedIssueRows(header, issues),
     scraps: buildListedScrapRows(header, scraps),
     history: history.map((item: any) => ({
-      orden_codigo: orderCode,
-      orden_titulo: orderTitle,
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
       usuario: item?.changed_by || "",
@@ -5069,9 +5050,16 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
     return;
   }
 
-  const visibleRows = currentPagedRows.value.map((item: any) => item?._raw ?? item);
+  // Las órdenes anuladas no forman parte del reporte consolidado.
+  const visibleRows = currentPagedRows.value
+    .map((item: any) => item?._raw ?? item)
+    .filter((item: any) => !isAnnulledWorkOrder(item));
   if (!visibleRows.length) {
-    ui.open("No hay ordenes visibles para exportar.", "info", 3000);
+    ui.open(
+      "No hay órdenes vigentes para exportar; las órdenes anuladas se excluyen del reporte.",
+      "info",
+      4000,
+    );
     return;
   }
 
@@ -5081,25 +5069,11 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
 
   try {
     await ensureCatalogsLoaded();
-    const payload = {
-      headers: [] as any[],
-      tasks: [] as any[],
-      attachments: [] as any[],
-      consumos: [] as any[],
-      issues: [] as any[],
-      scraps: [] as any[],
-      history: [] as any[],
-    };
-
+    // Cada orden se exporta como un bloque independiente: una sección en el PDF
+    // y una pestaña propia en el Excel.
+    const orders: WorkOrdersListingOrder[] = [];
     for (const row of visibleRows) {
-      const bundle = await fetchWorkOrderExportBundle(row);
-      payload.headers.push(bundle.header);
-      payload.tasks.push(...bundle.tasks);
-      payload.attachments.push(...bundle.attachments);
-      payload.consumos.push(...bundle.consumos);
-      payload.issues.push(...bundle.issues);
-      payload.scraps.push(...bundle.scraps);
-      payload.history.push(...bundle.history);
+      orders.push(await fetchWorkOrderExportBundle(row));
     }
 
     const report = buildWorkOrdersListingReport({
@@ -5107,7 +5081,7 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
       maintenanceKindLabel: appliedMaintenanceKindFilter.value
         ? getMaintenanceKindLabel(appliedMaintenanceKindFilter.value)
         : "",
-      ...payload,
+      orders,
     });
 
     if (format === "excel") {
