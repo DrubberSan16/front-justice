@@ -219,6 +219,16 @@
           Finalizar OT
         </v-btn>
         <v-btn
+          v-if="editingId && canAnnulDocuments && !isAnnulledWorkOrder(currentWorkOrderRecord)"
+          variant="tonal"
+          color="error"
+          class="mr-2"
+          prepend-icon="mdi-cancel"
+          @click="openDelete(currentWorkOrderRecord ?? { id: editingId })"
+        >
+          Anular OT
+        </v-btn>
+        <v-btn
           v-if="canPersistHeader"
           variant="tonal"
           :loading="savingHeader"
@@ -1366,17 +1376,45 @@
     </v-card>
   </v-dialog>
 
-  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 500">
+  <v-dialog v-model="deleteDialog" :fullscreen="isDeleteDialogFullscreen" :max-width="isDeleteDialogFullscreen ? undefined : 560">
     <v-card rounded="xl">
       <v-card-title class="text-subtitle-1 font-weight-bold">Anular orden de trabajo</v-card-title>
       <v-card-text>
-        ¿Deseas anular esta orden de trabajo? El registro se conservará con el usuario
-        y la fecha de anulación.
+        <p class="mb-3">
+          ¿Deseas anular la orden de trabajo
+          <strong>{{ deletingCode || "seleccionada" }}</strong>? El registro se conservará con el
+          usuario y la fecha de anulación.
+        </p>
+        <v-alert type="warning" variant="tonal" density="comfortable" class="mb-3">
+          Se revertirán todos los movimientos de inventario generados por la OT: los materiales
+          entregados vuelven a su bodega, los materiales desechados regresan desde chatarra a la
+          bodega de origen, se liberan las reservas y se anulan los consumos. El kardex de ingreso
+          y egreso queda anulado con su movimiento de reverso.
+        </v-alert>
+        <v-alert
+          v-if="isClosedWorkflowRecord(currentWorkOrderRecord)"
+          type="info"
+          variant="tonal"
+          density="comfortable"
+          class="mb-3"
+        >
+          Esta orden ya estaba finalizada o cerrada; la anulación igualmente revierte su
+          inventario.
+        </v-alert>
+        <v-textarea
+          v-model="annulmentReason"
+          label="Motivo de la anulación (opcional)"
+          variant="outlined"
+          rows="2"
+          auto-grow
+          counter="500"
+          maxlength="500"
+        />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="deleteDialog = false">Cancelar</v-btn>
-        <v-btn color="error" :loading="savingHeader" @click="confirmDelete">Anular</v-btn>
+        <v-btn color="error" :loading="savingHeader" @click="confirmDelete">Anular y revertir</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -1599,6 +1637,8 @@ const isTaskResponsiblesFullscreen = computed(() => smAndDown.value);
 const isMaterialIssueDialogFullscreen = computed(() => smAndDown.value);
 const editingId = ref<string | null>(null);
 const deletingId = ref<string | null>(null);
+const deletingCode = ref<string>("");
+const annulmentReason = ref<string>("");
 const tab = ref("tareas");
 const closingFlow = ref(false);
 const unsupportedDetailMessages = ref<string[]>([]);
@@ -1745,7 +1785,9 @@ const perms = computed(() =>
 );
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
-const canAnnulDocuments = computed(() => canManageAdministrativeOperations(auth.user));
+const canAnnulDocuments = computed(
+  () => canManageAdministrativeOperations(auth.user) || perms.value.permitDeleted,
+);
 const canPersistHeader = computed(() => (editingId.value ? canEdit.value : canCreate.value));
 const canAccessWorkOrderReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "ordenes_trabajo"),
@@ -2159,6 +2201,14 @@ function parseValorJson(valorJson: unknown) {
 function workOrderAuditPayload(item: any) {
   const row = item?._raw ?? item;
   return parseValorJson(row?.valor_json);
+}
+
+const ANNULMENT_PERMISSION_MESSAGE =
+  "No tienes permiso para anular ordenes de trabajo. Requiere un rol administrativo o el permiso de eliminacion sobre el modulo de ordenes de trabajo.";
+
+function isClosedWorkflowRecord(item: any) {
+  const row = item?._raw ?? item;
+  return normalizeWorkflowStatus(row?.status_workflow) === "CLOSED";
 }
 
 function isAnnulledWorkOrder(item: any) {
@@ -5367,11 +5417,14 @@ async function handleAttachmentFileChange(value: File | File[] | null) {
 
 function openDelete(item: any) {
   if (!canAnnulDocuments.value || isAnnulledWorkOrder(item)) {
-    ui.error("Solo Administrador, Super Administrador o Gerente General pueden anular la orden de trabajo.");
+    ui.error(ANNULMENT_PERMISSION_MESSAGE);
     return;
   }
+  const row = item?._raw ?? item;
   deletingId.value = item.id;
-  currentWorkOrderRecord.value = item?._raw ?? item;
+  deletingCode.value = String(row?.code || "").trim();
+  annulmentReason.value = "";
+  currentWorkOrderRecord.value = row;
   deleteDialog.value = true;
 }
 
@@ -6131,18 +6184,44 @@ function removeScrapItem(index: number) {
   scrapItems.value.splice(index, 1);
 }
 
+function buildAnnulmentSummary(payload: any) {
+  if (!payload) return "";
+  const parts: string[] = [];
+  const reentered = Number(payload.materiales_reingresados || 0);
+  const returned = Number(payload.materiales_retornados_chatarra || 0);
+  const released = Number(payload.reservas_liberadas || 0);
+  const consumed = Number(payload.consumos_anulados || 0);
+  if (reentered > 0) parts.push(`${reentered} material(es) reingresados a bodega`);
+  if (returned > 0) parts.push(`${returned} material(es) retornados desde chatarra`);
+  if (released > 0) parts.push(`${released} reserva(s) liberadas`);
+  if (consumed > 0) parts.push(`${consumed} consumo(s) anulados`);
+  return parts.join(", ");
+}
+
 async function confirmDelete() {
   if (!deletingId.value) return;
   if (!canAnnulDocuments.value || isAnnulledWorkOrder(currentWorkOrderRecord.value)) {
-    ui.error("Solo Administrador, Super Administrador o Gerente General pueden anular la orden de trabajo.");
+    ui.error(ANNULMENT_PERMISSION_MESSAGE);
     return;
   }
   savingHeader.value = true;
   try {
-    await api.patch(`/kpi_maintenance/work-orders/${deletingId.value}/anular`);
-    ui.success("Orden de trabajo anulada. La auditoría registró el usuario y la fecha.");
+    const motivo = annulmentReason.value.trim();
+    const { data } = await api.patch(
+      `/kpi_maintenance/work-orders/${deletingId.value}/anular`,
+      motivo ? { motivo } : {},
+    );
+    const summary = buildAnnulmentSummary(unwrapData(data)?.anulacion);
+    ui.success(
+      summary
+        ? `Orden de trabajo anulada y movimientos revertidos: ${summary}.`
+        : "Orden de trabajo anulada. La auditoría registró el usuario y la fecha.",
+    );
     deleteDialog.value = false;
+    dialog.value = false;
     deletingId.value = null;
+    deletingCode.value = "";
+    annulmentReason.value = "";
     currentWorkOrderRecord.value = null;
     await fetchWorkOrders();
   } catch (e: any) {
