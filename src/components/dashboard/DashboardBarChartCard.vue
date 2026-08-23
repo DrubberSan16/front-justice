@@ -17,7 +17,13 @@
       <div
         v-for="item in normalizedItems"
         :key="item.key"
-        class="dashboard-bar-chart__row"
+        :class="['dashboard-bar-chart__row', { 'dashboard-bar-chart__row--interactive': interactive }]"
+        :role="interactive ? 'button' : undefined"
+        :tabindex="interactive ? 0 : undefined"
+        :aria-haspopup="interactive ? 'dialog' : undefined"
+        @click="handleItemClick(item)"
+        @keydown.enter="handleItemClick(item)"
+        @keydown.space.prevent="handleItemClick(item)"
       >
         <div class="dashboard-bar-chart__meta">
           <div class="dashboard-bar-chart__label">{{ item.label }}</div>
@@ -65,14 +71,25 @@ const props = withDefaults(
     chipColor?: string;
     emptyText?: string;
     items: ChartItem[];
+    interactive?: boolean;
   }>(),
   {
     subtitle: "",
     chipLabel: "",
     chipColor: "primary",
     emptyText: "No hay datos suficientes para graficar.",
+    interactive: false,
   },
 );
+
+const emit = defineEmits<{
+  (event: "item-click", item: ChartItem & { valueLabel: string; percent: number }): void;
+}>();
+
+function handleItemClick(item: ChartItem & { valueLabel: string; percent: number }) {
+  if (!props.interactive) return;
+  emit("item-click", item);
+}
 
 const palette = [
   "linear-gradient(90deg, #2f6cab 0%, #7ab8ff 100%)",
@@ -179,6 +196,19 @@ const normalizedItems = computed(() => {
 .dashboard-bar-chart__row:hover {
   transform: translateX(2px);
   background: rgba(var(--v-theme-primary), 0.045);
+}
+
+.dashboard-bar-chart__row--interactive {
+  cursor: pointer;
+}
+
+.dashboard-bar-chart__row--interactive:hover {
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+
+.dashboard-bar-chart__row--interactive:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
 }
 
 .dashboard-bar-chart__meta {

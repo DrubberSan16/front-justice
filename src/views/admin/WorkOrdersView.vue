@@ -1611,7 +1611,7 @@ import {
   downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
-import { canManageAdministrativeOperations } from "@/app/utils/role-access";
+import { canManageAdministrativeOperations, isSuperAdministrator } from "@/app/utils/role-access";
 import {
   appendOilIndicator,
   buildProductDisplayTitle,
@@ -2044,6 +2044,7 @@ const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
 const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const isOperatorRole = computed(() => currentRoleName.value === "OPERADOR");
+const canViewAnnulledWorkOrders = computed(() => isSuperAdministrator(auth.user));
 const maintenanceKindOptionsForCurrentUser = computed(() =>
   isOperatorRole.value
     ? maintenanceKindOptions.filter((item) => item.value === "CEBADO")
@@ -5175,7 +5176,10 @@ async function fetchWorkOrders() {
       params.fecha_hasta = appliedDateToFilter.value;
     }
     const { data } = await api.get("/kpi_maintenance/work-orders", { params });
-    records.value = asArray(data);
+    const fetchedRows = asArray(data);
+    records.value = canViewAnnulledWorkOrders.value
+      ? fetchedRows
+      : fetchedRows.filter((item: any) => !isAnnulledWorkOrder(item));
     workOrderCatalogRows.value = records.value;
     if (editingId.value) {
       const refreshed = records.value.find((item: any) => String(item?.id || "") === String(editingId.value || ""));

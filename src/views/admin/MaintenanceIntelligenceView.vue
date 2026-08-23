@@ -267,19 +267,43 @@
             </v-sheet>
 
             <div class="indicator-grid mb-4">
-              <div class="indicator-tile">
+              <div
+                class="indicator-tile indicator-tile--interactive"
+                role="button"
+                tabindex="0"
+                aria-haspopup="dialog"
+                @click="openOilDetailDialog"
+                @keydown.enter="openOilDetailDialog"
+                @keydown.space.prevent="openOilDetailDialog"
+              >
                 <div class="text-caption text-medium-emphasis">Consumo total</div>
                 <div class="text-h6 font-weight-bold">{{ formatDetailedNumber(oilKpi?.totals?.total_cantidad) }}</div>
                 <div class="text-caption text-medium-emphasis">Consumo total del rango</div>
               </div>
-              <div class="indicator-tile">
+              <div
+                class="indicator-tile indicator-tile--interactive"
+                role="button"
+                tabindex="0"
+                aria-haspopup="dialog"
+                @click="openOilDetailDialog"
+                @keydown.enter="openOilDetailDialog"
+                @keydown.space.prevent="openOilDetailDialog"
+              >
                 <div class="text-caption text-medium-emphasis">Promedio por equipo</div>
                 <div class="text-h6 font-weight-bold">{{ formatDetailedNumber(oilKpi?.totals?.promedio_por_equipo) }}</div>
                 <div class="text-caption text-medium-emphasis">Promedio por equipo visible</div>
               </div>
-              <div class="indicator-tile">
+              <div
+                class="indicator-tile indicator-tile--interactive"
+                role="button"
+                tabindex="0"
+                aria-haspopup="dialog"
+                @click="openOilDetailDialog"
+                @keydown.enter="openOilDetailDialog"
+                @keydown.space.prevent="openOilDetailDialog"
+              >
                 <div class="text-caption text-medium-emphasis">Órdenes analizadas</div>
-                <div class="text-h6 font-weight-bold">{{ oilKpi?.work_orders?.length ?? 0 }}</div>
+                <div class="text-h6 font-weight-bold">{{ oilWorkOrderRows.length }}</div>
                 <div class="text-caption text-medium-emphasis">Órdenes con uso registrado del aceite</div>
               </div>
             </div>
@@ -347,7 +371,17 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="item in oilWorkOrderRows" :key="item.work_order_id">
+                      <tr
+                        v-for="item in oilWorkOrderRows"
+                        :key="item.work_order_id"
+                        class="clickable-row"
+                        tabindex="0"
+                        role="button"
+                        aria-haspopup="dialog"
+                        @click="openOilWorkOrderRowDetail(item)"
+                        @keydown.enter="openOilWorkOrderRowDetail(item)"
+                        @keydown.space.prevent="openOilWorkOrderRowDetail(item)"
+                      >
                         <td>{{ item.fecha_referencia_label }}</td>
                         <td>
                           <div class="font-weight-medium">{{ item.work_order_code }}</div>
@@ -388,7 +422,17 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="item in oilPeakDayDetailRows" :key="`${item.work_order_id}-${item.fecha_referencia}`">
+                      <tr
+                        v-for="item in oilPeakDayDetailRows"
+                        :key="`${item.work_order_id}-${item.fecha_referencia}`"
+                        class="clickable-row"
+                        tabindex="0"
+                        role="button"
+                        aria-haspopup="dialog"
+                        @click="openOilWorkOrderRowDetail(item)"
+                        @keydown.enter="openOilWorkOrderRowDetail(item)"
+                        @keydown.space.prevent="openOilWorkOrderRowDetail(item)"
+                      >
                         <td>{{ item.fecha_referencia_label }}</td>
                         <td>
                           <div class="font-weight-medium">{{ item.work_order_code }}</div>
@@ -418,7 +462,17 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="item in oilEquipmentRows" :key="item.equipment_id || item.equipment_label">
+                      <tr
+                        v-for="item in oilEquipmentRows"
+                        :key="item.equipment_id || item.equipment_label"
+                        class="clickable-row"
+                        tabindex="0"
+                        role="button"
+                        aria-haspopup="dialog"
+                        @click="openOilEquipmentRowDetail(item)"
+                        @keydown.enter="openOilEquipmentRowDetail(item)"
+                        @keydown.space.prevent="openOilEquipmentRowDetail(item)"
+                      >
                         <td>{{ item.equipment_label }}</td>
                         <td>{{ item.total_ordenes }}</td>
                         <td class="font-weight-medium">{{ formatDetailedNumber(item.total_cantidad) }}</td>
@@ -1187,6 +1241,14 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <ReadonlyDetailDialog
+    v-model="oilRowDetailDialog"
+    :title="oilRowDetailTitle"
+    :subtitle="oilRowDetailSubtitle"
+    :columns="oilRowDetailColumns"
+    :rows="oilRowDetailRows"
+  />
     </div>
 </template>
 
@@ -1201,6 +1263,7 @@ import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
+import ReadonlyDetailDialog from "@/components/ui/ReadonlyDetailDialog.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
 import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
@@ -1569,8 +1632,17 @@ const oilSelectedProduct = computed<AnyRow | null>(() =>
 const oilQuantityUnitLabel = computed(() => {
   return "gal";
 });
+const ANNULLED_WORK_ORDER_STATUS_TOKENS = ["ANULADA", "ANULADO", "CANCELLED", "CANCELED", "VOID", "VOIDED"];
+
+function isAnnulledOilWorkOrderRow(item: AnyRow) {
+  const raw = String(item?.work_order_status ?? item?.status_workflow ?? item?.status ?? "")
+    .trim()
+    .toUpperCase();
+  return ANNULLED_WORK_ORDER_STATUS_TOKENS.includes(raw);
+}
+
 const oilWorkOrderRows = computed<AnyRow[]>(() =>
-  unwrap<AnyRow[]>(oilKpi.value?.work_orders, []),
+  unwrap<AnyRow[]>(oilKpi.value?.work_orders, []).filter((item) => !isAnnulledOilWorkOrderRow(item)),
 );
 const oilEquipmentRows = computed<AnyRow[]>(() =>
   unwrap<AnyRow[]>(oilKpi.value?.by_equipment, []),
@@ -1967,6 +2039,59 @@ function openOilDetailDialog() {
   if (oilRelatedLubricantSelection.value) {
     void handleOilLubricantSelection(oilRelatedLubricantSelection.value);
   }
+}
+
+const oilRowDetailDialog = ref(false);
+const oilRowDetailTitle = ref("");
+const oilRowDetailSubtitle = ref("");
+const oilRowDetailColumns = ref<{ key: string; label: string }[]>([]);
+const oilRowDetailRows = ref<AnyRow[]>([]);
+
+function openOilRowDetail(
+  title: string,
+  columns: { key: string; label: string }[],
+  row: AnyRow,
+  subtitle?: string,
+) {
+  oilRowDetailTitle.value = title;
+  oilRowDetailSubtitle.value = subtitle || "";
+  oilRowDetailColumns.value = columns;
+  oilRowDetailRows.value = [row];
+  oilRowDetailDialog.value = true;
+}
+
+const OIL_WORK_ORDER_ROW_COLUMNS = [
+  { key: "fecha_referencia_label", label: "Fecha" },
+  { key: "work_order_code", label: "OT" },
+  { key: "work_order_title", label: "Título" },
+  { key: "maintenance_kind_label", label: "Tipo mtto" },
+  { key: "equipment_label", label: "Equipo" },
+  { key: "cantidad", label: "Cantidad" },
+  { key: "diferencia_vs_anterior", label: "Dif. anterior" },
+  { key: "bodega_label", label: "Bodega" },
+];
+
+function openOilWorkOrderRowDetail(item: AnyRow) {
+  openOilRowDetail("Consumo de aceite - Orden de trabajo", OIL_WORK_ORDER_ROW_COLUMNS, {
+    ...item,
+    maintenance_kind_label: item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind),
+    cantidad: formatDetailedNumber(item.cantidad),
+    diferencia_vs_anterior:
+      item.diferencia_vs_anterior == null ? "Base" : formatDetailedNumber(item.diferencia_vs_anterior),
+  });
+}
+
+const OIL_EQUIPMENT_ROW_COLUMNS = [
+  { key: "equipment_label", label: "Equipo" },
+  { key: "total_ordenes", label: "Órdenes" },
+  { key: "total_cantidad", label: "Cantidad" },
+];
+
+function openOilEquipmentRowDetail(item: AnyRow) {
+  openOilRowDetail("Consumo de aceite - Equipo", OIL_EQUIPMENT_ROW_COLUMNS, {
+    ...item,
+    total_cantidad: formatDetailedNumber(item.total_cantidad),
+  });
 }
 
 async function loadLubricantDashboardInto(
@@ -2609,6 +2734,25 @@ watch(
   transform: translateY(-2px);
   border-color: rgba(var(--v-theme-primary), 0.22);
   box-shadow: 0 12px 25px rgba(var(--v-theme-primary), 0.08);
+}
+
+.indicator-tile--interactive,
+.clickable-row {
+  cursor: pointer;
+}
+
+.indicator-tile--interactive:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 3px;
+}
+
+.clickable-row:hover {
+  background: rgba(var(--v-theme-primary), 0.045);
+}
+
+.clickable-row:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
 }
 
 .breakdown-grid {

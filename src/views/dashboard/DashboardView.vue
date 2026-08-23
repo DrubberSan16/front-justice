@@ -100,8 +100,14 @@
             <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="3">
               <v-card
                 rounded="xl"
-                class="kpi-card h-100"
+                class="kpi-card kpi-card--interactive h-100"
                 :style="{ '--kpi-accent': card.accent }"
+                role="button"
+                tabindex="0"
+                aria-haspopup="dialog"
+                @click="openKpiDetail(card.key)"
+                @keydown.enter="openKpiDetail(card.key)"
+                @keydown.space.prevent="openKpiDetail(card.key)"
               >
                 <div class="kpi-card__top">
                   <div class="kpi-card__icon"><v-icon :icon="card.icon" size="22" /></div>
@@ -131,7 +137,13 @@
           <div
             v-for="status in workOrderStatusCards"
             :key="status.key"
-            :class="['status-row', `status-row--${status.tone}`]"
+            :class="['status-row', `status-row--${status.tone}`, 'status-row--interactive']"
+            role="button"
+            tabindex="0"
+            aria-haspopup="dialog"
+            @click="openWorkOrderStatusDetail(status.key)"
+            @keydown.enter="openWorkOrderStatusDetail(status.key)"
+            @keydown.space.prevent="openWorkOrderStatusDetail(status.key)"
           >
             <div class="status-row__main">
               <div class="status-row__icon"><v-icon :icon="status.icon" size="19" /></div>
@@ -188,6 +200,8 @@
           :chip-label="`${filteredWorkOrders.length} OT`"
           chip-color="primary"
           :items="workOrderStatusChartItems"
+          interactive
+          @item-click="(item) => openWorkOrderStatusDetail(item.key)"
         />
       </v-col>
 
@@ -198,6 +212,8 @@
           :chip-label="`${openAlertsCount} abiertas`"
           chip-color="warning"
           :items="alertSeverityChartItems"
+          interactive
+          @item-click="(item) => openAlertSeverityDetail(item.key)"
         />
       </v-col>
 
@@ -209,6 +225,8 @@
           chip-color="success"
           :items="operationCadenceChartItems"
           empty-text="No hay programación semanal OPERACION/MPG para graficar en este período."
+          interactive
+          @item-click="(item) => openOperationDayDetail(item.key)"
         />
       </v-col>
     </v-row>
@@ -233,7 +251,17 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="alert in recentAlertsTableRows" :key="alert.id">
+                <tr
+                  v-for="alert in recentAlertsTableRows"
+                  :key="alert.id"
+                  class="clickable-row"
+                  tabindex="0"
+                  role="button"
+                  aria-haspopup="dialog"
+                  @click="openAlertRowDetail(alert)"
+                  @keydown.enter="openAlertRowDetail(alert)"
+                  @keydown.space.prevent="openAlertRowDetail(alert)"
+                >
                   <td class="font-weight-medium">{{ alert.tipo }}</td>
                   <td>{{ alert.equipo }}</td>
                   <td>
@@ -271,7 +299,17 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="order in recentWorkOrdersTableRows" :key="order.id">
+                <tr
+                  v-for="order in recentWorkOrdersTableRows"
+                  :key="order.id"
+                  class="clickable-row"
+                  tabindex="0"
+                  role="button"
+                  aria-haspopup="dialog"
+                  @click="openWorkOrderRowDetail(order)"
+                  @keydown.enter="openWorkOrderRowDetail(order)"
+                  @keydown.space.prevent="openWorkOrderRowDetail(order)"
+                >
                   <td class="font-weight-medium">{{ order.codigo }}</td>
                   <td>{{ order.titulo }}</td>
                   <td>{{ order.equipo }}</td>
@@ -312,7 +350,13 @@
               <div
                 v-for="item in lowStockByWarehouse"
                 :key="item.key"
-                class="dashboard-mini-bars__row"
+                class="dashboard-mini-bars__row dashboard-mini-bars__row--interactive"
+                tabindex="0"
+                role="button"
+                aria-haspopup="dialog"
+                @click="openLowStockWarehouseDetail(item.key, item.label)"
+                @keydown.enter="openLowStockWarehouseDetail(item.key, item.label)"
+                @keydown.space.prevent="openLowStockWarehouseDetail(item.key, item.label)"
               >
                 <div class="dashboard-mini-bars__meta">
                   <span>{{ item.label }}</span>
@@ -339,7 +383,17 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in criticalInventoryRows" :key="item.id">
+                  <tr
+                    v-for="item in criticalInventoryRows"
+                    :key="item.id"
+                    class="clickable-row"
+                    tabindex="0"
+                    role="button"
+                    aria-haspopup="dialog"
+                    @click="openInventoryRowDetail(item)"
+                    @keydown.enter="openInventoryRowDetail(item)"
+                    @keydown.space.prevent="openInventoryRowDetail(item)"
+                  >
                     <td class="font-weight-medium">{{ item.producto }}</td>
                     <td>{{ item.bodega }}</td>
                     <td>{{ item.stock }}</td>
@@ -376,6 +430,8 @@
             helper: item.helper,
             color: 'linear-gradient(90deg, #3f62d8 0%, #9eaefc 100%)',
           }))"
+          interactive
+          @item-click="(item) => openProcessIndicatorDetail(item.key)"
         />
       </v-col>
 
@@ -398,7 +454,13 @@
               <div
                 v-for="item in operationScheduleDays.slice(0, 7)"
                 :key="item.date"
-                class="dashboard-mini-bars__row"
+                class="dashboard-mini-bars__row dashboard-mini-bars__row--interactive"
+                tabindex="0"
+                role="button"
+                aria-haspopup="dialog"
+                @click="openOperationDayDetail(item.date)"
+                @keydown.enter="openOperationDayDetail(item.date)"
+                @keydown.space.prevent="openOperationDayDetail(item.date)"
               >
                 <div class="dashboard-mini-bars__meta">
                   <span>{{ item.title }}</span>
@@ -424,7 +486,17 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="item in operationScheduleDays.slice(0, 7)" :key="item.date">
+                  <tr
+                    v-for="item in operationScheduleDays.slice(0, 7)"
+                    :key="item.date"
+                    class="clickable-row"
+                    tabindex="0"
+                    role="button"
+                    aria-haspopup="dialog"
+                    @click="openOperationDayDetail(item.date)"
+                    @keydown.enter="openOperationDayDetail(item.date)"
+                    @keydown.space.prevent="openOperationDayDetail(item.date)"
+                  >
                     <td class="font-weight-medium">{{ item.title }}</td>
                     <td>{{ item.count }}</td>
                     <td>{{ Number(item.totalHours || 0).toFixed(1) }}</td>
@@ -450,8 +522,18 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="unit in latestDailyUnits" :key="unit.id">
-                    <td class="font-weight-medium">{{ unit.equipo_codigo || "Sin equipo" }}</td>
+                  <tr
+                    v-for="unit in latestDailyUnits"
+                    :key="unit.id"
+                    class="clickable-row"
+                    tabindex="0"
+                    role="button"
+                    aria-haspopup="dialog"
+                    @click="openDailyUnitDetail(unit)"
+                    @keydown.enter="openDailyUnitDetail(unit)"
+                    @keydown.space.prevent="openDailyUnitDetail(unit)"
+                  >
+                    <td class="font-weight-medium">{{ resolveEquipmentLabel(unit) }}</td>
                     <td>{{ unit.horometro_actual ?? "N/A" }}</td>
                     <td>{{ unit.mpg_actual ?? "N/A" }}</td>
                   </tr>
@@ -494,7 +576,17 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="activity in latestWeeklyActivities" :key="activity.id">
+                  <tr
+                    v-for="activity in latestWeeklyActivities"
+                    :key="activity.id"
+                    class="clickable-row"
+                    tabindex="0"
+                    role="button"
+                    aria-haspopup="dialog"
+                    @click="openWeeklyActivityDetail(activity)"
+                    @keydown.enter="openWeeklyActivityDetail(activity)"
+                    @keydown.space.prevent="openWeeklyActivityDetail(activity)"
+                  >
                     <td>{{ activity.fecha_label || activity.fecha_actividad || "Sin fecha" }}</td>
                     <td class="font-weight-medium">{{ normalizeDayLabel(activity.dia_semana) }}</td>
                     <td>
@@ -504,7 +596,7 @@
                           : activity.hora_inicio || activity.hora_fin || "Sin hora"
                       }}
                     </td>
-                    <td>{{ activity.equipo_codigo || "Sin equipo" }}</td>
+                    <td>{{ resolveEquipmentLabel(activity) }}</td>
                     <td class="text-medium-emphasis">{{ activity.actividad || "Actividad sin nombre" }}</td>
                   </tr>
                   <tr v-if="!latestWeeklyActivities.length">
@@ -522,6 +614,15 @@
       </v-col>
     </v-row>
     </div>
+
+    <ReadonlyDetailDialog
+      v-model="detailDialogOpen"
+      :title="detailDialogTitle"
+      :subtitle="detailDialogSubtitle"
+      :columns="detailDialogColumns"
+      :rows="detailDialogRows"
+      :empty-text="detailDialogEmptyText"
+    />
   </v-container>
 </template>
 
@@ -538,6 +639,7 @@ import EquipmentOperatingControl, {
   type EquipmentControlItem,
 } from "@/components/dashboard/EquipmentOperatingControl.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
+import ReadonlyDetailDialog from "@/components/ui/ReadonlyDetailDialog.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -612,6 +714,44 @@ function normalizeWorkflowStatus(value: unknown) {
   if (["IN_PROGRESS", "IN PROGRESS", "EN PROCESO", "EN_PROCESO", "PROCESSING"].includes(raw)) return "IN_PROGRESS";
   if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
   return raw || "PLANNED";
+}
+
+function parseValorJson(valorJson: unknown) {
+  if (!valorJson) return {};
+  if (typeof valorJson === "object") return valorJson as Record<string, any>;
+  if (typeof valorJson === "string") {
+    try {
+      const parsed = JSON.parse(valorJson);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function isAnnulledWorkOrder(item: AnyRow) {
+  const payload = parseValorJson(item?.valor_json);
+  const annulledValues = new Set([
+    "ANULADA",
+    "ANULADO",
+    "CANCELADA",
+    "CANCELADO",
+    "CANCELLED",
+    "CANCELED",
+    "VOID",
+    "VOIDED",
+  ]);
+  return Boolean(
+    (payload?.annulment && typeof payload.annulment === "object") ||
+      [item?.approval_action, payload?.approval_action, item?.status].some((value) =>
+        annulledValues.has(String(value || "").trim().toUpperCase()),
+      ),
+  );
+}
+
+function normalizeFuncionamiento(value: unknown) {
+  return String(value || "").trim().toUpperCase() === "FUNCIONAMIENTO" ? "FUNCIONAMIENTO" : "PARADO";
 }
 
 function workflowLabel(value: unknown) {
@@ -808,7 +948,9 @@ const openAlerts = computed(() =>
 
 const openAlertsCount = computed(() => openAlerts.value.length);
 const filteredWorkOrders = computed(() =>
-  workOrders.value.filter((item) => isInSelectedPeriod(resolveWorkOrderDate(item))),
+  workOrders.value.filter(
+    (item) => !isAnnulledWorkOrder(item) && isInSelectedPeriod(resolveWorkOrderDate(item)),
+  ),
 );
 const filteredDailyReports = computed(() =>
   dailyReports.value.filter((item) => isInSelectedPeriod(item?.fecha_reporte || item?.created_at)),
@@ -821,22 +963,9 @@ const filteredWeeklySchedules = computed(() =>
     ),
   ),
 );
-const activeEquipmentCount = computed(() => {
-  const keys = new Set<string>();
-  for (const report of filteredDailyReports.value) {
-    for (const unit of report?.unidades ?? []) {
-      const key = String(unit?.equipo_id || unit?.equipo_codigo || "").trim();
-      if (key) keys.add(key);
-    }
-  }
-  for (const schedule of filteredWeeklySchedules.value) {
-    for (const detail of schedule?.detalles ?? []) {
-      const key = String(detail?.equipo_id || detail?.equipo_codigo || "").trim();
-      if (key) keys.add(key);
-    }
-  }
-  return keys.size;
-});
+const activeEquipmentCount = computed(
+  () => equipos.value.filter((item) => normalizeFuncionamiento(item?.estado_funcionamiento) === "FUNCIONAMIENTO").length,
+);
 
 const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
   equipos.value.map((item) => ({
@@ -882,7 +1011,7 @@ const kpiCards = computed(() => [
     key: "equipos",
     label: "Equipos",
     value: activeEquipmentCount.value,
-    helper: `Con actividad en ${selectedPeriodLabel.value}`,
+    helper: "En funcionamiento actualmente",
     icon: "mdi-cog-outline",
     accent: "linear-gradient(135deg, rgba(47,108,171,0.22), rgba(122,184,255,0.08))",
   },
@@ -950,6 +1079,41 @@ const lowStockItems = computed(() =>
     return min > 0 && stock <= min;
   }),
 );
+
+const equipmentNameMap = computed(() =>
+  equipos.value.reduce((acc: Record<string, string>, item) => {
+    const id = String(item?.id || "").trim();
+    const code = String(item?.codigo || "").trim();
+    const name = String(item?.nombre || "").trim();
+    const model = String(item?.modelo || "").trim();
+    const labelBase = [code, name].filter(Boolean).join(" - ") || id || "Sin equipo";
+    const label = model ? `${labelBase} (${model})` : labelBase;
+    if (id) acc[id] = label;
+    if (code) acc[code.toUpperCase()] = label;
+    return acc;
+  }, {}),
+);
+
+function resolveEquipmentLabel(item: AnyRow) {
+  const equipmentId = String(item?.equipment_id || item?.equipo_id || "").trim();
+  const code = String(item?.equipment_codigo || item?.equipo_codigo || "").trim();
+  const name = String(item?.equipment_nombre || item?.equipo_nombre || "").trim();
+  const model = String(item?.equipment_modelo || item?.equipo_modelo || "").trim();
+  const directBase = [code, name].filter(Boolean).join(" - ");
+  const directLabel = directBase ? (model ? `${directBase} (${model})` : directBase) : "";
+  return (
+    equipmentNameMap.value[equipmentId] ||
+    equipmentNameMap.value[code.toUpperCase()] ||
+    directLabel ||
+    item?.equipment_label ||
+    equipmentId ||
+    "Sin equipo"
+  );
+}
+
+function resolveWorkOrderEquipmentLabel(item: AnyRow) {
+  return resolveEquipmentLabel(item);
+}
 
 const productNameMap = computed(() =>
   productos.value.reduce((acc: Record<string, string>, item) => {
@@ -1093,7 +1257,7 @@ const recentAlertsTableRows = computed(() =>
     .map((item) => ({
       id: item.id,
       tipo: item?.tipo_alerta || "Alerta",
-      equipo: item?.equipo_nombre || item?.equipo_id || "Sin equipo",
+      equipo: resolveEquipmentLabel(item),
       estado: item?.estado || "Sin estado",
       detalle: item?.detalle || "Sin detalle",
     })),
@@ -1107,25 +1271,27 @@ const recentWorkOrdersTableRows = computed(() =>
       id: item.id,
       codigo: item?.code || "Sin código",
       titulo: item?.title || item?.titulo || "Sin título",
-      equipo: item?.equipment_label || item?.equipo_nombre || item?.equipment_id || "Sin equipo",
+      equipo: resolveWorkOrderEquipmentLabel(item),
       estado: workflowLabel(item?.status_workflow),
     })),
 );
 
+function buildInventoryRow(item: AnyRow) {
+  const stock = inventoryAvailableForMinimum(item);
+  const min = Number(item?.stock_min_bodega || 0);
+  return {
+    id: item.id,
+    producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || "Producto"),
+    bodega: resolveWarehouseLabel(item),
+    stock,
+    min,
+    deficit: Math.max(0, min - stock),
+  };
+}
+
 const criticalInventoryRows = computed(() =>
   [...lowStockItems.value]
-    .map((item) => {
-      const stock = inventoryAvailableForMinimum(item);
-      const min = Number(item?.stock_min_bodega || 0);
-      return {
-        id: item.id,
-        producto: productNameMap.value[String(item?.producto_id)] || String(item?.producto_id || "Producto"),
-        bodega: resolveWarehouseLabel(item),
-        stock,
-        min,
-        deficit: Math.max(0, min - stock),
-      };
-    })
+    .map((item) => buildInventoryRow(item))
     .sort((a, b) => b.deficit - a.deficit || a.producto.localeCompare(b.producto))
     .slice(0, 8),
 );
@@ -1246,7 +1412,8 @@ const operationScheduleDays = computed(() => {
       current.endLabel = endLabel;
     }
     if (item?.actividad) current.activities.push(String(item.actividad));
-    if (item?.equipo_codigo) current.equipments.push(String(item.equipo_codigo));
+    const equipmentLabel = resolveEquipmentLabel(item);
+    if (equipmentLabel !== "Sin equipo") current.equipments.push(equipmentLabel);
     grouped.set(date, current);
   }
 
@@ -1287,6 +1454,288 @@ const operationScheduleSummary = computed(() => {
   };
 });
 
+type DetailColumn = { key: string; label: string; align?: "start" | "center" | "end" };
+
+const detailDialogOpen = ref(false);
+const detailDialogTitle = ref("");
+const detailDialogSubtitle = ref("");
+const detailDialogColumns = ref<DetailColumn[]>([]);
+const detailDialogRows = ref<AnyRow[]>([]);
+const detailDialogEmptyText = ref("No hay datos disponibles para este detalle.");
+
+function openDetailDialog(options: {
+  title: string;
+  subtitle?: string;
+  columns: DetailColumn[];
+  rows: AnyRow[];
+  emptyText?: string;
+}) {
+  detailDialogTitle.value = options.title;
+  detailDialogSubtitle.value = options.subtitle || "";
+  detailDialogColumns.value = options.columns;
+  detailDialogRows.value = options.rows;
+  detailDialogEmptyText.value = options.emptyText || "No hay datos disponibles para este detalle.";
+  detailDialogOpen.value = true;
+}
+
+function openSingleRowDetail(title: string, columns: DetailColumn[], row: AnyRow, subtitle?: string) {
+  openDetailDialog({ title, subtitle, columns, rows: [row] });
+}
+
+const WORK_ORDER_DETAIL_COLUMNS: DetailColumn[] = [
+  { key: "codigo", label: "Código" },
+  { key: "titulo", label: "Título" },
+  { key: "equipo", label: "Equipo" },
+  { key: "estado", label: "Estado" },
+];
+
+function buildWorkOrderDetailRow(item: AnyRow) {
+  return {
+    id: item.id,
+    codigo: item?.code || "Sin código",
+    titulo: item?.title || item?.titulo || "Sin título",
+    equipo: resolveWorkOrderEquipmentLabel(item),
+    estado: workflowLabel(item?.status_workflow),
+  };
+}
+
+function openWorkOrderStatusDetail(statusKey: string) {
+  const normalized = normalizeWorkflowStatus(statusKey);
+  const rows = filteredWorkOrders.value
+    .filter((item) => normalizeWorkflowStatus(item?.status_workflow) === normalized)
+    .map(buildWorkOrderDetailRow);
+  openDetailDialog({
+    title: `Órdenes de trabajo - ${workflowLabel(normalized)}`,
+    subtitle: selectedPeriodLabel.value,
+    columns: WORK_ORDER_DETAIL_COLUMNS,
+    rows,
+    emptyText: "No hay órdenes de trabajo en este estado para el período seleccionado.",
+  });
+}
+
+function openWorkOrderRowDetail(order: AnyRow) {
+  openSingleRowDetail("Orden de trabajo", WORK_ORDER_DETAIL_COLUMNS, order, selectedPeriodLabel.value);
+}
+
+const ALERT_DETAIL_COLUMNS: DetailColumn[] = [
+  { key: "tipo", label: "Tipo" },
+  { key: "equipo", label: "Equipo" },
+  { key: "estado", label: "Estado" },
+  { key: "detalle", label: "Detalle" },
+];
+
+function buildAlertDetailRow(item: AnyRow) {
+  return {
+    id: item.id,
+    tipo: item?.tipo_alerta || "Alerta",
+    equipo: resolveEquipmentLabel(item),
+    estado: item?.estado || "Sin estado",
+    detalle: item?.detalle || "Sin detalle",
+  };
+}
+
+const ALERT_SEVERITY_LABELS: Record<string, string> = {
+  CRITICA: "Críticas",
+  ADVERTENCIA: "Advertencia",
+  INFO: "Informativas",
+};
+
+function openAlertSeverityDetail(severityKey: string) {
+  const normalized = normalizeAlertSeverity(severityKey);
+  const rows = openAlerts.value
+    .filter((item) => normalizeAlertSeverity(item?.nivel || item?.severidad || item?.categoria) === normalized)
+    .map(buildAlertDetailRow);
+  openDetailDialog({
+    title: `Alertas - ${ALERT_SEVERITY_LABELS[normalized] || normalized}`,
+    subtitle: selectedPeriodLabel.value,
+    columns: ALERT_DETAIL_COLUMNS,
+    rows,
+    emptyText: "No hay alertas abiertas con esta severidad para el período seleccionado.",
+  });
+}
+
+function openAlertRowDetail(alert: AnyRow) {
+  openSingleRowDetail("Alerta", ALERT_DETAIL_COLUMNS, alert, selectedPeriodLabel.value);
+}
+
+function openKpiDetail(key: string) {
+  if (key === "equipos") {
+    const rows = equipos.value
+      .filter((item) => normalizeFuncionamiento(item?.estado_funcionamiento) === "FUNCIONAMIENTO")
+      .map((item) => ({
+        id: item.id,
+        codigo: item?.codigo || "Sin código",
+        nombre: item?.nombre || "Sin nombre",
+        modelo: item?.modelo || "Sin modelo",
+        estado: "En funcionamiento",
+      }));
+    openDetailDialog({
+      title: "Equipos en funcionamiento",
+      subtitle: "Estado actual · no depende del período seleccionado",
+      columns: [
+        { key: "codigo", label: "Código" },
+        { key: "nombre", label: "Nombre" },
+        { key: "modelo", label: "Modelo" },
+        { key: "estado", label: "Estado" },
+      ],
+      rows,
+      emptyText: "No hay equipos en funcionamiento actualmente.",
+    });
+    return;
+  }
+
+  if (key === "ots") {
+    openDetailDialog({
+      title: "Órdenes de trabajo reportables",
+      subtitle: selectedPeriodLabel.value,
+      columns: WORK_ORDER_DETAIL_COLUMNS,
+      rows: filteredWorkOrders.value.map(buildWorkOrderDetailRow),
+      emptyText: "No hay órdenes de trabajo para el período seleccionado.",
+    });
+    return;
+  }
+
+  if (key === "inventario") {
+    const lowStockProductIds = new Set(
+      lowStockItems.value.map((item) => String(item?.producto_id || "")).filter(Boolean),
+    );
+    const rows = productos.value.map((item) => ({
+      id: item.id,
+      producto: productNameMap.value[String(item.id)] || String(item?.nombre || item.id),
+      bajoStock: lowStockProductIds.has(String(item.id)) ? "Sí" : "No",
+    }));
+    openDetailDialog({
+      title: "Productos de inventario",
+      columns: [
+        { key: "producto", label: "Producto" },
+        { key: "bajoStock", label: "Bajo stock" },
+      ],
+      rows,
+      emptyText: "No hay productos registrados en el inventario.",
+    });
+    return;
+  }
+
+  if (key === "seguridad") {
+    const rows = users.value
+      .filter((item) => String(item?.status || "ACTIVE").toUpperCase() === "ACTIVE")
+      .map((item) => ({
+        id: item.id,
+        nombre: item?.nameUser || item?.nombre || "Sin nombre",
+        rol: item?.role?.nombre || "Sin rol",
+        estado: "Activo",
+      }));
+    openDetailDialog({
+      title: "Usuarios activos",
+      columns: [
+        { key: "nombre", label: "Nombre" },
+        { key: "rol", label: "Rol" },
+        { key: "estado", label: "Estado" },
+      ],
+      rows,
+      emptyText: "No hay usuarios activos registrados.",
+    });
+  }
+}
+
+const INVENTORY_DETAIL_COLUMNS: DetailColumn[] = [
+  { key: "producto", label: "Producto" },
+  { key: "bodega", label: "Bodega" },
+  { key: "stock", label: "Disponible" },
+  { key: "min", label: "Mín." },
+  { key: "deficit", label: "Déficit" },
+];
+
+function openInventoryRowDetail(row: AnyRow) {
+  openSingleRowDetail("Producto bajo stock mínimo", INVENTORY_DETAIL_COLUMNS, row);
+}
+
+function openLowStockWarehouseDetail(warehouseKey: string, warehouseLabel: string) {
+  const rows = lowStockItems.value
+    .filter((item) => resolveWarehouseKey(item) === warehouseKey)
+    .map((item) => buildInventoryRow(item))
+    .sort((a, b) => b.deficit - a.deficit);
+  openDetailDialog({
+    title: `Inventario crítico - ${warehouseLabel}`,
+    columns: INVENTORY_DETAIL_COLUMNS,
+    rows,
+    emptyText: "No hay materiales bajo el mínimo para esta bodega.",
+  });
+}
+
+const OPERATION_ACTIVITY_DETAIL_COLUMNS: DetailColumn[] = [
+  { key: "actividad", label: "Actividad" },
+  { key: "equipo", label: "Equipo" },
+  { key: "horaInicio", label: "Hora inicio" },
+  { key: "horaFin", label: "Hora fin" },
+  { key: "tipoProceso", label: "Tipo proceso" },
+];
+
+function openOperationDayDetail(dateKey: string) {
+  const rows = operationScheduleItems.value
+    .filter((item) => String(item?.fecha_resuelta || "").slice(0, 10) === dateKey)
+    .map((item, index) => ({
+      id: item?.id || `${dateKey}-${index}`,
+      actividad: item?.actividad || "Actividad sin nombre",
+      equipo: resolveEquipmentLabel(item),
+      horaInicio: formatTimeLabel(item?.hora_inicio) || "Sin hora",
+      horaFin: formatTimeLabel(item?.hora_fin) || "Sin hora",
+      tipoProceso: item?.tipo_proceso || "Sin proceso",
+    }));
+  const dayLabel = operationScheduleDays.value.find((day) => day.date === dateKey)?.title || dateKey;
+  openDetailDialog({
+    title: `Actividades programadas - ${dayLabel}`,
+    columns: OPERATION_ACTIVITY_DETAIL_COLUMNS,
+    rows,
+    emptyText: "No hay actividades registradas para este día.",
+  });
+}
+
+function openDailyUnitDetail(unit: AnyRow) {
+  openSingleRowDetail("Unidad del reporte diario", [
+    { key: "equipo", label: "Equipo" },
+    { key: "horometro", label: "Horómetro" },
+    { key: "mpg", label: "MPG" },
+  ], {
+    equipo: resolveEquipmentLabel(unit),
+    horometro: unit?.horometro_actual ?? "N/A",
+    mpg: unit?.mpg_actual ?? "N/A",
+  });
+}
+
+function openWeeklyActivityDetail(activity: AnyRow) {
+  openSingleRowDetail("Actividad del cronograma", [
+    { key: "fecha", label: "Fecha" },
+    { key: "dia", label: "Día" },
+    { key: "hora", label: "Hora" },
+    { key: "equipo", label: "Equipo" },
+    { key: "actividad", label: "Actividad" },
+  ], {
+    fecha: activity?.fecha_label || activity?.fecha_actividad || "Sin fecha",
+    dia: normalizeDayLabel(activity?.dia_semana),
+    hora:
+      activity?.hora_inicio && activity?.hora_fin
+        ? `${activity.hora_inicio} - ${activity.hora_fin}`
+        : activity?.hora_inicio || activity?.hora_fin || "Sin hora",
+    equipo: resolveEquipmentLabel(activity),
+    actividad: activity?.actividad || "Actividad sin nombre",
+  });
+}
+
+function openProcessIndicatorDetail(key: string) {
+  const card = processIndicatorCards.value.find((item) => item.key === key);
+  if (!card) return;
+  openSingleRowDetail(card.label, [
+    { key: "indicador", label: "Indicador" },
+    { key: "valor", label: "Valor" },
+    { key: "detalle", label: "Detalle" },
+  ], {
+    indicador: card.label,
+    valor: card.value,
+    detalle: card.helper,
+  });
+}
+
 const dashboardReportDefinition = computed(() =>
   buildExecutiveDashboardReport({
     periodLabel: selectedPeriodLabel.value,
@@ -1305,7 +1754,7 @@ const dashboardReportDefinition = computed(() =>
     workOrders: filteredWorkOrders.value.map((item) => ({
       codigo: item?.code || item?.codigo || "",
       titulo: item?.title || item?.titulo || "",
-      equipo: item?.equipment_label || item?.equipo_nombre || item?.equipment_id || "",
+      equipo: resolveWorkOrderEquipmentLabel(item),
       compartimiento: item?.equipment_component_label || item?.equipo_componente_nombre_oficial || "",
       estado_workflow: workflowLabel(item?.status_workflow),
       tipo_mantenimiento: item?.maintenance_kind || "",
@@ -1337,7 +1786,7 @@ const dashboardReportDefinition = computed(() =>
       dia_semana: normalizeDayLabel(item?.dia_semana),
       hora_inicio: item?.hora_inicio || "",
       hora_fin: item?.hora_fin || "",
-      equipo_codigo: item?.equipo_codigo || "",
+      equipo_codigo: resolveEquipmentLabel(item),
       tipo_proceso: item?.tipo_proceso || "",
       observacion: item?.observacion || "",
     })),
@@ -1602,6 +2051,15 @@ watch([selectedYear, selectedMonth], () => {
   box-shadow: 0 15px 30px rgba(var(--v-theme-primary), 0.1);
 }
 
+.kpi-card--interactive {
+  cursor: pointer;
+}
+
+.kpi-card--interactive:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 3px;
+}
+
 .kpi-card__top {
   position: relative;
   z-index: 1;
@@ -1697,6 +2155,21 @@ watch([selectedYear, selectedMonth], () => {
 .status-row--planned { --status-color: var(--dashboard-blue); }
 .status-row--progress { --status-color: var(--dashboard-orange); }
 .status-row--closed { --status-color: var(--dashboard-green); }
+
+.status-row--interactive {
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background 150ms ease;
+}
+
+.status-row--interactive:hover {
+  background: rgba(var(--status-color), 0.06);
+}
+
+.status-row--interactive:focus-visible {
+  outline: 2px solid rgb(var(--status-color));
+  outline-offset: 2px;
+}
 
 .status-row__main {
   display: flex;
@@ -1895,6 +2368,24 @@ watch([selectedYear, selectedMonth], () => {
 
 .dashboard-mini-bars__row:hover {
   background: rgba(var(--v-theme-primary), 0.045);
+}
+
+.dashboard-mini-bars__row--interactive {
+  cursor: pointer;
+}
+
+.dashboard-mini-bars__row--interactive:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
 }
 
 .dashboard-mini-bars__meta {
