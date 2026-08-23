@@ -1450,7 +1450,18 @@ const visibleFields = computed(() =>
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const base = visibleFields.value.slice(0, 6).map((f) => ({ title: repairText(f.label), key: f.key }));
+  // Un modulo puede declarar las columnas del listado; si no lo hace, la tabla
+  // sigue mostrando los primeros seis campos visibles del formulario.
+  const base = cfg.listColumns?.length
+    ? cfg.listColumns.map((column) => ({
+        title: repairText(
+          column.label ??
+            cfg.fields.find((field) => field.key === column.key)?.label ??
+            column.key,
+        ),
+        key: column.key,
+      }))
+    : visibleFields.value.slice(0, 6).map((f) => ({ title: repairText(f.label), key: f.key }));
   if (!canEdit.value && !canDelete.value) return base;
   return [...base, { title: "Acciones", key: "actions", sortable: false }];
 });

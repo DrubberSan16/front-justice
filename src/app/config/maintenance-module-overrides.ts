@@ -53,7 +53,21 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
   }
 
   if (key === "inteligencia-procedimientos") {
-    return replaceFields(config, [
+    return replaceFields(
+      {
+        ...config,
+        listColumns: [
+          { key: "codigo", label: "Codigo" },
+          { key: "nombre", label: "Plantilla" },
+          { key: "tipo_proceso", label: "Tipo de proceso" },
+          { key: "bodega_id", label: "Bodega" },
+          { key: "compartimiento_codigo_referencia", label: "Codigo compartimiento" },
+          { key: "compartimiento_nombre_oficial", label: "Compartimiento oficial" },
+          { key: "documento_referencia", label: "Documento" },
+          { key: "version", label: "Version" },
+        ],
+      },
+      [
       { key: "codigo", label: "Codigo autogenerado", type: "text", readonly: true },
       { key: "nombre", label: "Plantilla", type: "text", required: true },
       {
@@ -143,7 +157,8 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         editor: "procedure-activities",
         fullWidth: true,
       },
-    ]);
+      ],
+    );
   }
 
   if (key === "inteligencia-analisis-lubricante") {

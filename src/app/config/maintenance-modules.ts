@@ -19,6 +19,12 @@ export type MaintenanceField = {
   };
 };
 
+/** Columna del listado; `label` sobrescribe la etiqueta del formulario. */
+export type MaintenanceListColumn = {
+  key: string;
+  label?: string;
+};
+
 export type MaintenanceModuleConfig = {
   key: string;
   title: string;
@@ -30,6 +36,11 @@ export type MaintenanceModuleConfig = {
     relation: { endpoint: string };
   };
   fields: MaintenanceField[];
+  /**
+   * Columnas que muestra la tabla del listado, en orden. Si se omite, la tabla
+   * usa los primeros seis campos visibles.
+   */
+  listColumns?: MaintenanceListColumn[];
   allowCreate?: boolean;
   allowEdit?: boolean;
   allowDelete?: boolean;
