@@ -142,7 +142,21 @@
       </div>
 
       <v-row v-if="canCreate" dense class="mt-3">
-        <v-col cols="12" md="8">
+        <v-col cols="12" md="4">
+          <v-autocomplete
+            v-model="importProductId"
+            :items="oilProductOptions"
+            item-title="title"
+            item-value="value"
+            label="Aceite de los análisis *"
+            variant="outlined"
+            density="compact"
+            clearable
+            hide-details="auto"
+            :disabled="Boolean(importJob && !isTerminalImportStatus(importJob.status))"
+          />
+        </v-col>
+        <v-col cols="12" md="5">
           <v-file-input
             v-model="importFile"
             accept=".xlsx,.xls"
@@ -154,7 +168,7 @@
             hide-details="auto"
           />
         </v-col>
-        <v-col cols="12" md="4" class="d-flex align-center">
+        <v-col cols="12" md="3" class="d-flex align-center">
           <v-chip v-if="lastImportSummary" color="success" variant="tonal" label>
             Creados: {{ lastImportSummary.created }} · Actualizados: {{ lastImportSummary.updated }} · Errores: {{ lastImportSummary.errors.length }}
           </v-chip>
@@ -168,6 +182,9 @@
               <div class="text-subtitle-2 font-weight-bold">Carga en servidor</div>
               <div class="text-caption text-medium-emphasis">
                 {{ importJob.source_file_name || importJob.stored_file_name || "Archivo Excel" }}
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                Aceite: {{ importJob.producto_label || resolveOilProductLabel(importJob.producto_id) }}
               </div>
             </div>
             <v-chip :color="importStatusColor(importJob.status)" variant="tonal" label>
@@ -383,6 +400,21 @@
         <v-divider />
         <v-card-text class="pt-4 section-surface">
           <v-row dense>
+            <v-col cols="12">
+              <v-autocomplete
+                v-model="form.producto_id"
+                :items="oilProductOptions"
+                item-title="title"
+                item-value="value"
+                label="Aceite analizado *"
+                variant="outlined"
+                clearable
+                :rules="[(value) => Boolean(value) || 'Debes seleccionar el aceite analizado.']"
+                hint="Solo se listan productos activos configurados como aceite en inventario"
+                persistent-hint
+                @update:model-value="applySelectedOilSnapshot"
+              />
+            </v-col>
             <v-col cols="12" md="3">
               <v-text-field
                 v-model="form.codigo"
@@ -437,23 +469,15 @@
             </v-col>
 
             <v-col cols="12" md="6">
-              <v-combobox
-                v-model="lubricantSelection"
-                v-model:search="lubricantSearch"
-                :items="catalogOptions"
-                item-title="label"
-                return-object
-                clearable
-                label="Lubricante"
+              <v-text-field
+                v-model="form.lubricante"
+                label="Aceite seleccionado"
                 variant="outlined"
-                hint="Escribe el codigo o nombre del lubricante para autocompletar registros previos"
-                persistent-hint
-                @update:model-value="handleLubricantSelection"
-                @update:search="handleLubricantSearch"
+                readonly
               />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.marca_lubricante" label="Marca del lubricante" variant="outlined" />
+              <v-text-field v-model="form.marca_lubricante" label="Marca del aceite" variant="outlined" readonly />
             </v-col>
 
             <v-col cols="12">
@@ -699,6 +723,7 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canPurgeLubricantAnalyses } from "@/app/utils/role-access";
 import { hasReportAccess } from "@/app/config/report-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
+import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
   buildLubricantReport,
@@ -774,11 +799,11 @@ const analyses = ref<AnyRow[]>([]);
 const dashboard = ref<AnyRow | null>(null);
 const equipments = ref<AnyRow[]>([]);
 const brands = ref<AnyRow[]>([]);
+const oilProducts = ref<AnyRow[]>([]);
 const catalog = ref<AnyRow[]>([]);
-const lubricantSearch = ref("");
-const lubricantSelection = ref<any>(null);
 const dashboardSelection = ref<any>(null);
 const importFile = ref<File | null>(null);
+const importProductId = ref<string | null>(null);
 const lastImportSummary = ref<AnyRow | null>(null);
 const importJob = ref<AnyRow | null>(null);
 const importPollHandle = ref<number | null>(null);
@@ -821,6 +846,7 @@ const periodOptions = [
 
 const form = reactive({
   codigo: "",
+  producto_id: null as string | null,
   cliente: "JUSTICE COMPANY",
   equipo_id: null as string | null,
   lubricante: "",
@@ -875,6 +901,26 @@ const equipmentOptions = computed(() =>
     marca: resolveEquipmentBrand(item),
   })),
 );
+
+function resolveOilProductLabel(productId: unknown) {
+  const product = oilProductMap.value.get(String(productId || ""));
+  return product ? buildProductDisplayTitle(product) : "Sin aceite seleccionado";
+}
+
+function applySelectedOilSnapshot(productId: unknown = form.producto_id) {
+  const normalizedId = String(productId || "").trim();
+  form.producto_id = normalizedId || null;
+  const product = normalizedId ? oilProductMap.value.get(normalizedId) : null;
+  if (!product) {
+    form.lubricante = "";
+    form.marca_lubricante = "";
+    return;
+  }
+  form.lubricante = String(product?.nombre || "").trim();
+  form.marca_lubricante = String(
+    product?.marca_nombre || brandMap.value.get(String(product?.marca_id || ""))?.nombre || "",
+  ).trim();
+}
 
 const catalogOptions = computed(() =>
   catalog.value.map((item) => ({
@@ -1145,9 +1191,9 @@ function conditionColor(value: unknown) {
 
 function resetForm() {
   editingId.value = null;
-  lubricantSelection.value = null;
   Object.assign(form, {
     codigo: "",
+    producto_id: null,
     cliente: "JUSTICE COMPANY",
     equipo_id: null,
     lubricante: "",
@@ -1214,11 +1260,25 @@ async function loadBrands() {
   );
 }
 
+async function loadOilProducts() {
+  oilProducts.value = await listAllPages(
+    "/kpi_inventory/productos",
+    { es_aceite: true },
+    { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  );
+}
+
 async function loadAll() {
   loading.value = true;
   error.value = null;
   try {
-    await Promise.all([loadAnalyses(), loadCatalog(), loadEquipments(), loadBrands()]);
+    await Promise.all([
+      loadAnalyses(),
+      loadCatalog(),
+      loadEquipments(),
+      loadBrands(),
+      loadOilProducts(),
+    ]);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudo cargar el modulo de lubricantes.";
   } finally {
@@ -1364,6 +1424,9 @@ function importStatusColor(status: unknown) {
 async function fetchImportJobStatus(jobId: string) {
   const { data } = await api.get(`/kpi_maintenance/inteligencia/analisis-lubricante/import/${jobId}`);
   importJob.value = unwrap<AnyRow | null>(data, null);
+  if (importJob.value?.producto_id) {
+    importProductId.value = String(importJob.value.producto_id);
+  }
 
   if (!importJob.value) {
     stopImportPolling();
@@ -1419,6 +1482,10 @@ async function processWorkbookImport() {
     ui.error("No tienes permisos para importar análisis de lubricante.");
     return;
   }
+  if (!importProductId.value) {
+    ui.error("Debes seleccionar el aceite que se asignará a los análisis del Excel.");
+    return;
+  }
   const file = getSelectedImportFile();
   if (!file) {
     ui.error("Debes seleccionar un archivo Excel para importar.");
@@ -1431,6 +1498,7 @@ async function processWorkbookImport() {
     clearImportDismissTimer();
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("producto_id", importProductId.value);
     formData.append("upsert_existing", "true");
     formData.append("requested_by", currentUserName());
     if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
@@ -1550,6 +1618,7 @@ function fillFormFromAnalysis(item: AnyRow) {
   const sample = item.sample_info ?? {};
   Object.assign(form, {
     codigo: item.codigo || "",
+    producto_id: item.producto_id || null,
     cliente: item.cliente || "JUSTICE COMPANY",
     equipo_id: item.equipo_id || null,
     lubricante: item.lubricante || "",
@@ -1576,14 +1645,7 @@ function openEdit(item: AnyRow) {
   if (!canEdit.value) return;
   editingId.value = item.id;
   fillFormFromAnalysis(item);
-  lubricantSelection.value = item.lubricante
-    ? {
-        lubricante: item.lubricante,
-        marca_lubricante: item.marca_lubricante,
-        ultimo_codigo: item.codigo,
-        label: [item.codigo, item.lubricante, item.marca_lubricante, resolveEquipmentLabel(item), item.sample_info?.equipo_modelo].filter(Boolean).join(" · "),
-      }
-    : null;
+  if (form.producto_id) applySelectedOilSnapshot(form.producto_id);
   dialog.value = true;
 }
 
@@ -1591,30 +1653,6 @@ function openDelete(item: AnyRow) {
   if (!canDelete.value) return;
   deletingId.value = item.id;
   deleteDialog.value = true;
-}
-
-function handleLubricantSelection(value: any) {
-  if (!value) {
-    form.lubricante = "";
-    form.marca_lubricante = "";
-    lubricantSelection.value = null;
-    return;
-  }
-  if (typeof value === "string") {
-    form.lubricante = value;
-    lubricantSelection.value = value;
-    return;
-  }
-  form.lubricante = value.lubricante || "";
-  form.marca_lubricante = value.marca_lubricante || form.marca_lubricante;
-  lubricantSelection.value = value;
-}
-
-async function handleLubricantSearch(value: string) {
-  lubricantSearch.value = value;
-  if (String(value || "").trim().length >= 2) {
-    await loadCatalog(value);
-  }
 }
 
 function buildDetailPayload(detail: AnyRow) {
@@ -1648,10 +1686,15 @@ function buildDetailPayload(detail: AnyRow) {
 
 async function save() {
   if (!canPersistForm.value) return;
+  if (!form.producto_id) {
+    ui.error("Debes seleccionar el aceite analizado.");
+    return;
+  }
   saving.value = true;
   try {
     const payload = {
       codigo: form.codigo,
+      producto_id: form.producto_id,
       cliente: form.cliente,
       equipo_id: form.equipo_id,
       lubricante: form.lubricante,
@@ -1756,8 +1799,8 @@ async function confirmPurge() {
     importJob.value = null;
     lastImportSummary.value = null;
     importFile.value = null;
+    importProductId.value = null;
     dashboardSelection.value = null;
-    lubricantSelection.value = null;
     tableSearch.value = "";
     statusFilter.value = null;
     closePurgeDialog();
@@ -1916,6 +1959,24 @@ onMounted(async () => {
   await loadAll();
   if (canCreate.value) await restoreActiveImportJob();
 });
+
+const oilProductMap = computed(() => {
+  const next = new Map<string, AnyRow>();
+  for (const item of oilProducts.value) {
+    if (item?.id) next.set(String(item.id), item);
+  }
+  return next;
+});
+
+const oilProductOptions = computed(() =>
+  oilProducts.value
+    .filter((item) => Boolean(item?.es_aceite) && !Boolean(item?.is_deleted))
+    .map((item) => ({
+      value: String(item.id),
+      title: buildProductDisplayTitle(item),
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title)),
+);
 
 onUnmounted(() => {
   stopImportPolling();
