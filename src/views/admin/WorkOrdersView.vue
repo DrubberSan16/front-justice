@@ -776,7 +776,7 @@
           </v-window-item>
 
           <v-window-item value="consumos">
-            <v-row v-if="!isReadOnlyWorkflow" dense class="pt-2">
+            <v-row v-if="canCreateConsumo" dense class="pt-2">
               <v-col cols="12" md="4">
                 <v-text-field
                   v-if="selectedProcedureWarehouseId"
@@ -850,7 +850,7 @@
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div
-              v-if="!isReadOnlyWorkflow && procedureSuggestedMaterialRows.length"
+              v-if="canCreateConsumo && procedureSuggestedMaterialRows.length"
               class="mb-3"
             >
               <div class="text-subtitle-2 mb-2">Materiales sugeridos por la plantilla</div>
@@ -881,7 +881,9 @@
                 </template>
               </v-data-table>
             </div>
-            <div v-if="!isReadOnlyWorkflow" class="d-flex justify-end mb-3"><v-btn color="primary" @click="createConsumo">Registrar consumo</v-btn></div>
+            <div v-if="canCreateConsumo" class="d-flex justify-end mb-3">
+              <v-btn color="primary" @click="createConsumo">Reservar materiales</v-btn>
+            </div>
             <v-data-table
               :headers="consumoHeaders"
               :items="consumoRows"
@@ -2019,7 +2021,21 @@ const isReadOnlyWorkflow = computed(() => isPersistedBlocked.value || (isPersist
 const canManageWorkOrderUploads = computed(
   () => canPersistHeader.value && !isReadOnlyWorkflow.value,
 );
-const showConsumosTab = computed(() => !!editingId.value && (isCreated.value || isInProcess.value || isClosed.value));
+const workOrderDetailWorkflow = computed(
+  () => persistedWorkflow.value || normalizedWorkflow.value,
+);
+const showConsumosTab = computed(
+  () =>
+    !!editingId.value &&
+    ["PLANNED", "IN_PROGRESS", "CLOSED"].includes(workOrderDetailWorkflow.value),
+);
+const canCreateConsumo = computed(
+  () =>
+    !!editingId.value &&
+    ["PLANNED", "IN_PROGRESS"].includes(workOrderDetailWorkflow.value) &&
+    ["PLANNED", "IN_PROGRESS"].includes(normalizedWorkflow.value) &&
+    !isReadOnlyWorkflow.value,
+);
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const canRegisterRealIssue = computed(
@@ -6030,7 +6046,11 @@ async function createConsumo(options?: {
   showToast?: boolean;
   throwOnError?: boolean;
 }) {
-  if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
+  if (!canCreateConsumo.value) {
+    return ui.error(
+      "Las reservas de materiales solo se pueden registrar mientras la orden está en Planificación o En proceso.",
+    );
+  }
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
   const warehouseId = effectiveConsumoWarehouseId.value;
   if (!warehouseId || !consumoForm.producto_id || !consumoForm.cantidad) {
