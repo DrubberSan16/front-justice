@@ -170,7 +170,7 @@
     </v-row>
 
     <v-row class="mb-1">
-      <v-col cols="12">
+      <v-col cols="12" class="equipment-panel-col">
         <EquipmentOperatingControl
           :equipos="equipmentControlItems"
           :can-edit="canEditEquiposFuncionamiento"
@@ -843,14 +843,23 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
     id: item.id,
     codigo: item?.codigo || null,
     nombre: item?.nombre_real || item?.nombre || null,
+    modelo: item?.modelo || null,
     estado_operativo: item?.estado_operativo || null,
     estado_funcionamiento: item?.estado_funcionamiento || null,
+    estado_funcionamiento_actualizado_en: item?.estado_funcionamiento_actualizado_en || null,
   })),
 );
 
-function handleEquipmentFuncionamientoUpdated(payload: { id: string | number; estado_funcionamiento: string }) {
+function handleEquipmentFuncionamientoUpdated(payload: {
+  id: string | number;
+  estado_funcionamiento: string;
+  estado_funcionamiento_actualizado_en: string | null;
+}) {
   const target = equipos.value.find((item) => String(item.id) === String(payload.id));
-  if (target) target.estado_funcionamiento = payload.estado_funcionamiento;
+  if (target) {
+    target.estado_funcionamiento = payload.estado_funcionamiento;
+    target.estado_funcionamiento_actualizado_en = payload.estado_funcionamiento_actualizado_en;
+  }
 }
 
 const workOrdersByStatus = computed(() => {
@@ -1382,7 +1391,12 @@ watch([selectedYear, selectedMonth], () => {
 
 .dashboard-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
+}
+
+.equipment-panel-col {
+  min-width: 0;
 }
 
 .dashboard-hero,

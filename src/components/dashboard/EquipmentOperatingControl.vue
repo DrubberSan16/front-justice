@@ -12,6 +12,10 @@
       </div>
       <div class="equipment-panel__header-actions">
         <v-chip label color="primary" variant="tonal">{{ equipos.length }} equipos</v-chip>
+        <span v-if="canScrollPrev || canScrollNext" class="equipment-panel__scroll-hint">
+          <v-icon icon="mdi-gesture-swipe-horizontal" size="14" />
+          Desliza o usa la barra
+        </span>
         <span v-if="!canEdit" class="equipment-panel__readonly-badge" title="Tu rol no tiene permiso de edición sobre Equipos.">
           <v-icon icon="mdi-lock-outline" size="14" />
           Solo lectura
@@ -30,7 +34,14 @@
         <v-icon icon="mdi-chevron-left" size="22" />
       </button>
 
-      <div ref="scrollerRef" class="equipment-panel__track" @scroll="updateScrollState">
+      <div
+        ref="scrollerRef"
+        class="equipment-panel__track"
+        role="region"
+        tabindex="0"
+        aria-label="Lista de equipos, deslizable horizontalmente. Usa las flechas izquierda y derecha o la barra de desplazamiento."
+        @scroll="updateScrollState"
+      >
         <template v-if="loading && !equipos.length">
           <div v-for="n in 4" :key="`skeleton-${n}`" class="equipment-card equipment-card--skeleton">
             <div class="equipment-skeleton-line equipment-skeleton-line--sm" />
@@ -54,8 +65,12 @@
             :class="{ 'equipment-card--saving': stateFor(item).saving }"
           >
             <header class="equipment-card__head">
-              <div class="equipment-card__code">{{ item.codigo || "S/C" }}</div>
-              <div class="equipment-card__name" :title="item.nombre || ''">{{ item.nombre || "Equipo sin nombre" }}</div>
+              <div class="equipment-card__title" :title="equipmentHeaderLabel(item)">
+                <span class="equipment-card__code">{{ item.codigo || "S/C" }}</span>
+                <span class="equipment-card__separator">-</span>
+                <span class="equipment-card__name">{{ item.nombre || "Equipo sin nombre" }}</span>
+                <span v-if="item.modelo" class="equipment-card__model">({{ item.modelo }})</span>
+              </div>
             </header>
 
             <div class="equipment-card__panel">
@@ -115,6 +130,10 @@
               </div>
             </div>
 
+            <p class="equipment-card__timestamp">
+              Último cambio: {{ formatDateTime(stateFor(item).updatedAt, "Sin cambios registrados") }}
+            </p>
+
             <p v-if="stateFor(item).error" class="equipment-card__error">{{ stateFor(item).error }}</p>
           </article>
         </template>
@@ -138,19 +157,23 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
+import { formatDateTime } from "@/app/utils/date-time";
 
 export type EquipmentControlItem = {
   id: string | number;
   codigo?: string | null;
   nombre?: string | null;
+  modelo?: string | null;
   estado_operativo?: string | null;
   estado_funcionamiento?: string | null;
+  estado_funcionamiento_actualizado_en?: string | null;
 };
 
 type CardState = {
   value: "FUNCIONAMIENTO" | "PARADO";
   saving: boolean;
   error: string | null;
+  updatedAt: string | null;
 };
 
 const props = withDefaults(
@@ -166,7 +189,14 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  (e: "updated", payload: { id: string | number; estado_funcionamiento: "FUNCIONAMIENTO" | "PARADO" }): void;
+  (
+    e: "updated",
+    payload: {
+      id: string | number;
+      estado_funcionamiento: "FUNCIONAMIENTO" | "PARADO";
+      estado_funcionamiento_actualizado_en: string | null;
+    },
+  ): void;
 }>();
 
 const states = reactive<Record<string, CardState>>({});
@@ -174,6 +204,7 @@ const liveMessage = ref("");
 const scrollerRef = ref<HTMLElement | null>(null);
 const canScrollPrev = ref(false);
 const canScrollNext = ref(false);
+let resizeObserver: ResizeObserver | null = null;
 
 function normalizeFuncionamiento(value: unknown): "FUNCIONAMIENTO" | "PARADO" {
   return String(value || "").trim().toUpperCase() === "FUNCIONAMIENTO" ? "FUNCIONAMIENTO" : "PARADO";
@@ -190,6 +221,7 @@ function stateFor(item: EquipmentControlItem): CardState {
       value: normalizeFuncionamiento(item.estado_funcionamiento),
       saving: false,
       error: null,
+      updatedAt: item.estado_funcionamiento_actualizado_en ?? null,
     };
   }
   return states[key];
@@ -199,8 +231,15 @@ function leverAngle(item: EquipmentControlItem) {
   return stateFor(item).value === "FUNCIONAMIENTO" ? 32 : -32;
 }
 
+function equipmentHeaderLabel(item: EquipmentControlItem) {
+  const code = String(item.codigo || "S/C").trim();
+  const name = String(item.nombre || "Equipo sin nombre").trim();
+  const model = String(item.modelo || "").trim();
+  return model ? `${code} - ${name} (${model})` : `${code} - ${name}`;
+}
+
 function leverAriaLabel(item: EquipmentControlItem) {
-  const name = item.codigo || item.nombre || "equipo";
+  const name = equipmentHeaderLabel(item);
   const state = stateFor(item);
   const current = state.value === "FUNCIONAMIENTO" ? "Activo" : "Desactive";
   return `Estado de funcionamiento de ${name}: ${current}.${canEditLabel()}`;
@@ -222,12 +261,16 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
   liveMessage.value = `Actualizando estado de funcionamiento de ${label}...`;
 
   try {
-    await api.patch(`/kpi_maintenance/equipos/${item.id}/estado-funcionamiento`, {
+    const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/estado-funcionamiento`, {
       estado_funcionamiento: next,
     });
+    const updated = data?.data ?? data ?? {};
+    const updatedAt: string | null =
+      updated?.estado_funcionamiento_actualizado_en || updated?.updated_at || state.updatedAt;
     state.value = next;
+    state.updatedAt = updatedAt;
     liveMessage.value = `${label} actualizado a ${next === "FUNCIONAMIENTO" ? "Activo" : "Desactive"}.`;
-    emit("updated", { id: item.id, estado_funcionamiento: next });
+    emit("updated", { id: item.id, estado_funcionamiento: next, estado_funcionamiento_actualizado_en: updatedAt });
   } catch (e: any) {
     state.error = e?.response?.data?.message || "No se pudo actualizar el estado de funcionamiento.";
     liveMessage.value = `No se pudo actualizar ${label}: ${state.error}`;
@@ -265,6 +308,7 @@ watch(
         value: normalizeFuncionamiento(item.estado_funcionamiento),
         saving: false,
         error: null,
+        updatedAt: item.estado_funcionamiento_actualizado_en ?? null,
       };
     }
     nextTick(updateScrollState);
@@ -279,16 +323,25 @@ function handleResize() {
 onMounted(() => {
   nextTick(updateScrollState);
   window.addEventListener("resize", handleResize);
+
+  if (typeof ResizeObserver !== "undefined" && scrollerRef.value) {
+    resizeObserver = new ResizeObserver(() => updateScrollState());
+    resizeObserver.observe(scrollerRef.value);
+  }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
 });
 </script>
 
 <style scoped>
 .equipment-panel {
   position: relative;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   padding: 20px;
   border: 1px solid var(--surface-border);
@@ -343,11 +396,21 @@ onBeforeUnmount(() => {
   border: 1px solid var(--surface-border);
 }
 
+.equipment-panel__scroll-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--app-muted-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .equipment-panel__body {
   position: relative;
   display: flex;
   align-items: stretch;
   gap: 8px;
+  min-width: 0;
 }
 
 .equipment-panel__nav {
@@ -375,13 +438,43 @@ onBeforeUnmount(() => {
 .equipment-panel__track {
   display: flex;
   flex: 1 1 auto;
+  min-width: 0;
   gap: 14px;
   min-height: 260px;
-  padding: 4px 2px 10px;
-  overflow-x: auto;
+  padding: 4px 2px 14px;
+  overflow-x: scroll;
   overflow-y: hidden;
   scroll-snap-type: x proximity;
   touch-action: pan-x pan-y;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: rgb(var(--v-theme-primary)) color-mix(in srgb, var(--surface-soft) 60%, transparent);
+}
+
+.equipment-panel__track:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.equipment-panel__track::-webkit-scrollbar {
+  height: 12px;
+}
+
+.equipment-panel__track::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--surface-soft) 60%, transparent);
+  border-radius: 8px;
+}
+
+.equipment-panel__track::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--v-theme-primary));
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.equipment-panel__track::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(var(--v-theme-primary), 0.85);
 }
 
 .equipment-panel__empty {
@@ -418,21 +511,39 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.equipment-card__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .equipment-card__code {
+  margin-right: 5px;
   color: rgb(var(--v-theme-primary));
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
+.equipment-card__separator {
+  margin-right: 5px;
+  color: var(--app-muted-text);
+  font-weight: 600;
+}
+
 .equipment-card__name {
-  overflow: hidden;
+  margin-right: 5px;
   color: var(--app-text);
   font-size: 0.92rem;
   font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.equipment-card__model {
+  color: var(--app-muted-text);
+  font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .equipment-card__panel {
@@ -611,6 +722,13 @@ onBeforeUnmount(() => {
   color: #ffffff;
 }
 
+.equipment-card__timestamp {
+  margin: 0;
+  color: var(--app-muted-text);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
 .equipment-card__error {
   margin: 0;
   color: rgb(var(--v-theme-error));
@@ -653,8 +771,13 @@ onBeforeUnmount(() => {
     padding: 16px;
   }
 
+  .equipment-panel__track {
+    scroll-snap-type: x mandatory;
+  }
+
   .equipment-card {
-    width: 260px;
+    width: auto;
+    flex: 0 0 calc(100% - 4px);
   }
 }
 </style>
