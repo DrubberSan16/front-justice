@@ -35,16 +35,6 @@
           <v-btn
             v-if="canCreate"
             color="secondary"
-            variant="tonal"
-            prepend-icon="mdi-file-excel"
-            :loading="importing"
-            @click="processWorkbookImport"
-          >
-            Cargar Excel
-          </v-btn>
-          <v-btn
-            v-if="canCreate"
-            color="secondary"
             variant="text"
             prepend-icon="mdi-download"
             :loading="downloadingTemplate"
@@ -142,7 +132,7 @@
       </div>
 
       <v-row v-if="canCreate" dense class="mt-3">
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="3">
           <v-autocomplete
             v-model="importProductId"
             :items="oilProductOptions"
@@ -156,7 +146,21 @@
             :disabled="Boolean(importJob && !isTerminalImportStatus(importJob.status))"
           />
         </v-col>
-        <v-col cols="12" md="5">
+        <v-col cols="12" md="3">
+          <v-autocomplete
+            v-model="importEquipmentId"
+            :items="equipmentOptions"
+            item-title="title"
+            item-value="value"
+            label="Equipo de los análisis *"
+            variant="outlined"
+            density="compact"
+            clearable
+            hide-details="auto"
+            :disabled="Boolean(importJob && !isTerminalImportStatus(importJob.status))"
+          />
+        </v-col>
+        <v-col cols="12" md="4">
           <v-file-input
             v-model="importFile"
             accept=".xlsx,.xls"
@@ -168,7 +172,21 @@
             hide-details="auto"
           />
         </v-col>
-        <v-col cols="12" md="3" class="d-flex align-center">
+        <v-col cols="12" md="2" class="d-flex align-start">
+          <v-btn
+            color="secondary"
+            variant="tonal"
+            prepend-icon="mdi-file-excel"
+            :loading="importing"
+            :disabled="Boolean(importJob && !isTerminalImportStatus(importJob.status))"
+            block
+            height="40"
+            @click="processWorkbookImport"
+          >
+            Cargar Excel
+          </v-btn>
+        </v-col>
+        <v-col v-if="lastImportSummary" cols="12" class="pt-0">
           <v-chip v-if="lastImportSummary" color="success" variant="tonal" label>
             Creados: {{ lastImportSummary.created }} · Actualizados: {{ lastImportSummary.updated }} · Errores: {{ lastImportSummary.errors.length }}
           </v-chip>
@@ -185,6 +203,9 @@
               </div>
               <div class="text-caption text-medium-emphasis">
                 Aceite: {{ importJob.producto_label || resolveOilProductLabel(importJob.producto_id) }}
+              </div>
+              <div class="text-caption text-medium-emphasis">
+                Equipo: {{ importJob.equipo_label || resolveEquipmentLabel(importJob) }}
               </div>
             </div>
             <v-chip :color="importStatusColor(importJob.status)" variant="tonal" label>
@@ -442,9 +463,10 @@
                 :items="equipmentOptions"
                 item-title="title"
                 item-value="value"
-                label="Equipo"
+                label="Equipo *"
                 variant="outlined"
                 clearable
+                :rules="[(value) => Boolean(value) || 'El equipo es obligatorio']"
               />
             </v-col>
 
@@ -804,6 +826,7 @@ const catalog = ref<AnyRow[]>([]);
 const dashboardSelection = ref<any>(null);
 const importFile = ref<File | null>(null);
 const importProductId = ref<string | null>(null);
+const importEquipmentId = ref<string | null>(null);
 const lastImportSummary = ref<AnyRow | null>(null);
 const importJob = ref<AnyRow | null>(null);
 const importPollHandle = ref<number | null>(null);
@@ -897,7 +920,7 @@ function resolveEquipmentBrand(item: AnyRow | null | undefined) {
 const equipmentOptions = computed(() =>
   equipments.value.map((item) => ({
     value: item.id,
-    title: `${item.codigo || "EQ"} - ${item.nombre || "Equipo"}`,
+    title: `${item.codigo || "EQ"} - ${item.nombre || "Equipo"}${item.modelo ? ` (${item.modelo})` : ""}`,
     marca: resolveEquipmentBrand(item),
   })),
 );
@@ -1427,6 +1450,9 @@ async function fetchImportJobStatus(jobId: string) {
   if (importJob.value?.producto_id) {
     importProductId.value = String(importJob.value.producto_id);
   }
+  if (importJob.value?.equipo_id) {
+    importEquipmentId.value = String(importJob.value.equipo_id);
+  }
 
   if (!importJob.value) {
     stopImportPolling();
@@ -1486,6 +1512,10 @@ async function processWorkbookImport() {
     ui.error("Debes seleccionar el aceite que se asignará a los análisis del Excel.");
     return;
   }
+  if (!importEquipmentId.value) {
+    ui.error("Debes seleccionar el equipo que se asignará a los análisis del Excel.");
+    return;
+  }
   const file = getSelectedImportFile();
   if (!file) {
     ui.error("Debes seleccionar un archivo Excel para importar.");
@@ -1499,6 +1529,7 @@ async function processWorkbookImport() {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("producto_id", importProductId.value);
+    formData.append("equipo_id", importEquipmentId.value);
     formData.append("upsert_existing", "true");
     formData.append("requested_by", currentUserName());
     if (currentUserEmail()) formData.append("requested_by_email", currentUserEmail());
@@ -1690,6 +1721,10 @@ async function save() {
     ui.error("Debes seleccionar el aceite analizado.");
     return;
   }
+  if (!form.equipo_id) {
+    ui.error("Debes seleccionar el equipo analizado.");
+    return;
+  }
   saving.value = true;
   try {
     const payload = {
@@ -1800,6 +1835,7 @@ async function confirmPurge() {
     lastImportSummary.value = null;
     importFile.value = null;
     importProductId.value = null;
+    importEquipmentId.value = null;
     dashboardSelection.value = null;
     tableSearch.value = "";
     statusFilter.value = null;
