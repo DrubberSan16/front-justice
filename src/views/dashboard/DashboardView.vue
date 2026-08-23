@@ -170,6 +170,17 @@
     </v-row>
 
     <v-row class="mb-1">
+      <v-col cols="12">
+        <EquipmentOperatingControl
+          :equipos="equipmentControlItems"
+          :can-edit="canEditEquiposFuncionamiento"
+          :loading="loading"
+          @updated="handleEquipmentFuncionamientoUpdated"
+        />
+      </v-col>
+    </v-row>
+
+    <v-row class="mb-1">
       <v-col cols="12" md="6" xl="4">
         <DashboardBarChartCard
           title="Distribución de órdenes"
@@ -521,8 +532,11 @@ import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { hasReportAccess } from "@/app/config/report-access";
-import { canReadComponent } from "@/app/utils/menu-permissions";
+import { canReadComponent, getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
+import EquipmentOperatingControl, {
+  type EquipmentControlItem,
+} from "@/components/dashboard/EquipmentOperatingControl.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime } from "@/app/utils/date-time";
@@ -548,6 +562,9 @@ const canAccessDashboardReports = computed(() =>
 );
 const canAccessIntelligenceView = computed(() =>
   canReadComponent(menu.tree, "inteligencia-mantenimiento"),
+);
+const canEditEquiposFuncionamiento = computed(
+  () => getPermissionsForAnyComponent(menu.tree, ["Equipos", "Equipo"]).isEdited,
 );
 
 const users = ref<AnyRow[]>([]);
@@ -820,6 +837,21 @@ const activeEquipmentCount = computed(() => {
   }
   return keys.size;
 });
+
+const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
+  equipos.value.map((item) => ({
+    id: item.id,
+    codigo: item?.codigo || null,
+    nombre: item?.nombre_real || item?.nombre || null,
+    estado_operativo: item?.estado_operativo || null,
+    estado_funcionamiento: item?.estado_funcionamiento || null,
+  })),
+);
+
+function handleEquipmentFuncionamientoUpdated(payload: { id: string | number; estado_funcionamiento: string }) {
+  const target = equipos.value.find((item) => String(item.id) === String(payload.id));
+  if (target) target.estado_funcionamiento = payload.estado_funcionamiento;
+}
 
 const workOrdersByStatus = computed(() => {
   const summary = {

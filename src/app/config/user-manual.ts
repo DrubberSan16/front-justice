@@ -317,9 +317,11 @@ const manualOverrides: Record<string, ManualOverride> = {
         id: "lectura",
         title: "Lee el tablero por bloques",
         description:
-          "Primero revisa estado operativo, luego alertas recientes, ordenes, inventario critico y cronograma semanal.",
+          "Primero revisa el panel operativo de equipos, luego alertas recientes, ordenes, inventario critico y cronograma semanal.",
         fields: [],
         checks: [
+          "En el panel de equipos, el indicador rojo muestra el estado operativo y es solo lectura.",
+          "La palanca verde controla el estado de funcionamiento (Activo/Desactive) y solo se puede accionar con permiso de edicion sobre Equipos.",
           "Si ves inventario critico, valida el detalle por bodega.",
           "Si una card muestra cero, confirma si el periodo realmente no tiene datos.",
         ],

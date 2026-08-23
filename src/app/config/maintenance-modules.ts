@@ -72,6 +72,11 @@ const estadoOperativoEquipoOptions = [
   { value: "BLOQUEADA", title: "Bloqueada" },
 ];
 
+export const estadoFuncionamientoEquipoOptions = [
+  { value: "FUNCIONAMIENTO", title: "Funcionamiento" },
+  { value: "PARADO", title: "Parado" },
+];
+
 const intervaloServicioEquipoOptions = [
   { value: "DIAS", title: "Dias" },
   { value: "SEMANAS", title: "Semanas" },
@@ -226,6 +231,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
       { key: "criticidad", label: "Criticidad", type: "select", options: criticidadEquipoOptions },
       { key: "estado_operativo", label: "Estado operativo", type: "select", options: estadoOperativoEquipoOptions },
+      { key: "estado_funcionamiento", label: "Estado de funcionamiento", type: "select", options: estadoFuncionamientoEquipoOptions },
       { key: "horometro_actual", label: "Horómetro actual", type: "number" },
       { key: "es_servicio", label: "Equipo con mantenimiento por tiempo", type: "boolean" },
       { key: "intervalo_mantenimiento_valor", label: "Intervalo de mantenimiento", type: "number" },
