@@ -1214,7 +1214,7 @@ export function buildProceduresReport(procedures: AnyRow[]) {
 
   return {
     fileName: `procedimientos_mpg_${formatDateForInput(new Date())}`,
-    title: "Reporte de procedimientos y plantillas MPG",
+    title: "Reporte de procedimientos y plantillas",
     subtitle: "Procedimientos preventivos, actividades y controles derivados de las plantillas documentales.",
     summary: [
       { label: "Plantillas activas", value: procedureRows.length },

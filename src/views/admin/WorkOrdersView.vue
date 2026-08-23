@@ -383,7 +383,7 @@
               :items="procedureOptions"
               item-title="title"
               item-value="value"
-              label="Plantilla MPG"
+              label="Plantilla"
               clearable
               variant="outlined"
               :disabled="isReadOnlyWorkflow || isEditingLockedFields"
@@ -418,7 +418,7 @@
               label="Horas a realizar"
               variant="outlined"
               readonly
-              hint="Se toma automaticamente desde la plantilla MPG seleccionada."
+              hint="Se toma automaticamente desde la plantilla seleccionada."
               persistent-hint
             />
           </v-col>
@@ -502,7 +502,7 @@
               <v-col cols="12" md="4">
                 <v-text-field
                   :model-value="selectedProcedureLabel"
-                  label="Plantilla MPG"
+                  label="Plantilla"
                   variant="outlined"
                   readonly
                 />
@@ -784,7 +784,7 @@
                   label="Bodega"
                   variant="outlined"
                   readonly
-                  hint="Se toma directamente desde la plantilla MPG seleccionada."
+                  hint="Se toma directamente desde la plantilla seleccionada."
                   persistent-hint
                 />
                 <v-select
@@ -1917,8 +1917,8 @@ const requiresOilProductsForCurrentWorkOrder = computed(
 const consumoProductHint = computed(() =>
   selectedProcedureWarehouseId.value
     ? requiresOilProductsForCurrentWorkOrder.value
-      ? "La bodega se toma desde la plantilla MPG y solo se listan materiales marcados como aceite."
-      : "La bodega se toma desde la plantilla MPG y los materiales se cargan desde esa bodega."
+      ? "La bodega se toma desde la plantilla y solo se listan materiales marcados como aceite."
+      : "La bodega se toma desde la plantilla y los materiales se cargan desde esa bodega."
     : requiresOilProductsForCurrentWorkOrder.value
       ? "Para OT de tipo Cebado solo se listan materiales marcados como aceite en la bodega seleccionada."
       : "Se cargan materiales por bodega a medida que los necesites.",
@@ -4400,7 +4400,7 @@ function addCustomTask() {
   }
   const planId = String(headerForm.plan_id || taskForm.plan_id || selectedProcedure.value?.plan_id || "").trim();
   if (!planId) {
-    ui.error("Debes seleccionar primero una plantilla MPG o plan operativo para agregar tareas.");
+    ui.error("Debes seleccionar primero una plantilla o plan operativo para agregar tareas.");
     return;
   }
 
@@ -4495,7 +4495,7 @@ async function syncChecklistFromTemplate(showToast = true) {
   if (drafts.length) {
     taskRows.value = [...drafts, ...taskRows.value];
     taskForm.observacion = "";
-    if (showToast) ui.success("Checklist sincronizado desde la plantilla MPG.");
+    if (showToast) ui.success("Checklist sincronizado desde la plantilla.");
   } else if (showToast) {
     ui.open("El checklist de la plantilla ya estaba cargado.", "info", 3500);
   }
@@ -4601,7 +4601,7 @@ const selectedProcedureLabel = computed(
   () =>
     selectedProcedure.value?.codigo
       ? `${selectedProcedure.value.codigo} - ${selectedProcedure.value.nombre || selectedProcedure.value.codigo}`
-      : selectedProcedure.value?.nombre || "Sin plantilla MPG",
+      : selectedProcedure.value?.nombre || "Sin plantilla",
 );
 
 const procedureSuggestedMaterialRows = computed(() => {
@@ -5531,7 +5531,7 @@ async function saveHeader(
     return false;
   }
   if (!headerForm.procedimiento_id && !headerForm.plan_id) {
-    ui.error("Debes seleccionar una plantilla MPG para la OT.");
+    ui.error("Debes seleccionar una plantilla para la OT.");
     return false;
   }
   if (!headerForm.maintenance_kind) {
@@ -5703,7 +5703,7 @@ async function saveAll() {
       return;
     }
     if (!headerForm.procedimiento_id && !headerForm.plan_id) {
-      ui.error("Debes seleccionar una plantilla MPG para la OT.");
+      ui.error("Debes seleccionar una plantilla para la OT.");
       return;
     }
     if (!headerForm.maintenance_kind) {

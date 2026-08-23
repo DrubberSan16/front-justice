@@ -397,7 +397,7 @@ const modulePermissionAliases = computed(() => {
   const title = repairText(moduleConfig.value?.title ?? "");
   const aliases = [title, props.moduleKey].filter(Boolean);
   const aliasMap: Record<string, string[]> = {
-    "inteligencia-procedimientos": ["Plantillas MPG", "Procedimientos", "Inteligencia Procedimientos"],
+    "inteligencia-procedimientos": ["Plantillas MPG", "Plantillas", "Procedimientos", "Inteligencia Procedimientos"],
     "componentes-equipo": ["Partes oficiales de equipos", "Partes de equipos", "Componentes equipo"],
     bitacora: ["Bitacora", "Bitácora de equipos"],
     "estados-equipo": ["Estados de equipos", "Estados equipo"],

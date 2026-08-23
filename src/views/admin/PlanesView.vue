@@ -11,7 +11,7 @@
         <div class="responsive-header mb-3">
           <div>
             <div class="text-h6 font-weight-bold">Planes internos</div>
-            <div class="text-body-2 text-medium-emphasis">Vista de soporte generada automaticamente desde Plantillas MPG.</div>
+            <div class="text-body-2 text-medium-emphasis">Vista de soporte generada automaticamente desde Plantillas.</div>
           </div>
           <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
             <MassPurgeButton
@@ -19,7 +19,7 @@
               module-title="Planes internos"
               @purged="fetchPlans"
             />
-            <v-chip color="warning" variant="tonal">Gestionado desde Plantillas MPG</v-chip>
+            <v-chip color="warning" variant="tonal">Gestionado desde Plantillas</v-chip>
           </div>
         </div>
 

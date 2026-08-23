@@ -695,7 +695,7 @@
                 :items="procedureOptions"
                 item-title="title"
                 item-value="value"
-                label="Plantilla MPG"
+                label="Plantilla"
                 variant="outlined"
                 :disabled="Boolean(form.work_order_id)"
               />
@@ -851,7 +851,7 @@
                 :items="procedureOptions"
                 item-title="title"
                 item-value="value"
-                label="Plantilla MPG opcional"
+                label="Plantilla opcional"
                 variant="outlined"
                 clearable
                 :disabled="Boolean(monthlyCell.work_order_id) || monthlyCellRequiresReprogramToggle"
@@ -1555,7 +1555,7 @@ const requiresExplicitSucursalSelection = computed(
 const agendaHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "OT", key: "work_order_code" },
-  { title: "Plantilla MPG", key: "procedimiento_nombre" },
+  { title: "Plantilla", key: "procedimiento_nombre" },
   { title: "Fecha", key: "proxima_fecha" },
   { title: "Modo", key: "modo_programacion" },
   { title: "Estado", key: "estado_programacion" },
@@ -3479,7 +3479,7 @@ const selectedWorkOrder = computed(() =>
 const resolvedPlanLabel = computed(() => {
   if (form.plan_id) return form.plan_id;
   if (!selectedProcedure.value) return "Se generará al guardar";
-  return `Sincronizado desde ${selectedProcedure.value.codigo || selectedProcedure.value.nombre || "plantilla MPG"}`;
+  return `Sincronizado desde ${selectedProcedure.value.codigo || selectedProcedure.value.nombre || "plantilla"}`;
 });
 
 const selectedProcedureFrequency = computed(() => {
@@ -4038,7 +4038,7 @@ async function save() {
     return;
   }
   if (!form.equipo_id || (!form.procedimiento_id && !form.plan_id)) {
-    ui.error("La orden de trabajo debe tener equipo y plantilla MPG o plan operativo vinculados.");
+    ui.error("La orden de trabajo debe tener equipo y plantilla o plan operativo vinculados.");
     return;
   }
   const payload = buildPayload();

@@ -426,7 +426,7 @@ const manualOverrides: Record<string, ManualOverride> = {
     purpose:
       "Usa este modulo para planificar horas, actividades, semanas y agenda diaria antes de ejecutar ordenes de trabajo.",
     prerequisites: [
-      "Los equipos y plantillas MPG deben estar creados.",
+      "Los equipos y plantillas deben estar creados.",
       "Define primero el anio, mes y semana que realmente vas a planificar.",
     ],
     flow: [
@@ -515,15 +515,15 @@ const manualOverrides: Record<string, ManualOverride> = {
       "Usa este modulo para ejecutar mantenimiento de punta a punta, con trazabilidad de evidencias, materiales y cierre operativo.",
     prerequisites: [
       "El equipo debe existir y tener su contexto oficial actualizado.",
-      "Si la OT nace de una alerta o plantilla MPG, selecciona la referencia correcta desde la cabecera.",
+      "Si la OT nace de una alerta o plantilla, selecciona la referencia correcta desde la cabecera.",
     ],
     flow: [
       {
         id: "cabecera",
         title: "Crea o actualiza la cabecera",
         description:
-          "Completa codigo, equipo, estado, tipo de mantenimiento, plantilla MPG, plan operativo, alerta, causa, accion y prevencion.",
-        fields: ["Código", "Equipo", "Estado de la orden", "Tipo de mantenimiento", "Plantilla MPG", "Plan operativo", "Alerta", "Causa", "Acción", "Prevención"],
+          "Completa codigo, equipo, estado, tipo de mantenimiento, plantilla, plan operativo, alerta, causa, accion y prevencion.",
+        fields: ["Código", "Equipo", "Estado de la orden", "Tipo de mantenimiento", "Plantilla", "Plan operativo", "Alerta", "Causa", "Acción", "Prevención"],
         checks: [
           "La OT debe quedar ligada al equipo correcto y, si aplica, al compartimiento oficial.",
           "No cierres la OT con informacion incompleta en cabecera.",

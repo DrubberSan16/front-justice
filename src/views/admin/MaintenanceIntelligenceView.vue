@@ -566,7 +566,7 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-4 intelligence-wrap">
             <div>
-              <div class="text-subtitle-1 font-weight-bold">Procedimientos y plantillas MPG</div>
+              <div class="text-subtitle-1 font-weight-bold">Procedimientos y plantillas</div>
               <div class="text-body-2 text-medium-emphasis">Base operativa para mantenimientos preventivos y flujos de trabajo.</div>
             </div>
             <div class="d-flex align-center intelligence-wrap" style="gap: 8px;">
@@ -582,7 +582,7 @@
             <v-chip label color="success" variant="tonal">Documentos base: {{ procedureDocumentCount }}</v-chip>
           </div>
 
-          <LoadingTableState v-if="loading" message="Cargando plantillas MPG..." :rows="5" :columns="5" />
+          <LoadingTableState v-if="loading" message="Cargando plantillas..." :rows="5" :columns="5" />
           <div v-else class="dashboard-table-shell">
             <v-table density="compact" class="dashboard-mini-table">
               <thead>
@@ -2053,7 +2053,7 @@ const analysesInAlert = computed(
 const kpiCards = computed<IntelligenceCard[]>(() => [
   {
     key: "procedimientos",
-    label: "Plantillas MPG",
+    label: "Plantillas",
     value: procedures.value.length,
     helper: "Procedimientos y checklist operativos",
     icon: "mdi-file-document-multiple-outline",

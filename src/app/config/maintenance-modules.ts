@@ -318,7 +318,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
   },
   {
     key: "inteligencia-procedimientos",
-    title: "Plantillas MPG y checklist operativo",
+    title: "Plantillas y checklist operativo",
     endpoint: "/kpi_maintenance/inteligencia/procedimientos",
     fields: [
       { key: "codigo", label: "Codigo", type: "text", required: true },

@@ -234,7 +234,7 @@ export const router = createRouter({
           name: "inteligencia-procedimientos",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),
           props: { moduleKey: "inteligencia-procedimientos" },
-          meta: { title: "Plantillas MPG", viewFile: "views/admin/MaintenanceCrudView.vue" },
+          meta: { title: "Plantillas", viewFile: "views/admin/MaintenanceCrudView.vue" },
         },
         {
           path: "inteligencia/analisis-lubricante",
