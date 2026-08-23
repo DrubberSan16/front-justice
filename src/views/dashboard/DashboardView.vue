@@ -842,7 +842,7 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
   equipos.value.map((item) => ({
     id: item.id,
     codigo: item?.codigo || null,
-    nombre: item?.nombre_real || item?.nombre || null,
+    nombre: item?.nombre || null,
     modelo: item?.modelo || null,
     estado_operativo: item?.estado_operativo || null,
     estado_funcionamiento: item?.estado_funcionamiento || null,
