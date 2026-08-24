@@ -192,6 +192,80 @@
       </v-col>
     </v-row>
 
+    <v-row v-if="isSuperAdmin" class="mb-1">
+      <v-col cols="12">
+        <v-card rounded="xl" class="pa-5 enterprise-surface super-admin-alerts-card">
+          <div class="d-flex align-center justify-space-between mb-3 flex-wrap ga-2">
+            <div>
+              <div class="text-subtitle-1 font-weight-bold">Equipos y alertas activas</div>
+              <div class="text-caption text-medium-emphasis">
+                Visible solo para Super Administrador · ejecución manual del correo de alerta
+              </div>
+            </div>
+            <v-chip label color="warning" variant="tonal">{{ openAlertsCount }} alertas activas</v-chip>
+          </div>
+
+          <LoadingTableState v-if="loading" message="Cargando equipos y alertas..." :rows="6" :columns="2" />
+          <div v-else class="super-admin-alerts-shell">
+            <div
+              v-for="equipo in superAdminEquipmentAlerts"
+              :key="equipo.id"
+              class="super-admin-alerts-equipo"
+            >
+              <div class="super-admin-alerts-equipo__header">
+                <div class="super-admin-alerts-equipo__title">
+                  <strong>{{ equipo.codigo }} - {{ equipo.nombre }}</strong>
+                  <span v-if="equipo.modelo" class="text-caption text-medium-emphasis">{{ equipo.modelo }}</span>
+                </div>
+                <v-chip
+                  size="small"
+                  label
+                  :color="equipo.alerts.length ? 'warning' : 'success'"
+                  variant="tonal"
+                >
+                  {{ equipo.alerts.length }} alerta{{ equipo.alerts.length === 1 ? "" : "s" }} activa{{
+                    equipo.alerts.length === 1 ? "" : "s"
+                  }}
+                </v-chip>
+              </div>
+
+              <div v-if="!equipo.alerts.length" class="super-admin-alerts-equipo__empty">
+                Sin alertas activas para este equipo.
+              </div>
+
+              <div v-else class="super-admin-alerts-equipo__alerts">
+                <div v-for="alert in equipo.alerts" :key="alert.id" class="super-admin-alerts-alert">
+                  <div class="super-admin-alerts-alert__info">
+                    <div class="font-weight-medium">{{ alert.tipo }}</div>
+                    <div class="text-caption text-medium-emphasis">{{ alert.detalle }}</div>
+                    <div class="super-admin-alerts-alert__meta">
+                      <v-chip size="x-small" label color="warning" variant="tonal">{{ alert.estado }}</v-chip>
+                      <v-chip size="x-small" label color="secondary" variant="tonal">{{ alert.nivel }}</v-chip>
+                      <span class="text-caption text-medium-emphasis">{{ alert.fecha }}</span>
+                    </div>
+                  </div>
+                  <v-btn
+                    size="small"
+                    color="primary"
+                    variant="tonal"
+                    prepend-icon="mdi-email-fast-outline"
+                    :loading="manualAlertLoadingId === alert.id"
+                    @click="executeAlertManually(alert.id)"
+                  >
+                    Enviar correo
+                  </v-btn>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="!superAdminEquipmentAlerts.length" class="text-center text-medium-emphasis py-4">
+              No hay equipos registrados.
+            </div>
+          </div>
+        </v-card>
+      </v-col>
+    </v-row>
+
     <v-row class="mb-1">
       <v-col cols="12" md="6" xl="4">
         <DashboardBarChartCard
@@ -632,7 +706,9 @@ import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { useUiStore } from "@/app/stores/ui.store";
 import { hasReportAccess } from "@/app/config/report-access";
+import { isSuperAdministrator } from "@/app/utils/role-access";
 import { canReadComponent, getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import EquipmentOperatingControl, {
@@ -653,15 +729,18 @@ type AnyRow = Record<string, any>;
 
 const auth = useAuthStore();
 const menu = useMenuStore();
+const ui = useUiStore();
 const router = useRouter();
 
 const loading = ref(false);
 const error = ref<string | null>(null);
 const lastUpdatedAt = ref<Date | null>(null);
 const exportState = ref<Record<string, boolean>>({});
+const manualAlertLoadingId = ref<string | null>(null);
 const canAccessDashboardReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "dashboard_ejecutivo"),
 );
+const isSuperAdmin = computed(() => isSuperAdministrator(auth.user));
 const canAccessIntelligenceView = computed(() =>
   canReadComponent(menu.tree, "inteligencia-mantenimiento"),
 );
@@ -947,6 +1026,77 @@ const openAlerts = computed(() =>
 );
 
 const openAlertsCount = computed(() => openAlerts.value.length);
+
+function isActiveAlertState(value: unknown) {
+  const raw = String(value || "").trim().toUpperCase();
+  return raw === "ABIERTA" || raw === "EN_PROCESO";
+}
+
+const superAdminEquipmentAlerts = computed(() => {
+  const alertsByEquipo = new Map<string, AnyRow[]>();
+  for (const alert of alertas.value) {
+    if (alert?.is_deleted) continue;
+    if (!isActiveAlertState(alert?.estado)) continue;
+    const equipoId = String(alert?.equipo_id || "").trim();
+    if (!equipoId) continue;
+    const list = alertsByEquipo.get(equipoId) ?? [];
+    list.push(alert);
+    alertsByEquipo.set(equipoId, list);
+  }
+
+  return equipos.value
+    .filter((item) => !item?.is_deleted)
+    .slice()
+    .sort(
+      (a, b) =>
+        String(a?.codigo || "").localeCompare(String(b?.codigo || "")) ||
+        String(a?.nombre || "").localeCompare(String(b?.nombre || "")),
+    )
+    .map((equipo) => {
+      const equipoId = String(equipo?.id || "").trim();
+      const equipoAlerts = [...(alertsByEquipo.get(equipoId) ?? [])].sort(
+        (a, b) => new Date(b?.fecha_generada || 0).getTime() - new Date(a?.fecha_generada || 0).getTime(),
+      );
+      return {
+        id: equipoId,
+        codigo: equipo?.codigo || "Sin código",
+        nombre: equipo?.nombre || "Sin nombre",
+        modelo: equipo?.modelo || "",
+        alerts: equipoAlerts.map((alert) => ({
+          id: alert.id,
+          tipo: alert?.tipo_alerta || "Alerta",
+          nivel: alert?.nivel || alert?.severidad || "INFO",
+          estado: alert?.estado || "Sin estado",
+          detalle: alert?.detalle || "Sin detalle",
+          fecha: alert?.fecha_generada ? formatDateTime(alert.fecha_generada) : "Sin fecha",
+        })),
+      };
+    });
+});
+
+async function executeAlertManually(alertId: string) {
+  if (!isSuperAdmin.value || manualAlertLoadingId.value) return;
+  manualAlertLoadingId.value = alertId;
+  try {
+    const response = await api.post(`/kpi_maintenance/alertas/${alertId}/ejecutar-manual`, {
+      source: "dashboard-super-admin",
+    });
+    const data = unwrap<AnyRow>(response.data, {});
+    const sentCount = Number(data?.sent_count || 0);
+    if (sentCount > 0) {
+      ui.success(`Correo de alerta enviado a ${sentCount} destinatario${sentCount === 1 ? "" : "s"}.`);
+    } else {
+      ui.open(
+        data?.skipped_reason || "La alerta se ejecutó pero no se envió ningún correo.",
+        "warning",
+      );
+    }
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo ejecutar la alerta manualmente.");
+  } finally {
+    manualAlertLoadingId.value = null;
+  }
+}
 const filteredWorkOrders = computed(() =>
   workOrders.value.filter(
     (item) => !isAnnulledWorkOrder(item) && isInSelectedPeriod(resolveWorkOrderDate(item)),
@@ -2420,6 +2570,74 @@ watch([selectedYear, selectedMonth], () => {
 .summary-strip {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.super-admin-alerts-shell {
+  display: grid;
+  gap: 14px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-color: rgba(var(--v-theme-primary), 0.3) transparent;
+  scrollbar-width: thin;
+}
+
+.super-admin-alerts-equipo {
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--surface-base) 91%, transparent);
+}
+
+.super-admin-alerts-equipo__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.super-admin-alerts-equipo__title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.super-admin-alerts-equipo__empty {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--app-muted-text);
+}
+
+.super-admin-alerts-equipo__alerts {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.super-admin-alerts-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.065);
+  background: color-mix(in srgb, var(--surface-soft) 96%, transparent);
+}
+
+.super-admin-alerts-alert__info {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.super-admin-alerts-alert__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
