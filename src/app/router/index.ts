@@ -110,6 +110,15 @@ export const router = createRouter({
           },
         },
         {
+          path: "reservas-bodega",
+          name: "reservas-bodega",
+          component: () => import("@/views/admin/WarehouseReservationsView.vue"),
+          meta: {
+            title: "Reservas de bodega",
+            viewFile: "views/admin/WarehouseReservationsView.vue",
+          },
+        },
+        {
           path: "sucursales",
           name: "sucursales",
           component: () => import("@/views/admin/InventoryCrudView.vue"),

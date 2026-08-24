@@ -82,6 +82,7 @@ const routeCategoryMap = new Map<string, string>([
   ["ordenes-compra", "Inventario"],
   ["ordenes-servicio", "Inventario"],
   ["transferencias-bodega", "Inventario"],
+  ["reservas-bodega", "Inventario"],
   ["sucursales", "Inventario"],
   ["bodegas", "Inventario"],
   ["lineas", "Inventario"],
@@ -933,6 +934,73 @@ const manualOverrides: Record<string, ManualOverride> = {
       "Revise kardex y stock en ambas bodegas al finalizar.",
     ],
     relatedRoutes: ["ordenes-compra", "stock-bodega", "kardex"],
+  },
+  "reservas-bodega": {
+    routeName: "reservas-bodega",
+    title: "Reservas de bodega",
+    category: "Inventario",
+    summary:
+      "Consulta de solo lectura de las reservas de material por bodega y la orden de trabajo que las originó.",
+    purpose:
+      "Usa este modulo para verificar cuanto material esta reservado, entregado, pendiente o liberado por bodega, sin poder crear, editar ni liberar reservas manualmente.",
+    prerequisites: [
+      "Debe existir al menos una reserva de material generada desde una orden de trabajo.",
+    ],
+    flow: [
+      {
+        id: "filtros",
+        title: "Filtra por bodega, OT o estado",
+        description:
+          "Usa la busqueda libre, el filtro de bodega, el filtro de orden de trabajo y el filtro de estado para acotar el listado.",
+        fields: ["Busqueda", "Bodega", "Orden de trabajo", "Estado"],
+        checks: [
+          "El boton Limpiar restaura todas las reservas sin filtros.",
+          "Cada fila indica claramente Bodega, Material, OT y equipo asociado.",
+        ],
+      },
+      {
+        id: "estados",
+        title: "Interpreta el estado de la reserva",
+        description:
+          "RESERVADO indica material aun apartado y disponible solo para esa OT; CONSUMIDO indica que ya se entrego todo lo reservado; LIBERADO indica que la OT se cerro y el remanente volvio a estar disponible para otros modulos.",
+        fields: ["Estado", "Reservado", "Entregado", "Pendiente", "Liberado"],
+        checks: [
+          "Una reserva LIBERADA o de una OT cerrada nunca cuenta como stock reservado activo.",
+          "Las cantidades solicitada y entregada se conservan aunque la reserva ya este liberada.",
+        ],
+      },
+      {
+        id: "reportes",
+        title: "Descarga el reporte de reservas",
+        description:
+          "Los botones Excel y PDF generan un reporte que identifica cada fila como RESERVA DE MATERIAL, distinto de un movimiento de Kardex o una salida de inventario confirmada.",
+        fields: ["Excel", "PDF"],
+        checks: [
+          "El reporte descargado refleja unicamente los filtros y resultados visibles en ese momento.",
+        ],
+      },
+    ],
+    tips: [
+      "Si necesitas liberar manualmente una reserva, no lo hagas desde aqui: la liberacion ocurre automaticamente al finalizar la orden de trabajo en el modulo de Ordenes de trabajo.",
+      "Cuando la salida real de un material fue menor a lo reservado, la orden de trabajo (ya cerrada) muestra el motivo capturado al finalizar.",
+    ],
+    warnings: [
+      "Este modulo es solo de consulta: no existen acciones de crear, editar, eliminar ni liberar reservas.",
+    ],
+    commonErrors: [
+      {
+        title: "No aparecen reservas para una bodega",
+        whatHappens: "El listado se muestra vacio al filtrar por una bodega especifica.",
+        why: "La bodega no tiene ordenes de trabajo con material reservado, o los filtros de estado/busqueda son demasiado restrictivos.",
+        howToResolve: "Usa Limpiar para quitar los filtros y confirma que la bodega tenga consumos de material registrados desde alguna OT.",
+      },
+    ],
+    checklist: [
+      "Filtra por bodega, OT o estado segun lo que necesites revisar.",
+      "Verifica reservado, entregado, pendiente y liberado antes de tomar decisiones.",
+      "Descarga el reporte Excel o PDF cuando necesites evidencia formal.",
+    ],
+    relatedRoutes: ["work-orders", "stock-bodega", "kardex"],
   },
   "inteligencia-analisis-lubricante": {
     routeName: "inteligencia-analisis-lubricante",

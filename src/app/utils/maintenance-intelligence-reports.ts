@@ -1491,6 +1491,47 @@ export function buildInventoryStockReport(payload: {
   } satisfies ReportDefinition;
 }
 
+export function buildWarehouseReservationsReport(payload: {
+  rows: AnyRow[];
+  summary?: ReportSummaryItem[];
+  title?: string;
+  subtitle?: string;
+  fileName?: string;
+}) {
+  const columns: ReportColumn[] = [
+    { key: "tipo_registro", header: "Tipo de registro" },
+    { key: "estado", header: "Estado de la reserva" },
+    { key: "bodega_label", header: "Bodega" },
+    { key: "producto_label", header: "Material" },
+    { key: "work_order_label", header: "Orden de trabajo" },
+    { key: "work_order_status", header: "Estado OT" },
+    { key: "equipment_label", header: "Equipo" },
+    { key: "cantidad_solicitada", header: "Cantidad reservada / solicitada", format: "number" },
+    { key: "cantidad_entregada", header: "Cantidad entregada", format: "number" },
+    { key: "cantidad_reservada_activa", header: "Reserva activa", format: "number" },
+    { key: "cantidad_pendiente", header: "Pendiente por entregar", format: "number" },
+    { key: "cantidad_liberada", header: "Cantidad liberada", format: "number" },
+    { key: "observacion_menor_uso_reserva", header: "Motivo de menor uso" },
+  ];
+
+  return {
+    fileName: payload.fileName || `reservas_bodega_${formatDateForInput(new Date())}`,
+    title: payload.title || "Reporte de reservas de bodega",
+    subtitle:
+      payload.subtitle ||
+      "Este reporte lista únicamente reservas de material por bodega (RESERVA DE MATERIAL); no representa un egreso de inventario ni un movimiento de Kardex.",
+    summary: payload.summary,
+    sheets: [
+      {
+        name: "Reservas de material",
+        rows: payload.rows,
+        columns,
+        note: "Cada fila corresponde a una RESERVA DE MATERIAL y no representa un movimiento de inventario confirmado.",
+      },
+    ],
+  } satisfies ReportDefinition;
+}
+
 export function buildWorkOrderReport(payload: {
   header: AnyRow;
   tasks: AnyRow[];

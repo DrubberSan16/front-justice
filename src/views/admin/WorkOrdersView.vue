@@ -918,6 +918,16 @@
             <div class="text-body-2 text-medium-emphasis pt-2 mb-3">
               {{ materialIssueHelperText }}
             </div>
+            <v-alert
+              v-if="String(headerForm.close_shortfall_reason || '').trim()"
+              type="info"
+              variant="tonal"
+              density="comfortable"
+              class="mb-3"
+            >
+              <strong>Motivo de menor uso de material reservado:</strong>
+              {{ headerForm.close_shortfall_reason }}
+            </v-alert>
             <v-data-table
               :headers="materialReservationHeaders"
               :items="materialReservationRows"
@@ -1446,6 +1456,56 @@
     </v-card>
   </v-dialog>
 
+  <v-dialog v-model="closeShortfallDialog" max-width="640">
+    <v-card rounded="xl">
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Motivo de menor uso de material reservado
+      </v-card-title>
+      <v-card-text>
+        <p class="mb-3">
+          La salida real de algunos materiales fue menor a lo reservado. Antes de finalizar la
+          OT, indica el motivo; el remanente de la reserva quedará disponible para otros módulos.
+        </p>
+        <v-table density="compact" class="mb-3">
+          <thead>
+            <tr>
+              <th>Bodega</th>
+              <th>Material</th>
+              <th class="text-right">Reservado</th>
+              <th class="text-right">Emitido</th>
+              <th class="text-right">Diferencia</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in workOrderMaterialShortfallRows" :key="row.id">
+              <td>{{ row.bodega_label }}</td>
+              <td>{{ row.producto_label }}</td>
+              <td class="text-right">{{ row.cantidad_reservada }}</td>
+              <td class="text-right">{{ row.cantidad_emitida }}</td>
+              <td class="text-right">
+                {{ (row.cantidad_reservada - row.cantidad_emitida).toFixed(2) }}
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+        <v-textarea
+          v-model="headerForm.close_shortfall_reason"
+          label="Motivo del menor uso de material reservado"
+          variant="outlined"
+          rows="3"
+          auto-grow
+          counter="500"
+          maxlength="500"
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="closeShortfallDialog = false">Cancelar</v-btn>
+        <v-btn color="primary" @click="confirmCloseShortfallReason">Confirmar y finalizar</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
   <v-dialog
     v-model="reportPreviewDialog"
     :fullscreen="isReportPreviewFullscreen"
@@ -1656,6 +1716,7 @@ const tableItemsPerPage = ref(20);
 
 const dialog = ref(false);
 const deleteDialog = ref(false);
+const closeShortfallDialog = ref(false);
 const reportPreviewDialog = ref(false);
 const taskResponsiblesDialog = ref(false);
 const materialIssueDialog = ref(false);
@@ -1754,6 +1815,7 @@ const headerForm = reactive<any>({
   horometro_actual: "",
   horas_a_realizar: "",
   horometro_proyectado: "",
+  close_shortfall_reason: "",
 });
 
 const taskForm = reactive<any>({
@@ -3309,6 +3371,14 @@ const materialReservationRows = computed(() => {
     );
 });
 
+const workOrderMaterialShortfallRows = computed(() =>
+  materialReservationRows.value.filter(
+    (row: any) =>
+      toPositiveNumber(row?.cantidad_reservada) >
+      toPositiveNumber(row?.cantidad_emitida) + 0.0001,
+  ),
+);
+
 const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
   const rawItems = Array.isArray(issue?.items) ? issue.items : [];
   return rawItems.map((detail: any, index: number) => ({
@@ -4291,6 +4361,7 @@ function buildWorkOrderSaveBundlePayload() {
         horometro_actual: resolvedHorometroActual.value,
         horas_a_realizar: resolvedHorasARealizar.value,
         horometro_proyectado: resolvedHorometroProyectado.value,
+        observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
         ...buildProgramacionDatePayload(),
       },
     },
@@ -5407,6 +5478,8 @@ async function openEdit(item: any) {
   headerForm.causa = headerValorJson?.causa ?? "";
   headerForm.accion = headerValorJson?.accion ?? "";
   headerForm.prevencion = headerValorJson?.prevencion ?? "";
+  headerForm.close_shortfall_reason =
+    headerValorJson?.observacion_menor_uso_reserva ?? "";
   headerForm.horometro_actual = toEditableNumber(
     item?.horometro_actual ?? headerValorJson?.horometro_actual,
   );
@@ -5535,6 +5608,26 @@ async function prepareClose() {
     ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return;
   }
+  if (
+    workOrderMaterialShortfallRows.value.length &&
+    !String(headerForm.close_shortfall_reason || "").trim()
+  ) {
+    closeShortfallDialog.value = true;
+    return;
+  }
+  closingFlow.value = true;
+  headerForm.status_workflow = "CLOSED";
+  tab.value = showMaterialsTab.value ? "materiales" : "consumos";
+}
+
+function confirmCloseShortfallReason() {
+  const trimmedReason = String(headerForm.close_shortfall_reason || "").trim();
+  if (!trimmedReason) {
+    ui.error("Debes indicar el motivo del menor uso de material reservado.");
+    return;
+  }
+  headerForm.close_shortfall_reason = trimmedReason;
+  closeShortfallDialog.value = false;
   closingFlow.value = true;
   headerForm.status_workflow = "CLOSED";
   tab.value = showMaterialsTab.value ? "materiales" : "consumos";
@@ -5613,6 +5706,7 @@ async function saveHeader(
       horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       horometro_proyectado: resolvedHorometroProyectado.value,
+      observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
       ...buildWorkOrderAuditPayload(false),
     },
@@ -5696,6 +5790,7 @@ function buildWorkOrderHeaderComparableState() {
       horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       horometro_proyectado: resolvedHorometroProyectado.value,
+      observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
     },
   });
