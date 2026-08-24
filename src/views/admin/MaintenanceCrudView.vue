@@ -755,7 +755,10 @@ function calculateEquipmentNextServiceDate(baseDate: unknown, unitValue: unknown
   const date = parseDateOnlyToUtc(baseDate);
   if (!date || !(interval > 0)) return "";
   const unit = String(unitValue || "DIAS").trim().toUpperCase();
-  if (unit === "SEMANAS") {
+  if (unit === "HORAS") {
+    const intervalDays = Math.max(1, Math.ceil(interval / 24));
+    date.setUTCDate(date.getUTCDate() + intervalDays);
+  } else if (unit === "SEMANAS") {
     date.setUTCDate(date.getUTCDate() + interval * 7);
   } else if (unit === "MESES") {
     date.setUTCMonth(date.getUTCMonth() + interval);

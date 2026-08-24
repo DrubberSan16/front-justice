@@ -78,6 +78,7 @@ export const estadoFuncionamientoEquipoOptions = [
 ];
 
 const intervaloServicioEquipoOptions = [
+  { value: "HORAS", title: "Horas" },
   { value: "DIAS", title: "Dias" },
   { value: "SEMANAS", title: "Semanas" },
   { value: "ANIOS", title: "Anios" },
