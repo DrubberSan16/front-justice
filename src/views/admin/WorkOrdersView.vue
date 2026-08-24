@@ -776,6 +776,16 @@
           </v-window-item>
 
           <v-window-item value="consumos">
+            <v-alert
+              v-if="!editingId"
+              type="info"
+              variant="tonal"
+              density="comfortable"
+              class="mb-3"
+            >
+              Esta es una OT nueva: la reserva de materiales se guardará junto con la orden de
+              trabajo al presionar Guardar.
+            </v-alert>
             <v-row v-if="canCreateConsumo" dense class="pt-2">
               <v-col cols="12" md="4">
                 <v-text-field
@@ -882,7 +892,9 @@
               </v-data-table>
             </div>
             <div v-if="canCreateConsumo" class="d-flex justify-end mb-3">
-              <v-btn color="primary" @click="createConsumo">Reservar materiales</v-btn>
+              <v-btn color="primary" :loading="!editingId && savingHeader" @click="reserveMaterials">
+                {{ editingId ? "Reservar materiales" : "Guardar OT y reservar materiales" }}
+              </v-btn>
             </div>
             <v-data-table
               :headers="consumoHeaders"
@@ -2024,18 +2036,19 @@ const canManageWorkOrderUploads = computed(
 const workOrderDetailWorkflow = computed(
   () => persistedWorkflow.value || normalizedWorkflow.value,
 );
-const showConsumosTab = computed(
-  () =>
-    !!editingId.value &&
-    ["PLANNED", "IN_PROGRESS", "CLOSED"].includes(workOrderDetailWorkflow.value),
+const showConsumosTab = computed(() =>
+  editingId.value
+    ? ["PLANNED", "IN_PROGRESS", "CLOSED"].includes(workOrderDetailWorkflow.value)
+    : ["PLANNED", "IN_PROGRESS"].includes(normalizedWorkflow.value),
 );
-const canCreateConsumo = computed(
-  () =>
-    !!editingId.value &&
+const canCreateConsumo = computed(() => {
+  if (!["PLANNED", "IN_PROGRESS"].includes(normalizedWorkflow.value)) return false;
+  if (!editingId.value) return true;
+  return (
     ["PLANNED", "IN_PROGRESS"].includes(workOrderDetailWorkflow.value) &&
-    ["PLANNED", "IN_PROGRESS"].includes(normalizedWorkflow.value) &&
-    !isReadOnlyWorkflow.value,
-);
+    !isReadOnlyWorkflow.value
+  );
+});
 const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
 const canRegisterRealIssue = computed(
@@ -6039,6 +6052,22 @@ async function deleteAttachment(item: any) {
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo eliminar el adjunto.");
   }
+}
+
+async function reserveMaterials() {
+  if (!canCreateConsumo.value) {
+    return ui.error(
+      "Las reservas de materiales solo se pueden registrar mientras la orden está en Planificación o En proceso.",
+    );
+  }
+  if (!editingId.value) {
+    const warehouseId = effectiveConsumoWarehouseId.value;
+    if (!warehouseId || !consumoForm.producto_id || !consumoForm.cantidad) {
+      return ui.error("Bodega, material y cantidad son obligatorios para reservar materiales.");
+    }
+    return saveAll();
+  }
+  return createConsumo();
 }
 
 async function createConsumo(options?: {
