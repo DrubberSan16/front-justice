@@ -278,6 +278,10 @@ import {
   type MenuRouteCatalogItem,
 } from "@/app/utils/menu-route-catalog";
 import { createLogTransact } from "@/app/services/log-transacts.service";
+import {
+  buildRequestContext,
+  type LogTransactRequestContext,
+} from "@/app/http/request-context";
 import { resolveIcon } from "@/app/config/icons";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
@@ -527,13 +531,18 @@ function currentUserName() {
   return auth.user?.nameUser || "admin";
 }
 
-async function logAndShowTechnicalError(typeLog: string, description: string) {
+async function logAndShowTechnicalError(
+  typeLog: string,
+  description: string,
+  context: LogTransactRequestContext = {},
+) {
   const ticket = await createLogTransact({
     moduleMicroservice: "kpi_security",
     status: "ACTIVE",
     typeLog,
     description,
     createdBy: currentUserName(),
+    ...context,
   });
 
   ui.error(
@@ -576,7 +585,8 @@ async function onSubmitForm() {
 
     await logAndShowTechnicalError(
       isEditing.value ? "MENU_UPDATE" : "MENU_CREATE",
-      details
+      details,
+      buildRequestContext(e, { ...form })
     );
   } finally {
     busy.value = false;
@@ -597,7 +607,11 @@ async function onConfirmDelete() {
       `menuId=${selected.value.id}\n` +
       `apiError=${e?.response?.data?.message || e?.message || "unknown"}`;
 
-    await logAndShowTechnicalError("MENU_DELETE", details);
+    await logAndShowTechnicalError(
+      "MENU_DELETE",
+      details,
+      buildRequestContext(e, { id: selected.value?.id ?? null })
+    );
   } finally {
     busy.value = false;
   }

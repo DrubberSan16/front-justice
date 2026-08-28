@@ -1,4 +1,5 @@
 import { api } from "@/app/http/api";
+import type { LogTransactRequestContext } from "@/app/http/request-context";
 
 export type CreateLogTransactBody = {
   moduleMicroservice: string; // "kpi_security"
@@ -6,7 +7,7 @@ export type CreateLogTransactBody = {
   typeLog: string;           // "USER_CREATE", "USER_UPDATE", ...
   description: string;       // detalle del error
   createdBy: string;         // usuario logueado
-};
+} & LogTransactRequestContext;
 
 export async function createLogTransact(body: CreateLogTransactBody): Promise<string | null> {
   try {

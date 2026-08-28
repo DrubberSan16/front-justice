@@ -202,6 +202,10 @@ import { useMenuUsersProfileStore } from "@/app/stores/menu-users-profile.store"
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canManageDeletedRecords } from "@/app/utils/role-access";
 import { createLogTransact } from "@/app/services/log-transacts.service";
+import {
+  buildRequestContext,
+  type LogTransactRequestContext,
+} from "@/app/http/request-context";
 
 import type { User } from "@/app/types/users.types";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
@@ -358,13 +362,18 @@ function currentUserName() {
   return auth.user?.nameUser || "admin";
 }
 
-async function logAndShowTechnicalError(typeLog: string, description: string) {
+async function logAndShowTechnicalError(
+  typeLog: string,
+  description: string,
+  context: LogTransactRequestContext = {},
+) {
   const ticket = await createLogTransact({
     moduleMicroservice: "kpi_security",
     status: "ACTIVE",
     typeLog,
     description,
     createdBy: currentUserName(),
+    ...context,
   });
 
   ui.error(
@@ -442,6 +451,10 @@ async function onSubmitForm(payload: any) {
     await logAndShowTechnicalError(
       selectedUser.value ? "USER_UPDATE" : "USER_CREATE",
       details,
+      buildRequestContext(e, {
+        ...payload,
+        passUser: payload.passUser ? "***" : "",
+      }),
     );
   } finally {
     busy.value = false;
@@ -463,7 +476,11 @@ async function onConfirmDelete() {
       `userId=${selectedUser.value.id}\n` +
       `apiError=${e?.response?.data?.message || e?.message || "unknown"}`;
 
-    await logAndShowTechnicalError("USER_DELETE", details);
+    await logAndShowTechnicalError(
+      "USER_DELETE",
+      details,
+      buildRequestContext(e, { id: selectedUser.value?.id ?? null }),
+    );
   } finally {
     busy.value = false;
   }

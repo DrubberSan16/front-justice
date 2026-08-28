@@ -3,6 +3,7 @@ import { env } from "@/app/config/env";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useUiStore } from "@/app/stores/ui.store";
+import { normalizeRequestPayload } from "@/app/http/request-context";
 
 type TrackedRequestConfig = {
   meta?: {
@@ -90,6 +91,9 @@ async function createTechnicalTicket(err: any) {
         typeLog: "TECHNICAL_INCIDENT",
         description,
         createdBy: auth.user?.nameUser || auth.user?.email || "FRONTEND",
+        requestMethod: method,
+        requestUrl: url,
+        requestPayload: normalizeRequestPayload(err?.config?.data),
       },
       {
         headers: buildAuthHeaders(),

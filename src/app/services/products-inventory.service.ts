@@ -142,6 +142,18 @@ async function registerMovementAndKardex(args: MovementArgs) {
     typeLog: args.tipo === "INGRESO" ? "PRODUCT_ENTRY" : "PRODUCT_EXIT",
     description: `${args.tipo} producto=${args.productoId} bodega=${args.bodegaId} cantidad=${args.cantidad} (${args.stockAnterior} -> ${args.stockNuevo})`,
     createdBy: args.userName,
+    requestMethod: "POST",
+    requestUrl: "/kpi_inventory/kardex",
+    requestPayload: {
+      tipo: args.tipo,
+      producto_id: args.productoId,
+      bodega_id: args.bodegaId,
+      cantidad: args.cantidad,
+      costo_unitario: args.costoUnitario,
+      stock_anterior: args.stockAnterior,
+      stock_nuevo: args.stockNuevo,
+      observacion: args.movimientoObservacion ?? null,
+    },
   });
 }
 
