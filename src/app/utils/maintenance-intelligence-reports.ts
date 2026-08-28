@@ -15,6 +15,14 @@ export type ReportSummaryItem = {
   value: string | number;
 };
 
+export type ReportChart = {
+  title: string;
+  subtitle?: string;
+  type: "line" | "bar";
+  unit?: string;
+  points: Array<{ label: string; value: number }>;
+};
+
 export type ReportColumn = {
   key: string;
   header?: string;
@@ -64,6 +72,7 @@ export type ReportDefinition = {
   /** Nombre del usuario que generó el archivo; si se omite se toma del usuario autenticado. */
   generatedBy?: string | null;
   summary?: ReportSummaryItem[];
+  charts?: ReportChart[];
   sheets: ReportSheet[];
   orientation?: "portrait" | "landscape";
   continuousSections?: boolean;
@@ -467,6 +476,7 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
   workbook.modified = new Date();
 
   const generatedStamp = buildGeneratedStamp(report);
+  const chartAssets = buildReportChartAssets(report);
   const groups = buildReportSheetGroups(report.sheets);
   const usedSheetNames = new Set<string>();
 
@@ -573,6 +583,43 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
         cursorRow += 1;
       }
 
+      cursorRow += 1;
+    }
+
+    if (groupIndex === 0 && chartAssets.length) {
+      worksheet.mergeCells(`A${cursorRow}:${lastColumnName}${cursorRow}`);
+      const chartTitle = worksheet.getCell(`A${cursorRow}`);
+      chartTitle.value = "Análisis gráfico";
+      chartTitle.font = { name: "Arial", size: 11, bold: true, color: { argb: REPORT_THEME.white } };
+      chartTitle.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.brand } };
+      chartTitle.alignment = { horizontal: "center", vertical: "middle" };
+      worksheet.getRow(cursorRow).height = 24;
+      cursorRow += 1;
+
+      const chartsPerRow = lastColumnIndex >= 8 ? 2 : 1;
+      const chartWidth = chartsPerRow === 2 ? 390 : 760;
+      const chartHeight = chartsPerRow === 2 ? 174 : 332;
+      const chartRows = chartsPerRow === 2 ? 10 : 18;
+      for (let index = 0; index < chartAssets.length; index += chartsPerRow) {
+        const rowAssets = chartAssets.slice(index, index + chartsPerRow);
+        rowAssets.forEach((asset, position) => {
+          const imageId = workbook.addImage({
+            base64: asset.imageDataUrl,
+            extension: "png",
+          });
+          worksheet.addImage(imageId, {
+            tl: {
+              col: position === 0 ? 0.12 : Math.max(1, lastColumnIndex / 2) + 0.06,
+              row: cursorRow - 1 + 0.12,
+            },
+            ext: { width: chartWidth, height: chartHeight },
+          });
+        });
+        for (let rowOffset = 0; rowOffset < chartRows; rowOffset += 1) {
+          worksheet.getRow(cursorRow + rowOffset).height = 15;
+        }
+        cursorRow += chartRows;
+      }
       cursorRow += 1;
     }
 
@@ -757,8 +804,11 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
       }
     }
 
-    const frozenRows =
-      resolvedSheets.length > 1 ? 3 : firstHeaderRowIndex || 4;
+    const frozenRows = chartAssets.length && groupIndex === 0
+      ? 3
+      : resolvedSheets.length > 1
+        ? 3
+        : firstHeaderRowIndex || 4;
     worksheet.views = [
       { state: "frozen", ySplit: frozenRows, xSplit: 0, showGridLines: false },
     ];
@@ -794,6 +844,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
   const marginX = 32;
   const headerTextX = marginX + (companyLogoAsset ? 124 : 0);
   const generatedStamp = buildGeneratedStamp(report);
+  const chartAssets = buildReportChartAssets(report);
 
   function drawPageHeader(title: string, subtitle?: string, pageLabel?: string) {
     doc.setFillColor(31, 78, 120);
@@ -874,6 +925,27 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       cursorY = (doc as any).lastAutoTable.finalY + 6;
     }
     cursorY += 4;
+  }
+
+  if (chartAssets.length) {
+    const chartWidth = (pageWidth - marginX * 2 - 14) / 2;
+    const chartHeight = 188;
+    const slotsPerPage = 4;
+    chartAssets.forEach((asset, index) => {
+      if (index % slotsPerPage === 0) {
+        doc.addPage(report.orientation ?? "landscape");
+        drawPageHeader(report.title, report.subtitle, "Análisis gráfico");
+      }
+      const slot = index % slotsPerPage;
+      const column = slot % 2;
+      const row = Math.floor(slot / 2);
+      const x = marginX + column * (chartWidth + 14);
+      const y = 118 + row * (chartHeight + 18);
+      doc.addImage(asset.imageDataUrl, "PNG", x, y, chartWidth, chartHeight, undefined, "FAST");
+    });
+    doc.addPage(report.orientation ?? "landscape");
+    drawPageHeader(report.title, report.subtitle, "Detalle de consumo");
+    cursorY = 118;
   }
 
   let currentSectionId: string | null = null;
@@ -1291,6 +1363,118 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   } satisfies ReportDefinition;
 }
 
+function buildReportChartDataUrl(chart: ReportChart): string | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 960;
+  canvas.height = 420;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  const points = chart.points
+    .map((point) => ({
+      label: repairText(String(point.label || "")),
+      value: Number(point.value || 0),
+    }))
+    .filter((point) => Number.isFinite(point.value));
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#1f4e78";
+  context.fillRect(0, 0, canvas.width, 8);
+  context.font = "bold 25px Arial";
+  context.fillText(repairText(chart.title), 42, 48);
+  context.fillStyle = "#5b6b7b";
+  context.font = "15px Arial";
+  if (chart.subtitle) context.fillText(repairText(chart.subtitle), 42, 74);
+
+  if (!points.length) {
+    context.fillStyle = "#f7fafc";
+    context.fillRect(42, 102, 876, 250);
+    context.fillStyle = "#5b6b7b";
+    context.font = "18px Arial";
+    context.textAlign = "center";
+    context.fillText("Sin datos para graficar", canvas.width / 2, 235);
+    return canvas.toDataURL("image/png");
+  }
+
+  const plot = { x: 76, y: 102, width: 842, height: 245 };
+  const maximum = Math.max(...points.map((point) => point.value), 1);
+  context.strokeStyle = "#d7e2ea";
+  context.lineWidth = 1;
+  context.font = "12px Arial";
+  context.fillStyle = "#5b6b7b";
+  context.textAlign = "right";
+  for (let step = 0; step <= 4; step += 1) {
+    const y = plot.y + (plot.height / 4) * step;
+    const value = maximum * (1 - step / 4);
+    context.beginPath();
+    context.moveTo(plot.x, y);
+    context.lineTo(plot.x + plot.width, y);
+    context.stroke();
+    context.fillText(value.toLocaleString("es-EC", { maximumFractionDigits: 2 }), plot.x - 10, y + 4);
+  }
+
+  const spacing = plot.width / Math.max(points.length, 1);
+  if (chart.type === "bar") {
+    const barWidth = Math.max(8, Math.min(54, spacing * 0.62));
+    points.forEach((point, index) => {
+      const height = (point.value / maximum) * plot.height;
+      const x = plot.x + spacing * index + (spacing - barWidth) / 2;
+      const y = plot.y + plot.height - height;
+      const gradient = context.createLinearGradient(0, y, 0, plot.y + plot.height);
+      gradient.addColorStop(0, "#2f6cab");
+      gradient.addColorStop(1, "#8eb9df");
+      context.fillStyle = gradient;
+      context.fillRect(x, y, barWidth, height);
+    });
+  } else {
+    context.strokeStyle = "#2f6cab";
+    context.fillStyle = "#2f6cab";
+    context.lineWidth = 4;
+    context.beginPath();
+    points.forEach((point, index) => {
+      const x = plot.x + spacing * index + spacing / 2;
+      const y = plot.y + plot.height - (point.value / maximum) * plot.height;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.stroke();
+    points.forEach((point, index) => {
+      const x = plot.x + spacing * index + spacing / 2;
+      const y = plot.y + plot.height - (point.value / maximum) * plot.height;
+      context.beginPath();
+      context.arc(x, y, 5, 0, Math.PI * 2);
+      context.fill();
+    });
+  }
+
+  const labelStride = Math.max(1, Math.ceil(points.length / 8));
+  context.fillStyle = "#5b6b7b";
+  context.font = "12px Arial";
+  context.textAlign = "center";
+  points.forEach((point, index) => {
+    if (index % labelStride !== 0 && index !== points.length - 1) return;
+    const x = plot.x + spacing * index + spacing / 2;
+    const label = point.label.length > 18 ? `${point.label.slice(0, 16)}…` : point.label;
+    context.fillText(label, x, plot.y + plot.height + 24);
+  });
+  context.textAlign = "right";
+  context.font = "bold 13px Arial";
+  context.fillStyle = "#1f4e78";
+  if (chart.unit) context.fillText(repairText(chart.unit), plot.x + plot.width, 392);
+  return canvas.toDataURL("image/png");
+}
+
+function buildReportChartAssets(report: ReportDefinition) {
+  return (report.charts ?? [])
+    .map((chart) => ({ chart, imageDataUrl: buildReportChartDataUrl(chart) }))
+    .filter(
+      (entry): entry is { chart: ReportChart; imageDataUrl: string } =>
+        Boolean(entry.imageDataUrl),
+    );
+}
+
 export function buildOilConsumptionReport(payload: {
   kpi: AnyRow;
   workOrders: AnyRow[];
@@ -1299,6 +1483,7 @@ export function buildOilConsumptionReport(payload: {
   warehouseRows: AnyRow[];
   statusRows: AnyRow[];
   unitLabel?: string;
+  charts?: ReportChart[];
 }) {
   const kpi = payload.kpi ?? {};
   const filters = kpi.filters ?? {};
@@ -1319,49 +1504,13 @@ export function buildOilConsumptionReport(payload: {
   const workOrderRows = payload.workOrders.map((item) => ({
     fecha: item.fecha_referencia ?? item.fecha_referencia_label ?? "",
     orden: item.work_order_code ?? "",
-    titulo: item.work_order_title ?? "",
     tipo_mantenimiento: item.maintenance_kind_label ?? item.maintenance_kind ?? "",
     equipo: item.equipment_label ?? "Sin equipo",
     cantidad: item.cantidad ?? 0,
-    unidad: unitLabel,
     diferencia_anterior: item.diferencia_vs_anterior ?? "",
-    tendencia: item.tendencia_cantidad ?? "",
     costo_total: item.subtotal ?? 0,
-    costo_promedio: item.costo_promedio ?? 0,
-    movimientos: item.movimientos ?? 0,
     estado: item.work_order_status ?? "Sin estado",
     bodega: item.bodega_label ?? "Sin bodega",
-    observacion: item.observacion ?? "",
-  }));
-  const equipmentRows = payload.equipmentRows.map((item) => ({
-    equipo: item.equipment_label ?? "Sin equipo",
-    ordenes: item.total_ordenes ?? 0,
-    cantidad: item.total_cantidad ?? 0,
-    unidad: unitLabel,
-    costo_total: item.total_costo ?? 0,
-    primera_fecha: item.primera_fecha ?? "",
-    ultima_fecha: item.ultima_fecha ?? "",
-  }));
-  const dailyRows = payload.dailyRows.map((item) => ({
-    fecha: item.fecha_referencia ?? item.fecha_referencia_label ?? item.key ?? "",
-    ordenes: item.total_ordenes ?? 0,
-    movimientos: item.total_movimientos ?? 0,
-    cantidad: item.total_cantidad ?? 0,
-    unidad: unitLabel,
-    costo_total: item.total_costo ?? 0,
-  }));
-  const warehouseRows = payload.warehouseRows.map((item) => ({
-    bodega: item.bodega_label ?? "Sin bodega",
-    ordenes: item.total_ordenes ?? 0,
-    cantidad: item.total_cantidad ?? 0,
-    unidad: unitLabel,
-    costo_total: item.total_costo ?? 0,
-  }));
-  const statusRows = payload.statusRows.map((item) => ({
-    estado: item.status ?? "Sin estado",
-    ordenes: item.total_ordenes ?? 0,
-    cantidad: item.total_cantidad ?? 0,
-    unidad: unitLabel,
   }));
 
   return {
@@ -1374,80 +1523,27 @@ export function buildOilConsumptionReport(payload: {
       { label: "Cantidad total", value: `${formatValue(totals.total_cantidad ?? 0)} ${unitLabel}` },
       { label: "Costo total", value: Number(totals.total_costo ?? 0) },
       { label: "Órdenes", value: Number(totals.total_ordenes ?? workOrderRows.length) },
-      { label: "Equipos", value: Number(totals.total_equipos ?? equipmentRows.length) },
+      { label: "Equipos", value: Number(totals.total_equipos ?? payload.equipmentRows.length) },
       { label: "Promedio por OT", value: `${formatValue(totals.promedio_por_orden ?? 0)} ${unitLabel}` },
-      { label: "Solo cebado", value: filters.solo_cebado ? "Sí" : "No" },
     ],
+    charts: payload.charts,
     orientation: "landscape",
     sheets: [
       {
-        name: "Órdenes de trabajo",
+        name: "Detalle por orden de trabajo",
         rows: workOrderRows,
         fitColumnsToPage: true,
         emptyMessage: "No existen órdenes de trabajo para los filtros aplicados.",
-        note: "Detalle del consumo del aceite seleccionado por orden de trabajo, excluyendo órdenes anuladas.",
         columns: [
-          { key: "fecha", header: "Fecha", width: 14, format: "date" },
-          { key: "orden", header: "OT", width: 14 },
-          { key: "titulo", header: "Título", width: 26 },
-          { key: "tipo_mantenimiento", header: "Tipo mtto.", width: 14 },
-          { key: "equipo", header: "Equipo", width: 24 },
-          { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
-          { key: "unidad", header: "Unidad", width: 9 },
-          { key: "diferencia_anterior", header: "Dif. anterior", width: 12, format: "number" },
-          { key: "tendencia", header: "Tendencia", width: 11 },
-          { key: "costo_total", header: "Costo total", width: 13, format: "currency" },
-          { key: "costo_promedio", header: "Costo prom.", width: 13, format: "currency" },
-          { key: "movimientos", header: "Mov.", width: 9, format: "number" },
-          { key: "estado", header: "Estado", width: 13 },
-          { key: "bodega", header: "Bodega", width: 22 },
-          { key: "observacion", header: "Observación", width: 24 },
-        ],
-      },
-      {
-        name: "Por equipo",
-        rows: equipmentRows,
-        columns: [
-          { key: "equipo", header: "Equipo", width: 30 },
-          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
-          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
-          { key: "unidad", header: "Unidad", width: 10 },
-          { key: "costo_total", header: "Costo total", width: 16, format: "currency" },
-          { key: "primera_fecha", header: "Primera fecha", width: 16, format: "date" },
-          { key: "ultima_fecha", header: "Última fecha", width: 16, format: "date" },
-        ],
-      },
-      {
-        name: "Tendencia diaria",
-        rows: dailyRows,
-        columns: [
-          { key: "fecha", header: "Fecha", width: 18, format: "date" },
-          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
-          { key: "movimientos", header: "Movimientos", width: 14, format: "number" },
-          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
-          { key: "unidad", header: "Unidad", width: 10 },
-          { key: "costo_total", header: "Costo total", width: 16, format: "currency" },
-        ],
-      },
-      {
-        name: "Por bodega",
-        rows: warehouseRows,
-        columns: [
-          { key: "bodega", header: "Bodega", width: 34 },
-          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
-          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
-          { key: "unidad", header: "Unidad", width: 10 },
-          { key: "costo_total", header: "Costo total", width: 16, format: "currency" },
-        ],
-      },
-      {
-        name: "Por estado",
-        rows: statusRows,
-        columns: [
-          { key: "estado", header: "Estado OT", width: 24 },
-          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
-          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
-          { key: "unidad", header: "Unidad", width: 10 },
+          { key: "fecha", header: "Fecha", width: 12, format: "date" },
+          { key: "orden", header: "OT", width: 12 },
+          { key: "tipo_mantenimiento", header: "Tipo mtto.", width: 13 },
+          { key: "equipo", header: "Equipo", width: 22 },
+          { key: "cantidad", header: `Cantidad (${unitLabel})`, width: 12, format: "number" },
+          { key: "diferencia_anterior", header: "Dif. anterior", width: 11, format: "number" },
+          { key: "costo_total", header: "Costo total", width: 12, format: "currency" },
+          { key: "estado", header: "Estado", width: 12 },
+          { key: "bodega", header: "Bodega", width: 20 },
         ],
       },
     ],

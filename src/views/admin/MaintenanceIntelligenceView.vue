@@ -1297,6 +1297,7 @@ import {
   buildWeeklyScheduleReport,
   downloadReportExcel,
   downloadReportPdf,
+  type ReportChart,
 } from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
@@ -2050,6 +2051,90 @@ async function exportOilReport(format: "excel" | "pdf") {
   oilKpiError.value = null;
 
   try {
+    const chartPointLabel = (point: TrendChartPoint, fallback: string) =>
+      String(point.fecha || point.codigo || fallback);
+    const reportCharts: ReportChart[] = [
+      {
+        title: "Consumo por rango",
+        subtitle: "Evolución del consumo en el período filtrado",
+        type: "line",
+        unit: oilQuantityUnitLabel.value,
+        points: oilTrendChartPoints.value.slice(-12).map((point, index) => ({
+          label: chartPointLabel(point, `P${index + 1}`),
+          value: Number(point.valor || 0),
+        })),
+      },
+      {
+        title: "Consumo por equipo",
+        subtitle: "Equipos con mayor consumo",
+        type: "bar",
+        unit: oilQuantityUnitLabel.value,
+        points: oilEquipmentRows.value.slice(0, 10).map((item: AnyRow) => ({
+          label: String(item.equipment_label || "Sin equipo"),
+          value: Number(item.total_cantidad || 0),
+        })),
+      },
+      {
+        title: "Consumo por OT ejecutada",
+        subtitle: "Órdenes del período en secuencia cronológica",
+        type: "bar",
+        unit: oilQuantityUnitLabel.value,
+        points: oilWorkOrderRows.value
+          .slice()
+          .sort((left: AnyRow, right: AnyRow) =>
+            String(left.fecha_referencia || "").localeCompare(String(right.fecha_referencia || "")),
+          )
+          .slice(-12)
+          .map((item: AnyRow) => ({
+            label: String(item.work_order_code || "Sin OT"),
+            value: Number(item.cantidad || 0),
+          })),
+      },
+      {
+        title: "Costo por rango",
+        subtitle: "Evolución del costo del aceite consumido",
+        type: "line",
+        unit: "USD",
+        points: oilCostTrendChartPoints.value.slice(-12).map((point, index) => ({
+          label: chartPointLabel(point, `P${index + 1}`),
+          value: Number(point.valor || 0),
+        })),
+      },
+      {
+        title: "Picos diarios de consumo",
+        subtitle: "Consumo agregado por día",
+        type: "bar",
+        unit: oilQuantityUnitLabel.value,
+        points: oilDailyUsageRows.value
+          .slice()
+          .sort((left: AnyRow, right: AnyRow) => String(left.key || "").localeCompare(String(right.key || "")))
+          .slice(-12)
+          .map((item: AnyRow) => ({
+            label: String(item.fecha_referencia_label || item.key || "Sin fecha"),
+            value: Number(item.total_cantidad || 0),
+          })),
+      },
+      {
+        title: "Consumo por bodega",
+        subtitle: "Distribución del consumo entre bodegas",
+        type: "bar",
+        unit: oilQuantityUnitLabel.value,
+        points: oilWarehouseChartItems.value.slice(0, 10).map((item) => ({
+          label: item.label,
+          value: Number(item.value || 0),
+        })),
+      },
+      {
+        title: "Consumo por estado OT",
+        subtitle: "Distribución según el estado de la orden",
+        type: "bar",
+        unit: oilQuantityUnitLabel.value,
+        points: oilStatusChartItems.value.map((item) => ({
+          label: item.label,
+          value: Number(item.value || 0),
+        })),
+      },
+    ];
     const report = buildOilConsumptionReport({
       kpi: oilKpi.value,
       workOrders: oilWorkOrderRows.value,
@@ -2058,6 +2143,7 @@ async function exportOilReport(format: "excel" | "pdf") {
       warehouseRows: oilWarehouseRows.value,
       statusRows: oilStatusRows.value,
       unitLabel: oilQuantityUnitLabel.value,
+      charts: reportCharts,
     });
     if (format === "excel") {
       await downloadReportExcel(report);
