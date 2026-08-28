@@ -62,7 +62,9 @@
             v-for="item in equipos"
             :key="item.id"
             class="equipment-card"
-            :class="{ 'equipment-card--saving': stateFor(item).saving }"
+            :class="{
+              'equipment-card--saving': stateFor(item).saving || stateFor(item).horometerSaving,
+            }"
           >
             <header class="equipment-card__head">
               <div class="equipment-card__title" :title="equipmentHeaderLabel(item)">
@@ -134,6 +136,39 @@
               Último cambio: {{ formatDateTime(stateFor(item).updatedAt, "Sin cambios registrados") }}
             </p>
 
+            <div class="equipment-card__horometer">
+              <div class="equipment-card__horometer-control">
+                <v-text-field
+                  v-model="stateFor(item).horometerInput"
+                  label="Horómetro actual"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  density="compact"
+                  variant="outlined"
+                  hide-details="auto"
+                  :disabled="!canEdit || stateFor(item).horometerSaving"
+                  :loading="stateFor(item).horometerSaving"
+                  :error-messages="stateFor(item).horometerError || undefined"
+                  @keydown.enter.prevent="saveHorometer(item)"
+                />
+                <v-btn
+                  icon="mdi-content-save-outline"
+                  size="small"
+                  color="primary"
+                  variant="tonal"
+                  title="Guardar horómetro"
+                  aria-label="Guardar horómetro actual"
+                  :disabled="!canEdit || stateFor(item).horometerSaving"
+                  :loading="stateFor(item).horometerSaving"
+                  @click="saveHorometer(item)"
+                />
+              </div>
+              <span class="equipment-card__horometer-date">
+                Última lectura: {{ formatDateTime(stateFor(item).horometerUpdatedAt, "Sin lectura registrada") }}
+              </span>
+            </div>
+
             <p v-if="stateFor(item).error" class="equipment-card__error">{{ stateFor(item).error }}</p>
           </article>
         </template>
@@ -167,6 +202,8 @@ export type EquipmentControlItem = {
   estado_operativo?: string | null;
   estado_funcionamiento?: string | null;
   estado_funcionamiento_actualizado_en?: string | null;
+  horometro_actual?: number | string | null;
+  fecha_ultima_lectura?: string | null;
 };
 
 type CardState = {
@@ -174,6 +211,11 @@ type CardState = {
   saving: boolean;
   error: string | null;
   updatedAt: string | null;
+  horometerInput: string;
+  savedHorometer: number | null;
+  horometerSaving: boolean;
+  horometerError: string | null;
+  horometerUpdatedAt: string | null;
 };
 
 const props = withDefaults(
@@ -197,6 +239,14 @@ const emit = defineEmits<{
       estado_funcionamiento_actualizado_en: string | null;
     },
   ): void;
+  (
+    e: "horometer-updated",
+    payload: {
+      id: string | number;
+      horometro_actual: number;
+      fecha_ultima_lectura: string | null;
+    },
+  ): void;
 }>();
 
 const states = reactive<Record<string, CardState>>({});
@@ -208,6 +258,17 @@ let resizeObserver: ResizeObserver | null = null;
 
 function normalizeFuncionamiento(value: unknown): "FUNCIONAMIENTO" | "PARADO" {
   return String(value || "").trim().toUpperCase() === "FUNCIONAMIENTO" ? "FUNCIONAMIENTO" : "PARADO";
+}
+
+function parseHorometer(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const parsed = Number(String(value).trim().replace(",", "."));
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
+}
+
+function formatHorometerInput(value: unknown) {
+  const parsed = parseHorometer(value);
+  return parsed === null ? "" : String(parsed);
 }
 
 function isOperativo(item: EquipmentControlItem) {
@@ -222,6 +283,11 @@ function stateFor(item: EquipmentControlItem): CardState {
       saving: false,
       error: null,
       updatedAt: item.estado_funcionamiento_actualizado_en ?? null,
+      horometerInput: formatHorometerInput(item.horometro_actual),
+      savedHorometer: parseHorometer(item.horometro_actual),
+      horometerSaving: false,
+      horometerError: null,
+      horometerUpdatedAt: item.fecha_ultima_lectura ?? null,
     };
   }
   return states[key];
@@ -279,6 +345,55 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
   }
 }
 
+async function saveHorometer(item: EquipmentControlItem) {
+  if (!props.canEdit) return;
+  const state = stateFor(item);
+  if (state.horometerSaving) return;
+
+  const next = parseHorometer(state.horometerInput);
+  const label = item.codigo || item.nombre || "equipo";
+  if (next === null || next < 0) {
+    state.horometerError = "Ingresa un horómetro válido mayor o igual a cero.";
+    return;
+  }
+  if (state.savedHorometer !== null && next < state.savedHorometer) {
+    state.horometerError = `El horómetro no puede retroceder de ${state.savedHorometer} a ${next}.`;
+    return;
+  }
+  if (state.savedHorometer === next) {
+    state.horometerError = null;
+    state.horometerInput = formatHorometerInput(next);
+    return;
+  }
+
+  state.horometerSaving = true;
+  state.horometerError = null;
+  liveMessage.value = `Actualizando horómetro de ${label}...`;
+
+  try {
+    const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/horometro`, {
+      horometro_actual: next,
+    });
+    const updated = data?.data ?? data ?? {};
+    const savedValue = parseHorometer(updated?.horometro_actual) ?? next;
+    const updatedAt: string | null = updated?.fecha_ultima_lectura || state.horometerUpdatedAt;
+    state.savedHorometer = savedValue;
+    state.horometerInput = formatHorometerInput(savedValue);
+    state.horometerUpdatedAt = updatedAt;
+    liveMessage.value = `Horómetro de ${label} actualizado a ${savedValue}.`;
+    emit("horometer-updated", {
+      id: item.id,
+      horometro_actual: savedValue,
+      fecha_ultima_lectura: updatedAt,
+    });
+  } catch (e: any) {
+    state.horometerError = e?.response?.data?.message || "No se pudo actualizar el horómetro.";
+    liveMessage.value = `No se pudo actualizar el horómetro de ${label}: ${state.horometerError}`;
+  } finally {
+    state.horometerSaving = false;
+  }
+}
+
 function updateScrollState() {
   const el = scrollerRef.value;
   if (!el) return;
@@ -303,12 +418,17 @@ watch(
     for (const item of items) {
       const key = String(item.id);
       const current = states[key];
-      if (current?.saving) continue;
+      if (current?.saving || current?.horometerSaving) continue;
       states[key] = {
         value: normalizeFuncionamiento(item.estado_funcionamiento),
         saving: false,
         error: null,
         updatedAt: item.estado_funcionamiento_actualizado_en ?? null,
+        horometerInput: formatHorometerInput(item.horometro_actual),
+        savedHorometer: parseHorometer(item.horometro_actual),
+        horometerSaving: false,
+        horometerError: null,
+        horometerUpdatedAt: item.fecha_ultima_lectura ?? null,
       };
     }
     nextTick(updateScrollState);
@@ -726,6 +846,24 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--app-muted-text);
   font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.equipment-card__horometer {
+  display: grid;
+  gap: 4px;
+}
+
+.equipment-card__horometer-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.equipment-card__horometer-date {
+  color: var(--app-muted-text);
+  font-size: 0.67rem;
   font-weight: 600;
 }
 

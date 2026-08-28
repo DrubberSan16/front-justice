@@ -188,6 +188,7 @@
           :can-edit="canEditEquiposFuncionamiento"
           :loading="loading"
           @updated="handleEquipmentFuncionamientoUpdated"
+          @horometer-updated="handleEquipmentHorometerUpdated"
         />
       </v-col>
     </v-row>
@@ -1126,6 +1127,8 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
     estado_operativo: item?.estado_operativo || null,
     estado_funcionamiento: item?.estado_funcionamiento || null,
     estado_funcionamiento_actualizado_en: item?.estado_funcionamiento_actualizado_en || null,
+    horometro_actual: item?.horometro_actual ?? null,
+    fecha_ultima_lectura: item?.fecha_ultima_lectura || null,
   })),
 );
 
@@ -1138,6 +1141,18 @@ function handleEquipmentFuncionamientoUpdated(payload: {
   if (target) {
     target.estado_funcionamiento = payload.estado_funcionamiento;
     target.estado_funcionamiento_actualizado_en = payload.estado_funcionamiento_actualizado_en;
+  }
+}
+
+function handleEquipmentHorometerUpdated(payload: {
+  id: string | number;
+  horometro_actual: number;
+  fecha_ultima_lectura: string | null;
+}) {
+  const target = equipos.value.find((item) => String(item.id) === String(payload.id));
+  if (target) {
+    target.horometro_actual = payload.horometro_actual;
+    target.fecha_ultima_lectura = payload.fecha_ultima_lectura;
   }
 }
 
