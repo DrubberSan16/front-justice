@@ -544,7 +544,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
-import { formatDateTime } from "@/app/utils/date-time";
+import { formatDateTime, parseAppDate } from "@/app/utils/date-time";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type AlertRow = Record<string, any>;
@@ -766,12 +766,21 @@ function toggleAlertDetails(item: AlertRow, index: number) {
 
 function formatDate(value: unknown) {
   if (!value) return "Sin fecha";
-  return formatDateTime(value, "Sin fecha");
+  return formatDateTime(normalizeAlertWallClock(value), "Sin fecha");
+}
+
+function normalizeAlertWallClock(value: unknown) {
+  const raw = String(value || "").trim();
+  // fecha_generada proviene de una columna PostgreSQL `timestamp without time
+  // zone`: el sufijo Z agregado al serializar no debe desplazar el día local.
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(raw)
+    ? raw.slice(0, -1)
+    : value;
 }
 
 function formatRelativeDate(value: unknown) {
-  const parsed = new Date(String(value || ""));
-  if (Number.isNaN(parsed.getTime())) return "";
+  const parsed = parseAppDate(normalizeAlertWallClock(value));
+  if (!parsed) return "";
   const difference = Date.now() - parsed.getTime();
   const minutes = Math.max(Math.floor(difference / 60000), 0);
   if (minutes < 1) return "Hace un momento";

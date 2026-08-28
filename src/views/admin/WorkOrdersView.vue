@@ -946,6 +946,19 @@
               <template #bottom />
               <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
               <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #item.actions="{ item }">
+                <v-btn
+                  v-if="canAnnulDocuments && consumoActionMode(asAny(item)?._raw ?? asAny(item)?.raw ?? asAny(item))"
+                  color="error"
+                  size="small"
+                  variant="tonal"
+                  prepend-icon="mdi-delete-outline"
+                  :loading="removingConsumoId === String((asAny(item)?._raw ?? asAny(item)?.raw ?? asAny(item))?.id || '')"
+                  @click="removeOrReduceConsumo(asAny(item)?._raw ?? asAny(item)?.raw ?? asAny(item))"
+                >
+                  {{ consumoActionLabel(asAny(item)?._raw ?? asAny(item)?.raw ?? asAny(item)) }}
+                </v-btn>
+              </template>
               <template #no-data>
                 <div class="pa-4 text-medium-emphasis">No hay consumos disponibles para esta orden de trabajo.</div>
               </template>
@@ -1827,6 +1840,7 @@ const materialIssueUsesCritical = computed(() =>
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
 const localConsumos = ref<any[]>([]);
+const removingConsumoId = ref("");
 const localIssues = ref<any[]>([]);
 const localScraps = ref<any[]>([]);
 const localHistory = ref<any[]>([]);
@@ -2476,6 +2490,9 @@ const consumoHeaders = computed(() => {
     );
   }
   base.push({ title: "Observación", key: "observacion" } as any);
+  if (canAnnulDocuments.value) {
+    base.push({ title: "Acciones", key: "actions", sortable: false } as any);
+  }
   return base;
 });
 
@@ -6373,6 +6390,55 @@ async function createConsumo(options?: {
       throw new Error(errorMessage);
     }
     ui.error(errorMessage);
+  }
+}
+
+function consumoActionMode(item: any): "delete" | "reduce" | null {
+  const issued = toPositiveNumber(item?.cantidad_emitida);
+  const pending = toPositiveNumber(item?.cantidad_pendiente);
+  if (issued <= 0) return "delete";
+  if (pending > 0) return "reduce";
+  return null;
+}
+
+function consumoActionLabel(item: any) {
+  return consumoActionMode(item) === "reduce" ? "Restar pendiente" : "Eliminar";
+}
+
+async function removeOrReduceConsumo(item: any) {
+  if (!canAnnulDocuments.value) {
+    return ui.error(ANNULMENT_PERMISSION_MESSAGE);
+  }
+  if (!editingId.value || !item?.id || removingConsumoId.value) return;
+  const mode = consumoActionMode(item);
+  if (!mode) {
+    return ui.error("No se puede modificar un consumo cuya cantidad ya fue emitida completamente.");
+  }
+
+  const issued = toPositiveNumber(item?.cantidad_emitida);
+  const pending = toPositiveNumber(item?.cantidad_pendiente);
+  const rowQuantity = toPositiveNumber(item?.cantidad);
+  const reduction = Math.min(rowQuantity, pending);
+  const message = mode === "delete"
+    ? `¿Eliminar la solicitud de ${rowQuantity.toFixed(2)} para ${item?.producto_label || "este material"}?`
+    : `Este material tiene una salida parcial de ${issued.toFixed(2)}. ¿Restar ${reduction.toFixed(2)} de la cantidad que aún está pendiente?`;
+  if (!window.confirm(message)) return;
+
+  removingConsumoId.value = String(item.id);
+  try {
+    const baseUrl = `/kpi_maintenance/work-orders/${editingId.value}/consumos/${item.id}`;
+    if (mode === "delete") {
+      await api.delete(baseUrl);
+      ui.success("Consumo eliminado y reserva liberada.");
+    } else {
+      await api.patch(`${baseUrl}/reduce`, { cantidad_restar: reduction });
+      ui.success("Se restó únicamente la cantidad pendiente del consumo.");
+    }
+    await loadDetailData();
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo modificar el consumo.");
+  } finally {
+    removingConsumoId.value = "";
   }
 }
 
