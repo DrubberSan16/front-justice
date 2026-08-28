@@ -132,6 +132,16 @@
           {{ parseBooleanFlag((item._raw ?? item)?.is_emergency) ? "Emergente" : "Normal" }}
         </v-chip>
       </template>
+      <template #item.equipment_component_label="{ item }">
+        <v-btn
+          size="small"
+          variant="text"
+          prepend-icon="mdi-eye-outline"
+          @click="openComponentDetail(item._raw ?? item)"
+        >
+          Ver detalle
+        </v-btn>
+      </template>
       <template #item.horometro_actual="{ item }">
         {{ formatDecimalValue((item._raw ?? item)?.horometro_actual ?? (item._raw ?? item)?.valor_json?.horometro_actual) || "-" }}
       </template>
@@ -161,6 +171,34 @@
       </template>
     </v-data-table>
   </v-card>
+
+  <v-dialog v-model="componentDetailDialog" max-width="520">
+    <v-card rounded="xl">
+      <v-toolbar color="primary" density="comfortable">
+        <v-btn icon="mdi-close" @click="componentDetailDialog = false" />
+        <v-toolbar-title>Compartimientos de la OT</v-toolbar-title>
+      </v-toolbar>
+      <v-card-text class="pa-4">
+        <div v-if="componentDetailItems.length" class="d-flex flex-column" style="gap: 8px;">
+          <v-card
+            v-for="entry in componentDetailItems"
+            :key="entry.id"
+            variant="tonal"
+            rounded="lg"
+            class="pa-3"
+          >
+            <div class="font-weight-bold">{{ entry.label }}</div>
+            <div v-if="entry.codigo" class="text-body-2 text-medium-emphasis">
+              Código: {{ entry.codigo }}
+            </div>
+          </v-card>
+        </div>
+        <div v-else class="text-body-2 text-medium-emphasis">
+          Sin compartimientos registrados.
+        </div>
+      </v-card-text>
+    </v-card>
+  </v-dialog>
 
   <v-dialog v-model="dialog" fullscreen>
     <v-card class="work-order-dialog-card">
@@ -281,16 +319,19 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-autocomplete
-              v-model="headerForm.equipo_componente_id"
+              v-model="headerForm.equipo_componente_ids"
               :items="equipmentComponentOptions"
               item-title="title"
               item-value="value"
-              label="Compartimiento / parte"
+              label="Compartimientos / partes"
               variant="outlined"
+              multiple
+              chips
+              closable-chips
               clearable
               :loading="loadingEquipmentComponents"
               :disabled="isReadOnlyWorkflow || !headerForm.equipment_id"
-              hint="Parte real u oficial del equipo vinculada a la OT."
+              hint="Partes reales u oficiales del equipo vinculadas a la OT."
               persistent-hint
             />
           </v-col>
@@ -1719,6 +1760,8 @@ const deleteDialog = ref(false);
 const closeShortfallDialog = ref(false);
 const reportPreviewDialog = ref(false);
 const taskResponsiblesDialog = ref(false);
+const componentDetailDialog = ref(false);
+const componentDetailTarget = ref<any>(null);
 const materialIssueDialog = ref(false);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
 const isReportPreviewFullscreen = computed(() => smAndDown.value);
@@ -1798,7 +1841,8 @@ const headerForm = reactive<any>({
   type: "MANTENIMIENTO",
   title: "",
   equipment_id: "",
-  equipo_componente_id: "",
+  equipo_componente_ids: [] as string[],
+  equipo_componentes: [] as WorkOrderComponentSnapshot[],
   maintenance_kind: "CORRECTIVO",
   fecha_programacion: "",
   is_emergency: false,
@@ -2733,7 +2777,7 @@ const workOrderReportDefinition = computed(() =>
       code: headerForm.code,
       status_workflow: workflowLabel(headerForm.status_workflow),
       equipment_label: selectedEquipmentLabel.value,
-      equipment_component_label: selectedEquipmentComponentLabel.value,
+      equipment_component_label: getHeaderComponentReportLabel(),
       maintenance_kind: headerForm.maintenance_kind,
       emergency_label: resolvedEmergencyOrderLabel.value,
       emergency_reason: headerForm.is_emergency ? headerForm.emergency_reason : "",
@@ -3590,17 +3634,127 @@ function getMotorEquipmentComponentId() {
   return String(match?.value || "");
 }
 
-function getEquipmentComponentLabel(item: any) {
-  const selected = equipmentComponentOptions.value.find(
-    (option: any) => String(option?.value || "") === String(item?.equipo_componente_id || ""),
-  );
-  return (
-    item?.equipo_componente_nombre_oficial
-    || item?.equipo_componente_nombre
-    || selected?.title
-    || ""
-  );
+type WorkOrderComponentSnapshot = {
+  id: string;
+  codigo: string | null;
+  nombre: string | null;
+  nombre_oficial: string | null;
+  label: string;
+};
+
+function normalizeEquipmentComponentIds(value: unknown): string[] {
+  const source: unknown[] = Array.isArray(value)
+    ? value
+    : value === undefined || value === null || value === ""
+      ? []
+      : [value];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of source) {
+    const id = String(raw ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push(id);
+  }
+  return result;
 }
+
+function getEquipmentComponentOptionLabel(id: string): string {
+  const match = equipmentComponentOptions.value.find(
+    (option: any) => String(option?.value || "") === id,
+  );
+  return String(match?.title || "");
+}
+
+function getWorkOrderComponentSnapshots(item: any): WorkOrderComponentSnapshot[] {
+  const storedSnapshots: any[] = Array.isArray(item?.equipo_componentes)
+    ? item.equipo_componentes
+    : [];
+  if (storedSnapshots.length) {
+    return storedSnapshots
+      .map((entry: any): WorkOrderComponentSnapshot | null => {
+        const id = String(entry?.id ?? "").trim();
+        if (!id) return null;
+        const nombre: string | null = entry?.nombre ?? null;
+        const nombreOficial: string | null = entry?.nombre_oficial ?? null;
+        const label: string =
+          entry?.label
+          || nombreOficial
+          || nombre
+          || getEquipmentComponentOptionLabel(id)
+          || "";
+        return { id, codigo: entry?.codigo ?? null, nombre, nombre_oficial: nombreOficial, label };
+      })
+      .filter((entry: WorkOrderComponentSnapshot | null): entry is WorkOrderComponentSnapshot => !!entry && !!entry.label);
+  }
+  const legacyIds = normalizeEquipmentComponentIds(
+    Array.isArray(item?.equipo_componente_ids) && item.equipo_componente_ids.length
+      ? item.equipo_componente_ids
+      : item?.equipo_componente_id,
+  );
+  return legacyIds
+    .map((id: string): WorkOrderComponentSnapshot => {
+      const label: string =
+        item?.equipment_component_label
+        || item?.equipo_componente_nombre_oficial
+        || item?.equipo_componente_nombre
+        || getEquipmentComponentOptionLabel(id)
+        || "";
+      return {
+        id,
+        codigo: null,
+        nombre: item?.equipo_componente_nombre ?? null,
+        nombre_oficial: item?.equipo_componente_nombre_oficial ?? null,
+        label,
+      };
+    })
+    .filter((entry: WorkOrderComponentSnapshot) => !!entry.label);
+}
+
+function getWorkOrderComponentLabels(item: any): string[] {
+  return getWorkOrderComponentSnapshots(item).map((snapshot) => snapshot.label);
+}
+
+function getEquipmentComponentLabel(item: any) {
+  return getWorkOrderComponentLabels(item).join(" · ");
+}
+
+function getHeaderComponentIds(): string[] {
+  return normalizeEquipmentComponentIds(headerForm.equipo_componente_ids);
+}
+
+function getHeaderComponentLabels(): string[] {
+  const snapshotById = new Map<string, WorkOrderComponentSnapshot>(
+    (Array.isArray(headerForm.equipo_componentes) ? headerForm.equipo_componentes : []).map(
+      (snapshot: WorkOrderComponentSnapshot) => [snapshot.id, snapshot] as const,
+    ),
+  );
+  return getHeaderComponentIds()
+    .map((id) => {
+      const snapshot = snapshotById.get(id);
+      return (
+        snapshot?.label
+        || getEquipmentComponentOptionLabel(id)
+        || snapshot?.nombre_oficial
+        || snapshot?.nombre
+        || ""
+      );
+    })
+    .filter((label): label is string => !!label);
+}
+
+function getHeaderComponentReportLabel(): string {
+  return getHeaderComponentLabels().join("\n");
+}
+
+function openComponentDetail(item: any) {
+  componentDetailTarget.value = item ?? null;
+  componentDetailDialog.value = true;
+}
+
+const componentDetailItems = computed(() =>
+  getWorkOrderComponentSnapshots(componentDetailTarget.value ?? {}),
+);
 
 function getSelectedPlanLabel(planId: string) {
   if (!planId) return "Sin plan";
@@ -4345,7 +4499,8 @@ function buildWorkOrderSaveBundlePayload() {
       type: generatedType,
       title: generatedTitle,
       equipment_id: headerForm.equipment_id || null,
-      equipo_componente_id: headerForm.equipo_componente_id || null,
+      equipo_componente_id: getHeaderComponentIds()[0] || null,
+      equipo_componente_ids: getHeaderComponentIds(),
       maintenance_kind: headerForm.maintenance_kind || null,
       is_emergency: Boolean(headerForm.is_emergency),
       emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
@@ -4430,7 +4585,16 @@ function applySavedWorkOrderState(savedHeader: any) {
   );
   headerForm.plan_id = savedHeader?.plan_id ?? headerForm.plan_id;
   headerForm.procedimiento_id = savedHeader?.procedimiento_id ?? headerForm.procedimiento_id;
-  headerForm.equipo_componente_id = savedHeader?.equipo_componente_id ?? headerForm.equipo_componente_id;
+  headerForm.equipo_componente_ids = Array.isArray(savedHeader?.equipo_componente_ids)
+    ? normalizeEquipmentComponentIds(savedHeader.equipo_componente_ids)
+    : normalizeEquipmentComponentIds(savedHeader?.equipo_componente_id ?? headerForm.equipo_componente_ids);
+  const savedHasComponentData =
+    (Array.isArray(savedHeader?.equipo_componentes) && savedHeader.equipo_componentes.length > 0)
+    || (Array.isArray(savedHeader?.equipo_componente_ids) && savedHeader.equipo_componente_ids.length > 0)
+    || !!savedHeader?.equipo_componente_id;
+  headerForm.equipo_componentes = savedHasComponentData
+    ? getWorkOrderComponentSnapshots(savedHeader)
+    : headerForm.equipo_componentes;
   headerForm.alerta_id = savedHeader?.alerta_id ?? headerForm.alerta_id;
   headerForm.is_emergency = parseBooleanFlag(savedHeader?.is_emergency ?? headerForm.is_emergency);
   headerForm.emergency_reason = headerForm.is_emergency ? String(savedHeader?.emergency_reason || "") : "";
@@ -4764,10 +4928,8 @@ const selectedEquipmentLabel = computed(() => {
 });
 
 const selectedEquipmentComponentLabel = computed(() => {
-  const selected = equipmentComponentOptions.value.find(
-    (item: any) => String(item?.value || "") === String(headerForm.equipo_componente_id || ""),
-  );
-  return selected?.title || String(headerForm.equipo_componente_id || "Sin compartimiento");
+  const labels = getHeaderComponentLabels();
+  return labels.length ? labels.join(" · ") : "Sin compartimiento";
 });
 
 const selectedAlertLabel = computed(() => {
@@ -4970,7 +5132,7 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
     clase_orden: parseBooleanFlag(item?.is_emergency) ? "Orden emergente" : "Orden normal",
     motivo_emergencia: item?.emergency_reason || "",
     equipo: getEquipmentLabel(item) || "-",
-    compartimiento: getEquipmentComponentLabel(item) || "-",
+    compartimiento: getWorkOrderComponentLabels(item).join("\n") || "-",
     procedimiento:
       [item?.procedimiento_codigo, item?.procedimiento_nombre].filter(Boolean).join(" - ") || "-",
     plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
@@ -5377,7 +5539,8 @@ function resetAllForms() {
   headerForm.type = "MANTENIMIENTO";
   headerForm.title = "";
   headerForm.equipment_id = "";
-  headerForm.equipo_componente_id = "";
+  headerForm.equipo_componente_ids = [];
+  headerForm.equipo_componentes = [];
   headerForm.maintenance_kind = isOperatorRole.value ? "CEBADO" : "CORRECTIVO";
   headerForm.fecha_programacion = "";
   headerForm.status_workflow = "PLANNED";
@@ -5457,7 +5620,10 @@ async function openEdit(item: any) {
   headerForm.type = item.type ?? item.tipo ?? "";
   headerForm.title = item.title ?? item.titulo ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
-  headerForm.equipo_componente_id = item.equipo_componente_id ?? "";
+  headerForm.equipo_componente_ids = Array.isArray(item.equipo_componente_ids)
+    ? normalizeEquipmentComponentIds(item.equipo_componente_ids)
+    : normalizeEquipmentComponentIds(item.equipo_componente_id);
+  headerForm.equipo_componentes = getWorkOrderComponentSnapshots(item);
   headerForm.maintenance_kind = isOperatorRole.value
     ? "CEBADO"
     : (item.maintenance_kind ?? "CORRECTIVO");
@@ -5690,7 +5856,8 @@ async function saveHeader(
     type: generatedType,
     title: generatedTitle,
     equipment_id: headerForm.equipment_id,
-    equipo_componente_id: headerForm.equipo_componente_id || null,
+    equipo_componente_id: getHeaderComponentIds()[0] || null,
+    equipo_componente_ids: getHeaderComponentIds(),
     maintenance_kind: headerForm.maintenance_kind || null,
     is_emergency: Boolean(headerForm.is_emergency),
     emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
@@ -5716,7 +5883,8 @@ async function saveHeader(
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
-    equipo_componente_id: headerForm.equipo_componente_id || null,
+    equipo_componente_id: getHeaderComponentIds()[0] || null,
+    equipo_componente_ids: getHeaderComponentIds(),
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
     valor_json: createPayload.valor_json,
@@ -5780,7 +5948,7 @@ function buildWorkOrderHeaderComparableState() {
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
-    equipo_componente_id: headerForm.equipo_componente_id || null,
+    equipo_componente_ids: [...getHeaderComponentIds()].sort(),
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
     valor_json: {
@@ -6505,8 +6673,8 @@ watch(
     const suggestedComponentId = isOperatorRole.value
       ? getMotorEquipmentComponentId()
       : getSuggestedProcedureComponentId(selected);
-    if (suggestedComponentId && !headerForm.equipo_componente_id) {
-      headerForm.equipo_componente_id = suggestedComponentId;
+    if (suggestedComponentId && !getHeaderComponentIds().length) {
+      headerForm.equipo_componente_ids = [suggestedComponentId];
     }
     syncWorkOrderHorometerFields({ preserveCurrent: true });
     if (editingId.value) return;
@@ -6528,15 +6696,14 @@ watch(
     const previous = String(previousEquipmentId || "");
     if (nextEquipmentId === previous) return;
     await loadEquipmentComponents(nextEquipmentId);
-    if (
-      headerForm.equipo_componente_id &&
-      !equipmentComponentOptions.value.some(
-        (item: any) => String(item?.value || "") === String(headerForm.equipo_componente_id || ""),
-      )
-    ) {
-      headerForm.equipo_componente_id = "";
-    }
-    if (!headerForm.equipo_componente_id) {
+    if (editingId.value) return;
+    const validComponentIds = new Set(
+      equipmentComponentOptions.value.map((item: any) => String(item?.value || "")),
+    );
+    headerForm.equipo_componente_ids = getHeaderComponentIds().filter((id) =>
+      validComponentIds.has(id),
+    );
+    if (!getHeaderComponentIds().length) {
       const selected = procedureCatalog.value.find(
         (item: any) => String(item?.id || "") === String(headerForm.procedimiento_id || ""),
       );
@@ -6544,7 +6711,7 @@ watch(
         ? getMotorEquipmentComponentId()
         : getSuggestedProcedureComponentId(selected);
       if (suggestedComponentId) {
-        headerForm.equipo_componente_id = suggestedComponentId;
+        headerForm.equipo_componente_ids = [suggestedComponentId];
       }
     }
     if (!editingId.value || !String(headerForm.horometro_actual || "").trim()) {

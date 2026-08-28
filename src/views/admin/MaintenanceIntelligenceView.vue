@@ -123,6 +123,26 @@
               <v-btn
                 color="secondary"
                 variant="tonal"
+                prepend-icon="mdi-file-excel"
+                :loading="isExporting('aceites', 'excel')"
+                :disabled="!oilKpi || oilKpiLoading"
+                @click="exportOilReport('excel')"
+              >
+                Excel
+              </v-btn>
+              <v-btn
+                color="secondary"
+                variant="tonal"
+                prepend-icon="mdi-file-pdf-box"
+                :loading="isExporting('aceites', 'pdf')"
+                :disabled="!oilKpi || oilKpiLoading"
+                @click="exportOilReport('pdf')"
+              >
+                PDF
+              </v-btn>
+              <v-btn
+                color="secondary"
+                variant="tonal"
                 prepend-icon="mdi-chart-box-outline"
                 :disabled="!oilKpi"
                 @click="openOilDetailDialog"
@@ -1272,6 +1292,7 @@ import {
   buildDailyReportsReport,
   buildIndicatorsReport,
   buildLubricantReport,
+  buildOilConsumptionReport,
   buildProceduresReport,
   buildWeeklyScheduleReport,
   downloadReportExcel,
@@ -2014,6 +2035,37 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
     }
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte solicitado.";
+  } finally {
+    exportState[key] = false;
+  }
+}
+
+async function exportOilReport(format: "excel" | "pdf") {
+  if (!canAccessIntelligenceReports.value || !oilKpi.value) {
+    oilKpiError.value = "No hay un análisis de aceite cargado para exportar.";
+    return;
+  }
+  const key = exportKey("aceites", format);
+  exportState[key] = true;
+  oilKpiError.value = null;
+
+  try {
+    const report = buildOilConsumptionReport({
+      kpi: oilKpi.value,
+      workOrders: oilWorkOrderRows.value,
+      equipmentRows: oilEquipmentRows.value,
+      dailyRows: oilDailyUsageRows.value,
+      warehouseRows: oilWarehouseRows.value,
+      statusRows: oilStatusRows.value,
+      unitLabel: oilQuantityUnitLabel.value,
+    });
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (e: any) {
+    oilKpiError.value = e?.message || "No se pudo generar el reporte de consumo de aceite.";
   } finally {
     exportState[key] = false;
   }

@@ -170,6 +170,16 @@ function formatValue(value: unknown): string | number {
   return repaired;
 }
 
+function formatCompartimientoSummary(value: unknown): string {
+  const lines = String(value ?? "")
+    .split(/\r?\n/)
+    .map((line: string) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return "Sin compartimientos";
+  if (lines.length === 1) return lines[0] ?? "Sin compartimientos";
+  return `${lines.length} compartimientos`;
+}
+
 function normalizeRows(rows: AnyRow[]) {
   return rows.map((row) =>
     Object.fromEntries(
@@ -1281,6 +1291,169 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   } satisfies ReportDefinition;
 }
 
+export function buildOilConsumptionReport(payload: {
+  kpi: AnyRow;
+  workOrders: AnyRow[];
+  equipmentRows: AnyRow[];
+  dailyRows: AnyRow[];
+  warehouseRows: AnyRow[];
+  statusRows: AnyRow[];
+  unitLabel?: string;
+}) {
+  const kpi = payload.kpi ?? {};
+  const filters = kpi.filters ?? {};
+  const totals = kpi.totals ?? {};
+  const selectedProduct = kpi.selected_product ?? {};
+  const unitLabel = String(payload.unitLabel || "gal").trim() || "gal";
+  const productLabel = String(
+    selectedProduct.label
+      || [selectedProduct.codigo, selectedProduct.nombre].filter(Boolean).join(" - ")
+      || "Sin aceite seleccionado",
+  );
+  const periodLabel = String(
+    filters.label
+      || [filters.from, filters.to].filter(Boolean).join(" a ")
+      || "Sin período",
+  );
+
+  const workOrderRows = payload.workOrders.map((item) => ({
+    fecha: item.fecha_referencia ?? item.fecha_referencia_label ?? "",
+    orden: item.work_order_code ?? "",
+    titulo: item.work_order_title ?? "",
+    tipo_mantenimiento: item.maintenance_kind_label ?? item.maintenance_kind ?? "",
+    equipo: item.equipment_label ?? "Sin equipo",
+    cantidad: item.cantidad ?? 0,
+    unidad: unitLabel,
+    diferencia_anterior: item.diferencia_vs_anterior ?? "",
+    tendencia: item.tendencia_cantidad ?? "",
+    costo_total: item.subtotal ?? 0,
+    costo_promedio: item.costo_promedio ?? 0,
+    movimientos: item.movimientos ?? 0,
+    estado: item.work_order_status ?? "Sin estado",
+    bodega: item.bodega_label ?? "Sin bodega",
+    observacion: item.observacion ?? "",
+  }));
+  const equipmentRows = payload.equipmentRows.map((item) => ({
+    equipo: item.equipment_label ?? "Sin equipo",
+    ordenes: item.total_ordenes ?? 0,
+    cantidad: item.total_cantidad ?? 0,
+    unidad: unitLabel,
+    costo_total: item.total_costo ?? 0,
+    primera_fecha: item.primera_fecha ?? "",
+    ultima_fecha: item.ultima_fecha ?? "",
+  }));
+  const dailyRows = payload.dailyRows.map((item) => ({
+    fecha: item.fecha_referencia ?? item.fecha_referencia_label ?? item.key ?? "",
+    ordenes: item.total_ordenes ?? 0,
+    movimientos: item.total_movimientos ?? 0,
+    cantidad: item.total_cantidad ?? 0,
+    unidad: unitLabel,
+    costo_total: item.total_costo ?? 0,
+  }));
+  const warehouseRows = payload.warehouseRows.map((item) => ({
+    bodega: item.bodega_label ?? "Sin bodega",
+    ordenes: item.total_ordenes ?? 0,
+    cantidad: item.total_cantidad ?? 0,
+    unidad: unitLabel,
+    costo_total: item.total_costo ?? 0,
+  }));
+  const statusRows = payload.statusRows.map((item) => ({
+    estado: item.status ?? "Sin estado",
+    ordenes: item.total_ordenes ?? 0,
+    cantidad: item.total_cantidad ?? 0,
+    unidad: unitLabel,
+  }));
+
+  return {
+    fileName: `reporte_consumo_aceite_${formatDateForInput(new Date())}`,
+    title: "Reporte de análisis de consumo de aceite",
+    subtitle: `${productLabel} · ${periodLabel}${filters.solo_cebado ? " · Solo OT de cebado" : ""}`,
+    summary: [
+      { label: "Aceite", value: productLabel },
+      { label: "Período", value: periodLabel },
+      { label: "Cantidad total", value: `${formatValue(totals.total_cantidad ?? 0)} ${unitLabel}` },
+      { label: "Costo total", value: Number(totals.total_costo ?? 0) },
+      { label: "Órdenes", value: Number(totals.total_ordenes ?? workOrderRows.length) },
+      { label: "Equipos", value: Number(totals.total_equipos ?? equipmentRows.length) },
+      { label: "Promedio por OT", value: `${formatValue(totals.promedio_por_orden ?? 0)} ${unitLabel}` },
+      { label: "Solo cebado", value: filters.solo_cebado ? "Sí" : "No" },
+    ],
+    orientation: "landscape",
+    sheets: [
+      {
+        name: "Órdenes de trabajo",
+        rows: workOrderRows,
+        fitColumnsToPage: true,
+        emptyMessage: "No existen órdenes de trabajo para los filtros aplicados.",
+        note: "Detalle del consumo del aceite seleccionado por orden de trabajo, excluyendo órdenes anuladas.",
+        columns: [
+          { key: "fecha", header: "Fecha", width: 14, format: "date" },
+          { key: "orden", header: "OT", width: 14 },
+          { key: "titulo", header: "Título", width: 26 },
+          { key: "tipo_mantenimiento", header: "Tipo mtto.", width: 14 },
+          { key: "equipo", header: "Equipo", width: 24 },
+          { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
+          { key: "unidad", header: "Unidad", width: 9 },
+          { key: "diferencia_anterior", header: "Dif. anterior", width: 12, format: "number" },
+          { key: "tendencia", header: "Tendencia", width: 11 },
+          { key: "costo_total", header: "Costo total", width: 13, format: "currency" },
+          { key: "costo_promedio", header: "Costo prom.", width: 13, format: "currency" },
+          { key: "movimientos", header: "Mov.", width: 9, format: "number" },
+          { key: "estado", header: "Estado", width: 13 },
+          { key: "bodega", header: "Bodega", width: 22 },
+          { key: "observacion", header: "Observación", width: 24 },
+        ],
+      },
+      {
+        name: "Por equipo",
+        rows: equipmentRows,
+        columns: [
+          { key: "equipo", header: "Equipo", width: 30 },
+          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
+          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
+          { key: "unidad", header: "Unidad", width: 10 },
+          { key: "costo_total", header: "Costo total", width: 16, format: "currency" },
+          { key: "primera_fecha", header: "Primera fecha", width: 16, format: "date" },
+          { key: "ultima_fecha", header: "Última fecha", width: 16, format: "date" },
+        ],
+      },
+      {
+        name: "Tendencia diaria",
+        rows: dailyRows,
+        columns: [
+          { key: "fecha", header: "Fecha", width: 18, format: "date" },
+          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
+          { key: "movimientos", header: "Movimientos", width: 14, format: "number" },
+          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
+          { key: "unidad", header: "Unidad", width: 10 },
+          { key: "costo_total", header: "Costo total", width: 16, format: "currency" },
+        ],
+      },
+      {
+        name: "Por bodega",
+        rows: warehouseRows,
+        columns: [
+          { key: "bodega", header: "Bodega", width: 34 },
+          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
+          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
+          { key: "unidad", header: "Unidad", width: 10 },
+          { key: "costo_total", header: "Costo total", width: 16, format: "currency" },
+        ],
+      },
+      {
+        name: "Por estado",
+        rows: statusRows,
+        columns: [
+          { key: "estado", header: "Estado OT", width: 24 },
+          { key: "ordenes", header: "Órdenes", width: 12, format: "number" },
+          { key: "cantidad", header: "Cantidad", width: 14, format: "number" },
+          { key: "unidad", header: "Unidad", width: 10 },
+        ],
+      },
+    ],
+  } satisfies ReportDefinition;
+}
+
 export function buildComponentsReport(components: AnyRow[]) {
   const componentRows = components.map((item) => ({
     equipo_codigo: item.equipo_codigo ?? "",
@@ -1546,7 +1719,8 @@ export function buildWorkOrderReport(payload: {
     codigo: header.code || header.codigo || "",
     estado: header.status_workflow || "",
     equipo: header.equipment_label || header.equipo_nombre || header.equipment_id || "",
-    compartimiento: header.equipment_component_label || header.equipo_componente_nombre_oficial || "",
+    compartimiento:
+      header.equipment_component_label || header.equipo_componente_nombre_oficial || "Sin compartimientos",
     mantenimiento: header.maintenance_kind || header.tipo_mantenimiento || "",
     clase_orden: header.emergency_label || "",
     motivo_emergencia: header.emergency_reason || "",
@@ -1574,7 +1748,9 @@ export function buildWorkOrderReport(payload: {
     subtitle: repairText(
       [
         header.equipment_label || header.equipo_nombre || header.equipment_id,
-        header.equipment_component_label || header.equipo_componente_nombre_oficial,
+        formatCompartimientoSummary(
+          header.equipment_component_label || header.equipo_componente_nombre_oficial,
+        ),
         header.maintenance_kind || header.tipo_mantenimiento,
       ]
         .filter(Boolean)
@@ -1583,7 +1759,12 @@ export function buildWorkOrderReport(payload: {
     summary: [
       { label: "Estado workflow", value: header.status_workflow || "" },
       { label: "Equipo", value: header.equipment_label || header.equipo_nombre || header.equipment_id || "" },
-      { label: "Compartimiento", value: header.equipment_component_label || header.equipo_componente_nombre_oficial || "" },
+      {
+        label: "Compartimiento",
+        value: formatCompartimientoSummary(
+          header.equipment_component_label || header.equipo_componente_nombre_oficial,
+        ),
+      },
       { label: "Clase de orden", value: header.emergency_label || "" },
       { label: "Creado por", value: header.creado_por || "" },
       { label: "Realizado por", value: header.realizado_por || "" },
@@ -1605,7 +1786,7 @@ export function buildWorkOrderReport(payload: {
           { key: "codigo", header: "Codigo", width: 12 },
           { key: "estado", header: "Estado", width: 12 },
           { key: "equipo", header: "Equipo", width: 16 },
-          { key: "compartimiento", header: "Compartimiento", width: 18 },
+          { key: "compartimiento", header: "Compartimiento", width: 26 },
           { key: "mantenimiento", header: "Tipo mtto", width: 12 },
           { key: "clase_orden", header: "Clase orden", width: 16 },
           { key: "motivo_emergencia", header: "Motivo emergencia", width: 22 },
