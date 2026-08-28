@@ -805,12 +805,11 @@
               <v-text-field
                 v-model="monthlyCell.horometro_actual"
                 type="number"
-                min="0"
-                step="0.01"
                 label="Horometro actual del equipo"
-                hint="Se actualiza en el equipo y en la OT vinculada."
+                hint="Se toma automáticamente de la última lectura manual registrada en Equipos."
                 persistent-hint
                 variant="outlined"
+                readonly
               />
             </v-col>
             <v-col cols="12" md="6">
@@ -2228,11 +2227,11 @@ function resolveCurrentHorometerForMonthlyCell(source?: any | null) {
       monthlyCell.equipo_id ||
       "",
   );
-  return numericOrNull(payload?.horometro_actual)
+  return numericOrNull(equipment?.horometro_actual)
+    ?? numericOrNull(payload?.horometro_actual)
     ?? numericOrNull(workOrderPayload?.horometro_actual)
     ?? numericOrNull(workOrder?.horometro_actual)
     ?? numericOrNull(workOrder?.equipment_horometro_actual)
-    ?? numericOrNull(equipment?.horometro_actual)
     ?? null;
 }
 
@@ -2410,7 +2409,10 @@ watch(
     const selected = equipmentCatalog.value.find(
       (item: any) => String(item?.id || "") === String(value || ""),
     );
-    if (selected) monthlyCell.equipo_codigo = selected.codigo || monthlyCell.equipo_codigo;
+    if (selected) {
+      monthlyCell.equipo_codigo = selected.codigo || monthlyCell.equipo_codigo;
+      monthlyCell.horometro_actual = formatHourInput(selected.horometro_actual);
+    }
   },
 );
 
@@ -2428,9 +2430,7 @@ watch(
         monthlyCell.equipo_codigo;
       monthlyCell.procedimiento_id =
         resolveProcedureIdFromWorkOrder(selected) || monthlyCell.procedimiento_id;
-      if (!String(monthlyCell.horometro_actual || "").trim()) {
-        monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(selected));
-      }
+      monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(selected));
     }
     if (!value) {
       monthlyCell.total_horas_ot = null;
@@ -3741,7 +3741,7 @@ async function saveMonthlyCell() {
     ? numericOrNull(monthlyCell.horometro_actual)
     : null;
   if (monthlyCellIsReprogramming.value && monthlyReprogramHorometer === null) {
-    ui.error("Debes ingresar el horometro actual del equipo.");
+    ui.error("El equipo no tiene un horometro manual disponible. Actualizalo primero en Equipos.");
     return;
   }
   if (monthlyReprogramHorometer !== null && monthlyReprogramHorometer < 0) {

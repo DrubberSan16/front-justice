@@ -442,13 +442,10 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field
-              v-model="headerForm.horometro_actual"
+              :model-value="resolvedHorometroActualLabel"
               label="Horometro actual"
               variant="outlined"
-              type="number"
-              min="0"
-              step="0.01"
-              :disabled="isReadOnlyWorkflow"
+              readonly
               :hint="selectedEquipmentHorometroHint"
               persistent-hint
             />
@@ -4806,11 +4803,17 @@ const resolvedHorasARealizar = computed(() => {
 });
 
 const resolvedHorometroActual = computed(() => {
-  const explicit = parseNullableNumber(headerForm.horometro_actual);
-  if (explicit != null) return Number(explicit.toFixed(2));
   const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
-  return fromEquipment != null ? Number(fromEquipment.toFixed(2)) : null;
+  if (fromEquipment != null) return Number(fromEquipment.toFixed(2));
+  const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
+  return persistedSnapshot != null ? Number(persistedSnapshot.toFixed(2)) : null;
 });
+
+const resolvedHorometroActualLabel = computed(() =>
+  resolvedHorometroActual.value != null
+    ? formatDecimalValue(resolvedHorometroActual.value)
+    : "Sin lectura manual",
+);
 
 const resolvedHorometroProyectado = computed(() => {
   const current = resolvedHorometroActual.value;
@@ -4837,9 +4840,9 @@ const resolvedHorometroProyectadoLabel = computed(() =>
 const selectedEquipmentHorometroHint = computed(() => {
   const equipmentHorometro = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
   if (equipmentHorometro != null) {
-    return `Horometro registrado del equipo: ${formatDecimalValue(equipmentHorometro)}`;
+    return `Lectura manual vigente del equipo: ${formatDecimalValue(equipmentHorometro)}`;
   }
-  return "Ingresa el horometro actual para calcular la proyeccion de la OT.";
+  return "Actualiza primero el horometro desde el modulo Equipos.";
 });
 
 const requiresHorometroCapture = computed(() =>
@@ -4847,18 +4850,10 @@ const requiresHorometroCapture = computed(() =>
   || parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
 );
 
-function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
-  const preserveCurrent = Boolean(options?.preserveCurrent);
+function syncWorkOrderHorometerFields(_options?: { preserveCurrent?: boolean }) {
   const procedureHours = parseNullableNumber(selectedProcedure.value?.frecuencia_horas);
   headerForm.horas_a_realizar = toEditableNumber(procedureHours);
-
-  if (!preserveCurrent) {
-    const currentInput = parseNullableNumber(headerForm.horometro_actual);
-    if (currentInput == null) {
-      headerForm.horometro_actual = toEditableNumber(selectedEquipmentRecord.value?.horometro_actual);
-    }
-  }
-
+  headerForm.horometro_actual = toEditableNumber(selectedEquipmentRecord.value?.horometro_actual);
   headerForm.horometro_proyectado = toEditableNumber(resolvedHorometroProyectado.value);
 }
 

@@ -796,6 +796,12 @@ function getFieldHint(field: EnhancedMaintenanceField) {
   if (props.moduleKey === "equipos" && field.key === "ultimo_servicio_fecha") {
     return "Fecha base para calcular el proximo mantenimiento.";
   }
+  if (props.moduleKey === "equipos" && field.key === "horometro_actual") {
+    return "Actualización manual diaria. Es la única lectura utilizada por órdenes de trabajo y programaciones.";
+  }
+  if (props.moduleKey === "equipos" && field.key === "fecha_ultima_lectura") {
+    return "Fecha y hora del último cambio manual registrado.";
+  }
   if (props.moduleKey === "equipos" && field.key === "proximo_servicio_fecha") {
     return "Se calcula automaticamente al guardar segun el intervalo.";
   }
