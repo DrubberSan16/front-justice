@@ -34,6 +34,9 @@ export type ReportSheetMedia = {
   imageUrlKey: string;
   previewColumnKey: string;
   linkUrlKey?: string;
+  /** Columna visible que recibirá el hipervínculo; evita imprimir la URL completa. */
+  linkColumnKey?: string;
+  linkLabel?: string;
   rowHeight?: number;
 };
 
@@ -48,6 +51,8 @@ export type ReportSheetSection = {
   subtitle?: string;
   sheetName?: string;
   info?: ReportSummaryItem[];
+  /** Cantidad de pares etiqueta/valor por fila en Excel. */
+  infoColumns?: 1 | 2;
 };
 
 export type ReportSheet = {
@@ -634,23 +639,31 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
       worksheet.getRow(cursorRow).height = 24;
       cursorRow += 1;
 
-      for (const item of group.section.info) {
+      const infoColumns = Math.min(group.section.infoColumns ?? 1, Math.max(1, Math.floor(lastColumnIndex / 2)));
+      for (let infoIndex = 0; infoIndex < group.section.info.length; infoIndex += infoColumns) {
         const row = worksheet.getRow(cursorRow);
-        const labelCell = row.getCell(1);
-        labelCell.value = repairText(item.label);
-        labelCell.font = { name: "Arial", size: 10, bold: true, color: { argb: REPORT_THEME.textSoft } };
-        labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.brandSoft } };
-        labelCell.alignment = { vertical: "middle" };
-        if (lastColumnIndex > 2) {
-          worksheet.mergeCells(`B${cursorRow}:${lastColumnName}${cursorRow}`);
+        const chunk = group.section.info.slice(infoIndex, infoIndex + infoColumns);
+        for (const [pairIndex, item] of chunk.entries()) {
+          const labelColumn = pairIndex * 2 + 1;
+          const valueColumn = labelColumn + 1;
+          const labelCell = row.getCell(labelColumn);
+          labelCell.value = repairText(item.label);
+          labelCell.font = { name: "Arial", size: 9, bold: true, color: { argb: REPORT_THEME.textSoft } };
+          labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: REPORT_THEME.brandSoft } };
+          labelCell.alignment = { vertical: "middle", wrapText: true };
+          const valueCell = row.getCell(valueColumn);
+          // formatValue normaliza fechas ISO igual que en el PDF; formatSheetValue
+          // por si sola dejaria el texto crudo 2026-08-10T13:05:00.000Z.
+          valueCell.value = formatSheetValue(formatValue(item.value));
+          valueCell.font = { name: "Arial", size: 9, color: { argb: REPORT_THEME.text } };
+          valueCell.alignment = { vertical: "middle", wrapText: true };
         }
-        const valueCell = row.getCell(2);
-        // formatValue normaliza fechas ISO igual que en el PDF; formatSheetValue
-        // por si sola dejaria el texto crudo 2026-08-10T13:05:00.000Z.
-        valueCell.value = formatSheetValue(formatValue(item.value));
-        valueCell.font = { name: "Arial", size: 10, color: { argb: REPORT_THEME.text } };
-        valueCell.alignment = { vertical: "middle", wrapText: true };
-        for (let columnIndex = 1; columnIndex <= 2; columnIndex += 1) {
+        if (infoColumns === 1 && lastColumnIndex > 2) {
+          worksheet.mergeCells(`B${cursorRow}:${lastColumnName}${cursorRow}`);
+        } else if (infoColumns === 2 && chunk.length === 2 && lastColumnIndex > 4) {
+          worksheet.mergeCells(`D${cursorRow}:${lastColumnName}${cursorRow}`);
+        }
+        for (let columnIndex = 1; columnIndex <= lastColumnIndex; columnIndex += 1) {
           row.getCell(columnIndex).border = {
             top: { style: "thin", color: { argb: REPORT_THEME.border } },
             left: { style: "thin", color: { argb: REPORT_THEME.border } },
@@ -658,6 +671,7 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
             right: { style: "thin", color: { argb: REPORT_THEME.border } },
           };
         }
+        row.height = 24;
         cursorRow += 1;
       }
       cursorRow += 1;
@@ -700,7 +714,10 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
 
       const groupedRows = buildGroupedRows(safeRows, sheet.groupBy);
       const previewColumnIndex = resolveColumnIndex(columns, sheet.media?.previewColumnKey);
-      const linkColumnIndex = resolveColumnIndex(columns, sheet.media?.linkUrlKey);
+      const linkColumnIndex = resolveColumnIndex(
+        columns,
+        sheet.media?.linkColumnKey ?? sheet.media?.linkUrlKey,
+      );
       let rowIndex = headerRowIndex + 1;
       let zebraIndex = 0;
 
@@ -758,7 +775,14 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
           const linkValue = repairText(String(resolveRowValueByKey(entry.row ?? {}, sheet.media.linkUrlKey || "") || ""));
           if (linkColumnIndex >= 0 && linkValue) {
             const linkCell = row.getCell(linkColumnIndex + 1);
-            linkCell.value = { text: linkValue, hyperlink: linkValue };
+            const visibleLinkValue = repairText(
+              String(
+                sheet.media.linkLabel ||
+                  resolveRowValueByKey(entry.row ?? {}, sheet.media.linkColumnKey || "") ||
+                  "Abrir",
+              ),
+            );
+            linkCell.value = { text: visibleLinkValue, hyperlink: linkValue };
             linkCell.font = {
               name: "Arial",
               size: 9,
@@ -955,7 +979,10 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     const safeRows = rows.length ? rows : [buildEmptyStateRow(sheet)];
     const columns = resolveColumns(sheet, safeRows);
     const previewColumnIndex = resolveColumnIndex(columns, sheet.media?.previewColumnKey);
-    const linkColumnIndex = resolveColumnIndex(columns, sheet.media?.linkUrlKey);
+    const linkColumnIndex = resolveColumnIndex(
+      columns,
+      sheet.media?.linkColumnKey ?? sheet.media?.linkUrlKey,
+    );
     const availableTableWidth = pageWidth - marginX * 2;
     const compactTable = columns.length >= 9;
     const requestedColumnWidths = columns.map((column) =>
@@ -1005,7 +1032,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     const belongsToOpenSection = Boolean(sectionId) && sectionId === currentSectionId;
 
     if (
-      startsNewSection ||
+      (startsNewSection && (index > 0 || cursorY > 118)) ||
       (!belongsToOpenSection && index > 0 && !report.continuousSections) ||
       (needsNewPage && (index > 0 || cursorY > 118))
     ) {
@@ -1044,7 +1071,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
 
       const info = sheet.section.info ?? [];
       if (info.length) {
-        const pairsPerRow = 3;
+        const pairsPerRow = (report.orientation ?? "landscape") === "portrait" ? 2 : 3;
         const infoBody: string[][] = [];
         for (let start = 0; start < info.length; start += pairsPerRow) {
           const slice = info.slice(start, start + pairsPerRow);
@@ -1811,36 +1838,51 @@ export function buildWorkOrderReport(payload: {
   history: AnyRow[];
 }) {
   const header = payload.header || {};
-  const mainHeaderRow = {
-    codigo: header.code || header.codigo || "",
-    estado: header.status_workflow || "",
-    equipo: header.equipment_label || header.equipo_nombre || header.equipment_id || "",
-    compartimiento:
-      header.equipment_component_label || header.equipo_componente_nombre_oficial || "Sin compartimientos",
-    mantenimiento: header.maintenance_kind || header.tipo_mantenimiento || "",
-    clase_orden: header.emergency_label || "",
-    motivo_emergencia: header.emergency_reason || "",
-    procedimiento: header.procedimiento || "",
-    plan_operativo: header.plan_operativo || "",
-    alerta: header.alerta || "",
-    causa: header.causa || "",
-    accion: header.accion || "",
-    prevencion: header.prevencion || "",
+  const normalizedOrder: WorkOrdersListingOrder = {
+    header: {
+      codigo: header.code || header.codigo || "",
+      titulo: header.title || header.titulo || "",
+      estado: header.status_workflow || "",
+      equipo: header.equipment_label || header.equipo_nombre || header.equipment_id || "",
+      compartimiento:
+        header.equipment_component_label ||
+        header.equipo_componente_nombre_oficial ||
+        "Sin compartimientos",
+      tipo_mantenimiento: header.maintenance_kind || header.tipo_mantenimiento || "",
+      clase_orden: header.emergency_label || "",
+      motivo_emergencia: header.emergency_reason || "",
+      procedimiento: header.procedimiento || "",
+      plan_operativo: header.plan_operativo || "",
+      fecha_programacion: header.fecha_programacion || "",
+      fecha_operativa: header.fecha_operativa || "",
+      horometro_actual: header.horometro_actual ?? "",
+      horas_a_realizar: header.horas_a_realizar ?? "",
+      horometro_proyectado: header.horometro_proyectado ?? "",
+      alerta: header.alerta || "",
+      causa: header.causa || "",
+      accion: header.accion || "",
+      prevencion: header.prevencion || "",
+      creado_por: header.creado_por || "",
+      fecha_creacion: header.fecha_creacion || "",
+      realizado_por: header.realizado_por || "",
+      fecha_realizacion: header.fecha_realizacion || "",
+      aprobado_por: header.aprobado_por || "",
+      fecha_aprobacion: header.fecha_aprobacion || "",
+      accion_aprobacion: header.accion_aprobacion || "",
+      ot_bloqueante: header.blocked_by || "",
+      motivo_bloqueo: header.blocked_reason || "",
+    },
+    tasks: payload.tasks,
+    attachments: payload.attachments,
+    consumos: payload.consumos,
+    issues: payload.issues,
+    scraps: payload.scraps,
+    history: payload.history,
   };
-  const traceabilityRow = {
-    creado_por: header.creado_por || "",
-    fecha_creacion: header.fecha_creacion || "",
-    realizado_por: header.realizado_por || "",
-    fecha_realizacion: header.fecha_realizacion || "",
-    aprobado_por: header.aprobado_por || "",
-    fecha_aprobacion: header.fecha_aprobacion || "",
-    accion_aprobacion: header.accion_aprobacion || "",
-    ot_bloqueante: header.blocked_by || "",
-    motivo_bloqueo: header.blocked_reason || "",
-  };
+  const code = repairText(String(header.code || header.codigo || "sin_codigo"));
   return {
-    fileName: `ot_${repairText(String(header.code || header.codigo || "sin_codigo"))}`.replace(/\s+/g, "_"),
-    title: `Reporte de orden de trabajo ${repairText(String(header.code || header.codigo || ""))}`.trim(),
+    fileName: `informe_ot_${code}`.replace(/\s+/g, "_"),
+    title: `Informe de orden de trabajo ${code}`,
     subtitle: repairText(
       [
         header.equipment_label || header.equipo_nombre || header.equipment_id,
@@ -1852,104 +1894,9 @@ export function buildWorkOrderReport(payload: {
         .filter(Boolean)
         .join(" · "),
     ),
-    summary: [
-      { label: "Estado workflow", value: header.status_workflow || "" },
-      { label: "Equipo", value: header.equipment_label || header.equipo_nombre || header.equipment_id || "" },
-      {
-        label: "Compartimiento",
-        value: formatCompartimientoSummary(
-          header.equipment_component_label || header.equipo_componente_nombre_oficial,
-        ),
-      },
-      { label: "Clase de orden", value: header.emergency_label || "" },
-      { label: "Creado por", value: header.creado_por || "" },
-      { label: "Realizado por", value: header.realizado_por || "" },
-      { label: "Aprobado por", value: header.aprobado_por || "" },
-      { label: "Tareas", value: payload.tasks.length },
-      { label: "Adjuntos", value: payload.attachments.length },
-      { label: "Consumos", value: payload.consumos.length },
-      { label: "Salidas", value: payload.issues.length },
-      { label: "Desechos", value: payload.scraps.length },
-    ],
+    orientation: "portrait",
     continuousSections: true,
-    sheets: [
-      {
-        name: "Cabecera",
-        rows: [mainHeaderRow],
-        note: "Datos principales de la orden de trabajo. La trazabilidad operativa y de aprobacion se muestra en la hoja siguiente.",
-        fitColumnsToPage: true,
-        columns: [
-          { key: "codigo", header: "Codigo", width: 12 },
-          { key: "estado", header: "Estado", width: 12 },
-          { key: "equipo", header: "Equipo", width: 16 },
-          { key: "compartimiento", header: "Compartimiento", width: 26 },
-          { key: "mantenimiento", header: "Tipo mtto", width: 12 },
-          { key: "clase_orden", header: "Clase orden", width: 16 },
-          { key: "motivo_emergencia", header: "Motivo emergencia", width: 22 },
-          { key: "procedimiento", header: "Procedimiento", width: 18 },
-          { key: "plan_operativo", header: "Plan operativo", width: 18 },
-          { key: "alerta", header: "Alerta", width: 16 },
-          { key: "causa", header: "Causa", width: 24 },
-          { key: "accion", header: "Accion", width: 24 },
-          { key: "prevencion", header: "Prevencion", width: 24 },
-        ],
-      },
-      {
-        name: "Trazabilidad",
-        rows: [traceabilityRow],
-        note: "Responsables y fechas de creacion, ejecucion, aprobacion y bloqueo de la orden.",
-        fitColumnsToPage: true,
-        columns: [
-          { key: "creado_por", header: "Creado por", width: 16 },
-          { key: "fecha_creacion", header: "Fecha creacion", width: 18, format: "datetime" },
-          { key: "realizado_por", header: "Realizado por", width: 16 },
-          { key: "fecha_realizacion", header: "Fecha realizacion", width: 18, format: "datetime" },
-          { key: "aprobado_por", header: "Aprobado por", width: 16 },
-          { key: "fecha_aprobacion", header: "Fecha aprobacion", width: 18, format: "datetime" },
-          { key: "accion_aprobacion", header: "Accion final", width: 16 },
-          { key: "ot_bloqueante", header: "OT bloqueante", width: 18 },
-          { key: "motivo_bloqueo", header: "Motivo bloqueo", width: 22 },
-        ],
-      },
-      {
-        name: "Tareas",
-        rows: payload.tasks,
-        note: "Detalle de tareas ejecutadas con etiquetas de captura pensadas para el usuario final.",
-        fitColumnsToPage: true,
-        columns: [
-          { key: "plan", header: "Plan", width: 20 },
-          { key: "tarea", header: "Tarea", width: 28 },
-          { key: "tipo_captura", header: "Tipo captura", width: 14 },
-          { key: "valor_registrado", header: "Valor registrado", width: 28 },
-          { key: "responsables", header: "Responsables", width: 24 },
-          { key: "observacion", header: "Observacion", width: 20 },
-          { key: "requisitos", header: "Requisitos", width: 22 },
-        ],
-      },
-      {
-        name: "Adjuntos",
-        rows: payload.attachments,
-        note: "Las imagenes se muestran dentro del reporte y los documentos o videos quedan con su enlace directo.",
-        fitColumnsToPage: true,
-        columns: [
-          { key: "tipo_archivo", header: "Tipo archivo", width: 14 },
-          { key: "origen", header: "Origen", width: 24 },
-          { key: "nombre", header: "Nombre archivo", width: 28 },
-          { key: "vista_previa", header: "Vista previa", width: 18 },
-          { key: "url_visualizacion", header: "URL visualizacion", width: 34 },
-        ],
-        media: {
-          imageUrlKey: "media_url",
-          previewColumnKey: "vista_previa",
-          linkUrlKey: "url_visualizacion",
-          rowHeight: 62,
-        },
-      },
-      { name: "Consumos", rows: payload.consumos, fitColumnsToPage: true },
-      { name: "Salidas material", rows: payload.issues, fitColumnsToPage: true },
-      { name: "Desechos chatarra", rows: payload.scraps, fitColumnsToPage: true },
-      { name: "Histórico", rows: payload.history, fitColumnsToPage: true },
-    ],
+    sheets: buildWorkOrderSectionSheets(normalizedOrder, 1, { single: true }),
   } satisfies ReportDefinition;
 }
 
@@ -1966,115 +1913,136 @@ export type WorkOrdersListingOrder = {
 const WORK_ORDER_DETAIL_COLUMNS = {
   tasks: [
     { key: "plan", header: "Plan", width: 20 },
-    { key: "tarea", header: "Tarea", width: 30 },
-    { key: "tipo_captura", header: "Tipo captura", width: 14 },
-    { key: "valor_registrado", header: "Valor registrado", width: 30 },
-    { key: "responsables", header: "Responsables", width: 24 },
-    { key: "observacion", header: "Observación", width: 22 },
-    { key: "requisitos", header: "Requisitos", width: 22 },
+    { key: "tarea", header: "Tarea", width: 34 },
+    { key: "valor_registrado", header: "Resultado", width: 28 },
+    { key: "responsables", header: "Responsable", width: 22 },
+    { key: "observacion", header: "Observación", width: 28 },
   ] satisfies ReportColumn[],
   attachments: [
-    { key: "tipo_archivo", header: "Tipo archivo", width: 14 },
-    { key: "origen", header: "Origen", width: 26 },
-    { key: "nombre", header: "Nombre archivo", width: 30 },
-    { key: "vista_previa", header: "Vista previa", width: 18 },
-    { key: "url_visualizacion", header: "URL visualización", width: 38 },
+    { key: "vista_previa", header: "Vista", width: 18 },
+    { key: "nombre", header: "Evidencia", width: 34 },
+    { key: "origen", header: "Origen", width: 32 },
+    { key: "enlace", header: "Acceso", width: 16 },
   ] satisfies ReportColumn[],
   consumos: [
-    { key: "bodega", header: "Bodega", width: 20 },
-    { key: "material", header: "Material", width: 28 },
-    { key: "reservado", header: "Reservado", width: 12, format: "number" },
-    { key: "emitido", header: "Emitido", width: 12, format: "number" },
-    { key: "pendiente", header: "Pendiente", width: 12, format: "number" },
-    { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
-    { key: "subtotal", header: "Subtotal", width: 14, format: "currency" },
-    { key: "observacion", header: "Observación", width: 22 },
+    { key: "material", header: "Material", width: 34 },
+    { key: "bodega", header: "Bodega", width: 24 },
+    { key: "reservado", header: "Solicitado", width: 13, format: "number" },
+    { key: "emitido", header: "Entregado", width: 13, format: "number" },
+    { key: "pendiente", header: "Pendiente", width: 13, format: "number" },
+    { key: "observacion", header: "Observación", width: 26 },
   ] satisfies ReportColumn[],
   issues: [
     { key: "salida", header: "Salida", width: 16 },
-    { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
-    { key: "bodega", header: "Bodega", width: 20 },
-    { key: "material", header: "Material", width: 28 },
+    { key: "fecha", header: "Fecha", width: 17, format: "datetime" },
+    { key: "material", header: "Material", width: 36 },
     { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
-    { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
-    { key: "subtotal", header: "Subtotal", width: 14, format: "currency" },
-    { key: "observacion", header: "Observación", width: 22 },
+    { key: "bodega", header: "Bodega", width: 26 },
   ] satisfies ReportColumn[],
   scraps: [
     { key: "transferencia", header: "Transferencia", width: 18 },
-    { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
-    { key: "bodega_origen", header: "Bodega origen", width: 20 },
-    { key: "bodega_chatarra", header: "Bodega chatarra", width: 22 },
-    { key: "material", header: "Material", width: 28 },
+    { key: "fecha", header: "Fecha", width: 17, format: "datetime" },
+    { key: "material", header: "Material", width: 36 },
     { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
-    { key: "costo_unitario", header: "Costo unitario", width: 14, format: "currency" },
-    { key: "subtotal", header: "Subtotal", width: 14, format: "currency" },
-    { key: "observacion", header: "Observación", width: 22 },
+    { key: "bodega_chatarra", header: "Destino", width: 27 },
   ] satisfies ReportColumn[],
   history: [
-    { key: "desde", header: "Desde", width: 16 },
-    { key: "hacia", header: "Hacia", width: 16 },
+    { key: "hacia", header: "Estado", width: 18 },
     { key: "usuario", header: "Usuario", width: 20 },
     { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
-    { key: "nota", header: "Nota", width: 40 },
+    { key: "nota", header: "Nota", width: 44 },
   ] satisfies ReportColumn[],
 };
 
 function buildWorkOrderSectionSheets(
   order: WorkOrdersListingOrder,
   position: number,
+  options: { single?: boolean } = {},
 ): ReportSheet[] {
   const header = order.header ?? {};
   const code = String(header.codigo || header.code || `OT-${position}`).trim();
   const title = String(header.titulo || header.title || "").trim();
+  const formatActor = (user: unknown, date: unknown) =>
+    [String(user || "").trim(), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
+  const formatHorometer = () => {
+    const values = [
+      header.horometro_actual !== "" && header.horometro_actual != null
+        ? `Inicial: ${formatValue(header.horometro_actual)} h`
+        : "",
+      header.horas_a_realizar !== "" && header.horas_a_realizar != null
+        ? `Trabajo: ${formatValue(header.horas_a_realizar)} h`
+        : "",
+      header.horometro_proyectado !== "" && header.horometro_proyectado != null
+        ? `Final: ${formatValue(header.horometro_proyectado)} h`
+        : "",
+    ].filter(Boolean);
+    return values.join(" · ") || "-";
+  };
+  const info: ReportSummaryItem[] = [
+    { label: "Orden", value: [code, title && title !== code ? title : ""].filter(Boolean).join(" - ") || "-" },
+    { label: "Estado", value: header.estado || "-" },
+    { label: "Equipo", value: header.equipo || "-" },
+    {
+      label: "Compartimientos",
+      value: String(header.compartimiento || "").trim() || "Sin compartimientos",
+    },
+    { label: "Mantenimiento", value: header.tipo_mantenimiento || "-" },
+    { label: "Clase", value: header.clase_orden || "-" },
+    { label: "Horómetro OT", value: formatHorometer() },
+    {
+      label: "Fecha operativa",
+      value: header.fecha_programacion || header.fecha_operativa || "-",
+    },
+    { label: "Procedimiento", value: header.procedimiento || "-" },
+    { label: "Plan operativo", value: header.plan_operativo || "-" },
+    { label: "Registrada por", value: formatActor(header.creado_por, header.fecha_creacion) },
+    { label: "Realizada por", value: formatActor(header.realizado_por, header.fecha_realizacion) },
+    { label: "Aprobada por", value: formatActor(header.aprobado_por, header.fecha_aprobacion) },
+    { label: "Causa", value: header.causa || "-" },
+    { label: "Acción", value: header.accion || "-" },
+    { label: "Prevención", value: header.prevencion || "-" },
+  ];
+  if (header.motivo_emergencia) {
+    info.push({ label: "Motivo emergencia", value: header.motivo_emergencia });
+  }
+  if (header.ot_bloqueante || header.motivo_bloqueo) {
+    info.push({
+      label: "Bloqueo",
+      value: [header.ot_bloqueante, header.motivo_bloqueo].filter(Boolean).join(" · ") || "-",
+    });
+  }
   const section: ReportSheetSection = {
     id: `orden_${position}_${code || position}`,
-    title: `Orden ${position} · ${code || "Sin código"}`,
+    title: options.single
+      ? `Orden ${code || "Sin código"}`
+      : `Orden ${position} · ${code || "Sin código"}`,
     subtitle: [title, header.equipo, header.estado].filter(Boolean).join(" · "),
-    sheetName: code ? `${position}. ${code}` : `Orden ${position}`,
-    info: [
-      { label: "Orden", value: [code, title].filter(Boolean).join(" - ") || "-" },
-      { label: "Equipo", value: header.equipo || "-" },
-      { label: "Compartimiento", value: header.compartimiento || "-" },
-      { label: "Estado", value: header.estado || "-" },
-      { label: "Tipo mantenimiento", value: header.tipo_mantenimiento || "-" },
-      { label: "Clase de orden", value: header.clase_orden || "-" },
-      { label: "Procedimiento", value: header.procedimiento || "-" },
-      { label: "Plan operativo", value: header.plan_operativo || "-" },
-      { label: "Fecha programación", value: header.fecha_programacion || "-" },
-      { label: "Creado por", value: header.creado_por || "-" },
-      { label: "Fecha creación", value: header.fecha_creacion || "-" },
-      { label: "Realizado por", value: header.realizado_por || "-" },
-      { label: "Fecha realización", value: header.fecha_realizacion || "-" },
-      { label: "Aprobado por", value: header.aprobado_por || "-" },
-      { label: "Fecha aprobación", value: header.fecha_aprobacion || "-" },
-      { label: "Causa", value: header.causa || "-" },
-      { label: "Acción", value: header.accion || "-" },
-      { label: "Prevención", value: header.prevencion || "-" },
-    ],
+    sheetName: options.single ? "Informe OT" : code ? `${position}. ${code}` : `Orden ${position}`,
+    info,
+    infoColumns: 2,
   };
 
-  return [
+  const detailSheets: ReportSheet[] = [
     {
-      name: "Tareas",
+      name: "Tareas ejecutadas",
       section,
       rows: order.tasks,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.tasks,
-      emptyMessage: "La orden no registra tareas.",
     },
     {
-      name: "Adjuntos y evidencias",
+      name: "Evidencias",
       section,
       rows: order.attachments,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.attachments,
-      emptyMessage: "La orden no registra adjuntos.",
       media: {
         imageUrlKey: "media_url",
         previewColumnKey: "vista_previa",
         linkUrlKey: "url_visualizacion",
-        rowHeight: 62,
+        linkColumnKey: "enlace",
+        linkLabel: "Abrir evidencia",
+        rowHeight: 72,
       },
     },
     {
@@ -2083,7 +2051,6 @@ function buildWorkOrderSectionSheets(
       rows: order.consumos,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.consumos,
-      emptyMessage: "La orden no registra consumos.",
     },
     {
       name: "Salidas de material",
@@ -2091,7 +2058,6 @@ function buildWorkOrderSectionSheets(
       rows: order.issues,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.issues,
-      emptyMessage: "La orden no registra salidas de material.",
     },
     {
       name: "Salidas a chatarra",
@@ -2099,7 +2065,6 @@ function buildWorkOrderSectionSheets(
       rows: order.scraps,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.scraps,
-      emptyMessage: "La orden no registra desechos enviados a chatarra.",
     },
     {
       name: "Histórico",
@@ -2107,7 +2072,17 @@ function buildWorkOrderSectionSheets(
       rows: order.history,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.history,
-      emptyMessage: "La orden no registra movimientos de estado.",
+    },
+  ];
+  const populatedSheets = detailSheets.filter((sheet) => normalizeRows(sheet.rows).length > 0);
+  if (populatedSheets.length) return populatedSheets;
+  return [
+    {
+      name: "Resultado",
+      section,
+      rows: [{ resultado: "La orden no registra tareas, materiales ni evidencias adicionales." }],
+      columns: [{ key: "resultado", header: "Resumen", width: 80 }],
+      fitColumnsToPage: true,
     },
   ];
 }
@@ -2143,22 +2118,20 @@ export function buildWorkOrdersListingReport(payload: {
     return {
       orden: [code, title].filter(Boolean).join(" - ") || "-",
       equipo: header.equipo || "-",
-      creado_por: header.creado_por || "-",
-      fecha_creacion: header.fecha_creacion || "",
-      realizado_por: header.realizado_por || "-",
-      fecha_realizacion: header.fecha_realizacion || "",
-      aprobado_por: header.aprobado_por || "-",
-      fecha_aprobacion: header.fecha_aprobacion || "",
+      estado: header.estado || "-",
+      mantenimiento: header.tipo_mantenimiento || "-",
+      fecha_operativa: header.fecha_programacion || header.fecha_operativa || "",
     };
   });
 
   return {
     fileName: `ordenes_trabajo_${formatDateForInput(new Date())}`,
-    title: "Reporte consolidado de órdenes de trabajo",
+    title: "Informe consolidado de órdenes de trabajo",
     subtitle: activeFilters.length
       ? `Órdenes vigentes según filtros aplicados (excluye anuladas). ${activeFilters.join(" · ")}`
       : "Órdenes vigentes en el módulo al momento de la exportación (excluye anuladas).",
     generatedBy: payload.generatedBy ?? null,
+    orientation: "portrait",
     summary: [
       { label: "Órdenes", value: orders.length },
       { label: "Tareas", value: totals.tasks },
@@ -2172,19 +2145,15 @@ export function buildWorkOrdersListingReport(payload: {
       {
         name: "Cabeceras OT",
         rows: headerRows,
-        note: "Resumen de cada orden incluida en el reporte. El detalle completo se presenta por orden en las secciones siguientes.",
-        // Ocho columnas ajustadas al ancho de la hoja: sin corte horizontal.
+        note: "Resumen de las órdenes incluidas; cada OT continúa con su informe y evidencias.",
         fitColumnsToPage: true,
         emptyMessage: "No hay órdenes vigentes para el filtro aplicado.",
         columns: [
-          { key: "orden", header: "Orden", width: 52 },
+          { key: "orden", header: "Orden", width: 38 },
           { key: "equipo", header: "Equipo", width: 28 },
-          { key: "creado_por", header: "Creado por", width: 17 },
-          { key: "fecha_creacion", header: "Fecha creación", width: 15, format: "datetime" },
-          { key: "realizado_por", header: "Realizado por", width: 17 },
-          { key: "fecha_realizacion", header: "Fecha realización", width: 15, format: "datetime" },
-          { key: "aprobado_por", header: "Aprobado por", width: 17 },
-          { key: "fecha_aprobacion", header: "Fecha aprobación", width: 15, format: "datetime" },
+          { key: "estado", header: "Estado", width: 17 },
+          { key: "mantenimiento", header: "Mantenimiento", width: 20 },
+          { key: "fecha_operativa", header: "Fecha operativa", width: 18, format: "date" },
         ],
       },
       ...orders.flatMap((order, index) => buildWorkOrderSectionSheets(order, index + 1)),

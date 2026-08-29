@@ -149,7 +149,27 @@
         {{ formatDecimalValue((item._raw ?? item)?.horometro_proyectado ?? (item._raw ?? item)?.valor_json?.horometro_proyectado) || "-" }}
       </template>
       <template #item.actions="{ item }">
-        <div class="d-flex" style="gap:4px">
+        <div class="d-flex align-center" style="gap:4px">
+          <v-btn
+            v-if="canAccessWorkOrderReports"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-file-excel"
+            :loading="isExportingWorkOrderRow(item._raw ?? item, 'excel')"
+            @click.stop="exportWorkOrderRow(item._raw ?? item, 'excel')"
+          >
+            Excel
+          </v-btn>
+          <v-btn
+            v-if="canAccessWorkOrderReports"
+            size="small"
+            variant="text"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="isExportingWorkOrderRow(item._raw ?? item, 'pdf')"
+            @click.stop="exportWorkOrderRow(item._raw ?? item, 'pdf')"
+          >
+            PDF
+          </v-btn>
           <v-btn
             v-if="canEdit"
             icon="mdi-pencil"
@@ -1993,6 +2013,15 @@ function isExportingListed(format: "excel" | "pdf") {
   return Boolean(exportState[exportListKey(format)]);
 }
 
+function exportWorkOrderRowKey(item: any, format: "excel" | "pdf") {
+  const id = String(item?.id || item?._raw?.id || item?.code || "unknown").trim();
+  return `work-order-row:${id}:${format}`;
+}
+
+function isExportingWorkOrderRow(item: any, format: "excel" | "pdf") {
+  return Boolean(exportState[exportWorkOrderRowKey(item, format)]);
+}
+
 function normalizeMaintenanceKindValue(value: unknown) {
   return String(value || "").trim().toUpperCase();
 }
@@ -2792,6 +2821,7 @@ const workOrderReportDefinition = computed(() =>
     return buildWorkOrderReport({
     header: {
       code: headerForm.code,
+      title: headerForm.title,
       status_workflow: workflowLabel(headerForm.status_workflow),
       equipment_label: selectedEquipmentLabel.value,
       equipment_component_label: getHeaderComponentReportLabel(),
@@ -2800,6 +2830,11 @@ const workOrderReportDefinition = computed(() =>
       emergency_reason: headerForm.is_emergency ? headerForm.emergency_reason : "",
       procedimiento: selectedProcedureLabel.value,
       plan_operativo: resolvedOperationalPlanLabel.value,
+      fecha_programacion: headerForm.fecha_programacion,
+      fecha_operativa: getWorkOrderOperationalDate(currentWorkOrderAudit.value),
+      horometro_actual: resolvedHorometroActual.value,
+      horas_a_realizar: resolvedHorasARealizar.value,
+      horometro_proyectado: resolvedHorometroProyectado.value,
       alerta: selectedAlertLabel.value,
       blocked_by: selectedBlockingOrderLabel.value,
       blocked_reason: headerForm.blocked_reason,
@@ -4079,6 +4114,7 @@ function buildWorkOrderAttachmentReportRow(attachment: any, compact = false) {
     nombre: attachment?.nombre || "",
     visualizacion: compact ? (isImage ? "Imagen adjunta" : url || "Sin enlace") : undefined,
     vista_previa: isImage ? "Imagen adjunta" : "",
+    enlace: url ? "Abrir evidencia" : "Sin enlace",
     url_visualizacion: url,
     media_url: isImage ? mediaUrl : "",
   };
@@ -5155,6 +5191,10 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
     plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
     fecha_operativa: getWorkOrderOperationalDate(item) || "",
     fecha_programacion: getWorkOrderScheduledProgramDateLabel(item),
+    horometro_actual: item?.horometro_actual ?? item?.valor_json?.horometro_actual ?? "",
+    horas_a_realizar: item?.horas_a_realizar ?? item?.valor_json?.horas_a_realizar ?? "",
+    horometro_proyectado:
+      item?.horometro_proyectado ?? item?.valor_json?.horometro_proyectado ?? "",
     creado_por: traceability.creado_por,
     fecha_creacion: traceability.fecha_creacion,
     realizado_por: traceability.realizado_por,
@@ -5309,6 +5349,69 @@ async function fetchWorkOrderExportBundle(order: any) {
       nota: item?.note || "",
     })),
   };
+}
+
+function buildSingleWorkOrderReportFromBundle(bundle: WorkOrdersListingOrder) {
+  const header = bundle.header ?? {};
+  return buildWorkOrderReport({
+    header: {
+      code: header.codigo || header.code || "",
+      title: header.titulo || header.title || "",
+      status_workflow: header.estado || "",
+      equipment_label: header.equipo || "",
+      equipment_component_label: header.compartimiento || "",
+      maintenance_kind: header.tipo_mantenimiento || "",
+      emergency_label: header.clase_orden || "",
+      emergency_reason: header.motivo_emergencia || "",
+      procedimiento: header.procedimiento || "",
+      plan_operativo: header.plan_operativo || "",
+      fecha_programacion: header.fecha_programacion || "",
+      fecha_operativa: header.fecha_operativa || "",
+      horometro_actual: header.horometro_actual ?? "",
+      horas_a_realizar: header.horas_a_realizar ?? "",
+      horometro_proyectado: header.horometro_proyectado ?? "",
+      causa: header.causa || "",
+      accion: header.accion || "",
+      prevencion: header.prevencion || "",
+      creado_por: header.creado_por || "",
+      fecha_creacion: header.fecha_creacion || "",
+      realizado_por: header.realizado_por || "",
+      fecha_realizacion: header.fecha_realizacion || "",
+      aprobado_por: header.aprobado_por || "",
+      fecha_aprobacion: header.fecha_aprobacion || "",
+    },
+    tasks: bundle.tasks,
+    attachments: bundle.attachments,
+    consumos: bundle.consumos,
+    issues: bundle.issues,
+    scraps: bundle.scraps,
+    history: bundle.history,
+  });
+}
+
+async function exportWorkOrderRow(item: any, format: "excel" | "pdf") {
+  if (!canAccessWorkOrderReports.value) {
+    ui.error("No tienes permisos para generar reportes de órdenes de trabajo.");
+    return;
+  }
+  const key = exportWorkOrderRowKey(item, format);
+  exportState[key] = true;
+  error.value = null;
+  try {
+    await ensureCatalogsLoaded();
+    const bundle = await fetchWorkOrderExportBundle(item);
+    const report = buildSingleWorkOrderReportFromBundle(bundle);
+    if (format === "excel") {
+      await downloadReportExcel(report);
+    } else {
+      await downloadReportPdf(report);
+    }
+  } catch (e: any) {
+    error.value =
+      e?.response?.data?.message || e?.message || "No se pudo generar el informe de la orden.";
+  } finally {
+    exportState[key] = false;
+  }
 }
 
 function getAppliedDateRangeLabel() {
