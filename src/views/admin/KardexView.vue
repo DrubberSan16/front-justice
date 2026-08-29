@@ -324,6 +324,12 @@
                     <strong>{{ movementDocumentDialog.document.created_by || 'SYSTEM' }}</strong>
                   </div>
                 </div>
+                <v-alert v-if="movementDocumentDialog.document.anulado" type="error" variant="tonal"
+                  density="comfortable" class="mt-4">
+                  Documento anulado por
+                  <strong>{{ movementDocumentDialog.document.anulado_por || 'SYSTEM' }}</strong> ·
+                  {{ formatDateTime(movementDocumentDialog.document.anulado_at, '-') }}
+                </v-alert>
                 <v-alert v-if="movementDocumentDialog.document.observacion" type="info" variant="tonal"
                   density="comfortable" class="mt-4">
                   {{ movementDocumentDialog.document.observacion }}
@@ -694,8 +700,13 @@ const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
 const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
-const isKardexManualMovement = computed(() =>
-  movementDocumentDialog.document?.anulable_desde_kardex === true,
+const isAnnulledMovementDocument = computed(
+  () => movementDocumentDialog.document?.anulado === true,
+);
+const isKardexManualMovement = computed(
+  () =>
+    movementDocumentDialog.document?.anulable_desde_kardex === true &&
+    !isAnnulledMovementDocument.value,
 );
 const canAnnulMovementDocument = computed(() =>
   canDelete.value &&
@@ -1158,7 +1169,17 @@ async function openMovementDocumentDetail(movement: KardexMovementRow) {
     excelLoading: false,
   });
   try {
-    const { data } = await api.get(`/kpi_inventory/kardex/documentos/${documentId}`);
+    const { data } = await api.get(
+      `/kpi_inventory/kardex/documentos/${documentId}`,
+      {
+        params: {
+          include_annulled:
+            movement?.anulado || appliedKardexFilters.include_annulled
+              ? true
+              : undefined,
+        },
+      },
+    );
     if (requestId !== movementDocumentRequestId) return;
     movementDocumentDialog.document = data?.data ?? data ?? null;
     if (!movementDocumentDialog.document) throw new Error("El documento no devolvió información.");
