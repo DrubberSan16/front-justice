@@ -356,15 +356,14 @@ async function saveHorometer(item: EquipmentControlItem) {
     state.horometerError = "Ingresa un horómetro válido mayor o igual a cero.";
     return;
   }
-  if (state.savedHorometer !== null && next < state.savedHorometer) {
-    state.horometerError = `El horómetro no puede retroceder de ${state.savedHorometer} a ${next}.`;
-    return;
-  }
   if (state.savedHorometer === next) {
     state.horometerError = null;
     state.horometerInput = formatHorometerInput(next);
     return;
   }
+
+  const previousHorometer = state.savedHorometer;
+  const isBackwardCorrection = previousHorometer !== null && next < previousHorometer;
 
   state.horometerSaving = true;
   state.horometerError = null;
@@ -380,7 +379,9 @@ async function saveHorometer(item: EquipmentControlItem) {
     state.savedHorometer = savedValue;
     state.horometerInput = formatHorometerInput(savedValue);
     state.horometerUpdatedAt = updatedAt;
-    liveMessage.value = `Horómetro de ${label} actualizado a ${savedValue}.`;
+    liveMessage.value = isBackwardCorrection
+      ? `Horómetro de ${label} corregido de ${previousHorometer} a ${savedValue}.`
+      : `Horómetro de ${label} actualizado a ${savedValue}.`;
     emit("horometer-updated", {
       id: item.id,
       horometro_actual: savedValue,
