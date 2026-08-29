@@ -65,6 +65,10 @@
       <v-col cols="12" sm="6" md="2">
         <v-text-field v-model="dateToFilter" type="date" label="Hasta" variant="outlined" density="compact" clearable />
       </v-col>
+      <v-col v-if="canSeeAnnulled" cols="12" sm="6" md="3" class="d-flex align-center">
+        <v-checkbox v-model="includeAnnulled" density="compact" hide-details color="error"
+          label="Ver órdenes anuladas" @update:model-value="applyFilters" />
+      </v-col>
       <v-col cols="12" md="2" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
         <v-btn variant="tonal" prepend-icon="mdi-filter-check" :loading="loading" @click="applyFilters">Aplicar</v-btn>
         <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveFilters" @click="clearFilters">Limpiar</v-btn>
@@ -88,8 +92,8 @@
             {{ item.estado }}
           </v-chip>
           <span v-if="isAnnulled(item)" class="text-caption text-medium-emphasis">
-            Anulada por {{ item.updated_by || "SYSTEM" }} ·
-            {{ formatDateTime(item.updated_at, "-") }}
+            Anulada por {{ item.anulado_por || item.updated_by || "SYSTEM" }} ·
+            {{ formatDateTime(item.anulado_at || item.updated_at, "-") }}
           </span>
         </div>
       </template>
@@ -431,7 +435,11 @@ import { downloadServiceOrderPdf } from "@/app/utils/service-order-documents";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
-import { canManageAdministrativeOperations } from "@/app/utils/role-access";
+import {
+  canManageAdministrativeOperations,
+  canViewAnnulledRecords,
+} from "@/app/utils/role-access";
+import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
@@ -460,6 +468,9 @@ type ServiceOrderRow = {
   servicio_realizado?: boolean;
   updated_at?: string | null;
   updated_by?: string | null;
+  anulado?: boolean;
+  anulado_por?: string | null;
+  anulado_at?: string | null;
 };
 
 const ui = useUiStore();
@@ -494,6 +505,7 @@ const search = ref("");
 const supplierFilter = ref("");
 const emitterFilter = ref("");
 const statusFilter = ref("");
+const includeAnnulled = ref(false);
 const performedFilter = ref("");
 const dateFromFilter = ref("");
 const dateToFilter = ref("");
@@ -514,12 +526,24 @@ const productsLoaded = ref(false);
 const usersLoaded = ref(false);
 const equipmentsLoaded = ref(false);
 const isRefreshingProducts = ref(false);
-const serviceStatusOptions = [
+const serviceStatusOptionsBase = [
   { title: "Emitida", value: "EMITIDA" },
   { title: "Servicio realizado", value: "SERVICIO_REALIZADO" },
   { title: "Cerrada", value: "CERRADA" },
   { title: "Anulada", value: "ANULADA" },
 ];
+// Sin permiso para ver anuladas, filtrar por ese estado devolveria una lista
+// vacia; se oculta la opcion en vez de dejarla muerta.
+const serviceStatusOptions = computed(() =>
+  canSeeAnnulled.value
+    ? serviceStatusOptionsBase
+    : serviceStatusOptionsBase.filter(
+        (option) => !isAnnulledStateValue(option.value),
+      ),
+);
+const statusFilterIsAnnulled = computed(() =>
+  isAnnulledStateValue(statusFilter.value),
+);
 const performedFilterOptions = [
   { title: "Sí", value: "true" },
   { title: "No", value: "false" },
@@ -533,8 +557,10 @@ const hasActiveFilters = computed(() =>
     performedFilter.value,
     dateFromFilter.value,
     dateToFilter.value,
-  ].some((value) => String(value || "").trim()),
+  ].some((value) => String(value || "").trim()) || includeAnnulled.value,
 );
+
+const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
 
 const form = reactive({
   codigo: "",
@@ -718,7 +744,7 @@ function orderStateColor(value: string | null | undefined) {
 }
 
 function isAnnulled(item: ServiceOrderRow) {
-  return String(item?.estado || "").trim().toUpperCase() === "ANULADA";
+  return item?.anulado === true || isAnnulledStateValue(item?.estado);
 }
 
 function detailGrandTotal(detail: OrderDetailForm) {
@@ -781,6 +807,8 @@ async function loadOrders() {
       servicio_realizado: performedFilter.value || undefined,
       desde: dateFromFilter.value || undefined,
       hasta: dateToFilter.value || undefined,
+      include_annulled:
+        includeAnnulled.value || statusFilterIsAnnulled.value ? true : undefined,
     },
     {
       page: serverPage.value,
@@ -926,6 +954,7 @@ function clearFilters() {
   performedFilter.value = "";
   dateFromFilter.value = "";
   dateToFilter.value = "";
+  includeAnnulled.value = false;
   serverPage.value = 1;
 }
 

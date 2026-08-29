@@ -50,6 +50,10 @@
       <v-col cols="12" sm="6" md="3">
         <v-text-field v-model="dateToFilter" type="date" label="Hasta" variant="outlined" density="compact" clearable />
       </v-col>
+      <v-col v-if="canSeeAnnulled" cols="12" sm="6" md="3" class="d-flex align-center">
+        <v-checkbox v-model="includeAnnulled" density="compact" hide-details color="error"
+          label="Ver órdenes anuladas" @update:model-value="applyFilters" />
+      </v-col>
       <v-col cols="12" md="3" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
         <v-btn variant="tonal" prepend-icon="mdi-filter-check" :loading="loading" @click="applyFilters">Aplicar</v-btn>
         <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveFilters"
@@ -66,8 +70,8 @@
             {{ item.estado }}
           </v-chip>
           <span v-if="isAnnulled(item)" class="text-caption text-medium-emphasis">
-            Anulada por {{ item.updated_by || "SYSTEM" }} ·
-            {{ formatDateTime(item.updated_at, "-") }}
+            Anulada por {{ item.anulado_por || item.updated_by || "SYSTEM" }} ·
+            {{ formatDateTime(item.anulado_at || item.updated_at, "-") }}
           </span>
         </div>
       </template>
@@ -287,7 +291,11 @@ import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
-import { canManageAdministrativeOperations } from "@/app/utils/role-access";
+import {
+  canManageAdministrativeOperations,
+  canViewAnnulledRecords,
+} from "@/app/utils/role-access";
+import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
@@ -316,6 +324,9 @@ type PurchaseOrderRow = {
   transferencia_codigo?: string | null;
   updated_at?: string | null;
   updated_by?: string | null;
+  anulado?: boolean;
+  anulado_por?: string | null;
+  anulado_at?: string | null;
 };
 
 const ui = useUiStore();
@@ -349,6 +360,7 @@ const search = ref("");
 const supplierFilter = ref("");
 const warehouseFilter = ref("");
 const statusFilter = ref("");
+const includeAnnulled = ref(false);
 const dateFromFilter = ref("");
 const dateToFilter = ref("");
 const serverPage = ref(1);
@@ -365,11 +377,23 @@ const deletingOrder = ref<PurchaseOrderRow | null>(null);
 const suppliersLoaded = ref(false);
 const productsLoaded = ref(false);
 const warehousesLoaded = ref(false);
-const purchaseStatusOptions = [
+const purchaseStatusOptionsBase = [
   { title: "Emitida", value: "EMITIDA" },
   { title: "Transferida", value: "TRANSFERIDA" },
   { title: "Anulada", value: "ANULADA" },
 ];
+// Sin permiso para ver anuladas, filtrar por ese estado devolveria una lista
+// vacia; se oculta la opcion en vez de dejarla muerta.
+const purchaseStatusOptions = computed(() =>
+  canSeeAnnulled.value
+    ? purchaseStatusOptionsBase
+    : purchaseStatusOptionsBase.filter(
+        (option) => !isAnnulledStateValue(option.value),
+      ),
+);
+const statusFilterIsAnnulled = computed(() =>
+  isAnnulledStateValue(statusFilter.value),
+);
 const hasActiveFilters = computed(() =>
   [
     search.value,
@@ -378,8 +402,10 @@ const hasActiveFilters = computed(() =>
     statusFilter.value,
     dateFromFilter.value,
     dateToFilter.value,
-  ].some((value) => String(value || "").trim()),
+  ].some((value) => String(value || "").trim()) || includeAnnulled.value,
 );
+
+const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
 
 const form = reactive({
   codigo: "",
@@ -674,6 +700,8 @@ async function loadOrders() {
       estado: statusFilter.value || undefined,
       desde: dateFromFilter.value || undefined,
       hasta: dateToFilter.value || undefined,
+      include_annulled:
+        includeAnnulled.value || statusFilterIsAnnulled.value ? true : undefined,
     },
     {
       page: serverPage.value,
@@ -765,7 +793,7 @@ function scheduleServerFetch() {
 }
 
 function isAnnulled(item: PurchaseOrderRow) {
-  return String(item?.estado || "").trim().toUpperCase() === "ANULADA";
+  return item?.anulado === true || isAnnulledStateValue(item?.estado);
 }
 
 function applyFilters() {
@@ -780,6 +808,7 @@ function clearFilters() {
   statusFilter.value = "";
   dateFromFilter.value = "";
   dateToFilter.value = "";
+  includeAnnulled.value = false;
   serverPage.value = 1;
 }
 

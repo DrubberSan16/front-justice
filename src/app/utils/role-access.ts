@@ -29,6 +29,11 @@ export function isAdministrator(user: AuthUser): boolean {
   return ["ADMINISTRADOR", "ADMINISTRADOR DEL SISTEMA", "ADMIN"].includes(roleName);
 }
 
+/** Solo Administrador y Super Administrador pueden ver los movimientos anulados. */
+export function canViewAnnulledRecords(user: AuthUser): boolean {
+  return isAdministrator(user) || isSuperAdministrator(user);
+}
+
 export function isGeneralManager(user: AuthUser): boolean {
   return getRoleName(user) === "GERENTE GENERAL";
 }

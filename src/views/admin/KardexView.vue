@@ -55,6 +55,9 @@
             <v-col cols="12" sm="6" md="3"><v-select v-model="inventoryGroupBy" :items="inventoryGroupingOptions"
                 item-title="title" item-value="value" label="Agrupar exportación" variant="outlined"
                 hide-details /></v-col>
+            <v-col v-if="canSeeAnnulled" cols="12" sm="6" md="3" class="d-flex align-center">
+              <v-checkbox v-model="kardexFilters.include_annulled" density="compact" hide-details color="error"
+                label="Ver movimientos anulados" @update:model-value="applyKardexFilters" /></v-col>
             <v-col cols="12" class="d-flex justify-end" style="gap: 8px; flex-wrap: wrap;">
               <v-btn color="primary" variant="tonal" prepend-icon="mdi-filter-outline" :loading="loadingKardex"
                 @click="applyKardexFilters">Aplicar filtros</v-btn>
@@ -130,6 +133,7 @@
                         <th>Bodega</th>
                         <th>Tipo</th>
                         <th>Usuario</th>
+                        <th>Estado</th>
                         <th class="text-right">Entrada</th>
                         <th class="text-right">Salida</th>
                         <th class="text-right">Stock</th>
@@ -154,6 +158,16 @@
                         <td>{{ movement.bodega || '-' }}</td>
                         <td>{{ movement.tipo_movimiento || '-' }}</td>
                         <td>{{ movement.usuario_responsable || 'SYSTEM' }}</td>
+                        <td>
+                          <template v-if="movement.anulado">
+                            <v-chip size="x-small" variant="tonal" color="error">Anulado</v-chip>
+                            <div class="text-caption text-medium-emphasis">
+                              {{ movement.anulado_por || 'SYSTEM' }} ·
+                              {{ formatDateTime(movement.anulado_at, '-') }}
+                            </div>
+                          </template>
+                          <span v-else class="text-medium-emphasis">Vigente</span>
+                        </td>
                         <td class="text-right text-success font-weight-medium">{{ movement.entrada ?
                           formatNumberForDisplay(movement.entrada) : '' }}</td>
                         <td class="text-right text-error font-weight-medium">{{ movement.salida ?
@@ -600,12 +614,13 @@ import {
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { canViewAnnulledRecords } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type MovementType = "INGRESO" | "SALIDA";
 type StockCondition = "NUEVO" | "USADO" | "CRITICO";
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_nuevo?: string | number; stock_usado?: string | number; stock_disponible?: string | number; stock_critico?: string | number; cantidad_reservada_activa?: string | number; es_usado?: boolean; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
-type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; };
+type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; anulado?: boolean; anulado_por?: string | null; anulado_at?: string | null; };
 type MovementDetailForm = { localId: string; productoId: string; condicionMaterial: StockCondition; cantidad: string; observacion: string; };
 type KardexFilterState = {
   desde: string;
@@ -616,6 +631,7 @@ type KardexFilterState = {
   linea_id: string;
   categoria_id: string;
   tipo_movimiento?: string;
+  include_annulled?: boolean;
 };
 
 const ui = useUiStore();
@@ -677,6 +693,7 @@ const perms = computed(() => getPermissionsForAnyComponent(menuStore.tree, ["Kar
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
+const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
 const isKardexManualMovement = computed(() =>
   movementDocumentDialog.document?.anulable_desde_kardex === true,
 );
@@ -699,6 +716,7 @@ const kardexFilters = reactive<KardexFilterState>({
   linea_id: "",
   categoria_id: "",
   tipo_movimiento: "",
+  include_annulled: false,
 });
 const appliedKardexFilters = reactive<KardexFilterState>({ ...kardexFilters });
 const kardexTotals = reactive({ materiales: 0, movimientos: 0, entradas: 0, salidas: 0 });
@@ -737,6 +755,7 @@ const hasActiveKardexFilters = computed(() =>
     kardexFilters.linea_id ||
     kardexFilters.categoria_id ||
     kardexFilters.tipo_movimiento ||
+    kardexFilters.include_annulled ||
     kardexFilters.desde !== defaultKardexDateFrom ||
     kardexFilters.hasta !== defaultKardexDateTo,
   ),
@@ -958,6 +977,7 @@ function buildKardexRequestParams(filters: KardexFilterState) {
     linea_id: filters.linea_id || undefined,
     categoria_id: filters.categoria_id || undefined,
     tipo_movimiento: filters.tipo_movimiento || undefined,
+    include_annulled: filters.include_annulled ? true : undefined,
   };
 }
 async function loadMaterialDetail(productoId: string, force = false) { const normalizedId = String(productoId || "").trim(); if (!normalizedId || materialDetailLoading[normalizedId] || (materialDetailLoaded[normalizedId] && !force)) return; materialDetailLoading[normalizedId] = true; materialDetailErrors[normalizedId] = ""; try { const { data } = await api.get(`/kpi_inventory/kardex/resumen-material/${normalizedId}/detalle`, { params: buildKardexRequestParams(appliedKardexFilters) }); const payload = data?.data ?? data ?? {}; materialMovements[normalizedId] = Array.isArray(payload.movements) ? payload.movements : []; materialDetailLoaded[normalizedId] = true; } catch (error: any) { materialMovements[normalizedId] = []; materialDetailErrors[normalizedId] = error?.response?.data?.message || error?.message || "No se pudo cargar el detalle del material."; } finally { materialDetailLoading[normalizedId] = false; } }
@@ -1015,6 +1035,9 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
           bodega: movement.bodega || "",
           tipo_movimiento: movement.tipo_movimiento || (Number(movement.entrada || 0) > 0 ? "INGRESO" : "SALIDA"),
           usuario_responsable: movement.usuario_responsable || "SYSTEM",
+          estado_registro: movement.anulado
+            ? `ANULADO por ${movement.anulado_por || "SYSTEM"}`
+            : "VIGENTE",
           entrada: Number(movement.entrada || 0),
           salida: Number(movement.salida || 0),
           stock: Number(movement.stock || 0),
@@ -1042,6 +1065,7 @@ function buildKardexFilterDescription(filters: KardexFilterState) {
   if (filters.linea_id) labels.push(`Linea: ${lineFilterOptions.value.find((item) => item.value === filters.linea_id)?.title || filters.linea_id}`);
   if (filters.categoria_id) labels.push(`Categoria: ${categoryFilterOptions.value.find((item) => item.value === filters.categoria_id)?.title || filters.categoria_id}`);
   if (filters.tipo_movimiento) labels.push(`Tipo: ${filters.tipo_movimiento === 'INGRESO' ? 'Ingreso' : filters.tipo_movimiento === 'SALIDA' ? 'Egreso' : filters.tipo_movimiento}`);
+  if (filters.include_annulled) labels.push("Incluye movimientos anulados");
   return labels.join(" | ");
 }
 function formatDocumentCurrency(value: unknown) {
@@ -1260,6 +1284,7 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
           salida: Number(movement.salida || 0),
           stock: Number(movement.stock || 0),
           usuario_responsable: movement.usuario_responsable || "SYSTEM",
+          estado_registro: movement.estado_registro || "VIGENTE",
         })),
         columns: [
           { key: "fecha_emision", header: "Fecha emisión", width: 15, format: "datetime" },
@@ -1272,6 +1297,7 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
           { key: "salida", header: "Salida", width: 10, format: "number" },
           { key: "stock", header: "Stock", width: 10, format: "number" },
           { key: "usuario_responsable", header: "Usuario responsable", width: 16 },
+          { key: "estado_registro", header: "Estado", width: 24 },
         ],
       },
     ],
@@ -1444,6 +1470,7 @@ function clearKardexFilters() {
   kardexFilters.linea_id = "";
   kardexFilters.categoria_id = "";
   kardexFilters.tipo_movimiento = "";
+  kardexFilters.include_annulled = false;
   kardexFilters.desde = defaultKardexDateFrom;
   kardexFilters.hasta = defaultKardexDateTo;
   applyKardexFilters();

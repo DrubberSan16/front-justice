@@ -62,6 +62,10 @@
       <v-col cols="12" sm="6" md="3">
         <v-text-field v-model="transferDateToFilter" type="date" label="Hasta" variant="outlined" density="compact" clearable />
       </v-col>
+      <v-col v-if="canSeeAnnulledTransfers" cols="12" sm="6" md="3" class="d-flex align-center">
+        <v-checkbox v-model="includeAnnulledTransfers" density="compact" hide-details color="error"
+          label="Ver transferencias anuladas" @update:model-value="applyTransferFilters" />
+      </v-col>
       <v-col cols="12" md="3" class="d-flex align-center justify-end" style="gap: 8px; flex-wrap: wrap;">
         <v-btn variant="tonal" prepend-icon="mdi-filter-check" :loading="loading" @click="applyTransferFilters">Aplicar</v-btn>
         <v-btn variant="text" prepend-icon="mdi-filter-off" :disabled="!hasActiveTransferFilters" @click="clearTransferFilters">Limpiar</v-btn>
@@ -95,8 +99,8 @@
             {{ item.estado || "COMPLETADA" }}
           </v-chip>
           <span v-if="isAnnulledTransfer(item)" class="text-caption text-medium-emphasis">
-            Anulada por {{ item.updated_by || "SYSTEM" }} ·
-            {{ formatDateTime(item.updated_at, "-") }}
+            Anulada por {{ item.anulado_por || item.updated_by || "SYSTEM" }} ·
+            {{ formatDateTime(item.anulado_at || item.updated_at, "-") }}
           </span>
         </div>
       </template>
@@ -1055,9 +1059,11 @@ import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { downloadWarehouseTransferPdf } from "@/app/utils/warehouse-transfer-documents";
 import {
   canManageAdministrativeOperations,
+  canViewAnnulledRecords,
   isAdministrator,
   isSuperAdministrator,
 } from "@/app/utils/role-access";
+import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
@@ -1148,6 +1154,9 @@ type TransferRow = TransferGuideSummary & {
   updated_at?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
+  anulado?: boolean;
+  anulado_por?: string | null;
+  anulado_at?: string | null;
   detalles?: TransferDetailRow[];
 };
 
@@ -1360,6 +1369,7 @@ const transferSearch = ref("");
 const sourceWarehouseFilter = ref("");
 const destinationWarehouseFilter = ref("");
 const transferStatusFilter = ref("");
+const includeAnnulledTransfers = ref(false);
 const transferDateFromFilter = ref("");
 const transferDateToFilter = ref("");
 const transfers = ref<TransferRow[]>([]);
@@ -1374,10 +1384,22 @@ const productsLoaded = ref(false);
 const pendingOrdersLoaded = ref(false);
 const stockRowsLoaded = ref(false);
 const stockRowsLoading = ref(false);
-const transferStatusOptions = [
+const transferStatusOptionsBase = [
   { title: "Completada", value: "COMPLETADA" },
   { title: "Anulada", value: "ANULADA" },
 ];
+// Sin permiso para ver anuladas, filtrar por ese estado devolveria una lista
+// vacia; se oculta la opcion en vez de dejarla muerta.
+const transferStatusOptions = computed(() =>
+  canSeeAnnulledTransfers.value
+    ? transferStatusOptionsBase
+    : transferStatusOptionsBase.filter(
+        (option) => !isAnnulledStateValue(option.value),
+      ),
+);
+const transferStatusFilterIsAnnulled = computed(() =>
+  isAnnulledStateValue(transferStatusFilter.value),
+);
 const hasActiveTransferFilters = computed(() =>
   [
     transferSearch.value,
@@ -1386,7 +1408,11 @@ const hasActiveTransferFilters = computed(() =>
     transferStatusFilter.value,
     transferDateFromFilter.value,
     transferDateToFilter.value,
-  ].some((value) => String(value || "").trim()),
+  ].some((value) => String(value || "").trim()) ||
+  includeAnnulledTransfers.value,
+);
+const canSeeAnnulledTransfers = computed(() =>
+  canViewAnnulledRecords(auth.user),
 );
 const selectedTransfer = ref<TransferRow | null>(null);
 const sriCertificateFile = ref<File | null>(null);
@@ -3018,7 +3044,8 @@ async function handleGuideStatusSocketUpdate(payload: {
 }
 
 function isAnnulledTransfer(item: TransferRow) {
-  return String(item?.estado || "").trim().toUpperCase() === "ANULADA";
+  if (item?.anulado === true) return true;
+  return isAnnulledStateValue(item?.estado);
 }
 
 function transferStateColor(state?: string | null) {
@@ -3056,6 +3083,10 @@ async function loadTransfers() {
       estado: transferStatusFilter.value || undefined,
       desde: transferDateFromFilter.value || undefined,
       hasta: transferDateToFilter.value || undefined,
+      include_annulled:
+        includeAnnulledTransfers.value || transferStatusFilterIsAnnulled.value
+          ? true
+          : undefined,
     },
     {
       page: serverPage.value,
@@ -3606,6 +3637,7 @@ function clearTransferFilters() {
   transferStatusFilter.value = "";
   transferDateFromFilter.value = "";
   transferDateToFilter.value = "";
+  includeAnnulledTransfers.value = false;
   serverPage.value = 1;
   void hydrateView();
 }
