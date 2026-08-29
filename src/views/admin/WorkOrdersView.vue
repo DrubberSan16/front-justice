@@ -442,10 +442,13 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field
-              :model-value="resolvedHorometroActualLabel"
+              v-model="headerForm.horometro_actual"
               label="Horometro actual"
+              type="number"
+              min="0"
+              step="0.01"
               variant="outlined"
-              readonly
+              :disabled="isReadOnlyWorkflow"
               :hint="selectedEquipmentHorometroHint"
               persistent-hint
             />
@@ -4820,17 +4823,11 @@ const resolvedHorasARealizar = computed(() => {
 });
 
 const resolvedHorometroActual = computed(() => {
-  const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
-  if (fromEquipment != null) return Number(fromEquipment.toFixed(2));
   const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
-  return persistedSnapshot != null ? Number(persistedSnapshot.toFixed(2)) : null;
+  if (persistedSnapshot != null) return Number(persistedSnapshot.toFixed(2));
+  const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
+  return fromEquipment != null ? Number(fromEquipment.toFixed(2)) : null;
 });
-
-const resolvedHorometroActualLabel = computed(() =>
-  resolvedHorometroActual.value != null
-    ? formatDecimalValue(resolvedHorometroActual.value)
-    : "Sin lectura manual",
-);
 
 const resolvedHorometroProyectado = computed(() => {
   const current = resolvedHorometroActual.value;
@@ -4857,9 +4854,9 @@ const resolvedHorometroProyectadoLabel = computed(() =>
 const selectedEquipmentHorometroHint = computed(() => {
   const equipmentHorometro = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
   if (equipmentHorometro != null) {
-    return `Lectura manual vigente del equipo: ${formatDecimalValue(equipmentHorometro)}`;
+    return `Lectura vigente del equipo: ${formatDecimalValue(equipmentHorometro)}. El valor guardado en la OT actualizará también el equipo.`;
   }
-  return "Actualiza primero el horometro desde el modulo Equipos.";
+  return "Ingresa el horometro de la OT; al guardar se actualizará también el equipo.";
 });
 
 const requiresHorometroCapture = computed(() =>
@@ -4867,10 +4864,18 @@ const requiresHorometroCapture = computed(() =>
   || parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
 );
 
-function syncWorkOrderHorometerFields(_options?: { preserveCurrent?: boolean }) {
+function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
   const procedureHours = parseNullableNumber(selectedProcedure.value?.frecuencia_horas);
+  const persistedHorometer = options?.preserveCurrent
+    ? parseNullableNumber(headerForm.horometro_actual)
+    : null;
+  const equipmentHorometer = parseNullableNumber(
+    selectedEquipmentRecord.value?.horometro_actual,
+  );
   headerForm.horas_a_realizar = toEditableNumber(procedureHours);
-  headerForm.horometro_actual = toEditableNumber(selectedEquipmentRecord.value?.horometro_actual);
+  headerForm.horometro_actual = toEditableNumber(
+    persistedHorometer ?? equipmentHorometer,
+  );
   headerForm.horometro_proyectado = toEditableNumber(resolvedHorometroProyectado.value);
 }
 
@@ -5853,6 +5858,10 @@ async function saveHeader(
     ui.error("Debes ingresar el horometro actual para calcular la OT.");
     return false;
   }
+  if (resolvedHorometroActual.value != null && resolvedHorometroActual.value < 0) {
+    ui.error("El horometro actual no puede ser negativo.");
+    return false;
+  }
   if (isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
@@ -6024,6 +6033,10 @@ async function saveAll() {
     }
     if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
       ui.error("Debes ingresar el horometro actual para calcular la OT.");
+      return;
+    }
+    if (resolvedHorometroActual.value != null && resolvedHorometroActual.value < 0) {
+      ui.error("El horometro actual no puede ser negativo.");
       return;
     }
     if (!validateRequiredWorkOrderOutcomeFields()) {
@@ -6792,13 +6805,6 @@ watch(
       taskForm.tarea_id = "";
     }
     await loadTaskOptionsByPlan(nextPlan);
-  },
-);
-
-watch(
-  () => headerForm.horometro_actual,
-  () => {
-    syncWorkOrderHorometerFields({ preserveCurrent: true });
   },
 );
 
