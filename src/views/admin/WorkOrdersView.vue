@@ -472,6 +472,16 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-text-field
+              :model-value="resolvedHorasARealizarLabel"
+              label="Horas a realizar (horas-hombre)"
+              variant="outlined"
+              readonly
+              hint="Horas de trabajo humano definidas por la plantilla; no modifican el horómetro del equipo."
+              persistent-hint
+            />
+          </v-col>
+          <v-col cols="12" md="4">
+            <v-text-field
               :model-value="selectedAlertLabel"
               label="Alerta relacionada"
               variant="outlined"
@@ -1179,7 +1189,7 @@
                 <div>
                   <div class="text-subtitle-2">Cronologia de horometro</div>
                   <div class="text-body-2 text-medium-emphasis">
-                    Seguimiento del horometro actual y proyectado registrado en esta orden.
+                    Seguimiento del horometro actual y del valor anterior registrado en esta orden.
                   </div>
                 </div>
                 <v-chip size="small" color="primary" variant="tonal">
@@ -1870,6 +1880,7 @@ const headerForm = reactive<any>({
   accion: "",
   prevencion: "",
   horometro_actual: "",
+  horas_a_realizar: "",
   close_shortfall_reason: "",
 });
 
@@ -2465,6 +2476,16 @@ function formatDecimalValue(value: unknown) {
   }).format(numeric);
 }
 
+function formatHoursDurationLabel(value: unknown) {
+  const numeric = parseNullableNumber(value);
+  if (numeric == null || numeric < 0) return "Sin horas configuradas";
+  const totalMinutes = Math.round(numeric * 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (!minutes) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
+
 const attachmentHeaders = [
   { title: "ID", key: "id" },
   { title: "Tipo", key: "tipo" },
@@ -2799,6 +2820,7 @@ const workOrderReportDefinition = computed(() =>
       fecha_programacion: headerForm.fecha_programacion,
       fecha_operativa: getWorkOrderOperationalDate(currentWorkOrderAudit.value),
       horometro_actual: resolvedHorometroActual.value,
+      horas_a_realizar: resolvedHorasARealizar.value,
       alerta: selectedAlertLabel.value,
       blocked_by: selectedBlockingOrderLabel.value,
       blocked_reason: headerForm.blocked_reason,
@@ -4531,6 +4553,7 @@ function buildWorkOrderSaveBundlePayload() {
         accion: headerForm.accion || "",
         prevencion: headerForm.prevencion || "",
         horometro_actual: resolvedHorometroActual.value,
+        horas_a_realizar: resolvedHorasARealizar.value,
         observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
         ...buildProgramacionDatePayload(),
       },
@@ -4617,6 +4640,11 @@ function applySavedWorkOrderState(savedHeader: any) {
   headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
   headerForm.horometro_actual = toEditableNumber(
     savedHeader?.horometro_actual ?? savedValorJson?.horometro_actual,
+  );
+  headerForm.horas_a_realizar = toEditableNumber(
+    savedHeader?.horas_a_realizar ??
+      savedValorJson?.horas_a_realizar ??
+      savedValorJson?.horas_plantilla,
   );
   headerForm.fecha_programacion = toEditableDateOnly(
     savedValorJson?.fecha_programacion ?? savedHeader?.linked_programacion_fecha,
@@ -4807,12 +4835,25 @@ const selectedEquipmentRecord = computed(
     ) ?? null,
 );
 
+const resolvedHorasARealizar = computed(() => {
+  const explicit = parseNullableNumber(headerForm.horas_a_realizar);
+  if (explicit != null) return Number(explicit.toFixed(2));
+  const fromProcedure = parseNullableNumber(selectedProcedure.value?.frecuencia_horas);
+  return fromProcedure != null ? Number(fromProcedure.toFixed(2)) : null;
+});
+
 const resolvedHorometroActual = computed(() => {
   const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
   if (persistedSnapshot != null) return Number(persistedSnapshot.toFixed(2));
   const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
   return fromEquipment != null ? Number(fromEquipment.toFixed(2)) : null;
 });
+
+const resolvedHorasARealizarLabel = computed(() =>
+  resolvedHorasARealizar.value != null
+    ? formatHoursDurationLabel(resolvedHorasARealizar.value)
+    : "Sin horas configuradas",
+);
 
 const selectedEquipmentHorometroHint = computed(() => {
   const equipmentHorometro = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
@@ -4827,6 +4868,10 @@ const requiresHorometroCapture = computed(() =>
 );
 
 function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
+  const persistedHours = options?.preserveCurrent && editingId.value
+    ? parseNullableNumber(headerForm.horas_a_realizar)
+    : null;
+  const procedureHours = parseNullableNumber(selectedProcedure.value?.frecuencia_horas);
   const persistedHorometer = options?.preserveCurrent
     ? parseNullableNumber(headerForm.horometro_actual)
     : null;
@@ -4836,6 +4881,7 @@ function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
   headerForm.horometro_actual = toEditableNumber(
     persistedHorometer ?? equipmentHorometer,
   );
+  headerForm.horas_a_realizar = toEditableNumber(persistedHours ?? procedureHours);
 }
 
 const selectedProcedureLabel = computed(
@@ -5115,6 +5161,11 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
     fecha_operativa: getWorkOrderOperationalDate(item) || "",
     fecha_programacion: getWorkOrderScheduledProgramDateLabel(item),
     horometro_actual: item?.horometro_actual ?? item?.valor_json?.horometro_actual ?? "",
+    horas_a_realizar:
+      item?.horas_a_realizar ??
+      item?.valor_json?.horas_a_realizar ??
+      item?.valor_json?.horas_plantilla ??
+      "",
     creado_por: traceability.creado_por,
     fecha_creacion: traceability.fecha_creacion,
     realizado_por: traceability.realizado_por,
@@ -5288,6 +5339,7 @@ function buildSingleWorkOrderReportFromBundle(bundle: WorkOrdersListingOrder) {
       fecha_programacion: header.fecha_programacion || "",
       fecha_operativa: header.fecha_operativa || "",
       horometro_actual: header.horometro_actual ?? "",
+      horas_a_realizar: header.horas_a_realizar ?? "",
       causa: header.causa || "",
       accion: header.accion || "",
       prevencion: header.prevencion || "",
@@ -5593,6 +5645,7 @@ function resetAllForms() {
   headerForm.accion = "";
   headerForm.prevencion = "";
   headerForm.horometro_actual = "";
+  headerForm.horas_a_realizar = "";
 
   taskForm.plan_id = "";
   taskForm.tarea_id = "";
@@ -5684,6 +5737,11 @@ async function openEdit(item: any) {
     headerValorJson?.observacion_menor_uso_reserva ?? "";
   headerForm.horometro_actual = toEditableNumber(
     item?.horometro_actual ?? headerValorJson?.horometro_actual,
+  );
+  headerForm.horas_a_realizar = toEditableNumber(
+    item?.horas_a_realizar ??
+      headerValorJson?.horas_a_realizar ??
+      headerValorJson?.horas_plantilla,
   );
   dialog.value = true;
   await ensureCatalogsLoaded();
@@ -5905,6 +5963,7 @@ async function saveHeader(
       accion: headerForm.accion || "",
       prevencion: headerForm.prevencion || "",
       horometro_actual: resolvedHorometroActual.value,
+      horas_a_realizar: resolvedHorasARealizar.value,
       observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
       ...buildWorkOrderAuditPayload(false),
@@ -5988,6 +6047,7 @@ function buildWorkOrderHeaderComparableState() {
       accion: headerForm.accion || "",
       prevencion: headerForm.prevencion || "",
       horometro_actual: resolvedHorometroActual.value,
+      horas_a_realizar: resolvedHorasARealizar.value,
       observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
     },

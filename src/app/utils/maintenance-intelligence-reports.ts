@@ -1856,6 +1856,7 @@ export function buildWorkOrderReport(payload: {
       fecha_programacion: header.fecha_programacion || "",
       fecha_operativa: header.fecha_operativa || "",
       horometro_actual: header.horometro_actual ?? "",
+      horas_a_realizar: header.horas_a_realizar ?? "",
       alerta: header.alerta || "",
       causa: header.causa || "",
       accion: header.accion || "",
@@ -1977,6 +1978,13 @@ function buildWorkOrderSectionSheets(
     { label: "Mantenimiento", value: header.tipo_mantenimiento || "-" },
     { label: "Clase", value: header.clase_orden || "-" },
     { label: "Horómetro OT", value: formatHorometer() },
+    {
+      label: "Horas de trabajo",
+      value:
+        header.horas_a_realizar !== "" && header.horas_a_realizar != null
+          ? `${formatValue(header.horas_a_realizar)} horas-hombre`
+          : "-",
+    },
     {
       label: "Fecha operativa",
       value: header.fecha_programacion || header.fecha_operativa || "-",
