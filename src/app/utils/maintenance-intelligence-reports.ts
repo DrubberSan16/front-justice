@@ -1856,8 +1856,6 @@ export function buildWorkOrderReport(payload: {
       fecha_programacion: header.fecha_programacion || "",
       fecha_operativa: header.fecha_operativa || "",
       horometro_actual: header.horometro_actual ?? "",
-      horas_a_realizar: header.horas_a_realizar ?? "",
-      horometro_proyectado: header.horometro_proyectado ?? "",
       alerta: header.alerta || "",
       causa: header.causa || "",
       accion: header.accion || "",
@@ -1964,20 +1962,10 @@ function buildWorkOrderSectionSheets(
   const title = String(header.titulo || header.title || "").trim();
   const formatActor = (user: unknown, date: unknown) =>
     [String(user || "").trim(), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
-  const formatHorometer = () => {
-    const values = [
-      header.horometro_actual !== "" && header.horometro_actual != null
-        ? `Inicial: ${formatValue(header.horometro_actual)} h`
-        : "",
-      header.horas_a_realizar !== "" && header.horas_a_realizar != null
-        ? `Trabajo: ${formatValue(header.horas_a_realizar)} h`
-        : "",
-      header.horometro_proyectado !== "" && header.horometro_proyectado != null
-        ? `Final: ${formatValue(header.horometro_proyectado)} h`
-        : "",
-    ].filter(Boolean);
-    return values.join(" · ") || "-";
-  };
+  const formatHorometer = () =>
+    header.horometro_actual !== "" && header.horometro_actual != null
+      ? `${formatValue(header.horometro_actual)} h`
+      : "-";
   const info: ReportSummaryItem[] = [
     { label: "Orden", value: [code, title && title !== code ? title : ""].filter(Boolean).join(" - ") || "-" },
     { label: "Estado", value: header.estado || "-" },
