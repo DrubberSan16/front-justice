@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 import { io, type Socket } from "socket.io-client";
 import { api } from "@/app/http/api";
 import { env } from "@/app/config/env";
+import { useAuthStore } from "@/app/stores/auth.store";
 
 type NotificationItem = {
   id: string;
@@ -96,11 +97,14 @@ export const useNotificationsStore = defineStore("notifications", () => {
   function connect(recipient?: string | string[] | null) {
     const recipientFilter = normalizeRecipientFilter(recipient);
     disconnect();
+    const auth = useAuthStore();
+    if (!auth.accessToken) return;
     const origin = resolveSocketOrigin();
     socket = io(`${origin}/notifications`, {
       path: "/kpi_notification/socket.io",
       transports: ["websocket", "polling"],
       withCredentials: true,
+      auth: { token: auth.accessToken },
       query: recipientFilter ? { recipient: recipientFilter } : {},
     });
     socket.on("connect", () => {

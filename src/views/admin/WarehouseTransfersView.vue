@@ -3061,6 +3061,7 @@ function connectGuideStatusSocket() {
     path: "/kpi_inventory/socket.io",
     transports: ["websocket", "polling"],
     withCredentials: true,
+    auth: { token: auth.accessToken },
   });
   guideStatusSocket.on("guide-status:update", (payload) => {
     void handleGuideStatusSocketUpdate(payload as any);
