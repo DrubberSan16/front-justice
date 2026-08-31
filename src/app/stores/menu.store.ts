@@ -1,7 +1,11 @@
 import { defineStore } from "pinia";
 import type { MenuNode } from "@/app/types/menu.types";
 import { useAuthStore } from "@/app/stores/auth.store";
-import { canAccessDigitalTwins, isSuperAdministrator } from "@/app/utils/role-access";
+import {
+  canAccessDigitalTwins,
+  isGeneralManager,
+  isSuperAdministrator,
+} from "@/app/utils/role-access";
 import { cachedGet, DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 
 type MenuState = {
@@ -97,7 +101,27 @@ export const useMenuStore = defineStore("menu", {
             .filter((node): node is MenuNode => Boolean(node));
 
         const normalizedTree = sortTree((data ?? []).map((node) => normalizeNode(node)));
-        this.tree = filterTreeByPermissions(normalizedTree);
+        const visibleTree = filterTreeByPermissions(normalizedTree);
+        const canAccessDetailedReport =
+          isGeneralManager(auth.user) || isSuperAdministrator(auth.user);
+        const hasDetailedReport = visibleTree.some(
+          (node) => String(node.urlComponent || "").trim() === "reporte-detallado",
+        );
+        if (canAccessDetailedReport && !hasDetailedReport) {
+          visibleTree.push({
+            id: "system-reporte-detallado",
+            parentId: null,
+            nombre: "Reporte detallado",
+            descripcion: "Órdenes, aceite e inventario",
+            icon: "mdi-chart-box-outline",
+            urlComponent: "reporte-detallado",
+            menuPosition: "2",
+            status: "ACTIVE",
+            permissions: fullPermissions,
+            children: [],
+          });
+        }
+        this.tree = sortTree(visibleTree);
         this.loadedForUserId = userId;
       } finally {
         this.loading = false;

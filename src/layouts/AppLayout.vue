@@ -3,46 +3,63 @@
     <v-navigation-drawer
       v-model="drawer"
       :temporary="isMobile"
-      :width="304"
+      :rail="!isMobile && rail"
+      :width="320"
+      :rail-width="84"
       elevation="0"
       class="app-drawer"
     >
-      <div class="app-drawer__header">
-        <div class="app-drawer__brand">
-          <v-avatar size="48" rounded="xl" class="app-drawer__brand-mark">
+      <header class="app-drawer__header">
+        <div class="app-brand">
+          <v-avatar size="48" rounded="xl" class="app-brand__mark">
             <v-img :src="logo" alt="KPI Justice" cover />
           </v-avatar>
-          <div>
-            <div class="app-drawer__title">KPI Justice</div>
-            <div class="app-drawer__subtitle">{{ userDisplay }}</div>
+          <div v-if="!rail || isMobile" class="app-brand__copy">
+            <strong>KPI Justice</strong>
+            <span>Centro de operaciones</span>
           </div>
         </div>
+        <v-btn
+          v-if="!isMobile"
+          :icon="rail ? 'mdi-chevron-right' : 'mdi-chevron-left'"
+          size="small"
+          variant="text"
+          class="app-drawer__collapse"
+          :aria-label="rail ? 'Expandir menú' : 'Contraer menú'"
+          @click="rail = !rail"
+        />
+      </header>
 
-        <v-sheet class="app-drawer__status" rounded="xl">
-          <div class="app-drawer__status-label">Cuenta activa</div>
-          <div class="app-drawer__status-value">{{ userEmail }}</div>
-        </v-sheet>
+      <div v-if="!rail || isMobile" class="app-drawer__context">
+        <v-icon icon="mdi-office-building-cog-outline" size="18" />
+        <div><span>Panel empresarial</span><strong>{{ pageTitle }}</strong></div>
       </div>
 
-      <v-divider class="mb-2" />
-
-      <SidebarMenu />
+      <SidebarMenu :collapsed="rail && !isMobile" />
 
       <template #append>
-        <v-divider />
-        <div class="app-drawer__footer">
-          <v-btn block variant="tonal" color="error" rounded="xl" @click="onLogout">
-            Salir
-          </v-btn>
+        <div class="app-account" :class="{ 'app-account--compact': rail && !isMobile }">
+          <v-avatar color="primary" variant="tonal" size="42">{{ userInitials }}</v-avatar>
+          <div v-if="!rail || isMobile" class="app-account__copy">
+            <strong>{{ userDisplay }}</strong>
+            <span>{{ userEmail }}</span>
+          </div>
+          <v-btn icon="mdi-logout" variant="text" size="small" color="error" aria-label="Cerrar sesión" @click="onLogout" />
         </div>
       </template>
     </v-navigation-drawer>
 
-    <v-app-bar elevation="0" border class="app-topbar">
-      <v-app-bar-nav-icon @click="drawer = !drawer" />
+    <v-app-bar elevation="0" class="app-topbar">
+      <v-btn
+        :icon="isMobile ? 'mdi-menu' : rail ? 'mdi-menu-open' : 'mdi-menu'"
+        variant="text"
+        class="app-topbar__menu"
+        aria-label="Abrir o cerrar navegación"
+        @click="toggleNavigation"
+      />
 
       <div class="app-topbar__heading">
-        <div class="app-topbar__eyebrow">Panel operativo</div>
+        <div class="app-topbar__eyebrow">KPI Justice</div>
         <v-app-bar-title>{{ pageTitle }}</v-app-bar-title>
       </div>
 
@@ -60,20 +77,9 @@
       </div>
 
       <v-spacer />
-
       <div class="app-topbar__actions">
         <ThemeToggle :compact="isMobile" />
         <NotificationBell />
-        <v-chip
-          v-if="!isMobile"
-          class="app-topbar__chip"
-          color="primary"
-          variant="tonal"
-          rounded="xl"
-          prepend-icon="mdi-account-circle-outline"
-        >
-          {{ userDisplay }}
-        </v-chip>
       </div>
     </v-app-bar>
 
@@ -104,15 +110,21 @@ const auth = useAuthStore();
 const branchScope = useBranchScopeStore();
 const menu = useMenuStore();
 const notifications = useNotificationsStore();
-
 const { mdAndDown } = useDisplay();
+
 const isMobile = computed(() => mdAndDown.value);
-const pageTitle = computed(() => String(route.meta.title ?? "Dashboard"));
-const userDisplay = computed(() => auth.user?.nameSurname || auth.user?.email || "Sesion activa");
+const pageTitle = computed(() => String(route.meta.title ?? "Panel principal"));
+const userDisplay = computed(() => auth.user?.nameSurname || auth.user?.email || "Sesión activa");
 const userEmail = computed(() => auth.user?.email || "Sin correo registrado");
-const viewRefreshKey = computed(
-  () => `${route.fullPath}:${branchScope.selectedSucursalId ?? "ALL"}`,
+const userInitials = computed(() =>
+  userDisplay.value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "KJ",
 );
+const viewRefreshKey = computed(() => `${route.fullPath}:${branchScope.selectedSucursalId ?? "ALL"}`);
 const notificationRecipients = computed(() =>
   [auth.user?.id, auth.user?.nameUser, auth.user?.email]
     .map((item) => String(item || "").trim())
@@ -120,30 +132,21 @@ const notificationRecipients = computed(() =>
 );
 
 const drawer = ref(!isMobile.value);
+const rail = ref(localStorage.getItem("kpi-navigation-compact") === "true");
 
-watch(
-  isMobile,
-  (value) => {
-    drawer.value = !value;
-  },
-  { immediate: true },
-);
+watch(isMobile, (value) => { drawer.value = !value; }, { immediate: true });
+watch(rail, (value) => localStorage.setItem("kpi-navigation-compact", String(value)));
+watch(notificationRecipients, (recipients) => {
+  if (recipients.length) void notifications.start(recipients);
+  else notifications.stop();
+}, { immediate: true });
 
-watch(
-  notificationRecipients,
-  (recipients) => {
-    if (recipients.length) {
-      void notifications.start(recipients);
-    } else {
-      notifications.stop();
-    }
-  },
-  { immediate: true },
-);
+onBeforeUnmount(() => notifications.stop());
 
-onBeforeUnmount(() => {
-  notifications.stop();
-});
+function toggleNavigation() {
+  if (isMobile.value) drawer.value = !drawer.value;
+  else rail.value = !rail.value;
+}
 
 function handleSucursalChange(value: string | null) {
   branchScope.setSelectedSucursal(value);
@@ -159,139 +162,39 @@ function onLogout() {
 </script>
 
 <style scoped>
-.app-layout {
-  min-height: 100vh;
-}
-
-.app-drawer {
-  border-right: 1px solid var(--surface-border);
-  background: var(--surface-base);
-  backdrop-filter: blur(18px);
-}
-
-.app-drawer__header {
-  display: grid;
-  gap: 18px;
-  padding: 20px 18px 16px;
-}
-
-.app-drawer__brand {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.app-drawer__brand-mark {
-  border: 1px solid var(--surface-border);
-  background: var(--surface-soft);
-}
-
-.app-drawer__title {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.app-drawer__subtitle {
-  color: var(--app-muted-text);
-  line-height: 1.5;
-}
-
-.app-drawer__status {
-  padding: 14px 16px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-soft);
-}
-
-.app-drawer__status-label {
-  margin-bottom: 4px;
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--app-muted-text);
-}
-
-.app-drawer__status-value {
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.app-drawer__footer {
-  padding: 16px;
-}
-
-.app-topbar {
-  background: var(--surface-base);
-  backdrop-filter: blur(18px);
-}
-
-.app-topbar__heading {
-  display: grid;
-  min-width: 0;
-}
-
-.app-topbar__eyebrow {
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--app-muted-text);
-}
-
-.app-topbar__branch {
-  width: min(340px, 32vw);
-  min-width: 220px;
-  padding-inline: 16px 8px;
-}
-
-.app-topbar__branch-select :deep(.v-field) {
-  border-radius: 16px;
-  background: var(--surface-soft);
-}
-
-.app-topbar__actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-right: 16px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.app-topbar__chip {
-  max-width: 280px;
-}
-
-.app-main {
-  background: var(--app-main-background);
-}
-
-.app-container {
-  padding: 24px;
-}
-
-@media (max-width: 1280px) {
-  .app-container {
-    padding: 20px;
-  }
-}
-
-@media (max-width: 960px) {
-  .app-drawer {
-    max-width: min(304px, 88vw);
-  }
-
-  .app-topbar {
-    padding-inline-end: 6px;
-  }
-
-  .app-topbar__branch {
-    min-width: 0;
-    width: min(220px, 34vw);
-    padding-inline: 8px 4px;
-  }
-
-  .app-topbar__heading :deep(.v-toolbar-title__placeholder) {
-    white-space: normal;
-    line-height: 1.2;
-  }
-}
+.app-layout { min-height: 100vh; }
+.app-drawer { border-right: 0 !important; color: #eef6fb; background: radial-gradient(circle at 0 0, rgba(45, 128, 176, 0.2), transparent 32%), linear-gradient(180deg, #071a2c 0%, #0a263d 58%, #0d3048 100%); box-shadow: 12px 0 38px rgba(4, 18, 31, 0.13); }
+.app-drawer :deep(.v-navigation-drawer__content) { scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+.app-drawer__header { position: relative; display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; }
+.app-brand { display: flex; min-width: 0; align-items: center; gap: 13px; }
+.app-brand__mark { flex: 0 0 auto; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.09); }
+.app-brand__copy { display: grid; min-width: 0; gap: 2px; }
+.app-brand__copy strong { font-size: 1.05rem; }
+.app-brand__copy span { overflow: hidden; color: rgba(232, 243, 250, 0.62); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-drawer__collapse { flex: 0 0 auto; color: rgba(238, 246, 251, 0.78); }
+.app-drawer__context { display: flex; align-items: center; gap: 11px; margin: 0 14px 10px; padding: 13px 14px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 15px; background: rgba(255, 255, 255, 0.055); }
+.app-drawer__context .v-icon { color: #d7ad70; }
+.app-drawer__context div { display: grid; min-width: 0; gap: 2px; }
+.app-drawer__context span { color: rgba(232, 243, 250, 0.58); font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; }
+.app-drawer__context strong { overflow: hidden; font-size: 0.85rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-account { display: flex; align-items: center; gap: 11px; margin: 12px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 17px; background: rgba(255, 255, 255, 0.055); }
+.app-account--compact { justify-content: center; padding: 9px 4px; }
+.app-account--compact .v-btn { display: none; }
+.app-account__copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.app-account__copy strong,
+.app-account__copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-account__copy strong { font-size: 0.82rem; }
+.app-account__copy span { color: rgba(232, 243, 250, 0.56); font-size: 0.7rem; }
+.app-topbar { border-bottom: 1px solid var(--surface-border); background: color-mix(in srgb, var(--surface-base) 92%, transparent); backdrop-filter: blur(18px); }
+.app-topbar__menu { margin-left: 8px; }
+.app-topbar__heading { display: grid; gap: 1px; margin-left: 6px; }
+.app-topbar__eyebrow { color: rgb(var(--v-theme-primary)); font-size: 0.67rem; font-weight: 850; letter-spacing: 0.09em; text-transform: uppercase; }
+.app-topbar :deep(.v-toolbar-title) { font-size: 1rem; font-weight: 760; }
+.app-topbar__branch { width: min(310px, 30vw); margin-left: 24px; }
+.app-topbar__branch-select :deep(.v-field) { border-radius: 13px; background: var(--field-background); }
+.app-topbar__actions { display: flex; align-items: center; gap: 6px; padding-right: 14px; }
+.app-main { min-width: 0; background: var(--app-page-background); }
+.app-container { max-width: 1920px; padding: clamp(16px, 2.2vw, 32px); }
+@media (max-width: 959px) { .app-topbar__branch { width: min(260px, 38vw); margin-left: 12px; } }
+@media (max-width: 700px) { .app-topbar__eyebrow { display: none; } .app-topbar__branch { display: none; } .app-container { padding: 14px 12px 24px; } }
 </style>
