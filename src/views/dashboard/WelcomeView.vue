@@ -321,6 +321,8 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import { canReadComponent, getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { listAllPages } from "@/app/utils/list-all-pages";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 
 type AnyRow = Record<string, any>;
 type ActivityItem = {
@@ -347,6 +349,7 @@ const menu = useMenuStore();
 const loading = ref(false);
 const error = ref<string | null>(null);
 const weeklySchedules = ref<AnyRow[]>([]);
+const equipmentCatalog = ref<AnyRow[]>([]);
 const now = new Date();
 const selectedYear = ref(now.getFullYear());
 const selectedMonth = ref(now.getMonth() + 1);
@@ -460,6 +463,23 @@ function buildDurationLabel(hours: number) {
   return `${Number(hours || 0).toFixed(1)} h`;
 }
 
+function activityEquipmentLabel(detail: AnyRow) {
+  const equipmentId = String(detail?.equipo_id || detail?.equipment_id || "").trim();
+  const equipmentCode = String(detail?.equipo_codigo || detail?.equipment_codigo || "").trim();
+  const catalogItem = equipmentCatalog.value.find(
+    (item) =>
+      (equipmentId && String(item?.id || "") === equipmentId) ||
+      (equipmentCode &&
+        String(item?.codigo || "").trim().toUpperCase() ===
+          equipmentCode.toUpperCase()),
+  );
+  if (catalogItem) return buildEquipmentDisplayTitle(catalogItem);
+  if (detail?.equipo_nombre || detail?.equipment_nombre) {
+    return buildEquipmentDisplayTitle(detail);
+  }
+  return "Sin equipo";
+}
+
 function buildActivity(detail: AnyRow, schedule: AnyRow, index: number): ActivityItem | null {
   const date = String(detail?.fecha_actividad || schedule?.fecha_inicio || "").slice(0, 10);
   if (!date || !isInSelectedMonth(date)) return null;
@@ -482,7 +502,7 @@ function buildActivity(detail: AnyRow, schedule: AnyRow, index: number): Activit
     durationHours,
     durationLabel: buildDurationLabel(durationHours),
     activity: String(detail?.actividad || "Actividad sin nombre"),
-    equipmentLabel: String(detail?.equipo_codigo || detail?.equipo_nombre || "Sin equipo"),
+    equipmentLabel: activityEquipmentLabel(detail),
     scheduleCode: String(schedule?.codigo || ""),
     location: String(schedule?.locacion || ""),
     processType: String(detail?.tipo_proceso || ""),
@@ -735,7 +755,11 @@ async function loadSchedules() {
   error.value = null;
 
   try {
-    const { data } = await api.get("/kpi_maintenance/inteligencia/cronogramas-semanales");
+    const [{ data }, equipments] = await Promise.all([
+      api.get("/kpi_maintenance/inteligencia/cronogramas-semanales"),
+      listAllPages("/kpi_maintenance/equipos").catch(() => []),
+    ]);
+    equipmentCatalog.value = equipments;
     weeklySchedules.value = unwrap(data, []);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "No se pudo cargar la agenda semanal.";

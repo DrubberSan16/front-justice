@@ -510,6 +510,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canAccessDigitalTwins } from "@/app/utils/role-access";
 import { formatDateTime } from "@/app/utils/date-time";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type TwinRow = {
@@ -754,14 +755,7 @@ async function loadEquipmentOptions() {
   equipmentOptions.value = Array.isArray(data)
     ? data.map((item: any) => ({
         ...item,
-        label:
-          [
-            item.codigo,
-            item.nombre_real || item.nombre,
-            item.modelo || null,
-          ]
-            .filter(Boolean)
-            .join(" · ") || item.label,
+        label: buildEquipmentDisplayTitle(item),
       }))
     : [];
 }

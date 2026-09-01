@@ -520,6 +520,7 @@ import {
   currentDateInputValue,
   formatDateTime as formatAppDateTime,
 } from "@/app/utils/date-time";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
   isGeneralManager,
   isSuperAdministrator,
@@ -745,7 +746,6 @@ function equipmentLabel(item: AnyRow) {
       (directCode && rowCode.toUpperCase() === directCode.toUpperCase())
     );
   });
-  const code = String(catalogItem?.codigo || directCode).trim();
   const name = String(
     catalogItem?.nombre ||
       item?.equipment_nombre ||
@@ -754,27 +754,13 @@ function equipmentLabel(item: AnyRow) {
       item?.nombre ||
       "",
   ).trim();
-  const realName = String(
-    catalogItem?.nombre_real ||
-      item?.equipment_nombre_real ||
-      item?.equipo_nombre_real ||
-      "",
-  ).trim();
-  const model = String(
-    catalogItem?.modelo ||
-      item?.equipment_modelo ||
-      item?.equipo_modelo ||
-      item?.equipment_model ||
-      item?.modelo ||
-      "",
-  ).trim();
-  if (!code && !name)
+  if (!name)
     return String(item?.equipment_label || equipmentId || "Sin equipo");
-  const details = [realName && realName !== name ? realName : "", model]
-    .filter(Boolean)
-    .join(" - ");
-  const base = [code, name].filter(Boolean).join(" - ");
-  return details ? `${base} (${details})` : base;
+  return buildEquipmentDisplayTitle({
+    ...item,
+    ...catalogItem,
+    nombre: name,
+  });
 }
 function materialLabel(item: AnyRow) {
   const code = String(item?.producto_codigo || item?.codigo || "").trim();

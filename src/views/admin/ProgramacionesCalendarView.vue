@@ -1351,6 +1351,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { currentDateTimeInputValue, formatDateTime } from "@/app/utils/date-time";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
   buildAgendaProgrammingReport,
   buildMonthlyProgrammingReport,
@@ -2069,7 +2070,10 @@ async function loadCatalogs() {
       listAll("/kpi_inventory/bodegas"),
     ]);
     equipmentCatalog.value = equipos;
-    equipmentOptions.value = equipos.map(normalize);
+    equipmentOptions.value = equipos.map((item: any) => ({
+      value: item.id,
+      title: buildEquipmentDisplayTitle(item),
+    }));
     procedureCatalog.value = procedimientos;
     procedureOptions.value = procedimientos.map(normalize);
     workOrderCatalog.value = Array.isArray(workOrders) ? workOrders : [];
@@ -2785,7 +2789,7 @@ const monthlyFilteredDetails = computed(() => {
 const equipmentCodeOptions = computed(() =>
   equipmentCatalog.value.map((item) => ({
     value: item.codigo,
-    title: `${item.codigo || "SIN CÓDIGO"} - ${item.nombre || "Sin nombre"}`,
+    title: buildEquipmentDisplayTitle(item),
   })),
 );
 

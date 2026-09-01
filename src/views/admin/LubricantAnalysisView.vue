@@ -746,6 +746,7 @@ import { canPurgeLubricantAnalyses } from "@/app/utils/role-access";
 import { hasReportAccess } from "@/app/config/report-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
 import {
   buildLubricantReport,
@@ -920,7 +921,10 @@ function resolveEquipmentBrand(item: AnyRow | null | undefined) {
 const equipmentOptions = computed(() =>
   equipments.value.map((item) => ({
     value: item.id,
-    title: `${item.codigo || "EQ"} - ${item.nombre || "Equipo"}${item.modelo ? ` (${item.modelo})` : ""}`,
+    title: buildEquipmentDisplayTitle({
+      ...item,
+      marca_nombre: resolveEquipmentBrand(item),
+    }),
     marca: resolveEquipmentBrand(item),
   })),
 );
@@ -962,12 +966,9 @@ const catalogOptions = computed(() =>
 
 function resolveEquipmentLabel(item: AnyRow | null | undefined) {
   if (!item) return "";
-  const equipoCodigo = String(item.equipo_codigo || item.sample_info?.equipo_codigo || "").trim();
   const equipoNombre = String(item.equipo_nombre || item.sample_info?.equipo_nombre || "").trim();
-  if (equipoCodigo && equipoNombre && equipoCodigo !== equipoNombre) {
-    return `${equipoCodigo} - ${equipoNombre}`;
-  }
-  return equipoCodigo || equipoNombre || "";
+  if (!equipoNombre) return "";
+  return buildEquipmentDisplayTitle(item);
 }
 
 function resolveEquipmentModel(item: AnyRow | null | undefined) {

@@ -1753,6 +1753,7 @@ import {
   appendOilIndicator,
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 const ui = useUiStore();
@@ -3563,10 +3564,16 @@ async function syncConsumoUnitCost() {
 }
 function getEquipmentLabel(item: any) {
   if (!item) return "";
+  const catalogLabel = equipmentOptions.value.find(
+    (option) =>
+      String(option.value) ===
+      String(item.equipment_id || item.equipo_id || ""),
+  )?.title;
   return (
-    item?.equipment_nombre
-    || item?.equipo_nombre
-    || equipmentOptions.value.find((option) => String(option.value) === String(item.equipment_id))?.title
+    catalogLabel
+    || (item?.equipment_nombre || item?.equipo_nombre
+      ? buildEquipmentDisplayTitle(item)
+      : "")
     || item?.equipment_id
     || ""
   );
@@ -3584,7 +3591,10 @@ async function loadCatalogs() {
       listAll("/kpi_security/users"),
     ]);
     equipmentCatalogRows.value = equipos;
-    equipmentOptions.value = equipos.map(normalize);
+    equipmentOptions.value = equipos.map((item: any) => ({
+      value: item.id,
+      title: buildEquipmentDisplayTitle(item),
+    }));
     planOptions.value = planes.map(normalize);
     procedureCatalog.value = procedimientos;
     procedureOptions.value = procedimientos.map(normalize);

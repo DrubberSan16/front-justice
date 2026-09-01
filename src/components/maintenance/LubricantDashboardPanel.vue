@@ -21,15 +21,7 @@
               {{ dashboard.selected.marca_lubricante || "Marca sin registrar" }}
             </div>
             <div class="text-body-2 text-medium-emphasis mt-1">
-              {{
-                dashboard.selected.equipo_label ||
-                dashboard.selected.equipo_codigo ||
-                dashboard.selected.equipo_nombre ||
-                "Sin equipo"
-              }}
-              <span v-if="dashboard.selected.equipo_modelo">
-                - {{ dashboard.selected.equipo_modelo }}
-              </span>
+              {{ equipmentTitle(dashboard.selected) }}
             </div>
             <div class="text-caption text-medium-emphasis mt-1">
               {{ dashboard.selected.compartimentos?.join(" - ") || "Sin compartimentos" }}
@@ -96,7 +88,7 @@
               <td>{{ item.codigo }}</td>
               <td>{{ item.numero_muestra || "Sin muestra" }}</td>
               <td>{{ item.fecha_reporte || item.fecha_muestra || "Sin fecha" }}</td>
-              <td>{{ item.equipo_nombre || item.equipo_codigo || "Sin equipo" }}</td>
+              <td>{{ equipmentTitle(item) }}</td>
               <td>{{ item.equipo_modelo || "Sin modelo" }}</td>
               <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
               <td>
@@ -128,11 +120,7 @@
             <div>
               <div class="text-caption text-medium-emphasis">Equipo</div>
               <div class="font-weight-medium">
-                {{
-                  dashboard.latest_analysis.equipo_nombre ||
-                  dashboard.latest_analysis.equipo_codigo ||
-                  "Sin equipo"
-                }}
+                {{ equipmentTitle(dashboard.latest_analysis) }}
               </div>
             </div>
             <div>
@@ -289,12 +277,19 @@
 
 <script setup lang="ts">
 import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 
 defineProps<{
   dashboard: Record<string, any> | null;
   loading?: boolean;
   error?: string | null;
 }>();
+
+function equipmentTitle(item: Record<string, any> | null | undefined) {
+  return item?.equipo_nombre || item?.equipment_nombre
+    ? buildEquipmentDisplayTitle(item)
+    : "Sin equipo";
+}
 
 function conditionColor(value: unknown) {
   const raw = String(value ?? "").trim().toUpperCase();

@@ -435,6 +435,7 @@ import { downloadServiceOrderPdf } from "@/app/utils/service-order-documents";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
   canManageAdministrativeOperations,
   canViewAnnulledRecords,
@@ -604,7 +605,7 @@ const userOptions = computed<CatalogOption[]>(() =>
 const equipmentOptions = computed<CatalogOption[]>(() =>
   equipments.value.map((item) => ({
     value: String(item.id),
-    title: [item.codigo, item.nombre_real || item.nombre].filter(Boolean).join(" - "),
+    title: buildEquipmentDisplayTitle(item),
   })),
 );
 

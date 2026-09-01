@@ -215,8 +215,7 @@
             >
               <div class="super-admin-alerts-equipo__header">
                 <div class="super-admin-alerts-equipo__title">
-                  <strong>{{ equipo.codigo }} - {{ equipo.nombre }}</strong>
-                  <span v-if="equipo.modelo" class="text-caption text-medium-emphasis">{{ equipo.modelo }}</span>
+                  <strong>{{ equipo.label }}</strong>
                 </div>
                 <v-chip
                   size="small"
@@ -721,6 +720,7 @@ import ReadonlyDetailDialog from "@/components/ui/ReadonlyDetailDialog.vue";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
   buildExecutiveDashboardReport,
   downloadReportExcel,
@@ -1064,6 +1064,8 @@ const superAdminEquipmentAlerts = computed(() => {
         codigo: equipo?.codigo || "Sin código",
         nombre: equipo?.nombre || "Sin nombre",
         modelo: equipo?.modelo || "",
+        marca_nombre: equipo?.marca_nombre || "",
+        label: buildEquipmentDisplayTitle(equipo),
         alerts: equipoAlerts.map((alert) => ({
           id: alert.id,
           tipo: alert?.tipo_alerta || "Alerta",
@@ -1125,6 +1127,7 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
     codigo: item?.codigo || null,
     nombre: item?.nombre || null,
     modelo: item?.modelo || null,
+    marca_nombre: item?.marca_nombre || null,
     estado_operativo: item?.estado_operativo || null,
     estado_funcionamiento: item?.estado_funcionamiento || null,
     estado_funcionamiento_actualizado_en: item?.estado_funcionamiento_actualizado_en || null,
@@ -1250,10 +1253,7 @@ const equipmentNameMap = computed(() =>
   equipos.value.reduce((acc: Record<string, string>, item) => {
     const id = String(item?.id || "").trim();
     const code = String(item?.codigo || "").trim();
-    const name = String(item?.nombre || "").trim();
-    const model = String(item?.modelo || "").trim();
-    const labelBase = [code, name].filter(Boolean).join(" - ") || id || "Sin equipo";
-    const label = model ? `${labelBase} (${model})` : labelBase;
+    const label = buildEquipmentDisplayTitle(item);
     if (id) acc[id] = label;
     if (code) acc[code.toUpperCase()] = label;
     return acc;
@@ -1263,10 +1263,15 @@ const equipmentNameMap = computed(() =>
 function resolveEquipmentLabel(item: AnyRow) {
   const equipmentId = String(item?.equipment_id || item?.equipo_id || "").trim();
   const code = String(item?.equipment_codigo || item?.equipo_codigo || "").trim();
-  const name = String(item?.equipment_nombre || item?.equipo_nombre || "").trim();
-  const model = String(item?.equipment_modelo || item?.equipo_modelo || "").trim();
-  const directBase = [code, name].filter(Boolean).join(" - ");
-  const directLabel = directBase ? (model ? `${directBase} (${model})` : directBase) : "";
+  const hasDirectEquipment = Boolean(
+    item?.equipment_nombre ||
+      item?.equipo_nombre ||
+      item?.equipment_name ||
+      item?.nombre,
+  );
+  const directLabel = hasDirectEquipment
+    ? buildEquipmentDisplayTitle(item)
+    : "";
   return (
     equipmentNameMap.value[equipmentId] ||
     equipmentNameMap.value[code.toUpperCase()] ||

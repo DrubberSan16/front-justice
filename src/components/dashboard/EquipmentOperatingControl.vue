@@ -193,12 +193,14 @@
 import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { formatDateTime } from "@/app/utils/date-time";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 
 export type EquipmentControlItem = {
   id: string | number;
   codigo?: string | null;
   nombre?: string | null;
   modelo?: string | null;
+  marca_nombre?: string | null;
   estado_operativo?: string | null;
   estado_funcionamiento?: string | null;
   estado_funcionamiento_actualizado_en?: string | null;
@@ -298,10 +300,7 @@ function leverAngle(item: EquipmentControlItem) {
 }
 
 function equipmentHeaderLabel(item: EquipmentControlItem) {
-  const code = String(item.codigo || "S/C").trim();
-  const name = String(item.nombre || "Equipo sin nombre").trim();
-  const model = String(item.modelo || "").trim();
-  return model ? `${code} - ${name} (${model})` : `${code} - ${name}`;
+  return buildEquipmentDisplayTitle(item);
 }
 
 function leverAriaLabel(item: EquipmentControlItem) {
@@ -321,7 +320,7 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
   if (state.saving) return;
 
   const next = state.value === "FUNCIONAMIENTO" ? "PARADO" : "FUNCIONAMIENTO";
-  const label = item.codigo || item.nombre || "equipo";
+  const label = equipmentHeaderLabel(item);
   state.saving = true;
   state.error = null;
   liveMessage.value = `Actualizando estado de funcionamiento de ${label}...`;
@@ -351,7 +350,7 @@ async function saveHorometer(item: EquipmentControlItem) {
   if (state.horometerSaving) return;
 
   const next = parseHorometer(state.horometerInput);
-  const label = item.codigo || item.nombre || "equipo";
+  const label = equipmentHeaderLabel(item);
   if (next === null || next < 0) {
     state.horometerError = "Ingresa un horómetro válido mayor o igual a cero.";
     return;
