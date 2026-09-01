@@ -201,7 +201,7 @@ function onLogout() {
 .app-topbar__branch-select :deep(.v-field) { border-radius: 13px; background: var(--field-background); }
 .app-topbar__actions { display: flex; align-items: center; gap: 6px; padding-right: 14px; }
 .app-main { min-width: 0; background: var(--app-page-background); }
-.app-container { max-width: 1920px; padding: clamp(16px, 2.2vw, 32px); }
+.app-container { width: 100%; max-width: none; margin: 0; padding: clamp(16px, 2.2vw, 32px); }
 @media (max-width: 959px) { .app-topbar__branch { width: min(260px, 38vw); margin-left: 12px; } }
 @media (max-width: 700px) { .app-topbar__eyebrow { display: none; } .app-topbar__branch { display: none; } .app-container { padding: 14px 12px 24px; } }
 </style>
