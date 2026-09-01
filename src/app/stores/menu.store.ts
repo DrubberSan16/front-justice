@@ -101,25 +101,68 @@ export const useMenuStore = defineStore("menu", {
             .filter((node): node is MenuNode => Boolean(node));
 
         const normalizedTree = sortTree((data ?? []).map((node) => normalizeNode(node)));
-        const visibleTree = filterTreeByPermissions(normalizedTree);
+        let visibleTree = filterTreeByPermissions(normalizedTree);
         const canAccessDetailedReport =
           isGeneralManager(auth.user) || isSuperAdministrator(auth.user);
-        const hasDetailedReport = visibleTree.some(
-          (node) => String(node.urlComponent || "").trim() === "reporte-detallado",
-        );
-        if (canAccessDetailedReport && !hasDetailedReport) {
-          visibleTree.push({
+        if (canAccessDetailedReport) {
+          const normalizeText = (value: unknown) =>
+            String(value || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .trim()
+              .toUpperCase();
+          const isDetailedReport = (node: MenuNode) =>
+            normalizeText(node.urlComponent) === "REPORTE-DETALLADO";
+          const isAdministration = (node: MenuNode) =>
+            normalizeText(node.nombre) === "ADMINISTRACION";
+          const withoutDetailedReport = (nodes: MenuNode[]): MenuNode[] =>
+            nodes
+              .filter((node) => !isDetailedReport(node))
+              .map((node) => ({
+                ...node,
+                children: withoutDetailedReport(node.children ?? []),
+              }));
+          const findAdministration = (nodes: MenuNode[]): MenuNode | null => {
+            for (const node of nodes) {
+              if (isAdministration(node)) return node;
+              const nested = findAdministration(node.children ?? []);
+              if (nested) return nested;
+            }
+            return null;
+          };
+
+          visibleTree = withoutDetailedReport(visibleTree);
+          const administration = findAdministration(visibleTree);
+          const administrationId = administration?.id ?? "system-administracion";
+          const reportNode: MenuNode = {
             id: "system-reporte-detallado",
-            parentId: null,
+            parentId: administrationId,
             nombre: "Reporte detallado",
             descripcion: "Órdenes, aceite e inventario",
             icon: "mdi-chart-box-outline",
             urlComponent: "reporte-detallado",
-            menuPosition: "2",
+            menuPosition: "99",
             status: "ACTIVE",
             permissions: fullPermissions,
             children: [],
-          });
+          };
+
+          if (administration) {
+            administration.children = [...(administration.children ?? []), reportNode];
+          } else {
+            visibleTree.push({
+              id: administrationId,
+              parentId: null,
+              nombre: "Administración",
+              descripcion: "Opciones administrativas",
+              icon: "mdi-shield-crown-outline",
+              urlComponent: "",
+              menuPosition: "90",
+              status: "ACTIVE",
+              permissions: fullPermissions,
+              children: [reportNode],
+            });
+          }
         }
         this.tree = sortTree(visibleTree);
         this.loadedForUserId = userId;

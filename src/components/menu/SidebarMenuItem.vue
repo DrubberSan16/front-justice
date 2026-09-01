@@ -55,12 +55,12 @@ function goToComponent(urlComponent: string) {
 </script>
 
 <style scoped>
-.sidebar-item { min-height: 48px; margin-block: 3px; color: rgba(238, 246, 251, 0.78); font-size: 0.88rem; font-weight: 650; transition: color 160ms ease, background-color 160ms ease, transform 160ms ease; }
-.sidebar-item:hover { color: #fff; background: rgba(255, 255, 255, 0.075); transform: translateX(2px); }
+.sidebar-item { min-height: 48px; margin-block: 3px; color: var(--nav-text); font-size: 0.88rem; font-weight: 650; transition: color 160ms ease, background-color 160ms ease, transform 160ms ease; }
+.sidebar-item:hover { color: var(--nav-text); background: var(--nav-hover); transform: translateX(2px); }
 .sidebar-item:focus-visible { outline: 3px solid rgba(122, 190, 230, 0.36); outline-offset: 1px; }
-.sidebar-item.v-list-item--active { color: #fff; background: linear-gradient(100deg, rgba(45, 128, 176, 0.34), rgba(45, 128, 176, 0.13)); box-shadow: inset 3px 0 #d7ad70; }
-.sidebar-item__icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; color: rgba(238, 246, 251, 0.72); background: rgba(255, 255, 255, 0.055); }
-.sidebar-item.v-list-item--active .sidebar-item__icon { color: #d7ad70; background: rgba(215, 173, 112, 0.12); }
+.sidebar-item.v-list-item--active { color: var(--nav-text); background: var(--nav-active); box-shadow: inset 3px 0 var(--nav-accent); }
+.sidebar-item__icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; color: var(--nav-muted); background: var(--nav-surface); }
+.sidebar-item.v-list-item--active .sidebar-item__icon { color: var(--nav-accent); background: color-mix(in srgb, var(--nav-accent) 14%, transparent); }
 .sidebar-group :deep(.v-list-group__items) { padding-left: 10px; }
 @media (prefers-reduced-motion: reduce) { .sidebar-item { transition: none; } }
 </style>

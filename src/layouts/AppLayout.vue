@@ -11,9 +11,13 @@
     >
       <header class="app-drawer__header">
         <div class="app-brand">
-          <v-avatar size="48" rounded="xl" class="app-brand__mark">
-            <v-img :src="logo" alt="KPI Justice" cover />
-          </v-avatar>
+          <div :class="['app-brand__mark', { 'app-brand__mark--wide': !rail || isMobile }]">
+            <v-img
+              :src="rail && !isMobile ? compactLogo : companyLogo"
+              alt="Justice Técnica Industrial S.A."
+              contain
+            />
+          </div>
           <div v-if="!rail || isMobile" class="app-brand__copy">
             <strong>KPI Justice</strong>
             <span>Centro de operaciones</span>
@@ -98,7 +102,8 @@ import { useDisplay } from "vuetify";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useMenuStore } from "@/app/stores/menu.store";
-import logo from "@/assets/logo-justice.png";
+import compactLogo from "@/assets/logo-justice.png";
+import companyLogo from "@/assets/logo-emp.png";
 import SidebarMenu from "@/components/menu/SidebarMenu.vue";
 import NotificationBell from "@/components/ui/NotificationBell.vue";
 import ThemeToggle from "@/components/ui/ThemeToggle.vue";
@@ -163,28 +168,30 @@ function onLogout() {
 
 <style scoped>
 .app-layout { min-height: 100vh; }
-.app-drawer { border-right: 0 !important; color: #eef6fb; background: radial-gradient(circle at 0 0, rgba(45, 128, 176, 0.2), transparent 32%), linear-gradient(180deg, #071a2c 0%, #0a263d 58%, #0d3048 100%); box-shadow: 12px 0 38px rgba(4, 18, 31, 0.13); }
-.app-drawer :deep(.v-navigation-drawer__content) { scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+.app-drawer { --nav-text: #153246; --nav-muted: #526b7b; --nav-border: rgba(16, 68, 97, 0.15); --nav-surface: rgba(255, 255, 255, 0.7); --nav-hover: rgba(19, 93, 134, 0.1); --nav-active: rgba(35, 113, 158, 0.16); --nav-accent: #966016; border-right: 0 !important; color: var(--nav-text); background: radial-gradient(circle at 0 0, rgba(45, 128, 176, 0.16), transparent 32%), linear-gradient(180deg, #f6fbfd 0%, #edf5f8 58%, #e5f0f4 100%); box-shadow: 12px 0 38px rgba(4, 18, 31, 0.1); }
+:global(:root[data-theme="dark"] .app-drawer) { --nav-text: #eef6fb; --nav-muted: #b7cbd8; --nav-border: rgba(255, 255, 255, 0.1); --nav-surface: rgba(255, 255, 255, 0.055); --nav-hover: rgba(255, 255, 255, 0.075); --nav-active: rgba(45, 128, 176, 0.27); --nav-accent: #e0b46f; background: radial-gradient(circle at 0 0, rgba(45, 128, 176, 0.2), transparent 32%), linear-gradient(180deg, #071a2c 0%, #0a263d 58%, #0d3048 100%); }
+.app-drawer :deep(.v-navigation-drawer__content) { scrollbar-color: var(--nav-border) transparent; }
 .app-drawer__header { position: relative; display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; }
 .app-brand { display: flex; min-width: 0; align-items: center; gap: 13px; }
-.app-brand__mark { flex: 0 0 auto; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.09); }
+.app-brand__mark { flex: 0 0 auto; width: 48px; height: 48px; padding: 5px; overflow: hidden; border: 1px solid rgba(20, 75, 104, 0.15); border-radius: 13px; background: #fff; box-shadow: 0 8px 22px rgba(7, 32, 50, 0.1); }
+.app-brand__mark--wide { width: 118px; padding: 6px 8px; }
 .app-brand__copy { display: grid; min-width: 0; gap: 2px; }
 .app-brand__copy strong { font-size: 1.05rem; }
-.app-brand__copy span { overflow: hidden; color: rgba(232, 243, 250, 0.62); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
-.app-drawer__collapse { flex: 0 0 auto; color: rgba(238, 246, 251, 0.78); }
-.app-drawer__context { display: flex; align-items: center; gap: 11px; margin: 0 14px 10px; padding: 13px 14px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 15px; background: rgba(255, 255, 255, 0.055); }
-.app-drawer__context .v-icon { color: #d7ad70; }
+.app-brand__copy span { overflow: hidden; color: var(--nav-muted); font-size: 0.8rem; text-overflow: ellipsis; white-space: nowrap; }
+.app-drawer__collapse { flex: 0 0 auto; color: var(--nav-muted); }
+.app-drawer__context { display: flex; align-items: center; gap: 11px; margin: 0 14px 10px; padding: 13px 14px; border: 1px solid var(--nav-border); border-radius: 15px; background: var(--nav-surface); }
+.app-drawer__context .v-icon { color: var(--nav-accent); }
 .app-drawer__context div { display: grid; min-width: 0; gap: 2px; }
-.app-drawer__context span { color: rgba(232, 243, 250, 0.58); font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; }
+.app-drawer__context span { color: var(--nav-muted); font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; }
 .app-drawer__context strong { overflow: hidden; font-size: 0.85rem; text-overflow: ellipsis; white-space: nowrap; }
-.app-account { display: flex; align-items: center; gap: 11px; margin: 12px; padding: 12px; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 17px; background: rgba(255, 255, 255, 0.055); }
+.app-account { display: flex; align-items: center; gap: 11px; margin: 12px; padding: 12px; border: 1px solid var(--nav-border); border-radius: 17px; background: var(--nav-surface); }
 .app-account--compact { justify-content: center; padding: 9px 4px; }
 .app-account--compact .v-btn { display: none; }
 .app-account__copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
 .app-account__copy strong,
 .app-account__copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-account__copy strong { font-size: 0.82rem; }
-.app-account__copy span { color: rgba(232, 243, 250, 0.56); font-size: 0.7rem; }
+.app-account__copy span { color: var(--nav-muted); font-size: 0.7rem; }
 .app-topbar { border-bottom: 1px solid var(--surface-border); background: color-mix(in srgb, var(--surface-base) 92%, transparent); backdrop-filter: blur(18px); }
 .app-topbar__menu { margin-left: 8px; }
 .app-topbar__heading { display: grid; gap: 1px; margin-left: 6px; }

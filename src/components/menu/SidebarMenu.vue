@@ -54,10 +54,10 @@ const filteredTree = computed(() => {
 <style scoped>
 .sidebar-menu { padding: 4px 10px 14px; }
 .sidebar-menu__search { padding: 0 4px 12px; }
-.sidebar-menu__search :deep(.v-field) { min-height: 44px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; color: #eef6fb; background: rgba(255, 255, 255, 0.07); box-shadow: none; }
+.sidebar-menu__search :deep(.v-field) { min-height: 44px; border: 1px solid var(--nav-border); border-radius: 14px; color: var(--nav-text); background: var(--nav-surface); box-shadow: none; }
 .sidebar-menu__search :deep(.v-label),
-.sidebar-menu__search :deep(.v-icon) { color: rgba(238, 246, 251, 0.65); }
-.sidebar-menu__label { padding: 7px 12px; color: rgba(232, 243, 250, 0.46); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; }
-.sidebar-menu__list { color: #eef6fb; background: transparent; }
-.sidebar-menu__empty { display: grid; min-height: 120px; place-items: center; align-content: center; gap: 8px; color: rgba(232, 243, 250, 0.52); font-size: 0.82rem; }
+.sidebar-menu__search :deep(.v-icon) { color: var(--nav-muted); }
+.sidebar-menu__label { padding: 7px 12px; color: var(--nav-muted); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; }
+.sidebar-menu__list { color: var(--nav-text); background: transparent; }
+.sidebar-menu__empty { display: grid; min-height: 120px; place-items: center; align-content: center; gap: 8px; color: var(--nav-muted); font-size: 0.82rem; }
 </style>

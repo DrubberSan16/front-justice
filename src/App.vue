@@ -38,7 +38,7 @@ const layout = computed(() => (route.meta.layout === "app" ? AppLayout : AuthLay
 watch(
   () => ui.currentTheme,
   (value) => {
-    theme.global.name.value = value;
+    theme.change(value);
     ui.syncThemeWithDocument();
   },
   { immediate: true },
