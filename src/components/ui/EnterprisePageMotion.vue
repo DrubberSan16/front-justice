@@ -13,25 +13,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { motion, useReducedMotion } from "motion-v";
-import { MOTION } from "@/app/motion";
-
-/**
- * Envoltura de entrada a nivel de pagina.
- *
- * Los valores salen de @/app/motion/tokens.ts (dial Motion 3/10 del
- * design system), no de constantes locales: asi una sola edicion recalibra
- * el movimiento de toda la plataforma.
- */
 
 defineOptions({ inheritAttrs: false });
 
 const shouldReduceMotion = useReducedMotion();
 const initialState = computed(() => ({
   opacity: 0,
-  y: shouldReduceMotion.value ? 0 : MOTION.hero.distance,
+  y: shouldReduceMotion.value ? 0 : 14,
 }));
 const transitionState = computed(() => ({
-  duration: shouldReduceMotion.value ? 0 : MOTION.hero.duration,
+  duration: shouldReduceMotion.value ? 0 : 0.34,
   ease: "easeOut",
 }));
 </script>
