@@ -391,6 +391,20 @@
               </div>
             </div>
           </v-col>
+          <v-col cols="12">
+            <v-textarea
+              v-model="headerForm.description"
+              label="Descripción de la orden"
+              variant="outlined"
+              rows="2"
+              auto-grow
+              counter="500"
+              maxlength="500"
+              :disabled="isReadOnlyWorkflow"
+              hint="Detalle del trabajo a realizar. Se incluye en los correos de la OT."
+              persistent-hint
+            />
+          </v-col>
           <v-col v-if="headerForm.is_emergency" cols="12" md="8">
             <v-textarea
               v-model="headerForm.emergency_reason"
@@ -1864,6 +1878,7 @@ const headerForm = reactive<any>({
   code: "",
   type: "MANTENIMIENTO",
   title: "",
+  description: "",
   equipment_id: "",
   equipo_componente_ids: [] as string[],
   equipo_componentes: [] as WorkOrderComponentSnapshot[],
@@ -1934,6 +1949,7 @@ let scrapProductsRequestId = 0;
 const workflowOptions = [
   { title: "Planificada", value: "PLANNED" },
   { title: "En proceso", value: "IN_PROGRESS" },
+  { title: "En revisión", value: "REVIEW" },
   { title: "Bloqueada", value: "BLOCKED" },
   { title: "Cerrada", value: "CLOSED" },
 ];
@@ -1968,6 +1984,8 @@ function normalizeWorkflowStatus(value: unknown) {
   if (["PLANNED", "PLANIFICADA", "PLANIFICADO", "CREADA", "CREADO"].includes(raw)) return "PLANNED";
   if (["IN_PROGRESS", "IN PROGRESS", "EN PROCESO", "EN_PROCESO", "PROCESSING"].includes(raw)) return "IN_PROGRESS";
   if (["BLOCKED", "BLOQUEADA", "BLOQUEADO", "DETENIDA", "DETENIDO", "ON_HOLD"].includes(raw)) return "BLOCKED";
+  if (["REVIEW", "IN_REVIEW", "IN REVIEW", "EN_REVISION", "EN REVISION", "REVISION", "REVISANDO"].includes(raw))
+    return "REVIEW";
   if (["CANCELLED", "CANCELED", "ANULADA", "ANULADO", "VOID", "VOIDED"].includes(raw)) return "CLOSED";
   if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
   return raw || "PLANNED";
@@ -2082,6 +2100,7 @@ const materialIssueHelperText = computed(() =>
 );
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
+const isInReview = computed(() => normalizedWorkflow.value === "REVIEW");
 const isBlocked = computed(() => normalizedWorkflow.value === "BLOCKED");
 const isClosed = computed(() => normalizedWorkflow.value === "CLOSED");
 const requiresMandatoryTaskCaptureForCurrentSave = computed(
@@ -2174,26 +2193,33 @@ const canManageWorkOrderUploads = computed(
 const workOrderDetailWorkflow = computed(
   () => persistedWorkflow.value || normalizedWorkflow.value,
 );
+// "En revisión" no bloquea nada: permite seguir corrigiendo, añadir tareas,
+// consumos y salidas de material. El único estado que congela la OT es CLOSED.
+const EDITABLE_WORKFLOWS = ["PLANNED", "IN_PROGRESS", "REVIEW"];
 const showConsumosTab = computed(() =>
   editingId.value
-    ? ["PLANNED", "IN_PROGRESS", "CLOSED"].includes(workOrderDetailWorkflow.value)
-    : ["PLANNED", "IN_PROGRESS"].includes(normalizedWorkflow.value),
+    ? [...EDITABLE_WORKFLOWS, "CLOSED"].includes(workOrderDetailWorkflow.value)
+    : EDITABLE_WORKFLOWS.includes(normalizedWorkflow.value),
 );
 const canCreateConsumo = computed(() => {
-  if (!["PLANNED", "IN_PROGRESS"].includes(normalizedWorkflow.value)) return false;
+  if (!EDITABLE_WORKFLOWS.includes(normalizedWorkflow.value)) return false;
   if (!editingId.value) return true;
   return (
-    ["PLANNED", "IN_PROGRESS"].includes(workOrderDetailWorkflow.value) &&
+    EDITABLE_WORKFLOWS.includes(workOrderDetailWorkflow.value) &&
     !isReadOnlyWorkflow.value
   );
 });
-const showMaterialsTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
-const showScrapTab = computed(() => !!editingId.value && (isInProcess.value || isClosed.value));
+const showMaterialsTab = computed(
+  () => !!editingId.value && (isInProcess.value || isInReview.value || isClosed.value),
+);
+const showScrapTab = computed(
+  () => !!editingId.value && (isInProcess.value || isInReview.value || isClosed.value),
+);
 const canRegisterRealIssue = computed(
   () =>
     !!editingId.value &&
-    normalizedWorkflow.value === "IN_PROGRESS" &&
-    persistedWorkflow.value === "IN_PROGRESS" &&
+    ["IN_PROGRESS", "REVIEW"].includes(normalizedWorkflow.value) &&
+    ["IN_PROGRESS", "REVIEW"].includes(persistedWorkflow.value) &&
     !isReadOnlyWorkflow.value,
 );
 const isEditingLockedFields = computed(() => !!editingId.value);
@@ -2221,7 +2247,7 @@ const blockingWorkOrderOptions = computed(() =>
   workOrderCatalogRows.value
     .filter((item: any) => {
       if (String(item?.id || "") === String(editingId.value || "")) return false;
-      return ["PLANNED", "IN_PROGRESS"].includes(normalizeWorkflowStatus(item?.status_workflow));
+      return EDITABLE_WORKFLOWS.includes(normalizeWorkflowStatus(item?.status_workflow));
     })
     .map((item: any) => ({
       value: item.id,
@@ -2588,6 +2614,7 @@ const workOrderPreviewSummary = computed(() => [
 ]);
 const workOrderPreviewMainInfo = computed(() => [
   { label: "Código", value: headerForm.code },
+  { label: "Descripción", value: headerForm.description },
   { label: "Equipo", value: selectedEquipmentLabel.value },
   { label: "Compartimiento", value: selectedEquipmentComponentLabel.value },
   { label: "Tipo de mantenimiento", value: headerForm.maintenance_kind },
@@ -4547,6 +4574,7 @@ function buildWorkOrderSaveBundlePayload() {
       code: headerForm.code || null,
       type: generatedType,
       title: generatedTitle,
+      description: String(headerForm.description || "").trim() || null,
       equipment_id: headerForm.equipment_id || null,
       equipo_componente_id: getHeaderComponentIds()[0] || null,
       equipo_componente_ids: getHeaderComponentIds(),
@@ -5638,6 +5666,7 @@ function resetAllForms() {
   headerForm.code = "";
   headerForm.type = "MANTENIMIENTO";
   headerForm.title = "";
+  headerForm.description = "";
   headerForm.equipment_id = "";
   headerForm.equipo_componente_ids = [];
   headerForm.equipo_componentes = [];
@@ -5718,6 +5747,7 @@ async function openEdit(item: any) {
   headerForm.code = item.code ?? item.codigo ?? "";
   headerForm.type = item.type ?? item.tipo ?? "";
   headerForm.title = item.title ?? item.titulo ?? "";
+  headerForm.description = item.description ?? item.descripcion ?? "";
   headerForm.equipment_id = item.equipment_id ?? "";
   headerForm.equipo_componente_ids = Array.isArray(item.equipo_componente_ids)
     ? normalizeEquipmentComponentIds(item.equipo_componente_ids)
