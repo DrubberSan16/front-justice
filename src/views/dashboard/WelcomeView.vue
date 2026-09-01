@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="welcome-page">
+  <EnterprisePageMotion class="welcome-page">
     <v-row align="stretch" class="mb-4">
       <v-col cols="12" xl="8">
         <v-card rounded="xl" class="welcome-hero enterprise-surface">
@@ -15,7 +15,9 @@
               <div class="text-h4 font-weight-bold mt-4">
                 Bienvenido, {{ displayName }}
               </div>
-             
+              <p class="welcome-hero__lead">
+                Consulta lo programado, revisa las próximas actividades y prioriza el trabajo del día.
+              </p>
 
               <div class="welcome-hero__actions">
                 <v-btn
@@ -99,7 +101,7 @@
             <v-select
               v-model="selectedYear"
               :items="yearOptions"
-              label="Anio"
+              label="Año"
               density="comfortable"
               hide-details
               variant="outlined"
@@ -166,7 +168,7 @@
         <div>
           <div class="text-h6 font-weight-bold">Calendario de agenda semanal</div>
           <div class="text-body-2 text-medium-emphasis">
-            Vista solo lectura de las actividades programadas por dia.
+            Vista de solo lectura de las actividades programadas por día.
           </div>
         </div>
         <div class="summary-strip">
@@ -174,7 +176,7 @@
             {{ monthSummary.schedules }} cronogramas
           </v-chip>
           <v-chip size="small" color="success" variant="tonal" label>
-            {{ monthSummary.activeDays }} dias activos
+            {{ monthSummary.activeDays }} días activos
           </v-chip>
           <v-chip size="small" color="secondary" variant="tonal" label>
             {{ monthSummary.activities }} actividades
@@ -307,12 +309,13 @@
         </div>
       </v-card>
     </v-dialog>
-  </v-container>
+  </EnterprisePageMotion>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -749,7 +752,18 @@ onMounted(() => {
 <style scoped>
 .welcome-page {
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 20px;
+  padding: 0;
+}
+
+.welcome-hero__lead {
+  max-width: 620px;
+  margin: 10px 0 0;
+  color: var(--welcome-hero-muted);
+  font-size: 0.96rem;
+  line-height: 1.55;
 }
 
 .welcome-hero {

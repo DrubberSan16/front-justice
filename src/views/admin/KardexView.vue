@@ -1,20 +1,32 @@
 ﻿<template>
+  <EnterprisePageMotion class="kardex-page">
   <v-row dense>
     <v-col v-if="!canRead" cols="12">
-      <v-alert type="warning" variant="tonal">No tienes permisos para visualizar este modulo.</v-alert>
+      <v-alert type="warning" variant="tonal">No tienes permisos para visualizar este módulo.</v-alert>
     </v-col>
 
     <template v-else>
       <v-col cols="12">
-        <v-card rounded="xl" class="pa-5 enterprise-surface kardex-main-card">
-          <div class="d-flex align-start justify-space-between flex-wrap mb-4" style="gap:16px">
+        <v-card rounded="xl" class="enterprise-surface kardex-main-card kardex-hero">
+          <div class="kardex-hero__glow kardex-hero__glow--one" />
+          <div class="kardex-hero__glow kardex-hero__glow--two" />
+
+          <div class="kardex-hero__header">
             <div class="kardex-header-copy">
-              <div class="text-h5 font-weight-bold">Kardex agrupado por material</div>
-              <div class="text-body-2 text-medium-emphasis mt-1">
+              <div class="kardex-hero__eyebrow">
+                <span class="kardex-hero__pulse" />
+                Control de inventario
+              </div>
+              <h1>Kardex por material</h1>
+              <p>
                 Revisa el comportamiento del inventario por material y abre el detalle solo cuando lo necesites.
+              </p>
+              <div class="kardex-hero__meta">
+                <span><v-icon icon="mdi-calendar-range-outline" size="16" />{{ kardexRangeLabel }}</span>
+                <span><v-icon icon="mdi-package-variant-closed" size="16" />{{ kardexTotals.materiales }} materiales</span>
               </div>
             </div>
-            <div class="d-flex align-center flex-wrap justify-end" style="gap:8px">
+            <div class="kardex-hero__actions">
               <MassPurgeButton endpoint="/kpi_inventory/kardex/purge-all"
                 module-title="Kardex y movimientos de inventario" @purged="handleKardexPurged" />
               <v-btn v-if="canCreate" color="success" prepend-icon="mdi-tray-arrow-down"
@@ -30,7 +42,19 @@
             </div>
           </div>
 
-          <v-row dense class="mb-3">
+          <div class="kardex-filter-panel">
+            <div class="kardex-filter-panel__heading">
+              <div class="kardex-filter-panel__icon"><v-icon icon="mdi-tune-variant" size="21" /></div>
+              <div>
+                <strong>Filtros del kardex</strong>
+                <span>Acota la consulta por fechas, bodega o material.</span>
+              </div>
+              <v-chip v-if="activeKardexFilterCount" color="primary" variant="tonal" size="small">
+                {{ activeKardexFilterCount }} activos
+              </v-chip>
+            </div>
+
+          <v-row dense>
             <v-col cols="12" md="3"><v-text-field v-model="kardexFilters.search" label="Documento, material o bodega"
                 variant="outlined" prepend-inner-icon="mdi-magnify" hide-details clearable
                 @keyup.enter="applyKardexFilters" /></v-col>
@@ -65,14 +89,21 @@
                 @click="clearKardexFilters">Limpiar</v-btn>
             </v-col>
           </v-row>
+          </div>
 
-          <div class="summary-chip-list mb-4">
-            <v-chip color="primary" variant="tonal">{{ kardexRangeLabel }}</v-chip>
-            <v-chip color="info" variant="tonal">{{ kardexTotals.materiales }} materiales</v-chip>
-            <v-chip color="secondary" variant="tonal">{{ kardexTotals.movimientos }} movimientos</v-chip>
-            <v-chip color="success" variant="tonal">Entradas {{ formatNumberForDisplay(kardexTotals.entradas)
-              }}</v-chip>
-            <v-chip color="error" variant="tonal">Salidas {{ formatNumberForDisplay(kardexTotals.salidas) }}</v-chip>
+          <div class="kardex-summary-grid" aria-label="Resumen del kardex">
+            <article class="kardex-summary-card kardex-summary-card--info">
+              <span>Materiales</span><strong>{{ kardexTotals.materiales }}</strong>
+            </article>
+            <article class="kardex-summary-card kardex-summary-card--secondary">
+              <span>Movimientos</span><strong>{{ kardexTotals.movimientos }}</strong>
+            </article>
+            <article class="kardex-summary-card kardex-summary-card--success">
+              <span>Entradas</span><strong>{{ formatNumberForDisplay(kardexTotals.entradas) }}</strong>
+            </article>
+            <article class="kardex-summary-card kardex-summary-card--error">
+              <span>Salidas</span><strong>{{ formatNumberForDisplay(kardexTotals.salidas) }}</strong>
+            </article>
           </div>
 
           <v-progress-linear v-if="loadingKardex" indeterminate color="primary" rounded class="mb-4" />
@@ -86,8 +117,8 @@
                 <div class="w-100 d-flex align-center justify-space-between flex-wrap" style="gap:12px">
                   <div>
                     <div class="text-subtitle-1 font-weight-bold">{{ formatKardexProductName(group.producto_id, group.producto_nombre || 'Sin nombre') }}</div>
-                    <div class="text-caption text-medium-emphasis mt-1">Linea: {{ group.linea_label || 'Sin linea' }} ·
-                      Categoria: {{ group.categoria_label || 'Sin categoria' }} · Unidad: {{ group.unidad_label || 'Sin unidad' }}</div>
+                    <div class="text-caption text-medium-emphasis mt-1">Línea: {{ group.linea_label || 'Sin línea' }} ·
+                      Categoría: {{ group.categoria_label || 'Sin categoría' }} · Unidad: {{ group.unidad_label || 'Sin unidad' }}</div>
                   </div>
                   <div class="d-flex flex-wrap justify-end" style="gap:8px">
                     <v-chip size="small" color="info" variant="tonal">Stock inicial {{
@@ -124,12 +155,12 @@
                   <table class="kardex-table">
                     <thead>
                       <tr>
-                        <th>Fecha emision</th>
-                        <th>F. creacion</th>
+                        <th>Fecha emisión</th>
+                        <th>F. creación</th>
                         <th>Documento</th>
                         <th>Referencia</th>
                         <th>Concepto</th>
-                        <th>Descripcion</th>
+                        <th>Descripción</th>
                         <th>Bodega</th>
                         <th>Tipo</th>
                         <th>Usuario</th>
@@ -193,7 +224,7 @@
               Mostrando {{ kardexPageFrom }} - {{ kardexPageTo }} de {{ kardexPagination.total }} materiales
             </div>
             <div class="d-flex align-center flex-wrap justify-end" style="gap:12px">
-              <v-select :model-value="kardexPagination.limit" :items="kardexPageSizeOptions" label="Items por pagina"
+              <v-select :model-value="kardexPagination.limit" :items="kardexPageSizeOptions" label="Elementos por página"
                 variant="outlined" density="comfortable" hide-details style="max-width: 160px"
                 @update:model-value="updateKardexPageSize" />
               <v-pagination :model-value="kardexPagination.page" :length="kardexPagination.totalPages"
@@ -599,6 +630,7 @@
       </v-dialog>
     </template>
   </v-row>
+  </EnterprisePageMotion>
 </template>
 
 <script setup lang="ts">
@@ -622,6 +654,7 @@ import {
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { canViewAnnulledRecords } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 
 type MovementType = "INGRESO" | "SALIDA";
 type StockCondition = "NUEVO" | "USADO" | "CRITICO";
@@ -771,6 +804,17 @@ const hasActiveKardexFilters = computed(() =>
     kardexFilters.hasta !== defaultKardexDateTo,
   ),
 );
+const activeKardexFilterCount = computed(() => [
+  kardexFilters.search,
+  kardexFilters.bodega_id,
+  kardexFilters.producto_id,
+  kardexFilters.linea_id,
+  kardexFilters.categoria_id,
+  kardexFilters.tipo_movimiento,
+  kardexFilters.include_annulled,
+  kardexFilters.desde !== defaultKardexDateFrom,
+  kardexFilters.hasta !== defaultKardexDateTo,
+].filter(Boolean).length);
 const productMap = computed(() => new Map(products.value.map((item) => [String(item.id), item])));
 const stockByWarehouseProduct = computed(() => { const map = new Map<string, StockRow>(); for (const row of stocks.value) map.set(`${row.bodega_id}:${row.producto_id}`, row); return map; });
 const activeImportJob = computed(() => { if (!importJob.value) return null; const status = String(importJob.value.status || "").toUpperCase(); return status === "QUEUED" || status === "PROCESSING" ? importJob.value : null; });
@@ -1630,9 +1674,188 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.kardex-page {
+  width: 100%;
+  min-width: 0;
+}
+
 .kardex-main-card,
 .kardex-upload-card {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.kardex-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(22px, 2.5vw, 34px);
+  background:
+    linear-gradient(125deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 13%, var(--surface-base)), var(--surface-base) 58%),
+    var(--surface-base);
+}
+
+.kardex-hero__glow {
+  position: absolute;
+  z-index: -1;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.kardex-hero__glow--one {
+  top: -210px;
+  right: 8%;
+  background: rgba(var(--v-theme-primary), 0.14);
+}
+
+.kardex-hero__glow--two {
+  right: 34%;
+  bottom: -260px;
+  background: rgba(var(--v-theme-success), 0.09);
+}
+
+.kardex-hero__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+}
+
+.kardex-header-copy {
+  max-width: 720px;
+}
+
+.kardex-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+  color: rgb(var(--v-theme-primary));
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.kardex-hero__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-success));
+  box-shadow: 0 0 0 6px rgba(var(--v-theme-success), 0.12);
+}
+
+.kardex-header-copy h1 {
+  margin: 0;
+  font-size: clamp(1.65rem, 2.7vw, 2.25rem);
+  font-weight: 850;
+  letter-spacing: -0.035em;
+  line-height: 1.12;
+}
+
+.kardex-header-copy p {
+  max-width: 660px;
+  margin: 9px 0 13px;
+  color: var(--app-muted-text);
+  line-height: 1.55;
+}
+
+.kardex-hero__meta,
+.kardex-hero__meta span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.kardex-hero__meta {
+  gap: 10px 18px;
+  color: var(--app-muted-text);
+  font-size: 0.78rem;
+}
+
+.kardex-hero__actions {
+  display: flex;
+  max-width: 660px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.kardex-filter-panel {
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.12);
+  border-radius: 19px;
+  background: color-mix(in srgb, var(--surface-soft) 82%, transparent);
+}
+
+.kardex-filter-panel__heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
+}
+
+.kardex-filter-panel__heading > div:nth-child(2) {
+  display: grid;
+  min-width: 0;
+}
+
+.kardex-filter-panel__heading strong { font-size: 0.88rem; }
+.kardex-filter-panel__heading span {
+  color: var(--app-muted-text);
+  font-size: 0.74rem;
+}
+
+.kardex-filter-panel__icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 13px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.1);
+}
+
+.kardex-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.kardex-summary-card {
+  --kardex-summary-tone: var(--v-theme-primary);
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--kardex-summary-tone), 0.16);
+  border-radius: 16px;
+  background: rgba(var(--kardex-summary-tone), 0.065);
+}
+
+.kardex-summary-card--info { --kardex-summary-tone: var(--v-theme-info); }
+.kardex-summary-card--secondary { --kardex-summary-tone: var(--v-theme-secondary); }
+.kardex-summary-card--success { --kardex-summary-tone: var(--v-theme-success); }
+.kardex-summary-card--error { --kardex-summary-tone: var(--v-theme-error); }
+
+.kardex-summary-card span {
+  color: var(--app-muted-text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.kardex-summary-card strong {
+  font-size: 1.45rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-chip-list {
@@ -1641,13 +1864,24 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.kardex-header-copy {
-  max-width: 720px;
-}
-
 .kardex-groups {
   display: grid;
   gap: 12px;
+}
+
+.kardex-groups :deep(.v-expansion-panel) {
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.09);
+  background: color-mix(in srgb, var(--surface-base) 96%, rgb(var(--v-theme-primary)) 4%);
+  box-shadow: none;
+}
+
+.kardex-groups :deep(.v-expansion-panel-title) {
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.kardex-groups :deep(.v-expansion-panel-title:hover) {
+  background: rgba(var(--v-theme-primary), 0.055);
 }
 
 .kardex-pagination {
@@ -1660,6 +1894,7 @@ onBeforeUnmount(() => {
 }
 
 .kardex-group-title {
+  min-height: 78px;
   padding-block: 16px;
 }
 
@@ -1845,6 +2080,16 @@ onBeforeUnmount(() => {
   background: rgba(var(--v-theme-on-surface), 0.02);
 }
 
+.kardex-table tbody tr,
+.document-editor-grid tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.kardex-table tbody tr:hover,
+.document-editor-grid tbody tr:hover {
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+
 .line-col {
   width: 56px;
   min-width: 56px;
@@ -1884,9 +2129,67 @@ onBeforeUnmount(() => {
 
 @media (max-width: 960px) {
 
+  .kardex-hero__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .kardex-hero__actions {
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .kardex-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .kardex-main-card,
   .kardex-upload-card {
     padding: 20px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .kardex-hero {
+    padding: 18px;
+  }
+
+  .kardex-hero__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .kardex-hero__actions :deep(.v-btn) {
+    width: 100%;
+  }
+
+  .kardex-filter-panel {
+    padding: 13px;
+  }
+
+  .kardex-filter-panel__heading {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .kardex-filter-panel__heading :deep(.v-chip) {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .kardex-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .kardex-summary-card {
+    min-height: 62px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kardex-groups :deep(.v-expansion-panel-title),
+  .kardex-table tbody tr,
+  .document-editor-grid tbody tr {
+    transition: none;
   }
 }
 </style>

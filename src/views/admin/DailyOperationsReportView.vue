@@ -1,7 +1,7 @@
 <template>
-  <div class="daily-report-page">
+  <EnterprisePageMotion class="daily-report-page">
     <v-alert v-if="!canRead" type="warning" variant="tonal">
-      No tienes permisos para visualizar este modulo.
+      No tienes permisos para visualizar este módulo.
     </v-alert>
 
     <v-alert v-else-if="!canAccessReports" type="warning" variant="tonal">
@@ -260,7 +260,7 @@
                 <template #no-data>
                   <div class="table-empty-state">
                     <v-icon icon="mdi-clipboard-check-outline" size="30" />
-                    No se cerraron ordenes de trabajo en la fecha consultada.
+                    No se cerraron órdenes de trabajo en la fecha consultada.
                   </div>
                 </template>
               </v-data-table>
@@ -269,12 +269,13 @@
         </template>
       </v-card>
     </template>
-  </div>
+  </EnterprisePageMotion>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/app/http/api";
+import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -624,8 +625,10 @@ onMounted(async () => {
   --report-purple: 124, 58, 237;
   --report-orange: 234, 88, 12;
   display: flex;
+  width: 100%;
+  min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
 }
 
 .hero-card {

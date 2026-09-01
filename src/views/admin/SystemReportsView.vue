@@ -1,5 +1,5 @@
 <template>
-  <div class="system-reports-page">
+  <EnterprisePageMotion class="system-reports-page">
     <v-alert v-if="!canRead" type="warning" variant="tonal">
       No tienes permisos para visualizar este módulo.
     </v-alert>
@@ -230,12 +230,13 @@
         </template>
       </v-card>
     </template>
-  </div>
+  </EnterprisePageMotion>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { api } from "@/app/http/api";
+import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
@@ -887,8 +888,10 @@ onMounted(() => {
   --system-purple: 124, 58, 237;
   --system-orange: 234, 88, 12;
   display: flex;
+  width: 100%;
+  min-width: 0;
   flex-direction: column;
-  gap: 8px;
+  gap: 18px;
 }
 
 .hero-card {

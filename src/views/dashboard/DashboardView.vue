@@ -1,5 +1,5 @@
 <template>
-  <v-container fluid class="dashboard-page">
+  <EnterprisePageMotion class="dashboard-page">
     <v-alert v-if="!canAccessDashboardReports" type="warning" variant="tonal">
       No tienes permisos para acceder a este reporte.
     </v-alert>
@@ -698,12 +698,13 @@
       :rows="detailDialogRows"
       :empty-text="detailDialogEmptyText"
     />
-  </v-container>
+  </EnterprisePageMotion>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
+import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -2000,13 +2001,15 @@ watch([selectedYear, selectedMonth], () => {
   --dashboard-green: 15, 143, 114;
   --dashboard-orange: 225, 122, 0;
   --dashboard-purple: 132, 81, 201;
+  width: 100%;
+  min-width: 0;
   padding: 0;
 }
 
 .dashboard-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
+  gap: 16px;
 }
 
 .equipment-panel-col {

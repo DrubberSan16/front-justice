@@ -1,5 +1,5 @@
 <template>
-  <div class="intelligence-page">
+  <EnterprisePageMotion class="intelligence-page">
     <v-alert v-if="!canRead" type="warning" variant="tonal">
       No tienes permisos para visualizar este módulo.
     </v-alert>
@@ -1269,13 +1269,14 @@
     :columns="oilRowDetailColumns"
     :rows="oilRowDetailRows"
   />
-    </div>
+  </EnterprisePageMotion>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
+import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -2544,12 +2545,14 @@ watch(
   --intelligence-green: 15, 143, 114;
   --intelligence-orange: 225, 122, 0;
   display: grid;
+  width: 100%;
+  min-width: 0;
   gap: 16px;
 }
 
 .intelligence-page__content {
   display: grid;
-  gap: 4px;
+  gap: 16px;
 }
 
 .intelligence-hero {
