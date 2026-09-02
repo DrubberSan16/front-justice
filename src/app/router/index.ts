@@ -221,6 +221,37 @@ export const router = createRouter({
           meta: { title: "Inteligencia Operativa", viewFile: "views/admin/MaintenanceIntelligenceView.vue" },
         },
         {
+          // Antes "Reporte detallado". Se conserva la vista y se renombra el
+          // modulo; la ruta vieja redirige mas abajo para no romper enlaces.
+          path: "dashboard-gerencia",
+          name: "dashboard-gerencia",
+          component: () => import("@/views/admin/DetailedReportView.vue"),
+          meta: {
+            title: "Dashboard Gerencia",
+            viewFile: "views/admin/DetailedReportView.vue",
+          },
+        },
+        {
+          path: "dashboard-operativo",
+          name: "dashboard-operativo",
+          component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
+          meta: {
+            title: "Dashboard Operativo",
+            permissionComponent: "dashboard-operativo",
+            viewFile: "views/dashboard/DashboardPlaceholderView.vue",
+          },
+        },
+        {
+          path: "dashboard-supervisores",
+          name: "dashboard-supervisores",
+          component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
+          meta: {
+            title: "Dashboard Supervisores",
+            permissionComponent: "dashboard-supervisores",
+            viewFile: "views/dashboard/DashboardPlaceholderView.vue",
+          },
+        },
+        {
           path: "dashboard-administracion",
           name: "dashboard-administracion",
           component: () => import("@/views/admin/AdminDashboardView.vue"),
@@ -242,13 +273,9 @@ export const router = createRouter({
           meta: { title: "Reporte diario", viewFile: "views/admin/DailyOperationsReportView.vue" },
         },
         {
+          // Enlaces y marcadores antiguos siguen funcionando.
           path: "reporte-detallado",
-          name: "reporte-detallado",
-          component: () => import("@/views/admin/DetailedReportView.vue"),
-          meta: {
-            title: "Reporte detallado",
-            viewFile: "views/admin/DetailedReportView.vue",
-          },
+          redirect: { name: "dashboard-gerencia" },
         },
         {
           path: "gemelos-digitales",

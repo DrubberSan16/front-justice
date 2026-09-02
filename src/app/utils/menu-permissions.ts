@@ -92,6 +92,34 @@ export function canReadComponent(tree: MenuNode[], urlComponent: string): boolea
   return Boolean(findMenuNodeByComponent(tree, urlComponent)?.permissions?.isReaded);
 }
 
-export function resolveAuthenticatedHomeRoute(tree: MenuNode[]): "dashboard" | "bienvenida" {
-  return canReadComponent(tree, "dashboard") ? "dashboard" : "bienvenida";
+/** Tableros que pueden actuar como pantalla de inicio, en orden de prioridad. */
+export const HOME_DASHBOARDS = [
+  "dashboard-administracion",
+  "dashboard-gerencia",
+  "dashboard-supervisores",
+  "dashboard-operativo",
+  "dashboard",
+] as const;
+
+export type HomeRoute = (typeof HOME_DASHBOARDS)[number] | "bienvenida";
+
+/**
+ * Resuelve a qué pantalla aterriza el usuario tras entrar.
+ *
+ * Cae al primer tablero sobre el que tenga permiso de lectura, siguiendo el
+ * orden de HOME_DASHBOARDS; si no tiene ninguno asignado, va a Bienvenid@.
+ *
+ * El Super Administrador es un caso aparte: como `canReadComponent` le devuelve
+ * `true` para todo, un recorrido normal lo dejaría siempre en el primero de la
+ * lista. Se le envía al Dashboard general a propósito, y conserva el acceso a
+ * los demás tableros desde el menú para poder revisarlos.
+ */
+export function resolveAuthenticatedHomeRoute(tree: MenuNode[]): HomeRoute {
+  const auth = useAuthStore();
+  if (isSuperAdministrator(auth.user)) return "dashboard";
+
+  const asignado = HOME_DASHBOARDS.find((componente) =>
+    canReadComponent(tree, componente),
+  );
+  return asignado ?? "bienvenida";
 }

@@ -48,10 +48,18 @@ async function onSubmit() {
     const { data } = await api.post<LoginResponse>("/kpi_security/users/login", payload);
     auth.setSession(data);
     if (auth.userId) await menu.loadMenuTree(auth.userId);
+    // La pantalla de inicio depende del tablero asignado al usuario. Se resuelve
+    // por nombre de ruta, que coincide con el `url_component` del menu.
     const homeRoute = resolveAuthenticatedHomeRoute(menu.tree);
-    const fallbackRedirect = homeRoute === "dashboard" ? "/app/dashboard" : "/app/bienvenida";
+    const fallbackRedirect = `/app/${homeRoute}`;
     const requestedRedirect = String(route.query.redirect || "").trim();
-    const redirect = requestedRedirect && !(requestedRedirect === "/app/dashboard" && homeRoute !== "dashboard") ? requestedRedirect : fallbackRedirect;
+    // Solo se respeta el destino pedido si no es un tablero al que este usuario
+    // no aterriza: asi un enlace guardado a otro dashboard no lo saca de su sitio.
+    const requestedEsOtroTablero =
+      requestedRedirect.startsWith("/app/dashboard") &&
+      requestedRedirect !== fallbackRedirect;
+    const redirect =
+      requestedRedirect && !requestedEsOtroTablero ? requestedRedirect : fallbackRedirect;
     router.replace(redirect);
   } catch (e: any) {
     error.value = e?.response?.data?.message || "Credenciales inválidas o error de conexión.";

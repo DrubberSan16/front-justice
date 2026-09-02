@@ -1,12 +1,12 @@
 import type { Router } from "vue-router";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
-import { canReadComponent, resolveAuthenticatedHomeRoute } from "@/app/utils/menu-permissions";
 import {
-  canAccessDigitalTwins,
-  isGeneralManager,
-  isSuperAdministrator,
-} from "@/app/utils/role-access";
+  HOME_DASHBOARDS,
+  canReadComponent,
+  resolveAuthenticatedHomeRoute,
+} from "@/app/utils/menu-permissions";
+import { canAccessDigitalTwins } from "@/app/utils/role-access";
 
 export function applyGuards(router: Router) {
   router.beforeEach(async (to) => {
@@ -43,20 +43,19 @@ export function applyGuards(router: Router) {
       return { name: homeRoute };
     }
 
-    if (auth.isAuthenticated && to.name === "dashboard" && !canReadComponent(menu.tree, "dashboard")) {
-      return { name: "bienvenida" };
-    }
-
-    if (auth.isAuthenticated && to.name === "gemelos-digitales" && !canAccessDigitalTwins(auth.user)) {
+    // Los cuatro tableros se gobiernan por el permiso de menu asignado al rol,
+    // igual que cualquier otro modulo. El Super Administrador los atraviesa
+    // todos porque `canReadComponent` le devuelve true, y asi puede revisarlos.
+    if (
+      auth.isAuthenticated &&
+      typeof to.name === "string" &&
+      (HOME_DASHBOARDS as readonly string[]).includes(to.name) &&
+      !canReadComponent(menu.tree, to.name)
+    ) {
       return { name: homeRoute };
     }
 
-    if (
-      auth.isAuthenticated &&
-      to.name === "reporte-detallado" &&
-      !isGeneralManager(auth.user) &&
-      !isSuperAdministrator(auth.user)
-    ) {
+    if (auth.isAuthenticated && to.name === "gemelos-digitales" && !canAccessDigitalTwins(auth.user)) {
       return { name: homeRoute };
     }
 
