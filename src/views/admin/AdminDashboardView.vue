@@ -205,6 +205,7 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
+import { VIcon } from "vuetify/components";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { api } from "@/app/http/api";
@@ -232,7 +233,10 @@ const SectionCard = (props: any, { slots }: any) =>
     [
       h("header", { class: "section-card__head" }, [
         h("div", { class: "section-card__icon" }, [
-          h("i", { class: `mdi ${props.icon}` }),
+          // Se usa VIcon y no <i class="mdi ...">: la clase suelta no arrastra la
+          // familia tipografica de Material Design Icons dentro del estilo
+          // scoped y el glifo salia como caja.
+          h(VIcon, { icon: props.icon, size: 20 }),
         ]),
         h("div", {}, [
           h("h2", { class: "section-card__title" }, props.title),
