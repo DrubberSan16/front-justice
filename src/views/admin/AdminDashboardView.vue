@@ -389,6 +389,7 @@ import { useTheme } from "vuetify";
 import EChart from "@/components/charts/EChart.vue";
 import { MAX_SERIES, chartBase, seriesColor } from "@/app/config/chart-theme";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { useDataChanged } from "@/app/utils/use-data-changed";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
 const menuStore = useMenuStore();
@@ -880,6 +881,19 @@ async function load() {
 }
 
 onMounted(load);
+
+/**
+ * Refresco automatico: si mientras la pantalla esta abierta se guarda una orden,
+ * se recargan los bloques, el grafico y, si hay un detalle abierto, tambien su
+ * contenido. La senal llega por socket y se agrupa para no recargar tres veces
+ * seguidas por un solo guardado.
+ */
+useDataChanged(["work-order"], async () => {
+  await load();
+  if (detalleAbierto.value && detalleEquipo.value) {
+    await abrirDetalle(detalleBloque.value, detalleEquipo.value);
+  }
+});
 
 const motionRoot = useRevealMotion<HTMLElement>();
 function setMotionRoot(el: unknown) {
