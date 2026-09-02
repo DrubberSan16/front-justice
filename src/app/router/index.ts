@@ -221,6 +221,15 @@ export const router = createRouter({
           meta: { title: "Inteligencia Operativa", viewFile: "views/admin/MaintenanceIntelligenceView.vue" },
         },
         {
+          path: "dashboard-administracion",
+          name: "dashboard-administracion",
+          component: () => import("@/views/admin/AdminDashboardView.vue"),
+          meta: {
+            title: "Dashboard Administración",
+            viewFile: "views/admin/AdminDashboardView.vue",
+          },
+        },
+        {
           path: "reportes-sistema",
           name: "reportes-sistema",
           component: () => import("@/views/admin/SystemReportsView.vue"),
