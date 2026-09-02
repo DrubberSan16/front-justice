@@ -250,3 +250,34 @@ img {
     align-items: stretch;
   }
 }
+
+/* ------------------------------------------------------------------ Motion
+ * Contrato de movimiento del design system — ver src/app/motion/ y
+ * design-system/kpi-justice/MASTER.md (Motion 3/10 "Subtle", Swiss Style).
+ * Las clases js-* no llevan estilo propio: son ganchos para el motor.
+ */
+.js-hover-card,
+.js-reveal,
+.js-stagger-item {
+  will-change: transform, opacity;
+}
+
+/* Accesibilidad (CRITICAL en el MASTER.md): con movimiento reducido se anulan
+ * las transiciones y se fuerza el estado final visible de los revelados. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .js-hero-reveal,
+  .js-reveal,
+  .js-stagger-item {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

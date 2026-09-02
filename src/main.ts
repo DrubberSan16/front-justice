@@ -2,6 +2,7 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import { router } from "@/app/router";
 import { appThemes, resolveInitialTheme } from "@/app/config/theme";
+import { vReveal } from "@/app/motion";
 
 import App from "./App.vue";
 import "./style.css";
@@ -24,4 +25,5 @@ createApp(App)
   .use(createPinia())
   .use(router)
   .use(vuetify)
+  .directive("reveal", vReveal)
   .mount("#app");
