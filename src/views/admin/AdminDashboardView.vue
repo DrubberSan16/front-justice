@@ -80,9 +80,16 @@
             chips
             closable-chips
             class="chart-toolbar__select"
-            :hint="`Máximo ${MAX_SERIES} unidades con color propio`"
+            :hint="hintSeries"
             persistent-hint
           />
+
+          <div class="chart-toolbar__actions">
+            <v-btn size="small" variant="tonal" @click="seleccionarTodas">
+              Todas ({{ equiposConSerie.length }})
+            </v-btn>
+            <v-btn size="small" variant="text" @click="equiposSerie = []">Limpiar</v-btn>
+          </div>
         </div>
 
         <div v-if="seriesLoading" class="chart-loading">
@@ -352,7 +359,7 @@ import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { api } from "@/app/http/api";
 import { useTheme } from "vuetify";
 import EChart from "@/components/charts/EChart.vue";
-import { MAX_SERIES, chartBase, chartPalette } from "@/app/config/chart-theme";
+import { MAX_SERIES, chartBase, seriesColor } from "@/app/config/chart-theme";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
@@ -555,6 +562,16 @@ const equiposConSerie = computed(() => {
   return [...vistos.entries()].map(([value, codigo]) => ({ value, label: codigo }));
 });
 
+const hintSeries = computed(() =>
+  equiposSerie.value.length > 10
+    ? `${equiposSerie.value.length} unidades: por encima de 10 líneas el gráfico se solapa y cuesta leerlo`
+    : "Elige las unidades a comparar",
+);
+
+function seleccionarTodas() {
+  equiposSerie.value = equiposConSerie.value.map((e: any) => e.value);
+}
+
 async function loadSeries() {
   seriesLoading.value = true;
   try {
@@ -573,6 +590,8 @@ async function loadSeries() {
     // Preselección: las unidades que más consumen, hasta el máximo con color
     // propio. Un color por entidad; nunca se cicla la paleta.
     if (!equiposSerie.value.length) {
+      // Arranca con las que mas consumen para que el grafico sea legible de
+      // entrada; el usuario puede anadir el resto o seleccionarlas todas.
       const totales = new Map<string, number>();
       for (const f of seriesFilas.value) {
         totales.set(f.equipo_id, (totales.get(f.equipo_id) ?? 0) + Number(f.galones ?? 0));
@@ -616,23 +635,29 @@ const serieOption = computed(() => {
     porEquipo.get(f.equipo_id)!.datos.set(String(f.periodo), Number(f.galones ?? 0));
   }
 
-  const paleta = chartPalette(esOscuro.value);
-  // El color sigue a la entidad y no a su posición: el índice se toma del orden
-  // estable de equiposSerie, así filtrar no repinta a los que quedan.
+  // El color sigue a la entidad y no a su posicion en el grafico: el indice sale
+  // del orden estable de `equiposSerie`, asi que quitar una unidad no repinta a
+  // las demas. Mas alla de la paleta validada, `seriesColor` genera tonos
+  // separados por angulo aureo, sin tope de series.
   const series = [...porEquipo.entries()].map(([id, info]) => ({
     name: info.codigo,
     type: "line" as const,
     smooth: false,
     symbolSize: 8,
     lineStyle: { width: 2 },
-    itemStyle: { color: paleta[equiposSerie.value.indexOf(id) % paleta.length] },
+    itemStyle: { color: seriesColor(equiposSerie.value.indexOf(id), esOscuro.value) },
     data: periodos.map((per) => info.datos.get(per) ?? 0),
   }));
 
   return {
     ...chartBase(esOscuro.value),
-    legend: { show: true, bottom: 0, textStyle: { color: chartBase(esOscuro.value).textStyle.color } },
-    grid: { ...chartBase(esOscuro.value).grid, bottom: 48 },
+    legend: {
+      show: true,
+      bottom: 0,
+      type: "scroll" as const,
+      textStyle: { color: chartBase(esOscuro.value).textStyle.color },
+    },
+    grid: { ...chartBase(esOscuro.value).grid, bottom: 56 },
     xAxis: {
       ...chartBase(esOscuro.value).xAxis,
       data: periodos.map((p) => etiquetaPeriodo(p)),
@@ -714,7 +739,6 @@ const detalleChartOption = computed(() => {
   // comparar una fila con su barra inducia a error.
   const filas = detalleFilas.value;
   const base = chartBase(esOscuro.value);
-  const paleta = chartPalette(esOscuro.value);
 
   return {
     ...base,
@@ -726,7 +750,7 @@ const detalleChartOption = computed(() => {
         name: etiqueta,
         type: "bar" as const,
         barMaxWidth: 26,
-        itemStyle: { color: paleta[0], borderRadius: [4, 4, 0, 0] },
+        itemStyle: { color: seriesColor(0, esOscuro.value), borderRadius: [4, 4, 0, 0] },
         // Serie única: la etiqueta directa sustituye a la leyenda y da el
         // relieve que exige el contraste de la paleta.
         label: { show: true, position: "top" as const, color: base.textStyle.color, fontSize: 11 },
@@ -1069,6 +1093,13 @@ function setMotionRoot(el: unknown) {
   align-items: flex-start;
   gap: var(--space-xl);
   margin-bottom: var(--space-lg);
+}
+
+.chart-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
 }
 
 .chart-toolbar__select {

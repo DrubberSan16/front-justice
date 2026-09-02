@@ -30,8 +30,40 @@ export const CHART_PALETTE_DARK = [
   "#27A4BE",
 ] as const;
 
-/** Máximo de series con color propio; el resto se agrupa. */
+/** Cuántas series usan la paleta validada antes de pasar a la rotación de tono. */
 export const MAX_SERIES = CHART_PALETTE_LIGHT.length;
+
+/**
+ * Color de la serie N.
+ *
+ * Las primeras cinco salen de la paleta validada. A partir de ahí se genera por
+ * rotación de tono con el ángulo áureo, manteniendo saturación y luminosidad
+ * dentro de la banda que valida la guía.
+ *
+ * No son colores aleatorios a propósito. Dos aleatorios pueden caer
+ * perceptualmente idénticos —el problema que el validador detectó entre el
+ * verde y el cian originales— y además cambiarían en cada carga, impidiendo
+ * asociar un color con una unidad. El ángulo áureo reparte los tonos lo más
+ * lejos posible entre sí para cualquier cantidad de series, y el resultado es
+ * estable: la misma posición da siempre el mismo color.
+ *
+ * Aviso de lectura: por encima de ocho o diez líneas, un gráfico multi-serie se
+ * vuelve ilegible por solapamiento, no por color. Para comparar muchas unidades
+ * conviene acotar la selección.
+ */
+export function seriesColor(index: number, dark: boolean): string {
+  const base = chartPalette(dark);
+  const validado = base[index];
+  if (validado) return validado;
+
+  const ANGULO_AUREO = 137.508;
+  const tono = (index * ANGULO_AUREO) % 360;
+  // Saturación y luminosidad fijas dentro de la banda validada; en modo oscuro
+  // se sube la luminosidad para conservar contraste contra la superficie.
+  const saturacion = 58;
+  const luminosidad = dark ? 62 : 45;
+  return `hsl(${tono.toFixed(1)} ${saturacion}% ${luminosidad}%)`;
+}
 
 export function chartPalette(dark: boolean): readonly string[] {
   return dark ? CHART_PALETTE_DARK : CHART_PALETTE_LIGHT;
