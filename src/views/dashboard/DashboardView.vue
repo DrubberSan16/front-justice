@@ -4,13 +4,10 @@
       No tienes permisos para acceder a este reporte.
     </v-alert>
 
-    <div v-else class="dashboard-content">
+    <div v-else :ref="setMotionRoot" class="dashboard-content">
     <v-row class="mb-4 dashboard-hero-grid" align="stretch">
       <v-col cols="12" lg="8">
         <v-card rounded="xl" class="dashboard-hero enterprise-surface h-100">
-          <div class="dashboard-hero__glow dashboard-hero__glow--primary" />
-          <div class="dashboard-hero__glow dashboard-hero__glow--secondary" />
-
           <div class="dashboard-hero__header">
             <div class="dashboard-hero__copy">
               <div class="dashboard-hero__eyebrow">
@@ -96,11 +93,11 @@
             </v-chip>
           </div>
 
-          <v-row dense class="dashboard-kpi-grid">
+          <v-row dense class="dashboard-kpi-grid js-stagger">
             <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="3">
               <v-card
                 rounded="xl"
-                class="kpi-card kpi-card--interactive h-100"
+                class="kpi-card kpi-card--interactive h-100 js-stagger-item js-hover-card"
                 :style="{ '--kpi-accent': card.accent }"
                 role="button"
                 tabindex="0"
@@ -704,6 +701,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
+import { useRevealMotion } from "@/app/motion";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -1182,7 +1180,7 @@ const kpiCards = computed(() => [
     value: activeEquipmentCount.value,
     helper: "En funcionamiento actualmente",
     icon: "mdi-cog-outline",
-    accent: "linear-gradient(135deg, rgba(47,108,171,0.22), rgba(122,184,255,0.08))",
+    accent: "var(--dashboard-blue)",
   },
   {
     key: "ots",
@@ -1190,7 +1188,7 @@ const kpiCards = computed(() => [
     value: filteredWorkOrders.value.length,
     helper: `${workOrdersByStatus.value.IN_PROGRESS} en proceso`,
     icon: "mdi-clipboard-text-outline",
-    accent: "linear-gradient(135deg, rgba(16,143,114,0.22), rgba(109,227,191,0.08))",
+    accent: "var(--dashboard-green)",
   },
   {
     key: "inventario",
@@ -1198,7 +1196,7 @@ const kpiCards = computed(() => [
     value: productos.value.length,
     helper: `${lowStockItems.value.length} bajo stock`,
     icon: "mdi-package-variant-closed",
-    accent: "linear-gradient(135deg, rgba(225,122,0,0.2), rgba(255,202,106,0.08))",
+    accent: "var(--dashboard-orange)",
   },
   {
     key: "seguridad",
@@ -1206,9 +1204,31 @@ const kpiCards = computed(() => [
     value: users.value.filter((item) => String(item?.status || "ACTIVE").toUpperCase() === "ACTIVE").length,
     helper: `${roles.value.length} roles configurados`,
     icon: "mdi-account-group-outline",
-    accent: "linear-gradient(135deg, rgba(162,69,216,0.2), rgba(221,156,255,0.08))",
+    accent: "var(--dashboard-purple)",
   },
 ]);
+
+/**
+ * Motor de revelado del design system sobre el subárbol del dashboard.
+ *
+ * Se declara después de `kpiCards` a propósito: `useRevealMotion` monta un
+ * `watch` que evalúa su getter de inmediato, así que leer el computed antes de
+ * inicializarlo reventaría por TDZ.
+ *
+ * La clave de reenganche es el número de tarjetas, para que la cascada vuelva a
+ * aplicarse cuando entran los datos o cambia el período. Bajo
+ * `prefers-reduced-motion` el motor no anima y deja el estado final visible.
+ */
+const motionRoot = useRevealMotion<HTMLDivElement>(() => kpiCards.value.length);
+
+/**
+ * Se enlaza con `:ref` en vez de `ref="motionRoot"` porque `noUnusedLocals` está
+ * activo: con la forma de cadena, el ref solo se leería dentro del composable y
+ * `vue-tsc` marcaría la variable como no usada, rompiendo el build.
+ */
+function setMotionRoot(el: unknown) {
+  motionRoot.value = (el as HTMLDivElement | null) ?? null;
+}
 
 const workOrderStatusCards = computed(() => [
   {
@@ -2000,12 +2020,19 @@ watch([selectedYear, selectedMonth], () => {
 </script>
 
 <style scoped>
+/* Escala de densidad del design system (Density 8/10 — Dense / Dashboard).
+ * Ver design-system/kpi-justice/MASTER.md. Se declara aquí para no depender de
+ * números sueltos en cada regla. */
 .dashboard-page {
   --dashboard-blue: 47, 108, 171;
   --dashboard-cyan: 39, 164, 190;
   --dashboard-green: 15, 143, 114;
   --dashboard-orange: 225, 122, 0;
   --dashboard-purple: 132, 81, 201;
+  --space-md: 8px;
+  --space-lg: 12px;
+  --space-xl: 16px;
+  --space-2xl: 24px;
   width: 100%;
   min-width: 0;
   padding: 0;
@@ -2014,7 +2041,7 @@ watch([selectedYear, selectedMonth], () => {
 .dashboard-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: var(--space-xl);
 }
 
 .equipment-panel-col {
@@ -2028,46 +2055,14 @@ watch([selectedYear, selectedMonth], () => {
   overflow: hidden;
 }
 
+/* Estilo Swiss: superficie plana y una regla superior de acento como único
+ * elemento gráfico. Se retiraron el degradado y los tres círculos decorativos
+ * (dos `__glow` y el anillo `::after`): el MASTER.md marca el ornamento como
+ * anti-patrón explícito. */
 .dashboard-hero {
-  padding: 28px;
-  background:
-    linear-gradient(120deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 14%, var(--surface-base)), var(--surface-base) 68%),
-    var(--surface-base);
-}
-
-.dashboard-hero::after {
-  position: absolute;
-  z-index: -1;
-  right: -78px;
-  bottom: -118px;
-  width: 330px;
-  height: 330px;
-  border: 48px solid rgba(var(--v-theme-primary), 0.055);
-  border-radius: 50%;
-  content: "";
-}
-
-.dashboard-hero__glow {
-  position: absolute;
-  z-index: -1;
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.dashboard-hero__glow--primary {
-  top: -150px;
-  left: 30%;
-  width: 330px;
-  height: 330px;
-  background: rgba(var(--v-theme-primary), 0.09);
-}
-
-.dashboard-hero__glow--secondary {
-  right: 8%;
-  bottom: -135px;
-  width: 260px;
-  height: 260px;
-  background: rgba(var(--v-theme-secondary), 0.08);
+  padding: var(--space-2xl);
+  border-top: 3px solid rgb(var(--v-theme-primary));
+  background: var(--surface-base);
 }
 
 .dashboard-hero__header {
@@ -2194,34 +2189,27 @@ watch([selectedYear, selectedMonth], () => {
   min-width: 180px;
 }
 
+/* Tarjeta KPI en clave Swiss: superficie plana, jerarquía por tipografía y una
+ * barra de acento sólida. `--kpi-accent` llega como triplete RGB desde
+ * `kpiCards`, reutilizando los tokens `--dashboard-*` de esta vista en vez de
+ * rgba sueltos. */
 .kpi-card {
   position: relative;
   overflow: hidden;
-  min-height: 158px;
-  padding: 16px;
+  min-height: 152px;
+  padding: var(--space-xl);
   border: 1px solid var(--surface-border);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.025)),
-    var(--kpi-accent, linear-gradient(135deg, rgba(47,108,171,0.16), rgba(122,184,255,0.05)));
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.kpi-card::after {
-  position: absolute;
-  right: -34px;
-  bottom: -45px;
-  width: 125px;
-  height: 125px;
-  border: 24px solid rgba(var(--v-theme-primary), 0.045);
-  border-radius: 50%;
-  content: "";
+  border-left: 3px solid rgb(var(--kpi-accent, var(--dashboard-blue)));
+  background: var(--surface-base);
+  /* El transform lo gobierna el motor de movimiento (`js-hover-card`); aquí solo
+   * viajan color y sombra, que siguen dando respuesta con movimiento reducido. */
+  transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 
 .kpi-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(var(--v-theme-primary), 0.25);
-  box-shadow: 0 15px 30px rgba(var(--v-theme-primary), 0.1);
+  border-color: rgba(var(--v-theme-primary), 0.28);
+  border-left-color: rgb(var(--kpi-accent, var(--dashboard-blue)));
+  box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
 }
 
 .kpi-card--interactive {
@@ -2243,13 +2231,13 @@ watch([selectedYear, selectedMonth], () => {
 
 .kpi-card__icon {
   display: grid;
-  width: 41px;
-  height: 41px;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  border: 1px solid rgba(var(--v-theme-primary), 0.12);
-  border-radius: 13px;
-  color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-surface), 0.55);
+  border: 1px solid rgba(var(--kpi-accent, var(--dashboard-blue)), 0.22);
+  border-radius: 10px;
+  color: rgb(var(--kpi-accent, var(--dashboard-blue)));
+  background: rgba(var(--kpi-accent, var(--dashboard-blue)), 0.08);
 }
 
 .kpi-card__index {
