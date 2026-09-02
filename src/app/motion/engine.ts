@@ -98,6 +98,34 @@ export function initRevealMotion(root: HTMLElement | null | undefined): RevealCl
   };
 }
 
+/**
+ * Aplica el hover del design system a un unico elemento. Base de la directiva
+ * `v-hover-card`.
+ *
+ * A diferencia del recorrido por clases de `initRevealMotion`, esto se engancha
+ * en el montaje del propio elemento, asi que funciona con listas que se
+ * renderizan cuando llegan los datos: no depende de que el elemento exista
+ * cuando se monta la vista.
+ */
+export function hoverElement(element: HTMLElement): RevealCleanup {
+  if (prefersReducedMotion()) return () => {};
+
+  return hover(element, () => {
+    animate(
+      element,
+      { y: MOTION.hover.lift, scale: MOTION.hover.scale },
+      { duration: MOTION.hover.duration, ease: EASE_OUT },
+    );
+    return () => {
+      animate(
+        element,
+        { y: 0, scale: 1 },
+        { duration: MOTION.exit.duration, ease: EASE_OUT },
+      );
+    };
+  });
+}
+
 /** Revela un unico elemento cuando entra en viewport. Base de la directiva `v-reveal`. */
 export function revealElement(element: HTMLElement, delay = 0): RevealCleanup {
   if (prefersReducedMotion()) return () => {};

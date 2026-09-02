@@ -3,7 +3,7 @@ import { createPinia } from "pinia";
 import { router } from "@/app/router";
 import { appThemes, resolveInitialTheme } from "@/app/config/theme";
 import { componentDefaults } from "@/app/config/component-defaults";
-import { vReveal } from "@/app/motion";
+import { vHoverCard, vReveal } from "@/app/motion";
 
 import App from "./App.vue";
 import "./style.css";
@@ -37,4 +37,5 @@ createApp(App)
   .use(router)
   .use(vuetify)
   .directive("reveal", vReveal)
+  .directive("hover-card", vHoverCard)
   .mount("#app");

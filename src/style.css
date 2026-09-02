@@ -218,10 +218,15 @@ img {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Por debajo de 1280px estas reglas fijaban un min-width en pixeles, lo que
+ * PISA el `min-width: max-content` de arriba: la tabla dejaba de dimensionarse
+ * a su contenido, las columnas se comprimian y los textos largos se apilaban en
+ * celdas de varias lineas (filas de 232px con densidad 8/10). El envoltorio ya
+ * scrollea en horizontal, asi que la anchura por contenido es lo correcto. */
 @media (max-width: 1280px) {
   .enterprise-table table,
   .report-table table {
-    min-width: 780px;
+    min-width: max-content;
   }
 }
 
@@ -233,7 +238,7 @@ img {
 
   .enterprise-table table,
   .report-table table {
-    min-width: 720px;
+    min-width: max-content;
     font-size: 0.93rem;
   }
 }
@@ -241,7 +246,7 @@ img {
 @media (max-width: 600px) {
   .enterprise-table table,
   .report-table table {
-    min-width: 640px;
+    min-width: max-content;
     font-size: 0.9rem;
   }
 
