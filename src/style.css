@@ -377,3 +377,20 @@ img {
 .enterprise-table :is(thead th, .v-data-table__th) {
   z-index: 2;
 }
+
+/* Objetivos tactiles en controles compactos.
+ *
+ * El README del design system lo marca como uno de los puntos que mas se
+ * escapan: las acciones de fila y la paginacion de las tablas se quedan en
+ * 36x36, por debajo del minimo de 44x44.
+ *
+ * Solo se amplia cuando el puntero es grueso (dedo). Con raton la densidad 8/10
+ * se conserva intacta, que es justo lo que pide una plataforma de operacion. */
+@media (pointer: coarse) {
+  .v-data-table .v-btn--icon,
+  .v-data-table-footer .v-btn--icon,
+  .v-pagination .v-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
