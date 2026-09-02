@@ -1,5 +1,5 @@
 <template>
-  <v-row dense class="manual-layout">
+  <v-row dense class="manual-layout" :ref="setMotionRoot">
     <v-col cols="12">
       <v-card rounded="xl" class="enterprise-surface manual-hero">
         <div class="manual-hero__content">
@@ -214,7 +214,7 @@
                 class="manual-flow__step"
               >
                 <div class="manual-flow__step-index">{{ index + 1 }}</div>
-                <div class="manual-flow__step-card">
+                <div class="manual-flow__step-card js-hover-card">
                   <div class="manual-flow__step-kicker">PASO {{ index + 1 }}</div>
                   <div class="text-subtitle-1 font-weight-bold">{{ step.title }}</div>
                   <div class="text-body-2 text-medium-emphasis mt-2">
@@ -401,6 +401,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -1101,6 +1102,23 @@ watch(
 );
 
 watch(manualStorageKey, loadChecklistState, { immediate: true });
+/**
+ * Motor de movimiento del design system, solo para el hover de tarjetas
+ * (`js-hover-card`).
+ *
+ * Se declara al final del `<script setup>` y sin clave de reenganche a
+ * proposito: `useRevealMotion` evalua su getter al instante, y una clave que
+ * lea un computed puede alcanzar variables aun en zona muerta. Sin clave no hay
+ * watch, asi que no hay TDZ posible.
+ *
+ * Al no usar clases de revelado, el peor caso si el motor no engancha es
+ * quedarse sin animacion de hover, nunca con contenido invisible.
+ */
+const motionRoot = useRevealMotion<HTMLElement>();
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = resolveMotionElement(el);
+}
 </script>
 
 <style scoped>
@@ -1556,7 +1574,7 @@ watch(manualStorageKey, loadChecklistState, { immediate: true });
 }
 
 .manual-flow__step-card:hover {
-  transform: translateY(-2px);
+  /* El desplazamiento lo gobierna el motor via js-hover-card. */
   border-color: rgba(var(--manual-primary), 0.22);
 }
 

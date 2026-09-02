@@ -1,5 +1,5 @@
 <template>
-  <div class="menus-page">
+  <div class="menus-page" :ref="setMotionRoot">
     <v-alert v-if="!canRead" type="warning" variant="tonal">
       No tienes permisos para visualizar el módulo de menú.
     </v-alert>
@@ -30,7 +30,7 @@
         <article
           v-for="item in unassignedModules"
           :key="item.value"
-          class="module-card"
+          class="module-card js-hover-card"
         >
           <div class="module-card__top">
             <span class="module-card__icon"><v-icon icon="mdi-puzzle-plus-outline" /></span>
@@ -270,6 +270,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { motion, useReducedMotion } from "motion-v";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
@@ -641,6 +642,23 @@ async function onConfirmDelete() {
     busy.value = false;
   }
 }
+/**
+ * Motor de movimiento del design system, solo para el hover de tarjetas
+ * (`js-hover-card`).
+ *
+ * Se declara al final del `<script setup>` y sin clave de reenganche a
+ * proposito: `useRevealMotion` evalua su getter al instante, y una clave que
+ * lea un computed puede alcanzar variables aun en zona muerta. Sin clave no hay
+ * watch, asi que no hay TDZ posible.
+ *
+ * Al no usar clases de revelado, el peor caso si el motor no engancha es
+ * quedarse sin animacion de hover, nunca con contenido invisible.
+ */
+const motionRoot = useRevealMotion<HTMLElement>();
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = resolveMotionElement(el);
+}
 </script>
 
 <style scoped>
@@ -727,7 +745,7 @@ async function onConfirmDelete() {
 .module-card:hover {
   border-color: rgba(var(--v-theme-primary), 0.34);
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
-  transform: translateY(-2px);
+  /* El desplazamiento lo gobierna el motor via js-hover-card. */
 }
 
 .module-card__top {

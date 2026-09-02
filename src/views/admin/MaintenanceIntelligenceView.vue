@@ -1,5 +1,5 @@
 <template>
-  <EnterprisePageMotion class="intelligence-page">
+  <EnterprisePageMotion class="intelligence-page" :ref="setMotionRoot">
     <v-alert v-if="!canRead" type="warning" variant="tonal">
       No tienes permisos para visualizar este módulo.
     </v-alert>
@@ -286,7 +286,7 @@
 
             <div class="indicator-grid mb-4">
               <div
-                class="indicator-tile indicator-tile--interactive"
+                class="indicator-tile indicator-tile--interactive js-hover-card"
                 role="button"
                 tabindex="0"
                 aria-haspopup="dialog"
@@ -299,7 +299,7 @@
                 <div class="text-caption text-medium-emphasis">Consumo total del rango</div>
               </div>
               <div
-                class="indicator-tile indicator-tile--interactive"
+                class="indicator-tile indicator-tile--interactive js-hover-card"
                 role="button"
                 tabindex="0"
                 aria-haspopup="dialog"
@@ -312,7 +312,7 @@
                 <div class="text-caption text-medium-emphasis">Promedio por equipo visible</div>
               </div>
               <div
-                class="indicator-tile indicator-tile--interactive"
+                class="indicator-tile indicator-tile--interactive js-hover-card"
                 role="button"
                 tabindex="0"
                 aria-haspopup="dialog"
@@ -1272,6 +1272,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
@@ -2534,6 +2535,23 @@ watch(
     oilRelatedDashboardError.value = null;
   },
 );
+/**
+ * Motor de movimiento del design system, solo para el hover de tarjetas
+ * (`js-hover-card`).
+ *
+ * Se declara al final del `<script setup>` y sin clave de reenganche a
+ * proposito: `useRevealMotion` evalua su getter al instante, y una clave que
+ * lea un computed puede alcanzar variables aun en zona muerta. Sin clave no hay
+ * watch, asi que no hay TDZ posible.
+ *
+ * Al no usar clases de revelado, el peor caso si el motor no engancha es
+ * quedarse sin animacion de hover, nunca con contenido invisible.
+ */
+const motionRoot = useRevealMotion<HTMLElement>();
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = resolveMotionElement(el);
+}
 </script>
 
 <style scoped>
@@ -2841,7 +2859,7 @@ watch(
 }
 
 .indicator-tile:hover {
-  transform: translateY(-2px);
+  /* El desplazamiento lo gobierna el motor via js-hover-card. */
   border-color: rgba(var(--v-theme-primary), 0.22);
   box-shadow: 0 12px 25px rgba(var(--v-theme-primary), 0.08);
 }

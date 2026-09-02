@@ -115,3 +115,18 @@ export function revealElement(element: HTMLElement, delay = 0): RevealCleanup {
     { margin: "0px 0px -10% 0px", amount: 0.15 },
   );
 }
+
+/**
+ * Resuelve el nodo DOM de un template ref.
+ *
+ * En este repo la mayoria de contenedores son componentes Vuetify (`v-row`,
+ * `v-card`) o envoltorios propios como `EnterprisePageMotion`, y ahi un `ref`
+ * devuelve la instancia del componente, no el elemento. Pasar esa instancia al
+ * motor lo dejaba sin raiz y sin efecto, en silencio.
+ */
+export function resolveMotionElement(target: unknown): HTMLElement | null {
+  if (!target) return null;
+  if (target instanceof HTMLElement) return target;
+  const el = (target as { $el?: unknown }).$el;
+  return el instanceof HTMLElement ? el : null;
+}

@@ -1,5 +1,5 @@
 <template>
-  <EnterprisePageMotion class="welcome-page">
+  <EnterprisePageMotion class="welcome-page" :ref="setMotionRoot">
     <v-row align="stretch" class="mb-4">
       <v-col cols="12" xl="8">
         <v-card rounded="xl" class="welcome-hero enterprise-surface">
@@ -57,7 +57,7 @@
                     v-for="item in heroPreviewDays"
                     :key="item.date"
                     type="button"
-                    class="welcome-preview-card"
+                    class="welcome-preview-card js-hover-card"
                     @click="openDay(item.date)"
                   >
                     <span class="welcome-preview-card__date">{{ item.shortLabel }}</span>
@@ -314,6 +314,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { useRouter } from "vue-router";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { api } from "@/app/http/api";
@@ -771,6 +772,23 @@ async function loadSchedules() {
 onMounted(() => {
   loadSchedules();
 });
+/**
+ * Motor de movimiento del design system, solo para el hover de tarjetas
+ * (`js-hover-card`).
+ *
+ * Se declara al final del `<script setup>` y sin clave de reenganche a
+ * proposito: `useRevealMotion` evalua su getter al instante, y una clave que
+ * lea un computed puede alcanzar variables aun en zona muerta. Sin clave no hay
+ * watch, asi que no hay TDZ posible.
+ *
+ * Al no usar clases de revelado, el peor caso si el motor no engancha es
+ * quedarse sin animacion de hover, nunca con contenido invisible.
+ */
+const motionRoot = useRevealMotion<HTMLElement>();
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = resolveMotionElement(el);
+}
 </script>
 
 <style scoped>
@@ -902,7 +920,7 @@ onMounted(() => {
 }
 
 .welcome-preview-card:hover {
-  transform: translateY(-1px);
+  /* El desplazamiento lo gobierna el motor via js-hover-card. */
   border-color: color-mix(in srgb, var(--welcome-hero-panel-border) 72%, rgb(var(--v-theme-primary)) 28%);
   background: var(--welcome-hero-panel-bg-hover);
 }
