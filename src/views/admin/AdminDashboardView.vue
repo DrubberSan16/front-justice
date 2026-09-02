@@ -188,9 +188,9 @@
           subtitle="Galones por máquina con semaforización, acumulado semanal y mensual, y tendencia."
         >
           <div class="legend">
-            <span><i class="legend__dot legend__dot--verde" /> 0 a 5 gal · normal</span>
+            <span><i class="legend__dot legend__dot--verde" /> Por orden: 0 a 5 gal · normal</span>
             <span><i class="legend__dot legend__dot--amarillo" /> &gt;5 y &lt;10 gal · seguimiento</span>
-            <span><i class="legend__dot legend__dot--rojo" /> 10 gal o más · consumo anormal</span>
+            <span><i class="legend__dot legend__dot--rojo" /> 10 gal o más · consumo crítico</span>
           </div>
           <v-data-table
             :headers="headersCebado"
@@ -209,14 +209,24 @@
                 @click="abrirDetalle('cebado', row(item))"
               />
             </template>
-            <template #item.semaforo="{ item }">
-              <StatusChip :nivel="row(item).semaforo.nivel" :texto="row(item).semaforo.etiqueta" />
-            </template>
-            <template #item.tendencia="{ item }">
-              <span class="trend" :class="`trend--${row(item).tendencia.toLowerCase()}`">
-                <v-icon :icon="trendIcon(row(item).tendencia)" size="16" />
-                {{ trendLabel(row(item).tendencia) }}
-              </span>
+            <template #item.niveles="{ item }">
+              <div class="niveles">
+                <StatusChip
+                  v-if="row(item).ots_criticas"
+                  nivel="ROJO"
+                  :texto="`${row(item).ots_criticas} crítica(s)`"
+                />
+                <StatusChip
+                  v-if="row(item).ots_seguimiento"
+                  nivel="AMARILLO"
+                  :texto="`${row(item).ots_seguimiento} en seguimiento`"
+                />
+                <StatusChip
+                  v-if="!row(item).ots_criticas && !row(item).ots_seguimiento"
+                  nivel="VERDE"
+                  texto="Todas normales"
+                />
+              </div>
             </template>
           </v-data-table>
         </SectionCard>
@@ -340,6 +350,24 @@
                 no-data-text="Sin registros que sustenten esta cifra en el período"
               >
                 <template #item.fecha="{ item }">{{ fechaCorta(row(item).fecha) }}</template>
+                <template #item.semaforo="{ item }">
+                  <StatusChip
+                    v-if="row(item).semaforo"
+                    :nivel="row(item).semaforo.nivel"
+                    :texto="row(item).semaforo.etiqueta"
+                  />
+                </template>
+                <template #item.tendencia="{ item }">
+                  <span
+                    v-if="row(item).tendencia && row(item).tendencia !== 'SIN_REFERENCIA'"
+                    class="trend"
+                    :class="`trend--${row(item).tendencia.toLowerCase()}`"
+                  >
+                    <v-icon :icon="trendIcon(row(item).tendencia)" size="16" />
+                    {{ trendLabel(row(item).tendencia) }}
+                  </span>
+                  <span v-else class="text-medium-emphasis">Primera orden</span>
+                </template>
                 <template #item.desde="{ item }">{{ fechaHora(row(item).desde) }}</template>
                 <template #item.hasta="{ item }">{{ fechaHora(row(item).hasta) }}</template>
               </v-data-table>
@@ -447,14 +475,16 @@ const headersReincidencia = [
   { title: "Repeticiones", key: "veces", align: "end" as const },
   { title: "Última vez", key: "ultima_vez" },
 ];
+// El semaforo y la tendencia son por orden, no por equipo: viven en el detalle.
+// Aqui se informa cuantas ordenes del equipo cayeron en cada nivel.
 const headersCebado = [
   { title: "Equipo", key: "equipo_nombre" },
-  { title: "Descripción", key: "equipo_descripcion" },
+  { title: "Cebados", key: "ots_cebado", align: "end" as const },
   { title: "Galones período", key: "galones_periodo", align: "end" as const },
   { title: "Semana", key: "galones_semana", align: "end" as const },
   { title: "Mes", key: "galones_mes", align: "end" as const },
-  { title: "Tendencia", key: "tendencia" },
-  { title: "Estado", key: "semaforo" },
+  { title: "Mayor orden", key: "galones_max_orden", align: "end" as const },
+  { title: "Órdenes por nivel", key: "niveles" },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersRepuestos = [
@@ -513,7 +543,7 @@ const resumenCards = computed(() => {
       key: "cebado",
       label: "Galones de cebado",
       value: r.galones_cebado ?? 0,
-      helper: `${r.equipos_cebado_rojo ?? 0} en consumo anormal`,
+      helper: `${r.ordenes_cebado_criticas ?? 0} orden(es) en consumo crítico`,
       icon: "mdi-oil",
       accent: "var(--kpi-purple)",
     },
@@ -676,7 +706,7 @@ const detalleFilas = ref<any[]>([]);
 
 const EXPLICACIONES: Record<string, string> = {
   cebado:
-    "El total de galones sale de sumar el consumo de productos marcados como aceite en las órdenes de cebado del período. Abajo está cada orden con su cantidad.",
+    "Cada fila es una orden de cebado con el total de aceite que consumió. El nivel se calcula sobre esa orden: hasta 5 galones es normal, entre 5 y 10 exige seguimiento y desde 10 es consumo crítico. La tendencia compara cada orden con la anterior del mismo equipo.",
   repuestos:
     "El costo sale de sumar el subtotal de cada línea de consumo registrada en las órdenes del equipo dentro del período.",
   correctivos:
@@ -698,6 +728,8 @@ const HEADERS_DETALLE: Record<string, any[]> = {
     { title: "Fecha", key: "fecha" },
     { title: "Producto", key: "producto" },
     { title: "Galones", key: "galones", align: "end" as const },
+    { title: "Tendencia", key: "tendencia" },
+    { title: "Nivel", key: "semaforo" },
     { title: "Costo", key: "costo", align: "end" as const },
   ],
   repuestos: [
@@ -1047,6 +1079,12 @@ function setMotionRoot(el: unknown) {
 .status-chip--rojo {
   color: rgb(198, 40, 40);
   background: rgba(198, 40, 40, 0.14);
+}
+
+.niveles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .legend {
