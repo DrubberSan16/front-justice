@@ -122,7 +122,7 @@
                 size="small"
                 variant="text"
                 color="primary"
-                :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                :aria-label="`Ver detalle de ${row(item).equipo_nombre}`"
                 @click="abrirDetalle('disponibilidad', row(item))"
               />
             </template>
@@ -158,7 +158,7 @@
                     size="small"
                     variant="text"
                     color="primary"
-                    :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                    :aria-label="`Ver detalle de ${row(item).equipo_nombre}`"
                     @click="abrirDetalle('correctivos', row(item))"
                   />
                 </template>
@@ -205,7 +205,7 @@
                 size="small"
                 variant="text"
                 color="primary"
-                :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                :aria-label="`Ver detalle de ${row(item).equipo_nombre}`"
                 @click="abrirDetalle('cebado', row(item))"
               />
             </template>
@@ -240,7 +240,7 @@
                 size="small"
                 variant="text"
                 color="primary"
-                :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                :aria-label="`Ver detalle de ${row(item).equipo_nombre}`"
                 @click="abrirDetalle('repuestos', row(item))"
               />
             </template>
@@ -275,7 +275,7 @@
             type="info"
             variant="tonal"
             class="mt-3"
-            :text="`${proyeccionSinFrecuencia.length} equipo(s) sin frecuencia configurada quedan fuera de la proyección: ${proyeccionSinFrecuencia.map((e: any) => e.equipo_codigo).join(', ')}`"
+            :text="`${proyeccionSinFrecuencia.length} equipo(s) sin frecuencia configurada quedan fuera de la proyección: ${proyeccionSinFrecuencia.map((e: any) => e.equipo_nombre).join(', ')}`"
           />
         </SectionCard>
 
@@ -307,8 +307,8 @@
           <v-card-title class="detalle__head">
             <div>
               <div class="detalle__eyebrow">{{ detalleTitulo }}</div>
-              <h2 class="detalle__title">{{ detalleEquipo?.equipo_codigo }}</h2>
-              <p class="detalle__sub">{{ detalleEquipo?.equipo_nombre }}</p>
+              <h2 class="detalle__title">{{ detalleEquipo?.equipo_nombre }}</h2>
+              <p class="detalle__sub">{{ detalleEquipo?.equipo_descripcion }}</p>
             </div>
             <v-btn icon="mdi-close" variant="text" aria-label="Cerrar" @click="detalleAbierto = false" />
           </v-card-title>
@@ -427,29 +427,29 @@ const data = ref<any>({
 });
 
 const headersDisponibilidad = [
-  { title: "Equipo", key: "equipo_codigo" },
-  { title: "Nombre", key: "equipo_nombre" },
+  { title: "Equipo", key: "equipo_nombre" },
+  { title: "Descripción", key: "equipo_descripcion" },
   { title: "Horas disponibles", key: "horas_disponibles", align: "end" as const },
   { title: "Horas fuera de servicio", key: "horas_fuera_servicio", align: "end" as const },
   { title: "Disponibilidad", key: "porcentaje_disponibilidad", align: "end" as const },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersCorrectivos = [
-  { title: "Equipo", key: "equipo_codigo" },
+  { title: "Equipo", key: "equipo_nombre" },
   { title: "Correctivos", key: "total_correctivos", align: "end" as const },
   { title: "Horas intervención", key: "horas_intervencion", align: "end" as const },
   { title: "Última", key: "ultima_intervencion" },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersReincidencia = [
-  { title: "Equipo", key: "equipo_codigo" },
+  { title: "Equipo", key: "equipo_nombre" },
   { title: "Compartimiento", key: "componente" },
   { title: "Repeticiones", key: "veces", align: "end" as const },
   { title: "Última vez", key: "ultima_vez" },
 ];
 const headersCebado = [
-  { title: "Equipo", key: "equipo_codigo" },
-  { title: "Nombre", key: "equipo_nombre" },
+  { title: "Equipo", key: "equipo_nombre" },
+  { title: "Descripción", key: "equipo_descripcion" },
   { title: "Galones período", key: "galones_periodo", align: "end" as const },
   { title: "Semana", key: "galones_semana", align: "end" as const },
   { title: "Mes", key: "galones_mes", align: "end" as const },
@@ -458,15 +458,15 @@ const headersCebado = [
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersRepuestos = [
-  { title: "Equipo", key: "equipo_codigo" },
-  { title: "Nombre", key: "equipo_nombre" },
+  { title: "Equipo", key: "equipo_nombre" },
+  { title: "Descripción", key: "equipo_descripcion" },
   { title: "OT", key: "ots", align: "end" as const },
   { title: "Cantidad", key: "cantidad", align: "end" as const },
   { title: "Costo", key: "costo", align: "end" as const },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersProyeccion = [
-  { title: "Equipo", key: "equipo_codigo" },
+  { title: "Equipo", key: "equipo_nombre" },
   { title: "Marca", key: "marca" },
   { title: "Horómetro actual", key: "horometro_actual", align: "end" as const },
   { title: "Último mant.", key: "horometro_ultimo_mantenimiento", align: "end" as const },
@@ -476,8 +476,8 @@ const headersProyeccion = [
   { title: "Estado", key: "semaforo" },
 ];
 const headersConfiabilidad = [
-  { title: "Equipo", key: "equipo_codigo" },
-  { title: "Nombre", key: "equipo_nombre" },
+  { title: "Equipo", key: "equipo_nombre" },
+  { title: "Descripción", key: "equipo_descripcion" },
   { title: "Intervenciones", key: "intervenciones", align: "end" as const },
   { title: "MTBF", key: "mtbf_horas", align: "end" as const },
   { title: "MTTR", key: "mttr_horas", align: "end" as const },
@@ -544,7 +544,7 @@ const equipoId = ref<string | null>(null);
 const equiposFiltro = computed(() =>
   (data.value.disponibilidad ?? []).map((e: any) => ({
     value: e.equipo_id,
-    label: `${e.equipo_codigo} · ${e.equipo_nombre ?? ""}`.trim(),
+    label: `${e.equipo_nombre} · ${e.equipo_descripcion ?? ""}`.trim(),
   })),
 );
 
@@ -557,7 +557,7 @@ const equiposSerie = ref<string[]>([]);
 const equiposConSerie = computed(() => {
   const vistos = new Map<string, string>();
   for (const f of seriesFilas.value) {
-    if (!vistos.has(f.equipo_id)) vistos.set(f.equipo_id, f.equipo_codigo);
+    if (!vistos.has(f.equipo_id)) vistos.set(f.equipo_id, f.equipo_nombre);
   }
   return [...vistos.entries()].map(([value, codigo]) => ({ value, label: codigo }));
 });
@@ -630,7 +630,7 @@ const serieOption = computed(() => {
   const porEquipo = new Map<string, { codigo: string; datos: Map<string, number> }>();
   for (const f of filas) {
     if (!porEquipo.has(f.equipo_id)) {
-      porEquipo.set(f.equipo_id, { codigo: f.equipo_codigo, datos: new Map() });
+      porEquipo.set(f.equipo_id, { codigo: f.equipo_nombre, datos: new Map() });
     }
     porEquipo.get(f.equipo_id)!.datos.set(String(f.periodo), Number(f.galones ?? 0));
   }
