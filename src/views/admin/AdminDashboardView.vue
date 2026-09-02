@@ -17,6 +17,15 @@
         <div class="admin-hero__filters">
           <v-text-field v-model="desde" label="Desde" type="date" class="admin-hero__field" />
           <v-text-field v-model="hasta" label="Hasta" type="date" class="admin-hero__field" />
+          <v-autocomplete
+            v-model="equipoId"
+            :items="equiposFiltro"
+            item-title="label"
+            item-value="value"
+            label="Equipo"
+            clearable
+            class="admin-hero__field admin-hero__field--wide"
+          />
           <v-btn color="primary" prepend-icon="mdi-refresh" :loading="loading" @click="load">
             Actualizar
           </v-btn>
@@ -41,6 +50,50 @@
         </v-col>
       </v-row>
 
+      <!-- Grafico central: tendencia de consumo de aceite ------------------->
+      <SectionCard
+        icon="mdi-chart-line"
+        title="Tendencia de consumo de aceite"
+        subtitle="Galones de cebado por período. Elige las unidades a comparar y la granularidad."
+      >
+        <div class="chart-toolbar">
+          <v-btn-toggle
+            v-model="granularidad"
+            density="comfortable"
+            variant="outlined"
+            divided
+            mandatory
+            @update:model-value="loadSeries"
+          >
+            <v-btn value="semana" size="small">Semana</v-btn>
+            <v-btn value="mes" size="small">Mes</v-btn>
+            <v-btn value="anio" size="small">Año</v-btn>
+          </v-btn-toggle>
+
+          <v-select
+            v-model="equiposSerie"
+            :items="equiposConSerie"
+            item-title="label"
+            item-value="value"
+            label="Unidades en el gráfico"
+            multiple
+            chips
+            closable-chips
+            class="chart-toolbar__select"
+            :hint="`Máximo ${MAX_SERIES} unidades con color propio`"
+            persistent-hint
+          />
+        </div>
+
+        <div v-if="seriesLoading" class="chart-loading">
+          <v-progress-circular indeterminate size="26" />
+        </div>
+        <div v-else-if="!serieOption" class="chart-empty">
+          Sin consumo de aceite registrado en el período.
+        </div>
+        <EChart v-else :option="serieOption" height="360px" />
+      </SectionCard>
+
       <v-skeleton-loader v-if="loading" type="table" class="mt-2" />
 
       <template v-else>
@@ -56,6 +109,16 @@
             :items-per-page="10"
             class="enterprise-table"
           >
+            <template #item.acciones="{ item }">
+              <v-btn
+                icon="mdi-magnify-expand"
+                size="small"
+                variant="text"
+                color="primary"
+                :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                @click="abrirDetalle('disponibilidad', row(item))"
+              />
+            </template>
             <template #item.porcentaje_disponibilidad="{ item }">
               <StatusChip
                 v-if="row(item).porcentaje_disponibilidad != null"
@@ -81,7 +144,18 @@
                 :items="data.correctivos.por_equipo"
                 :items-per-page="5"
                 class="enterprise-table"
-              />
+              >
+                <template #item.acciones="{ item }">
+                  <v-btn
+                    icon="mdi-magnify-expand"
+                    size="small"
+                    variant="text"
+                    color="primary"
+                    :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                    @click="abrirDetalle('correctivos', row(item))"
+                  />
+                </template>
+              </v-data-table>
             </div>
             <div>
               <h3 class="split-grid__title">Fallas repetitivas</h3>
@@ -118,6 +192,16 @@
             class="enterprise-table"
             no-data-text="Sin consumo de aceite registrado en cebado"
           >
+            <template #item.acciones="{ item }">
+              <v-btn
+                icon="mdi-magnify-expand"
+                size="small"
+                variant="text"
+                color="primary"
+                :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                @click="abrirDetalle('cebado', row(item))"
+              />
+            </template>
             <template #item.semaforo="{ item }">
               <StatusChip :nivel="row(item).semaforo.nivel" :texto="row(item).semaforo.etiqueta" />
             </template>
@@ -143,6 +227,16 @@
             class="enterprise-table"
           >
             <template #item.costo="{ item }">{{ money(row(item).costo) }}</template>
+            <template #item.acciones="{ item }">
+              <v-btn
+                icon="mdi-magnify-expand"
+                size="small"
+                variant="text"
+                color="primary"
+                :aria-label="`Ver detalle de ${row(item).equipo_codigo}`"
+                @click="abrirDetalle('repuestos', row(item))"
+              />
+            </template>
           </v-data-table>
         </SectionCard>
 
@@ -199,6 +293,53 @@
           </v-data-table>
         </SectionCard>
       </template>
+
+      <!-- Detalle: por que sale ese resumen ---------------------------------->
+      <v-dialog v-model="detalleAbierto" max-width="1080" scrollable>
+        <v-card rounded="xl" class="enterprise-dialog">
+          <v-card-title class="detalle__head">
+            <div>
+              <div class="detalle__eyebrow">{{ detalleTitulo }}</div>
+              <h2 class="detalle__title">{{ detalleEquipo?.equipo_codigo }}</h2>
+              <p class="detalle__sub">{{ detalleEquipo?.equipo_nombre }}</p>
+            </div>
+            <v-btn icon="mdi-close" variant="text" aria-label="Cerrar" @click="detalleAbierto = false" />
+          </v-card-title>
+
+          <v-card-text>
+            <v-alert type="info" variant="tonal" density="comfortable" class="mb-4">
+              {{ detalleExplicacion }}
+            </v-alert>
+
+            <div v-if="detalleLoading" class="chart-loading">
+              <v-progress-circular indeterminate size="26" />
+            </div>
+
+            <template v-else>
+              <EChart
+                v-if="detalleChartOption"
+                :option="detalleChartOption"
+                height="300px"
+                class="mb-4"
+              />
+
+              <!-- Tabla de respaldo: la guia de visualizacion la exige cuando
+                   hay colores por debajo del contraste minimo. -->
+              <v-data-table
+                :headers="detalleHeaders"
+                :items="detalleFilas"
+                :items-per-page="10"
+                class="enterprise-table"
+                no-data-text="Sin registros que sustenten esta cifra en el período"
+              >
+                <template #item.fecha="{ item }">{{ fechaCorta(row(item).fecha) }}</template>
+                <template #item.desde="{ item }">{{ fechaHora(row(item).desde) }}</template>
+                <template #item.hasta="{ item }">{{ fechaHora(row(item).hasta) }}</template>
+              </v-data-table>
+            </template>
+          </v-card-text>
+        </v-card>
+      </v-dialog>
     </div>
   </EnterprisePageMotion>
 </template>
@@ -209,6 +350,9 @@ import { VIcon } from "vuetify/components";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { api } from "@/app/http/api";
+import { useTheme } from "vuetify";
+import EChart from "@/components/charts/EChart.vue";
+import { MAX_SERIES, chartBase, chartPalette } from "@/app/config/chart-theme";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 
@@ -281,12 +425,14 @@ const headersDisponibilidad = [
   { title: "Horas disponibles", key: "horas_disponibles", align: "end" as const },
   { title: "Horas fuera de servicio", key: "horas_fuera_servicio", align: "end" as const },
   { title: "Disponibilidad", key: "porcentaje_disponibilidad", align: "end" as const },
+  { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersCorrectivos = [
   { title: "Equipo", key: "equipo_codigo" },
   { title: "Correctivos", key: "total_correctivos", align: "end" as const },
   { title: "Horas intervención", key: "horas_intervencion", align: "end" as const },
   { title: "Última", key: "ultima_intervencion" },
+  { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersReincidencia = [
   { title: "Equipo", key: "equipo_codigo" },
@@ -302,6 +448,7 @@ const headersCebado = [
   { title: "Mes", key: "galones_mes", align: "end" as const },
   { title: "Tendencia", key: "tendencia" },
   { title: "Estado", key: "semaforo" },
+  { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersRepuestos = [
   { title: "Equipo", key: "equipo_codigo" },
@@ -309,6 +456,7 @@ const headersRepuestos = [
   { title: "OT", key: "ots", align: "end" as const },
   { title: "Cantidad", key: "cantidad", align: "end" as const },
   { title: "Costo", key: "costo", align: "end" as const },
+  { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
 const headersProyeccion = [
   { title: "Equipo", key: "equipo_codigo" },
@@ -381,6 +529,236 @@ function row(item: unknown): any {
   return item as any;
 }
 
+const theme = useTheme();
+const esOscuro = computed(() => theme.global.current.value.dark);
+
+/** Filtro por equipo. Se alimenta del bloque de disponibilidad, que lista todos. */
+const equipoId = ref<string | null>(null);
+const equiposFiltro = computed(() =>
+  (data.value.disponibilidad ?? []).map((e: any) => ({
+    value: e.equipo_id,
+    label: `${e.equipo_codigo} · ${e.equipo_nombre ?? ""}`.trim(),
+  })),
+);
+
+// --------------------------------------------------------- Serie de tendencia
+const granularidad = ref<"semana" | "mes" | "anio">("mes");
+const seriesLoading = ref(false);
+const seriesFilas = ref<any[]>([]);
+const equiposSerie = ref<string[]>([]);
+
+const equiposConSerie = computed(() => {
+  const vistos = new Map<string, string>();
+  for (const f of seriesFilas.value) {
+    if (!vistos.has(f.equipo_id)) vistos.set(f.equipo_id, f.equipo_codigo);
+  }
+  return [...vistos.entries()].map(([value, codigo]) => ({ value, label: codigo }));
+});
+
+async function loadSeries() {
+  seriesLoading.value = true;
+  try {
+    const { data: payload } = await api.get(
+      "/kpi_maintenance/dashboard-administracion/cebado-series",
+      {
+        params: {
+          desde: desde.value,
+          hasta: hasta.value,
+          equipo_id: equipoId.value || undefined,
+          granularidad: granularidad.value,
+        },
+      },
+    );
+    seriesFilas.value = (payload?.data ?? payload)?.filas ?? [];
+    // Preselección: las unidades que más consumen, hasta el máximo con color
+    // propio. Un color por entidad; nunca se cicla la paleta.
+    if (!equiposSerie.value.length) {
+      const totales = new Map<string, number>();
+      for (const f of seriesFilas.value) {
+        totales.set(f.equipo_id, (totales.get(f.equipo_id) ?? 0) + Number(f.galones ?? 0));
+      }
+      equiposSerie.value = [...totales.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, MAX_SERIES)
+        .map(([id]) => id);
+    }
+  } catch (e: any) {
+    if (!e?.response) console.error("[DashboardAdministracion:series]", e);
+  } finally {
+    seriesLoading.value = false;
+  }
+}
+
+/**
+ * Etiqueta del eje segun la granularidad. El backend devuelve el inicio del
+ * bucket como fecha completa; mostrarla cruda llenaba el eje de timestamps.
+ */
+function etiquetaPeriodo(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  if (granularidad.value === "anio") return String(d.getFullYear());
+  if (granularidad.value === "semana") {
+    return d.toLocaleDateString("es-EC", { day: "2-digit", month: "short" });
+  }
+  return d.toLocaleDateString("es-EC", { month: "short", year: "numeric" });
+}
+
+const serieOption = computed(() => {
+  const filas = seriesFilas.value.filter((f) => equiposSerie.value.includes(f.equipo_id));
+  if (!filas.length) return null;
+
+  const periodos = [...new Set(filas.map((f) => String(f.periodo)))].sort();
+  const porEquipo = new Map<string, { codigo: string; datos: Map<string, number> }>();
+  for (const f of filas) {
+    if (!porEquipo.has(f.equipo_id)) {
+      porEquipo.set(f.equipo_id, { codigo: f.equipo_codigo, datos: new Map() });
+    }
+    porEquipo.get(f.equipo_id)!.datos.set(String(f.periodo), Number(f.galones ?? 0));
+  }
+
+  const paleta = chartPalette(esOscuro.value);
+  // El color sigue a la entidad y no a su posición: el índice se toma del orden
+  // estable de equiposSerie, así filtrar no repinta a los que quedan.
+  const series = [...porEquipo.entries()].map(([id, info]) => ({
+    name: info.codigo,
+    type: "line" as const,
+    smooth: false,
+    symbolSize: 8,
+    lineStyle: { width: 2 },
+    itemStyle: { color: paleta[equiposSerie.value.indexOf(id) % paleta.length] },
+    data: periodos.map((per) => info.datos.get(per) ?? 0),
+  }));
+
+  return {
+    ...chartBase(esOscuro.value),
+    legend: { show: true, bottom: 0, textStyle: { color: chartBase(esOscuro.value).textStyle.color } },
+    grid: { ...chartBase(esOscuro.value).grid, bottom: 48 },
+    xAxis: {
+      ...chartBase(esOscuro.value).xAxis,
+      data: periodos.map((p) => etiquetaPeriodo(p)),
+    },
+    yAxis: { ...chartBase(esOscuro.value).yAxis, name: "Galones" },
+    series,
+  };
+});
+
+// ------------------------------------------------------------------ Detalle
+const detalleAbierto = ref(false);
+const detalleLoading = ref(false);
+const detalleBloque = ref<string>("");
+const detalleEquipo = ref<any>(null);
+const detalleFilas = ref<any[]>([]);
+
+const EXPLICACIONES: Record<string, string> = {
+  cebado:
+    "El total de galones sale de sumar el consumo de productos marcados como aceite en las órdenes de cebado del período. Abajo está cada orden con su cantidad.",
+  repuestos:
+    "El costo sale de sumar el subtotal de cada línea de consumo registrada en las órdenes del equipo dentro del período.",
+  correctivos:
+    "El conteo son las órdenes correctivas del equipo en el período. Las horas se miden de hora de inicio a hora de fin de cada intervención.",
+  disponibilidad:
+    "El porcentaje sale de la línea de tiempo de funcionamiento del equipo: se suman los tramos en FUNCIONAMIENTO y en PARADO dentro del período.",
+};
+
+const TITULOS: Record<string, string> = {
+  cebado: "Detalle de cebado y aceite",
+  repuestos: "Detalle de repuestos",
+  correctivos: "Detalle de correctivos",
+  disponibilidad: "Detalle de disponibilidad",
+};
+
+const HEADERS_DETALLE: Record<string, any[]> = {
+  cebado: [
+    { title: "Orden", key: "orden" },
+    { title: "Fecha", key: "fecha" },
+    { title: "Producto", key: "producto" },
+    { title: "Galones", key: "galones", align: "end" as const },
+    { title: "Costo", key: "costo", align: "end" as const },
+  ],
+  repuestos: [
+    { title: "Orden", key: "orden" },
+    { title: "Fecha", key: "fecha" },
+    { title: "Producto", key: "producto" },
+    { title: "Cantidad", key: "cantidad", align: "end" as const },
+    { title: "Costo", key: "costo", align: "end" as const },
+  ],
+  correctivos: [
+    { title: "Orden", key: "orden" },
+    { title: "Título", key: "titulo" },
+    { title: "Compartimiento", key: "componente" },
+    { title: "Fecha", key: "fecha" },
+    { title: "Horas", key: "horas", align: "end" as const },
+  ],
+  disponibilidad: [
+    { title: "Estado anterior", key: "estado_anterior" },
+    { title: "Pasó a", key: "estado_nuevo" },
+    { title: "Desde", key: "desde" },
+    { title: "Hasta", key: "hasta" },
+    { title: "Horas", key: "horas", align: "end" as const },
+  ],
+};
+
+const detalleTitulo = computed(() => TITULOS[detalleBloque.value] ?? "Detalle");
+const detalleExplicacion = computed(() => EXPLICACIONES[detalleBloque.value] ?? "");
+const detalleHeaders = computed(() => HEADERS_DETALLE[detalleBloque.value] ?? []);
+
+/** Gráfico del modal: una barra por orden, solo donde tiene sentido medirlo así. */
+const detalleChartOption = computed(() => {
+  const bloque = detalleBloque.value;
+  if (!["cebado", "repuestos"].includes(bloque) || !detalleFilas.value.length) return null;
+
+  const campo = bloque === "cebado" ? "galones" : "costo";
+  const etiqueta = bloque === "cebado" ? "Galones" : "Costo";
+  const filas = [...detalleFilas.value].reverse();
+  const base = chartBase(esOscuro.value);
+  const paleta = chartPalette(esOscuro.value);
+
+  return {
+    ...base,
+    tooltip: { ...base.tooltip, trigger: "item" as const },
+    xAxis: { ...base.xAxis, data: filas.map((f) => f.orden) },
+    yAxis: { ...base.yAxis, name: etiqueta },
+    series: [
+      {
+        name: etiqueta,
+        type: "bar" as const,
+        barMaxWidth: 26,
+        itemStyle: { color: paleta[0], borderRadius: [4, 4, 0, 0] },
+        // Serie única: la etiqueta directa sustituye a la leyenda y da el
+        // relieve que exige el contraste de la paleta.
+        label: { show: true, position: "top" as const, color: base.textStyle.color, fontSize: 11 },
+        data: filas.map((f) => Number(f[campo] ?? 0)),
+      },
+    ],
+  };
+});
+
+async function abrirDetalle(bloque: string, fila: any) {
+  detalleBloque.value = bloque;
+  detalleEquipo.value = fila;
+  detalleFilas.value = [];
+  detalleAbierto.value = true;
+  detalleLoading.value = true;
+  try {
+    const { data: payload } = await api.get(
+      "/kpi_maintenance/dashboard-administracion/detalle",
+      {
+        params: {
+          bloque,
+          equipo_id: fila?.equipo_id,
+          desde: desde.value,
+          hasta: hasta.value,
+        },
+      },
+    );
+    detalleFilas.value = (payload?.data ?? payload)?.filas ?? [];
+  } catch (e: any) {
+    if (!e?.response) console.error("[DashboardAdministracion:detalle]", e);
+  } finally {
+    detalleLoading.value = false;
+  }
+}
+
 function disponibilidadNivel(pct: number) {
   if (pct >= 85) return "VERDE";
   if (pct >= 60) return "AMARILLO";
@@ -396,6 +774,19 @@ function trendLabel(t: string) {
   if (t === "A_LA_BAJA") return "A la baja";
   return "Estable";
 }
+/** Las fechas llegan en ISO; mostrarlas crudas llenaba la tabla de timestamps. */
+function fechaCorta(value: unknown) {
+  const d = new Date(String(value ?? ""));
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fechaHora(value: unknown) {
+  const d = new Date(String(value ?? ""));
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" });
+}
+
 function money(value: unknown) {
   const n = Number(value ?? 0);
   return n.toLocaleString("es-EC", { style: "currency", currency: "USD" });
@@ -408,9 +799,16 @@ async function load() {
   try {
     const { data: payload } = await api.get(
       "/kpi_maintenance/dashboard-administracion",
-      { params: { desde: desde.value, hasta: hasta.value } },
+      {
+        params: {
+          desde: desde.value,
+          hasta: hasta.value,
+          equipo_id: equipoId.value || undefined,
+        },
+      },
     );
     data.value = payload?.data ?? payload;
+    await loadSeries();
   } catch (e: any) {
     // Se conserva el detalle del backend cuando existe; si el fallo no es HTTP
     // se deja rastro en consola para poder diagnosticarlo.
@@ -444,9 +842,20 @@ function setMotionRoot(el: unknown) {
   min-width: 0;
 }
 
+/* `minmax(0, 1fr)` es obligatorio: sin el, la pista de grid se dimensiona a
+ * max-content y una tabla ancha estira toda la pagina mas alla del viewport,
+ * recortando el contenido por la derecha en vez de scrollear dentro de la tabla. */
 .admin-dashboard-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-xl);
+}
+
+/* Cada seccion debe poder encogerse por debajo de su contenido para que el
+ * scroll horizontal ocurra dentro de la tabla y no en la pagina. */
+.section-card,
+.split-grid > div {
+  min-width: 0;
 }
 
 /* Estilo Swiss: superficie plana y una regla de acento como único adorno. */
@@ -645,6 +1054,63 @@ function setMotionRoot(el: unknown) {
 .trend--al_alza { color: rgb(198, 40, 40); }
 .trend--a_la_baja { color: rgb(15, 143, 114); }
 .trend--estable { color: var(--app-muted-text); }
+
+.admin-hero__field--wide {
+  min-width: 230px;
+  max-width: 280px;
+}
+
+.chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-xl);
+  margin-bottom: var(--space-lg);
+}
+
+.chart-toolbar__select {
+  min-width: 260px;
+  flex: 1 1 320px;
+}
+
+.chart-loading,
+.chart-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  border: 1px dashed var(--surface-border);
+  border-radius: 12px;
+  color: var(--app-muted-text);
+  font-size: 0.86rem;
+}
+
+.detalle__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding-bottom: var(--space-md, 8px);
+}
+
+.detalle__eyebrow {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-primary));
+}
+
+.detalle__title {
+  margin: 4px 0 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.detalle__sub {
+  margin: 0;
+  color: var(--app-muted-text);
+  font-size: 0.85rem;
+}
 
 @media (max-width: 860px) {
   .admin-hero {
