@@ -281,3 +281,99 @@ img {
     transform: none !important;
   }
 }
+
+/* ------------------------------------------------------ Interacción estándar
+ * Complemento visual del estándar de componentes (app/config/component-defaults.ts).
+ * Alli se fijan las props; aqui el comportamiento al interactuar, que es lo que
+ * hace que la interfaz responda igual en todos los modulos.
+ *
+ * Reglas del MASTER.md que se aplican aqui:
+ *   - Transiciones de 150-300ms; nunca cambios de estado instantaneos.
+ *   - Foco siempre visible al navegar con teclado.
+ *   - cursor:pointer en todo lo clicable.
+ *   - Sin hovers que desplacen el layout: solo transform y color.
+ */
+
+/* Un unico anillo de foco para toda la plataforma. Es la regla que mas se
+ * escapaba: varias vistas traian `outline: none` sin indicador alternativo. */
+.v-btn:focus-visible,
+.v-card[role="button"]:focus-visible,
+.v-chip--clickable:focus-visible,
+.v-list-item:focus-visible,
+.v-tab:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 3px;
+}
+
+/* Respuesta al hover en acciones. Solo transform: no altera el flujo. */
+.v-btn:not(.v-btn--disabled) {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.v-btn:not(.v-btn--disabled):hover {
+  transform: translateY(-1px);
+}
+
+.v-btn:not(.v-btn--disabled):active {
+  transform: translateY(0);
+  transition-duration: 80ms;
+}
+
+/* Campos de formulario: el foco se refuerza con un halo, como en el MASTER. */
+.v-field {
+  transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.v-field--focused {
+  box-shadow: 0 0 0 3px rgba(var(--v-theme-primary), 0.16);
+}
+
+/* Filas de tabla: la operacion diaria vive aqui, asi que la fila bajo el cursor
+ * tiene que leerse sin ambiguedad. */
+.v-data-table tbody tr {
+  transition: background-color 160ms ease;
+}
+
+.v-data-table tbody tr:hover {
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+
+/* Cualquier elemento marcado como accionable debe indicarlo. */
+.v-card[role="button"],
+.v-chip--clickable,
+[role="button"] {
+  cursor: pointer;
+}
+
+/* Movimiento reducido: se anula el desplazamiento, se conserva el color y el
+ * foco. La respuesta visual no depende nunca solo de la animacion. */
+@media (prefers-reduced-motion: reduce) {
+  .v-btn:not(.v-btn--disabled):hover,
+  .v-btn:not(.v-btn--disabled):active {
+    transform: none;
+  }
+}
+
+/* Encabezado fijo de tabla: base opaca obligatoria.
+ *
+ * Con `fixed-header` Vuetify hace `position: sticky` en los `th`, pero no les
+ * da fondo. Si la vista no pone uno opaco, las filas y las columnas se ven a
+ * traves del encabezado al desplazar y la cabecera se vuelve ilegible.
+ *
+ * Esto es la red de seguridad para cualquier tabla de la plataforma; las vistas
+ * que pinten su propio encabezado deben apilar su color SOBRE una base opaca,
+ * no sustituirla. */
+.enterprise-table :is(thead th, .v-data-table__th) {
+  background-color: rgb(var(--v-theme-surface));
+}
+
+/* El encabezado debe quedar por encima del cuerpo tambien al desplazar en
+ * horizontal, incluida cualquier columna fijada. */
+.enterprise-table :is(thead th, .v-data-table__th) {
+  z-index: 2;
+}

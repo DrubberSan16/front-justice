@@ -947,7 +947,13 @@ function setMotionRoot(el: unknown) {
 .report-data-table :deep(thead th) {
   height: 48px !important;
   border-bottom: 1px solid rgba(var(--report-primary), 0.16) !important;
-  background: linear-gradient(180deg, rgba(var(--report-primary), 0.1), rgba(var(--report-primary), 0.045)) !important;
+  /* El degradado se apila SOBRE una base opaca. Con `fixed-header` el th es
+   * sticky, y un fondo translucido dejaba ver las filas y las columnas por
+   * debajo: al desplazar, el texto del encabezado se superponia con el del
+   * cuerpo y la cabecera se volvia ilegible. */
+  background:
+    linear-gradient(180deg, rgba(var(--report-primary), 0.1), rgba(var(--report-primary), 0.045)),
+    rgb(var(--v-theme-surface)) !important;
   color: rgba(var(--v-theme-on-surface), 0.74) !important;
   font-size: 0.68rem !important;
   font-weight: 800 !important;
