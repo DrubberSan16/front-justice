@@ -887,22 +887,6 @@ const summaryUpdatedLabel = computed(() => {
   return `Actualizado ${formatRelativeDate(summary.value.generated_at).toLowerCase()}`;
 });
 
-/**
- * Motor de revelado del design system sobre la vista de alertas.
- *
- * Va despues de `paginatedAlerts` a proposito: `useRevealMotion` monta un watch
- * que evalua su getter al instante, asi que leer un computed antes de
- * inicializarlo reventaria por TDZ.
- *
- * Se enlaza con `:ref` y no con `ref="..."` porque `noUnusedLocals` esta activo
- * y con la forma de cadena la variable quedaria como no usada.
- */
-const motionRoot = useRevealMotion<HTMLDivElement>(() => paginatedAlerts.value.length);
-
-function setMotionRoot(el: unknown) {
-  motionRoot.value = (el as HTMLDivElement | null) ?? null;
-}
-
 const kpiCards = computed(() => [
   {
     key: "open",
@@ -996,6 +980,22 @@ watch(totalPages, (pages) => {
 onMounted(async () => {
   await refreshData();
 });
+/**
+ * Motor de revelado del design system sobre el subarbol de la vista.
+ *
+ * Se declara al final del `<script setup>` a proposito: `useRevealMotion` monta
+ * un watch que evalua su getter de inmediato, y la clave de reenganche lee un
+ * computed cuyas dependencias se declaran mas abajo en el archivo. Situarlo
+ * antes provocaba un ReferenceError por TDZ que dejaba la vista en blanco.
+ *
+ * Se enlaza con `:ref` y no con `ref="..."` porque `noUnusedLocals` esta activo
+ * y con la forma de cadena la variable quedaria marcada como no usada.
+ */
+const motionRoot = useRevealMotion<HTMLDivElement>(() => paginatedAlerts.value.length);
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = (el as HTMLDivElement | null) ?? null;
+}
 </script>
 
 <style scoped>

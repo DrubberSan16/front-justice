@@ -1208,28 +1208,6 @@ const kpiCards = computed(() => [
   },
 ]);
 
-/**
- * Motor de revelado del design system sobre el subárbol del dashboard.
- *
- * Se declara después de `kpiCards` a propósito: `useRevealMotion` monta un
- * `watch` que evalúa su getter de inmediato, así que leer el computed antes de
- * inicializarlo reventaría por TDZ.
- *
- * La clave de reenganche es el número de tarjetas, para que la cascada vuelva a
- * aplicarse cuando entran los datos o cambia el período. Bajo
- * `prefers-reduced-motion` el motor no anima y deja el estado final visible.
- */
-const motionRoot = useRevealMotion<HTMLDivElement>(() => kpiCards.value.length);
-
-/**
- * Se enlaza con `:ref` en vez de `ref="motionRoot"` porque `noUnusedLocals` está
- * activo: con la forma de cadena, el ref solo se leería dentro del composable y
- * `vue-tsc` marcaría la variable como no usada, rompiendo el build.
- */
-function setMotionRoot(el: unknown) {
-  motionRoot.value = (el as HTMLDivElement | null) ?? null;
-}
-
 const workOrderStatusCards = computed(() => [
   {
     key: "PLANNED",
@@ -2017,6 +1995,22 @@ onMounted(() => {
 watch([selectedYear, selectedMonth], () => {
   loadDashboard();
 });
+/**
+ * Motor de revelado del design system sobre el subarbol de la vista.
+ *
+ * Se declara al final del `<script setup>` a proposito: `useRevealMotion` monta
+ * un watch que evalua su getter de inmediato, y la clave de reenganche lee un
+ * computed cuyas dependencias se declaran mas abajo en el archivo. Situarlo
+ * antes provocaba un ReferenceError por TDZ que dejaba la vista en blanco.
+ *
+ * Se enlaza con `:ref` y no con `ref="..."` porque `noUnusedLocals` esta activo
+ * y con la forma de cadena la variable quedaria marcada como no usada.
+ */
+const motionRoot = useRevealMotion<HTMLDivElement>(() => kpiCards.value.length);
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = (el as HTMLDivElement | null) ?? null;
+}
 </script>
 
 <style scoped>
