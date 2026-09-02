@@ -8,8 +8,6 @@
     <template v-else>
       <v-col cols="12">
         <v-card rounded="xl" class="enterprise-surface kardex-main-card kardex-hero">
-          <div class="kardex-hero__glow kardex-hero__glow--one" />
-          <div class="kardex-hero__glow kardex-hero__glow--two" />
 
           <div class="kardex-hero__header">
             <div class="kardex-header-copy">
@@ -1689,31 +1687,15 @@ onBeforeUnmount(() => {
   isolation: isolate;
   overflow: hidden;
   padding: clamp(22px, 2.5vw, 34px);
-  background:
-    linear-gradient(125deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 13%, var(--surface-base)), var(--surface-base) 58%),
-    var(--surface-base);
+  /* Estilo Swiss: superficie plana y una regla de acento como unico elemento
+   * grafico. El degradado se retiro por el anti-patron de ornamento del
+   * MASTER.md. */
+  border-top: 3px solid rgb(var(--v-theme-primary));
+  background: var(--surface-base);
 }
 
-.kardex-hero__glow {
-  position: absolute;
-  z-index: -1;
-  width: 300px;
-  height: 300px;
-  border-radius: 50%;
-  pointer-events: none;
-}
 
-.kardex-hero__glow--one {
-  top: -210px;
-  right: 8%;
-  background: rgba(var(--v-theme-primary), 0.14);
-}
 
-.kardex-hero__glow--two {
-  right: 34%;
-  bottom: -260px;
-  background: rgba(var(--v-theme-success), 0.09);
-}
 
 .kardex-hero__header {
   display: flex;

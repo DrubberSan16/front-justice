@@ -2,8 +2,6 @@
   <v-row dense class="manual-layout">
     <v-col cols="12">
       <v-card rounded="xl" class="enterprise-surface manual-hero">
-        <div class="manual-hero__glow manual-hero__glow--one" />
-        <div class="manual-hero__glow manual-hero__glow--two" />
         <div class="manual-hero__content">
           <div class="manual-hero__copy">
             <div class="manual-hero__eyebrow">
@@ -1121,33 +1119,16 @@ watch(manualStorageKey, loadChecklistState, { immediate: true });
   overflow: hidden;
   padding: clamp(22px, 3vw, 34px);
   border: 1px solid rgba(var(--manual-primary), 0.18);
-  background:
-    linear-gradient(132deg, rgba(var(--manual-primary), 0.13), transparent 48%),
-    rgb(var(--v-theme-surface));
+  /* Estilo Swiss: superficie plana y una regla de acento como unico elemento
+   * grafico. El degradado se retiro por el anti-patron de ornamento del
+   * MASTER.md. */
+  border-top: 3px solid rgb(var(--v-theme-primary));
+  background: var(--surface-base);
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
 }
 
-.manual-hero__glow {
-  position: absolute;
-  z-index: -1;
-  width: 300px;
-  height: 300px;
-  border-radius: 50%;
-  filter: blur(14px);
-  pointer-events: none;
-}
 
-.manual-hero__glow--one {
-  top: -215px;
-  right: 3%;
-  background: rgba(var(--manual-primary), 0.17);
-}
 
-.manual-hero__glow--two {
-  right: 34%;
-  bottom: -270px;
-  background: rgba(var(--manual-info), 0.11);
-}
 
 .manual-hero__content {
   display: flex;

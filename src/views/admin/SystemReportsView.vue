@@ -10,8 +10,6 @@
 
     <template v-else>
       <v-card rounded="xl" class="enterprise-surface hero-card">
-        <div class="system-hero__glow system-hero__glow--one" />
-        <div class="system-hero__glow system-hero__glow--two" />
 
         <div class="hero-wrap">
           <div class="system-hero__copy">
@@ -900,33 +898,16 @@ onMounted(() => {
   overflow: hidden;
   padding: clamp(22px, 3vw, 34px);
   border: 1px solid rgba(var(--system-primary), 0.18);
-  background:
-    linear-gradient(130deg, rgba(var(--system-primary), 0.12), transparent 48%),
-    rgb(var(--v-theme-surface));
+  /* Estilo Swiss: superficie plana y una regla de acento como unico elemento
+   * grafico. El degradado se retiro por el anti-patron de ornamento del
+   * MASTER.md. */
+  border-top: 3px solid rgb(var(--v-theme-primary));
+  background: var(--surface-base);
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
 }
 
-.system-hero__glow {
-  position: absolute;
-  z-index: -1;
-  width: 290px;
-  height: 290px;
-  border-radius: 50%;
-  filter: blur(12px);
-  pointer-events: none;
-}
 
-.system-hero__glow--one {
-  top: -200px;
-  right: 5%;
-  background: rgba(var(--system-primary), 0.16);
-}
 
-.system-hero__glow--two {
-  right: 34%;
-  bottom: -255px;
-  background: rgba(var(--system-purple), 0.1);
-}
 
 .hero-wrap {
   display: flex;

@@ -10,8 +10,6 @@
 
     <div v-else class="intelligence-page__content">
     <v-card rounded="xl" class="enterprise-surface intelligence-hero">
-      <div class="intelligence-hero__glow intelligence-hero__glow--one" />
-      <div class="intelligence-hero__glow intelligence-hero__glow--two" />
 
       <div class="intelligence-hero__header">
         <div class="intelligence-hero__copy">
@@ -2560,45 +2558,16 @@ watch(
   isolation: isolate;
   overflow: hidden;
   padding: 29px;
-  background:
-    linear-gradient(118deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 16%, var(--surface-base)), var(--surface-base) 66%),
-    var(--surface-base);
+  /* Estilo Swiss: superficie plana y una regla de acento como unico elemento
+   * grafico. El degradado se retiro por el anti-patron de ornamento del
+   * MASTER.md. */
+  border-top: 3px solid rgb(var(--v-theme-primary));
+  background: var(--surface-base);
 }
 
-.intelligence-hero::after {
-  position: absolute;
-  z-index: -1;
-  right: -78px;
-  bottom: -118px;
-  width: 330px;
-  height: 330px;
-  border: 48px solid rgba(var(--v-theme-primary), 0.055);
-  border-radius: 50%;
-  content: "";
-}
 
-.intelligence-hero__glow {
-  position: absolute;
-  z-index: -1;
-  border-radius: 50%;
-  pointer-events: none;
-}
 
-.intelligence-hero__glow--one {
-  top: -150px;
-  left: 30%;
-  width: 330px;
-  height: 330px;
-  background: rgba(var(--v-theme-primary), 0.1);
-}
 
-.intelligence-hero__glow--two {
-  right: 9%;
-  bottom: -135px;
-  width: 270px;
-  height: 270px;
-  background: rgba(var(--v-theme-secondary), 0.085);
-}
 
 .intelligence-hero__header {
   display: flex;

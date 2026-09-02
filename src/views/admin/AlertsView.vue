@@ -1,8 +1,6 @@
 <template>
-  <div class="alerts-page">
+  <div :ref="setMotionRoot" class="alerts-page">
     <v-card rounded="xl" class="alerts-hero enterprise-surface">
-      <div class="alerts-hero__glow alerts-hero__glow--one" />
-      <div class="alerts-hero__glow alerts-hero__glow--two" />
 
       <div class="alerts-hero__content">
         <div class="alerts-hero__copy">
@@ -50,12 +48,14 @@
       </div>
     </v-card>
 
-    <v-row dense class="alerts-kpi-grid">
+    <v-row dense class="alerts-kpi-grid js-stagger">
       <v-col v-for="card in kpiCards" :key="card.key" cols="12" sm="6" xl="3">
         <v-card
           rounded="xl"
           :class="[
             'alert-kpi-card',
+            'js-stagger-item',
+            'js-hover-card',
             `alert-kpi-card--${card.tone}`,
             { 'alert-kpi-card--active': isKpiActive(card.key) },
           ]"
@@ -214,7 +214,7 @@
             <article
               v-for="(alert, index) in paginatedAlerts"
               :key="alertKey(alert, index)"
-              :class="['alert-card', `alert-card--${levelTone(alert.nivel)}`]"
+              :class="['alert-card', 'js-hover-card', `alert-card--${levelTone(alert.nivel)}`]"
             >
               <div class="alert-card__accent" />
               <div class="alert-card__body">
@@ -541,6 +541,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRevealMotion } from "@/app/motion";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
@@ -886,6 +887,22 @@ const summaryUpdatedLabel = computed(() => {
   return `Actualizado ${formatRelativeDate(summary.value.generated_at).toLowerCase()}`;
 });
 
+/**
+ * Motor de revelado del design system sobre la vista de alertas.
+ *
+ * Va despues de `paginatedAlerts` a proposito: `useRevealMotion` monta un watch
+ * que evalua su getter al instante, asi que leer un computed antes de
+ * inicializarlo reventaria por TDZ.
+ *
+ * Se enlaza con `:ref` y no con `ref="..."` porque `noUnusedLocals` esta activo
+ * y con la forma de cadena la variable quedaria como no usada.
+ */
+const motionRoot = useRevealMotion<HTMLDivElement>(() => paginatedAlerts.value.length);
+
+function setMotionRoot(el: unknown) {
+  motionRoot.value = (el as HTMLDivElement | null) ?? null;
+}
+
 const kpiCards = computed(() => [
   {
     key: "open",
@@ -996,47 +1013,10 @@ onMounted(async () => {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  min-height: 188px;
-  padding: 30px;
-  background:
-    linear-gradient(118deg, color-mix(in srgb, rgb(var(--v-theme-primary)) 17%, var(--surface-base)), var(--surface-base) 68%),
-    var(--surface-base);
-}
-
-.alerts-hero::after {
-  position: absolute;
-  z-index: -1;
-  right: -46px;
-  bottom: -86px;
-  width: 260px;
-  height: 260px;
-  border: 44px solid rgba(var(--v-theme-primary), 0.07);
-  border-radius: 50%;
-  content: "";
-}
-
-.alerts-hero__glow {
-  position: absolute;
-  z-index: -1;
-  border-radius: 50%;
-  filter: blur(2px);
-  pointer-events: none;
-}
-
-.alerts-hero__glow--one {
-  top: -110px;
-  left: 32%;
-  width: 270px;
-  height: 270px;
-  background: rgba(var(--v-theme-primary), 0.12);
-}
-
-.alerts-hero__glow--two {
-  right: 12%;
-  bottom: -115px;
-  width: 230px;
-  height: 230px;
-  background: rgba(var(--v-theme-secondary), 0.1);
+  min-height: 172px;
+  padding: var(--space-2xl, 24px);
+  border-top: 3px solid rgb(var(--v-theme-primary));
+  background: var(--surface-base);
 }
 
 .alerts-hero__content {
@@ -1147,12 +1127,17 @@ onMounted(async () => {
 }
 
 .alert-kpi-card:hover,
-.alert-kpi-card:focus-visible,
 .alert-kpi-card--active {
-  transform: translateY(-3px);
   border-color: rgba(var(--kpi-color), 0.42);
-  box-shadow: 0 17px 34px rgba(var(--kpi-color), 0.13);
-  outline: none;
+  box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
+}
+
+/* El foco no puede quedarse sin indicador propio: `outline: none` sobre un
+ * elemento con role="button" lo dejaba invisible al navegar con teclado. */
+.alert-kpi-card:focus-visible {
+  border-color: rgba(var(--kpi-color), 0.42);
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 3px;
 }
 
 .alert-kpi-card--active {
@@ -1295,9 +1280,8 @@ onMounted(async () => {
 }
 
 .alert-card:hover {
-  transform: translateY(-2px);
   border-color: rgba(var(--level-color), 0.28);
-  box-shadow: 0 15px 34px rgba(15, 23, 42, 0.1);
+  box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.1));
 }
 
 .alert-card--critical { --level-color: var(--alert-critical); }
