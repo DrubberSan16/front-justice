@@ -709,7 +709,10 @@ const detalleChartOption = computed(() => {
 
   const campo = bloque === "cebado" ? "galones" : "costo";
   const etiqueta = bloque === "cebado" ? "Galones" : "Costo";
-  const filas = [...detalleFilas.value].reverse();
+  // Mismo orden que la tabla: de la OT mas reciente a la mas antigua. Antes se
+  // invertia aqui, asi que tabla y grafico se leian al reves uno del otro y
+  // comparar una fila con su barra inducia a error.
+  const filas = detalleFilas.value;
   const base = chartBase(esOscuro.value);
   const paleta = chartPalette(esOscuro.value);
 
