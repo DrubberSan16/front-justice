@@ -13,34 +13,13 @@
       <v-chip v-if="chipLabel" label :color="chipColor" variant="tonal">{{ chipLabel }}</v-chip>
     </div>
 
-    <div v-if="normalizedItems.length" class="dashboard-bar-chart">
-      <div
-        v-for="item in normalizedItems"
-        :key="item.key"
-        :class="['dashboard-bar-chart__row', { 'dashboard-bar-chart__row--interactive': interactive }]"
-        :role="interactive ? 'button' : undefined"
-        :tabindex="interactive ? 0 : undefined"
-        :aria-haspopup="interactive ? 'dialog' : undefined"
-        @click="handleItemClick(item)"
-        @keydown.enter="handleItemClick(item)"
-        @keydown.space.prevent="handleItemClick(item)"
-      >
-        <div class="dashboard-bar-chart__meta">
-          <div class="dashboard-bar-chart__label">{{ item.label }}</div>
-          <div class="dashboard-bar-chart__value">{{ item.valueLabel }}</div>
-        </div>
-        <div class="dashboard-bar-chart__track">
-          <div
-            class="dashboard-bar-chart__fill"
-            :style="{
-              width: `${item.percent}%`,
-              background: item.color,
-            }"
-          />
-        </div>
-        <div v-if="item.helper" class="dashboard-bar-chart__helper">{{ item.helper }}</div>
-      </div>
-    </div>
+    <EChart
+      v-if="normalizedItems.length"
+      :option="option"
+      :height="chartHeight"
+      class="dashboard-chart-card__chart"
+      @select="handleChartSelect"
+    />
 
     <div
       v-else
@@ -53,6 +32,9 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useTheme } from "vuetify";
+import EChart from "@/components/charts/EChart.vue";
+import { chartInk, seriesColor } from "@/app/config/chart-theme";
 
 type ChartItem = {
   key: string;
@@ -86,26 +68,12 @@ const emit = defineEmits<{
   (event: "item-click", item: ChartItem & { valueLabel: string; percent: number }): void;
 }>();
 
-function handleItemClick(item: ChartItem & { valueLabel: string; percent: number }) {
-  if (!props.interactive) return;
-  emit("item-click", item);
-}
-
-const palette = [
-  "linear-gradient(90deg, #2f6cab 0%, #7ab8ff 100%)",
-  "linear-gradient(90deg, #0f8f72 0%, #6de3bf 100%)",
-  "linear-gradient(90deg, #e17a00 0%, #ffca6a 100%)",
-  "linear-gradient(90deg, #a245d8 0%, #dd9cff 100%)",
-  "linear-gradient(90deg, #e24f5f 0%, #ff9aa5 100%)",
-  "linear-gradient(90deg, #4558d8 0%, #9db0ff 100%)",
-];
+const theme = useTheme();
+const isDark = computed(() => theme.global.current.value.dark);
 
 const normalizedItems = computed(() => {
   const source = Array.isArray(props.items) ? props.items : [];
-  const maxValue = Math.max(
-    ...source.map((item) => Number(item?.value || 0)),
-    1,
-  );
+  const maxValue = Math.max(...source.map((item) => Number(item?.value || 0)), 1);
 
   return source.map((item, index) => {
     const rawValue = Number(item?.value || 0);
@@ -115,11 +83,96 @@ const normalizedItems = computed(() => {
       value: rawValue,
       valueLabel: item.valueLabel || String(rawValue),
       helper: item.helper || "",
-      color: item.color || palette[index % palette.length],
-      percent: Math.max(6, Math.min(100, (rawValue / maxValue) * 100)),
+      color: item.color || seriesColor(index, isDark.value),
+      percent: Math.max(0, Math.min(100, (rawValue / maxValue) * 100)),
     };
   });
 });
+
+/**
+ * La altura crece con la cantidad de barras en vez de comprimirlas: con una
+ * altura fija, ocho categorias quedaban en franjas de pocos pixeles y las
+ * etiquetas se solapaban.
+ */
+const chartHeight = computed(
+  () => `${Math.max(150, normalizedItems.value.length * 42 + 24)}px`,
+);
+
+const option = computed(() => {
+  const ink = chartInk(isDark.value);
+  const rows = normalizedItems.value;
+  // Barras horizontales: ECharts dibuja la primera categoria abajo, asi que se
+  // invierte el orden para que la lista se lea de arriba hacia abajo.
+  const ordered = [...rows].reverse();
+
+  return {
+    grid: { left: 4, right: 64, top: 8, bottom: 4, containLabel: true },
+    tooltip: {
+      trigger: "item" as const,
+      backgroundColor: ink.surface,
+      borderColor: ink.border,
+      borderWidth: 1,
+      textStyle: { color: ink.text, fontSize: 12 },
+      formatter: (params: any) => {
+        const row = ordered[params.dataIndex];
+        if (!row) return "";
+        const helper = row.helper
+          ? `<div style="opacity:.7;margin-top:2px">${row.helper}</div>`
+          : "";
+        return `<strong>${row.label}</strong><div>${row.valueLabel}</div>${helper}`;
+      },
+    },
+    textStyle: { color: ink.text, fontFamily: "inherit" },
+    xAxis: {
+      type: "value" as const,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitLine: { lineStyle: { color: ink.grid } },
+    },
+    yAxis: {
+      type: "category" as const,
+      data: ordered.map((row) => row.label),
+      axisLine: { lineStyle: { color: ink.axis } },
+      axisTick: { show: false },
+      axisLabel: {
+        color: ink.text,
+        fontSize: 12,
+        width: 150,
+        overflow: "truncate" as const,
+      },
+    },
+    series: [
+      {
+        type: "bar" as const,
+        barMaxWidth: 18,
+        // Extremo redondeado del lado del dato, anclado a la linea base.
+        itemStyle: { borderRadius: [0, 4, 4, 0] as [number, number, number, number] },
+        data: ordered.map((row) => ({
+          value: row.value,
+          itemStyle: { color: row.color },
+        })),
+        // Etiqueta directa: el valor se lee sin pasar el raton por encima.
+        label: {
+          show: true,
+          position: "right" as const,
+          color: ink.text,
+          fontSize: 12,
+          fontWeight: 600,
+          formatter: (params: any) => ordered[params.dataIndex]?.valueLabel ?? "",
+        },
+        cursor: props.interactive ? "pointer" : "default",
+      },
+    ],
+  };
+});
+
+function handleChartSelect(params: any) {
+  if (!props.interactive) return;
+  const ordered = [...normalizedItems.value].reverse();
+  const row = ordered[params?.dataIndex];
+  if (row) emit("item-click", row);
+}
 </script>
 
 <style scoped>
@@ -127,6 +180,7 @@ const normalizedItems = computed(() => {
   position: relative;
   overflow: hidden;
   padding: 20px;
+  min-width: 0;
   border: 1px solid var(--surface-border);
   background:
     linear-gradient(145deg, rgba(var(--v-theme-primary), 0.055), transparent 46%),
@@ -167,6 +221,7 @@ const normalizedItems = computed(() => {
   display: flex;
   align-items: center;
   gap: 11px;
+  min-width: 0;
 }
 
 .dashboard-chart-card__icon {
@@ -180,76 +235,9 @@ const normalizedItems = computed(() => {
   background: rgba(var(--v-theme-primary), 0.1);
 }
 
-.dashboard-bar-chart {
-  display: grid;
-  gap: 14px;
-}
-
-.dashboard-bar-chart__row {
-  display: grid;
-  gap: 6px;
-  padding: 9px 10px;
-  border-radius: 13px;
-  transition: background 150ms ease, transform 150ms ease;
-}
-
-.dashboard-bar-chart__row:hover {
-  transform: translateX(2px);
-  background: rgba(var(--v-theme-primary), 0.045);
-}
-
-.dashboard-bar-chart__row--interactive {
-  cursor: pointer;
-}
-
-.dashboard-bar-chart__row--interactive:hover {
-  background: rgba(var(--v-theme-primary), 0.08);
-}
-
-.dashboard-bar-chart__row--interactive:focus-visible {
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: 2px;
-}
-
-.dashboard-bar-chart__meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.dashboard-bar-chart__label {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--app-text);
-}
-
-.dashboard-bar-chart__value {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--app-text);
-}
-
-.dashboard-bar-chart__track {
+.dashboard-chart-card__chart {
   position: relative;
-  height: 9px;
-  width: 100%;
-  border-radius: 999px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--surface-soft) 78%, transparent);
-  border: 1px solid var(--surface-border);
-}
-
-.dashboard-bar-chart__fill {
-  height: 100%;
-  border-radius: 999px;
-  box-shadow: 0 8px 20px rgba(19, 33, 53, 0.18);
-  transition: width 360ms ease;
-}
-
-.dashboard-bar-chart__helper {
-  font-size: 0.78rem;
-  color: var(--app-muted-text);
+  z-index: 1;
 }
 
 .dashboard-bar-chart__empty {
@@ -264,9 +252,7 @@ const normalizedItems = computed(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dashboard-chart-card,
-  .dashboard-bar-chart__row,
-  .dashboard-bar-chart__fill {
+  .dashboard-chart-card {
     transition: none;
   }
 }

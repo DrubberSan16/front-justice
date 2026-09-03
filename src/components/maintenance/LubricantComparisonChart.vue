@@ -7,234 +7,75 @@
     @keydown.enter.prevent="openDialog"
     @keydown.space.prevent="openDialog"
   >
-    <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px;">
-      <div>
-        <div class="text-subtitle-1 font-weight-bold">{{ title }}</div>
-        <div class="text-caption text-medium-emphasis">
-          {{ subtitle || "Comparativa normalizada de tendencias" }}
-        </div>
-        </div>
-        <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-          <v-chip size="small" color="primary" variant="tonal">
-            {{ chartSeries.length }} líneas
-          </v-chip>
-        <v-chip size="small" color="secondary" variant="tonal">
-          {{ chartCategories.length }} cortes
+    <div class="comparison-chart__header">
+      <div class="comparison-chart__copy">
+        <div class="text-subtitle-2 font-weight-bold">{{ title }}</div>
+        <div class="text-caption text-medium-emphasis">{{ subtitle }}</div>
+      </div>
+      <div class="d-flex align-center" style="gap: 8px;">
+        <v-chip size="small" variant="tonal" color="primary">
+          {{ chartSeries.length }} series
         </v-chip>
+        <v-btn
+          v-if="hasSeries"
+          icon="mdi-arrow-expand-all"
+          size="small"
+          variant="text"
+          color="primary"
+          aria-label="Ampliar la comparacion"
+          @click.stop="openDialog"
+        />
       </div>
     </div>
 
     <div v-if="!hasSeries" class="comparison-chart__empty">
-      No hay series numericas disponibles para este bloque.
+      Sin datos numericos para comparar en el rango seleccionado.
     </div>
 
     <div v-else class="comparison-chart__shell">
-      <svg
-        :viewBox="`0 0 ${miniChart.width} ${miniChart.height}`"
-        class="comparison-chart__svg"
-        preserveAspectRatio="none"
-      >
-        <line
-          v-for="guide in miniChart.guides"
-          :key="`guide-${guide.key}`"
-          :x1="miniChart.padding.left"
-          :x2="miniChart.width - miniChart.padding.right"
-          :y1="guide.y"
-          :y2="guide.y"
-          class="comparison-chart__guide"
-        />
-        <line
-          :x1="miniChart.padding.left"
-          :y1="miniChart.padding.top"
-          :x2="miniChart.padding.left"
-          :y2="miniChart.chartBottom"
-          class="comparison-chart__axis"
-        />
-        <line
-          :x1="miniChart.padding.left"
-          :y1="miniChart.chartBottom"
-          :x2="miniChart.width - miniChart.padding.right"
-          :y2="miniChart.chartBottom"
-          class="comparison-chart__axis"
-        />
-
-        <g v-for="series in miniChart.series" :key="series.key">
-          <path
-            :d="series.path"
-            class="comparison-chart__line"
-            :style="{ stroke: series.color }"
-          />
-          <g v-for="point in series.points" :key="point.key">
-            <circle
-              :cx="point.x"
-              :cy="point.y"
-              r="4.2"
-              :class="['comparison-chart__dot', `comparison-chart__dot--${point.level}`]"
-              :style="{ stroke: series.color }"
-            />
-          </g>
-        </g>
-      </svg>
-
-      <div class="comparison-chart__scale">
-        <span>0%</span>
-        <span>100%</span>
-      </div>
-
-      <div class="comparison-chart__labels">
-        <span>{{ miniChart.xStartLabel }}</span>
-        <span>{{ miniChart.xEndLabel }}</span>
-      </div>
-
-      <div class="comparison-chart__legend">
-        <div
-          v-for="series in chartSeries"
-          :key="`mini-legend-${series.key}`"
-          class="comparison-chart__legend-item"
-        >
-          <span
-            class="comparison-chart__legend-line"
-            :style="{ backgroundColor: series.color }"
-          />
-          <span>{{ series.label }}</span>
-        </div>
+      <EChart :option="miniOption" height="180px" />
+      <div class="comparison-chart__hint">
+        Haz clic para ampliar y revisar cada muestra.
       </div>
     </div>
   </div>
 
-  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 1540">
-    <v-card rounded="xl" class="comparison-chart__dialog">
+  <v-dialog
+    v-model="dialog"
+    :fullscreen="isDialogFullscreen"
+    :max-width="isDialogFullscreen ? undefined : 1480"
+  >
+    <v-card rounded="xl" class="comparison-chart__dialog-card">
       <div class="comparison-chart__dialog-header">
-        <div>
+        <div class="comparison-chart__copy">
           <div class="text-h6 font-weight-bold">{{ title }}</div>
           <div class="text-body-2 text-medium-emphasis">
-            {{ subtitle || "Comparativa normalizada de tendencias" }}
+            {{ subtitle || "Comparacion de metricas en escala relativa" }}
           </div>
         </div>
         <div class="d-flex align-center flex-wrap" style="gap: 8px;">
           <v-chip size="small" color="primary" variant="tonal">
-            {{ chartSeries.length }} líneas
+            {{ chartSeries.length }} series
           </v-chip>
           <v-chip size="small" color="secondary" variant="tonal">
-            Escala comparativa 0% - 100%
+            {{ chartCategories.length }} muestras
           </v-chip>
-          <v-btn icon="mdi-magnify-minus-outline" variant="text" :disabled="zoomLevel <= MIN_ZOOM" @click="zoomOut" />
-          <v-chip size="small" color="info" variant="tonal">
-            Zoom {{ Math.round(zoomLevel * 100) }}%
-          </v-chip>
-          <v-btn icon="mdi-fit-to-page-outline" variant="text" :disabled="zoomLevel === 1" @click="resetZoom" />
-          <v-btn icon="mdi-magnify-plus-outline" variant="text" :disabled="zoomLevel >= MAX_ZOOM" @click="zoomIn" />
-          <v-btn icon="mdi-close" variant="text" @click="dialog = false" />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            aria-label="Cerrar"
+            @click="dialog = false"
+          />
         </div>
       </div>
 
       <div class="comparison-chart__dialog-layout">
         <div class="comparison-chart__dialog-main">
-          <div class="comparison-chart__dialog-shell">
-            <svg
-              :viewBox="`0 0 ${detailChart.width} ${detailChart.height}`"
-              class="comparison-chart__svg comparison-chart__svg--detail"
-              :style="{ width: `${detailChart.width}px`, height: `${detailChart.height}px` }"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <line
-                v-for="guide in detailChart.guides"
-                :key="`detail-guide-${guide.key}`"
-                :x1="detailChart.padding.left"
-                :x2="detailChart.width - detailChart.padding.right"
-                :y1="guide.y"
-                :y2="guide.y"
-                class="comparison-chart__guide"
-              />
-              <text
-                v-for="guide in detailChart.guides"
-                :key="`detail-guide-label-${guide.key}`"
-                :x="detailChart.padding.left - 12"
-                :y="guide.y + 4"
-                class="comparison-chart__y-label"
-                text-anchor="end"
-              >
-                {{ guide.label }}
-              </text>
-
-              <line
-                :x1="detailChart.padding.left"
-                :y1="detailChart.padding.top"
-                :x2="detailChart.padding.left"
-                :y2="detailChart.chartBottom"
-                class="comparison-chart__axis"
-              />
-              <line
-                :x1="detailChart.padding.left"
-                :y1="detailChart.chartBottom"
-                :x2="detailChart.width - detailChart.padding.right"
-                :y2="detailChart.chartBottom"
-                class="comparison-chart__axis"
-              />
-
-              <g v-for="series in detailChart.series" :key="`detail-series-${series.key}`">
-                <path
-                  :d="series.path"
-                  class="comparison-chart__line"
-                  :style="{ stroke: series.color }"
-                />
-                <g v-for="point in series.points" :key="point.key">
-                  <line
-                    :x1="point.x"
-                    :x2="point.x"
-                    :y1="point.y"
-                    :y2="detailChart.chartBottom"
-                    class="comparison-chart__drop"
-                  />
-                  <circle
-                    :cx="point.x"
-                    :cy="point.y"
-                    :r="selectedPoint?.key === point.key ? 8 : 6"
-                    :class="['comparison-chart__dot', 'comparison-chart__dot--detail', `comparison-chart__dot--${point.level}`]"
-                    :style="{ stroke: series.color }"
-                    @mouseenter="selectPoint(point.key)"
-                    @click.stop="selectPoint(point.key)"
-                  />
-                  <text
-                    v-if="shouldRenderPointValue(point)"
-                    :x="point.x"
-                    :y="point.y - 14"
-                    class="comparison-chart__point-value"
-                    text-anchor="middle"
-                  >
-                    {{ point.valueLabel }}
-                  </text>
-                </g>
-              </g>
-
-              <text
-                v-for="category in detailChart.categories"
-                :key="`category-${category.key}`"
-                v-show="shouldRenderCategoryLabel(category.key)"
-                :x="category.x"
-                :y="detailChart.chartBottom + 22"
-                class="comparison-chart__x-label"
-                text-anchor="end"
-                :transform="`rotate(-35 ${category.x} ${detailChart.chartBottom + 22})`"
-              >
-                {{ category.label }}
-              </text>
-            </svg>
-          </div>
-
-          <div class="comparison-chart__legend comparison-chart__legend--detail">
-            <div
-              v-for="series in chartSeries"
-              :key="`detail-legend-${series.key}`"
-              class="comparison-chart__legend-item"
-            >
-              <span
-                class="comparison-chart__legend-line"
-                :style="{ backgroundColor: series.color }"
-              />
-              <span>{{ series.label }}</span>
-            </div>
-          </div>
+          <EChart
+            :option="detailOption"
+            height="440px"
+            @select="handleChartSelect"
+          />
         </div>
 
         <aside class="comparison-chart__dialog-side">
@@ -315,7 +156,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useDisplay } from "vuetify";
+import { useDisplay, useTheme } from "vuetify";
+import EChart from "@/components/charts/EChart.vue";
+import { chartInk, seriesColor } from "@/app/config/chart-theme";
 
 type InputPoint = {
   codigo?: string | null;
@@ -334,13 +177,6 @@ type InputMetric = {
 
 type PointLevel = "normal" | "warning" | "alert";
 type CurveMode = "linear" | "smooth";
-
-type ChartPadding = {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-};
 
 type CategoryPoint = {
   key: string;
@@ -365,23 +201,6 @@ type NormalizedPoint = {
   order: number;
 };
 
-type PlottedPoint = NormalizedPoint & {
-  x: number;
-  y: number;
-};
-
-type MetricSeries = {
-  key: string;
-  label: string;
-  color: string;
-  points: NormalizedPoint[];
-};
-
-type ChartData = {
-  categories: CategoryPoint[];
-  series: MetricSeries[];
-};
-
 const props = withDefaults(
   defineProps<{
     title: string;
@@ -395,41 +214,12 @@ const props = withDefaults(
   },
 );
 
-const COLORS = [
-  "#1f4b7a",
-  "#ba4a00",
-  "#1f7a4b",
-  "#8e44ad",
-  "#d35400",
-  "#00695c",
-  "#b03a2e",
-  "#2e86c1",
-  "#7d6608",
-  "#5b2c6f",
-];
-
 const dialog = ref(false);
 const { mdAndDown } = useDisplay();
+const theme = useTheme();
+const isDark = computed(() => theme.global.current.value.dark);
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const selectedPointKey = ref<string | null>(null);
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 3;
-const ZOOM_STEP = 0.25;
-const zoomLevel = ref(1);
-
-const miniPadding: ChartPadding = {
-  left: 44,
-  right: 24,
-  top: 18,
-  bottom: 28,
-};
-
-const detailPadding: ChartPadding = {
-  left: 72,
-  right: 30,
-  top: 24,
-  bottom: 84,
-};
 
 function toLevel(value: unknown): PointLevel {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -463,7 +253,15 @@ function buildCategoryKey(point: InputPoint, fallback: string) {
   return parts.length ? parts.join("::") : fallback;
 }
 
-const chartData = computed<ChartData>(() => {
+/**
+ * Cada metrica se normaliza a 0-100 contra su propio rango.
+ *
+ * Es lo que permite comparar magnitudes de unidades distintas en un solo eje,
+ * en vez de recurrir a un segundo eje vertical: dos escalas en el mismo grafico
+ * hacen que dos series parezcan cruzarse cuando en realidad no comparten
+ * unidad. El valor real viaja en el tooltip, el panel y la tabla.
+ */
+const chartData = computed(() => {
   const categoryMap = new Map<string, CategoryPoint>();
   const nextSeries = (props.metrics || [])
     .map((metric, metricIndex) => {
@@ -481,7 +279,7 @@ const chartData = computed<ChartData>(() => {
       const minValue = Math.min(...values);
       const maxValue = Math.max(...values);
       const range = maxValue - minValue || 1;
-      const color = COLORS[metricIndex % COLORS.length] || "#1f4b7a";
+      const color = seriesColor(metricIndex, isDark.value);
 
       const points = numericPoints.map((item, order) => {
         const categoryKey = buildCategoryKey(
@@ -491,7 +289,11 @@ const chartData = computed<ChartData>(() => {
         if (!categoryMap.has(categoryKey)) {
           categoryMap.set(categoryKey, {
             key: categoryKey,
-            label: item.point.fecha || item.point.codigo || item.point.numero_muestra || `P${order + 1}`,
+            label:
+              item.point.fecha ||
+              item.point.codigo ||
+              item.point.numero_muestra ||
+              `P${order + 1}`,
             order: categoryMap.size,
           });
         }
@@ -504,7 +306,9 @@ const chartData = computed<ChartData>(() => {
         return {
           key: `${metric.key}-${categoryKey}`,
           seriesKey: String(metric.key || `serie-${metricIndex}`),
-          seriesLabel: String(metric.label || metric.key || `Serie ${metricIndex + 1}`),
+          seriesLabel: String(
+            metric.label || metric.key || `Serie ${metricIndex + 1}`,
+          ),
           color,
           codigo: item.point.codigo ? String(item.point.codigo) : null,
           fecha: item.point.fecha ? String(item.point.fecha) : null,
@@ -527,11 +331,11 @@ const chartData = computed<ChartData>(() => {
       };
     })
     .filter(Boolean) as Array<{
-      key: string;
-      label: string;
-      color: string;
-      points: NormalizedPoint[];
-    }>;
+    key: string;
+    label: string;
+    color: string;
+    points: NormalizedPoint[];
+  }>;
 
   return {
     categories: [...categoryMap.values()].sort((a, b) => a.order - b.order),
@@ -543,199 +347,195 @@ const chartSeries = computed(() => chartData.value.series);
 const chartCategories = computed(() => chartData.value.categories);
 const hasSeries = computed(() => chartSeries.value.length > 0);
 
-function buildLinearPath(points: PlottedPoint[]) {
-  if (!points.length) return "";
-  return points
-    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-    .join(" ");
-}
+const tableRows = computed(() =>
+  chartSeries.value.flatMap((serie) => serie.points),
+);
 
-function buildSmoothPath(points: PlottedPoint[]) {
-  if (!points.length) return "";
-  if (points.length < 3) return buildLinearPath(points);
+const smooth = computed(() => props.curveMode === "smooth");
 
-  const firstPoint = points[0];
-  if (!firstPoint) return "";
-  const segments = [`M ${firstPoint.x} ${firstPoint.y}`];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const current = points[index];
-    const next = points[index + 1];
-    if (!current || !next) continue;
-    const controlX = (current.x + next.x) / 2;
-    segments.push(`Q ${controlX} ${current.y} ${next.x} ${next.y}`);
-  }
-  return segments.join(" ");
-}
-
-function buildChartModel(width: number, height: number, padding: ChartPadding) {
-  const chartWidth = Math.max(width - padding.left - padding.right, 1);
-  const chartHeight = Math.max(height - padding.top - padding.bottom, 1);
-  const chartBottom = height - padding.bottom;
-  const categoryIndex = new Map(
-    chartCategories.value.map((item, index) => [item.key, index] as const),
+/** Punto de cada serie alineado a la categoria; los huecos quedan sin marca. */
+function seriesRows(serie: { points: NormalizedPoint[] }) {
+  const byCategory = new Map(
+    serie.points.map((point) => [point.categoryKey, point] as const),
   );
-
-  const categories = chartCategories.value.map((category, index) => ({
-    ...category,
-    x:
-      chartCategories.value.length === 1
-        ? padding.left + chartWidth / 2
-        : padding.left +
-          (chartWidth * index) / Math.max(chartCategories.value.length - 1, 1),
-  }));
-
-  const series = chartSeries.value.map((series) => {
-    const points = series.points
-      .map<PlottedPoint>((point) => {
-        const index = categoryIndex.get(point.categoryKey) ?? 0;
-        const x =
-          chartCategories.value.length === 1
-            ? padding.left + chartWidth / 2
-            : padding.left +
-              (chartWidth * index) / Math.max(chartCategories.value.length - 1, 1);
-        const y = chartBottom - (point.normalizedValue / 100) * chartHeight;
-        return {
-          ...point,
-          x,
-          y,
-        };
-      })
-      .sort((a, b) => {
-        const indexA = categoryIndex.get(a.categoryKey) ?? 0;
-        const indexB = categoryIndex.get(b.categoryKey) ?? 0;
-        return indexA - indexB;
-      });
-
-    return {
-      key: series.key,
-      label: series.label,
-      color: series.color,
-      points,
-      path:
-        props.curveMode === "smooth"
-          ? buildSmoothPath(points)
-          : buildLinearPath(points),
-    };
+  return chartCategories.value.map((category) => {
+    const point = byCategory.get(category.key);
+    return point ? point.normalizedValue : null;
   });
+}
 
-  const guides = [0, 25, 50, 75, 100].map((value, index) => ({
-    key: index,
-    y: chartBottom - (value / 100) * chartHeight,
-    label: `${value}%`,
+function buildSeries(showSymbols: boolean) {
+  return chartSeries.value.map((serie) => ({
+    name: serie.label,
+    type: "line" as const,
+    smooth: smooth.value,
+    connectNulls: true,
+    symbolSize: showSymbols ? 8 : 0,
+    lineStyle: { width: 2, color: serie.color },
+    itemStyle: { color: serie.color },
+    emphasis: { focus: "series" as const },
+    data: seriesRows(serie),
   }));
+}
+
+function tooltipFormatter(params: any) {
+  const rows = Array.isArray(params) ? params : [params];
+  const categoryIndex = rows[0]?.dataIndex ?? 0;
+  const category = chartCategories.value[categoryIndex];
+  const head = `<strong>${category?.label ?? ""}</strong>`;
+  const body = rows
+    .map((row: any) => {
+      const serie = chartSeries.value.find((item) => item.label === row.seriesName);
+      const point = serie?.points.find(
+        (item) => item.categoryKey === category?.key,
+      );
+      if (!point) return "";
+      // Se muestra el valor real, no el normalizado: el porcentaje solo sirve
+      // para poder dibujarlas juntas.
+      return `<div>${row.marker}${point.seriesLabel}: <strong>${point.valueLabel}</strong> <span style="opacity:.65">(${point.normalizedLabel})</span></div>`;
+    })
+    .filter(Boolean)
+    .join("");
+  return head + body;
+}
+
+const miniOption = computed(() => {
+  const ink = chartInk(isDark.value);
+  return {
+    grid: { left: 8, right: 12, top: 12, bottom: 6, containLabel: true },
+    tooltip: {
+      trigger: "axis" as const,
+      backgroundColor: ink.surface,
+      borderColor: ink.border,
+      borderWidth: 1,
+      textStyle: { color: ink.text, fontSize: 12 },
+      formatter: tooltipFormatter,
+    },
+    textStyle: { color: ink.text, fontFamily: "inherit" },
+    xAxis: {
+      type: "category" as const,
+      data: chartCategories.value.map((category) => category.label),
+      axisLine: { lineStyle: { color: ink.axis } },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value" as const,
+      min: 0,
+      max: 100,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: ink.muted, fontSize: 10, formatter: "{value}%" },
+      splitLine: { lineStyle: { color: ink.grid } },
+    },
+    series: buildSeries(true),
+  };
+});
+
+const detailOption = computed(() => {
+  const ink = chartInk(isDark.value);
+  const total = chartCategories.value.length;
+  const startPercent = total > 14 ? Math.max(0, 100 - (14 / total) * 100) : 0;
 
   return {
-    width,
-    height,
-    padding,
-    chartBottom,
-    categories,
-    series,
-    guides,
-    xStartLabel: categories[0]?.label || "",
-    xEndLabel: categories[categories.length - 1]?.label || "",
+    grid: { left: 16, right: 24, top: 44, bottom: 96, containLabel: true },
+    tooltip: {
+      trigger: "axis" as const,
+      backgroundColor: ink.surface,
+      borderColor: ink.border,
+      borderWidth: 1,
+      textStyle: { color: ink.text, fontSize: 12 },
+      formatter: tooltipFormatter,
+    },
+    // La leyenda siempre está presente con dos o más series: la identidad
+    // nunca depende solo del color.
+    legend: {
+      top: 4,
+      type: "scroll" as const,
+      textStyle: { color: ink.text, fontSize: 12 },
+      inactiveColor: ink.muted,
+    },
+    textStyle: { color: ink.text, fontFamily: "inherit" },
+    dataZoom: [
+      { type: "inside" as const, start: startPercent, end: 100 },
+      {
+        type: "slider" as const,
+        start: startPercent,
+        end: 100,
+        height: 22,
+        bottom: 18,
+        borderColor: ink.border,
+        fillerColor: isDark.value
+          ? "rgba(47,108,171,0.24)"
+          : "rgba(47,108,171,0.14)",
+        handleStyle: { color: seriesColor(0, isDark.value) },
+        textStyle: { color: ink.muted, fontSize: 10 },
+      },
+    ],
+    xAxis: {
+      type: "category" as const,
+      data: chartCategories.value.map((category) => category.label),
+      axisLine: { lineStyle: { color: ink.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: ink.muted, fontSize: 11, rotate: 35, hideOverlap: true },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value" as const,
+      min: 0,
+      max: 100,
+      name: "Escala comparativa",
+      nameTextStyle: { color: ink.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: ink.muted, fontSize: 11, formatter: "{value}%" },
+      splitLine: { lineStyle: { color: ink.grid } },
+    },
+    series: buildSeries(true),
   };
-}
-
-const miniChart = computed(() => buildChartModel(440, 200, miniPadding));
-const detailWidth = computed(() =>
-  Math.round(Math.max(1180, 180 + chartCategories.value.length * 92) * zoomLevel.value),
-);
-const detailHeight = computed(() =>
-  Math.round(Math.max(460, 460 * Math.min(zoomLevel.value, 2))),
-);
-const detailChart = computed(() =>
-  buildChartModel(detailWidth.value, detailHeight.value, detailPadding),
-);
-
-const allPoints = computed(() =>
-  detailChart.value.series.flatMap((series) => series.points),
-);
+});
 
 const selectedPoint = computed(() => {
-  if (!allPoints.value.length) return null;
+  if (!tableRows.value.length) return null;
   return (
-    allPoints.value.find((point) => point.key === selectedPointKey.value) ||
-    allPoints.value[allPoints.value.length - 1] ||
+    tableRows.value.find((item) => item.key === selectedPointKey.value) ||
+    tableRows.value[tableRows.value.length - 1] ||
     null
   );
 });
 
-const tableRows = computed(() =>
-  [...allPoints.value].sort((a, b) => {
-    if ((a.fecha || "") !== (b.fecha || "")) {
-      return String(a.fecha || "").localeCompare(String(b.fecha || ""));
-    }
-    return a.seriesLabel.localeCompare(b.seriesLabel);
-  }),
-);
-
 watch(
-  allPoints,
-  (points) => {
-    if (!points.length) {
+  tableRows,
+  (rows) => {
+    if (!rows.length) {
       selectedPointKey.value = null;
       dialog.value = false;
       return;
     }
-    if (!points.some((point) => point.key === selectedPointKey.value)) {
-      selectedPointKey.value = points[points.length - 1]?.key || null;
+    if (!rows.some((item) => item.key === selectedPointKey.value)) {
+      selectedPointKey.value = rows[rows.length - 1]?.key || null;
     }
   },
   { immediate: true },
 );
 
-const categoryLabelStep = computed(() => {
-  if (zoomLevel.value >= 1.5 || detailChart.value.categories.length <= 8) return 1;
-  return Math.max(1, Math.ceil(detailChart.value.categories.length / 6));
-});
-
-function clampZoom(next: number) {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(next.toFixed(2))));
-}
-
-function zoomIn() {
-  zoomLevel.value = clampZoom(zoomLevel.value + ZOOM_STEP);
-}
-
-function zoomOut() {
-  zoomLevel.value = clampZoom(zoomLevel.value - ZOOM_STEP);
-}
-
-function resetZoom() {
-  zoomLevel.value = 1;
-}
-
-function shouldRenderPointValue(point: PlottedPoint) {
-  return (
-    selectedPointKey.value === point.key ||
-    zoomLevel.value >= 2.1 ||
-    (chartSeries.value.length <= 3 && detailChart.value.categories.length <= 8)
-  );
-}
-
-function shouldRenderCategoryLabel(categoryKey: string) {
-  if (zoomLevel.value >= 1.5 || detailChart.value.categories.length <= 8) return true;
-  const index = detailChart.value.categories.findIndex((category) => category.key === categoryKey);
-  if (index === -1) return false;
-  const selected = selectedPoint.value?.categoryKey;
-  return (
-    index % categoryLabelStep.value === 0 ||
-    index === detailChart.value.categories.length - 1 ||
-    selected === categoryKey
-  );
-}
-
 function selectPoint(key: string) {
   selectedPointKey.value = key;
+}
+
+function handleChartSelect(params: any) {
+  const serie = chartSeries.value.find((item) => item.label === params?.seriesName);
+  const category = chartCategories.value[params?.dataIndex];
+  const point = serie?.points.find((item) => item.categoryKey === category?.key);
+  if (point) selectPoint(point.key);
 }
 
 function openDialog() {
   if (!hasSeries.value) return;
   if (!selectedPointKey.value) {
-    selectedPointKey.value = allPoints.value[allPoints.value.length - 1]?.key || null;
+    selectedPointKey.value = tableRows.value[tableRows.value.length - 1]?.key || null;
   }
-  zoomLevel.value = 1;
   dialog.value = true;
 }
 </script>
@@ -743,9 +543,14 @@ function openDialog() {
 <style scoped>
 .comparison-chart {
   padding: 16px;
+  min-width: 0;
   border-radius: 20px;
   border: 1px solid var(--surface-border);
   background: var(--chart-card-bg);
+}
+
+.comparison-chart__copy {
+  min-width: 0;
 }
 
 .comparison-chart--interactive {
@@ -764,99 +569,23 @@ function openDialog() {
   outline: none;
 }
 
+.comparison-chart__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .comparison-chart__shell {
   display: grid;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
-.comparison-chart__svg {
-  width: 100%;
-  height: 200px;
-  display: block;
-}
-
-.comparison-chart__svg--detail {
-  width: 100%;
-  min-width: 1040px;
-  height: 460px;
-}
-
-.comparison-chart__guide {
-  stroke: var(--chart-guide);
-  stroke-width: 1;
-}
-
-.comparison-chart__axis {
-  stroke: var(--chart-axis);
-  stroke-width: 1.2;
-}
-
-.comparison-chart__line {
-  fill: none;
-  stroke-width: 2.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.comparison-chart__drop {
-  stroke: var(--chart-drop);
-  stroke-width: 1;
-  stroke-dasharray: 4 4;
-}
-
-.comparison-chart__dot {
-  fill: var(--chart-card-bg-strong);
-  stroke-width: 2.4;
-}
-
-.comparison-chart__dot--detail {
-  cursor: pointer;
-}
-
-.comparison-chart__dot--normal {
-  fill: var(--chart-success-soft);
-}
-
-.comparison-chart__dot--warning {
-  fill: var(--chart-warning-soft);
-}
-
-.comparison-chart__dot--alert {
-  fill: var(--chart-error-soft);
-}
-
-.comparison-chart__scale,
-.comparison-chart__labels {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+.comparison-chart__hint {
   font-size: 12px;
-  color: var(--chart-label);
-}
-
-.comparison-chart__legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-}
-
-.comparison-chart__legend--detail {
-  margin-top: 12px;
-}
-
-.comparison-chart__legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--chart-label);
-}
-
-.comparison-chart__legend-line {
-  width: 22px;
-  height: 4px;
-  border-radius: 999px;
-  display: inline-block;
+  color: var(--chart-empty-text);
 }
 
 .comparison-chart__empty {
@@ -867,7 +596,7 @@ function openDialog() {
   font-size: 14px;
 }
 
-.comparison-chart__dialog {
+.comparison-chart__dialog-card {
   overflow: hidden;
 }
 
@@ -888,68 +617,53 @@ function openDialog() {
   padding: 20px 24px 8px;
 }
 
-.comparison-chart__dialog-shell {
-  overflow: auto;
-  border-radius: 24px;
-  border: 1px solid var(--surface-border);
-  background: var(--chart-dialog-shell-bg);
-  padding: 12px;
+.comparison-chart__dialog-main {
+  min-width: 0;
 }
 
 .comparison-chart__dialog-side {
-  display: grid;
-  gap: 12px;
-  align-content: start;
+  min-width: 0;
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--surface-border);
+  background: var(--chart-dialog-shell-bg);
 }
 
 .comparison-chart__detail-card {
   display: grid;
   gap: 10px;
-  padding: 16px;
-  border-radius: 22px;
-  border: 1px solid var(--surface-border);
-  background: var(--chart-detail-bg);
+  margin-top: 12px;
 }
 
 .comparison-chart__detail-row {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .comparison-chart__detail-label {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--chart-muted);
-}
-
-.comparison-chart__detail-value {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--app-text);
-}
-
-.comparison-chart__detail-empty {
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--chart-empty-bg);
   color: var(--chart-empty-text);
 }
 
-.comparison-chart__y-label,
-.comparison-chart__x-label,
-.comparison-chart__point-value {
-  font-size: 12px;
-  fill: var(--chart-label);
+.comparison-chart__detail-value {
+  font-weight: 700;
+  text-align: right;
+  word-break: break-word;
 }
 
-.comparison-chart__point-value {
-  font-weight: 700;
-  fill: var(--chart-line);
+.comparison-chart__detail-empty {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--chart-empty-text);
 }
 
 .comparison-chart__table-wrap {
   padding: 12px 24px 24px;
+  min-width: 0;
 }
 
 .comparison-chart__table {
@@ -966,25 +680,15 @@ function openDialog() {
   background: var(--chart-table-active);
 }
 
-@media (max-width: 1100px) {
-  .comparison-chart__dialog-layout {
-    grid-template-columns: 1fr;
+@media (prefers-reduced-motion: reduce) {
+  .comparison-chart--interactive {
+    transition: none;
   }
 }
 
-@media (max-width: 600px) {
-  .comparison-chart__dialog-header,
-  .comparison-chart__dialog-layout,
-  .comparison-chart__table-wrap {
-    padding-inline: 14px;
-  }
-
-  .comparison-chart__dialog-shell {
-    padding: 8px;
-  }
-
-  .comparison-chart__detail-card {
-    padding: 12px;
+@media (max-width: 1100px) {
+  .comparison-chart__dialog-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

@@ -8,7 +8,7 @@
     @keydown.space.prevent="openDialog"
   >
     <div class="d-flex align-center justify-space-between mb-2" style="gap: 8px;">
-      <div>
+      <div class="chart-card__copy">
         <div class="text-subtitle-2 font-weight-bold">{{ title }}</div>
         <div class="text-caption text-medium-emphasis">
           {{ subtitle }}
@@ -24,6 +24,7 @@
           size="small"
           variant="text"
           color="primary"
+          aria-label="Ampliar la serie"
           @click.stop="openDialog"
         />
       </div>
@@ -34,67 +35,21 @@
     </div>
 
     <div v-else class="chart-shell">
-      <svg
-        :viewBox="`0 0 ${miniChart.width} ${miniChart.height}`"
-        class="chart-svg"
-        preserveAspectRatio="none"
-      >
-        <line
-          v-for="guide in miniChart.guides"
-          :key="`mini-guide-${guide.key}`"
-          :x1="miniChart.padding.left"
-          :x2="miniChart.width - miniChart.padding.right"
-          :y1="guide.y"
-          :y2="guide.y"
-          class="chart-guide"
-        />
-        <line
-          :x1="miniChart.padding.left"
-          :y1="miniChart.padding.top"
-          :x2="miniChart.padding.left"
-          :y2="miniChart.chartBottom"
-          class="chart-axis"
-        />
-        <line
-          :x1="miniChart.padding.left"
-          :y1="miniChart.chartBottom"
-          :x2="miniChart.width - miniChart.padding.right"
-          :y2="miniChart.chartBottom"
-          class="chart-axis"
-        />
-
-        <polyline :points="miniChart.polyline" class="chart-line" />
-
-        <g v-for="point in miniChart.points" :key="point.key">
-          <circle
-            :cx="point.x"
-            :cy="point.y"
-            r="4.5"
-            :class="['chart-dot', `chart-dot--${point.level}`]"
-          />
-        </g>
-      </svg>
-
-      <div class="chart-range">
-        <span>{{ miniChart.yMinLabel }}</span>
-        <span>{{ miniChart.yMaxLabel }}</span>
-      </div>
-
-      <div class="chart-labels">
-        <span>{{ miniChart.xStartLabel }}</span>
-        <span>{{ miniChart.xEndLabel }}</span>
-      </div>
-
+      <EChart :option="miniOption" height="164px" />
       <div class="chart-hint">
         Haz clic para ampliar y revisar cada muestra.
       </div>
     </div>
   </div>
 
-  <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : 1480">
+  <v-dialog
+    v-model="dialog"
+    :fullscreen="isDialogFullscreen"
+    :max-width="isDialogFullscreen ? undefined : 1480"
+  >
     <v-card rounded="xl" class="chart-dialog-card">
       <div class="chart-dialog-header">
-        <div>
+        <div class="chart-dialog-header__copy">
           <div class="text-h6 font-weight-bold">{{ title }}</div>
           <div class="text-body-2 text-medium-emphasis">
             {{ subtitle || "Serie historica de resultados" }}
@@ -105,115 +60,36 @@
             {{ numericPoints.length }} puntos
           </v-chip>
           <v-chip size="small" color="secondary" variant="tonal">
-            {{ detailChart.yMinLabel }} / {{ detailChart.yMaxLabel }}
+            {{ yMinLabel }} / {{ yMaxLabel }}
           </v-chip>
-          <v-btn icon="mdi-magnify-minus-outline" variant="text" :disabled="zoomLevel <= MIN_ZOOM" @click="zoomOut" />
-          <v-chip size="small" color="info" variant="tonal">
-            Zoom {{ Math.round(zoomLevel * 100) }}%
-          </v-chip>
-          <v-btn icon="mdi-fit-to-page-outline" variant="text" :disabled="zoomLevel === 1" @click="resetZoom" />
-          <v-btn icon="mdi-magnify-plus-outline" variant="text" :disabled="zoomLevel >= MAX_ZOOM" @click="zoomIn" />
-          <v-btn icon="mdi-close" variant="text" @click="dialog = false" />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            aria-label="Cerrar"
+            @click="dialog = false"
+          />
         </div>
       </div>
 
       <div class="chart-dialog-layout">
         <div class="chart-dialog-main">
-          <div class="chart-dialog-shell">
-            <svg
-              :viewBox="`0 0 ${detailChart.width} ${detailChart.height}`"
-              class="chart-svg chart-svg--detail"
-              :style="{ width: `${detailChart.width}px`, height: `${detailChart.height}px` }"
-              preserveAspectRatio="xMidYMid meet"
-            >
-              <line
-                v-for="guide in detailChart.guides"
-                :key="`detail-guide-${guide.key}`"
-                :x1="detailChart.padding.left"
-                :x2="detailChart.width - detailChart.padding.right"
-                :y1="guide.y"
-                :y2="guide.y"
-                class="chart-guide"
-              />
-              <text
-                v-for="guide in detailChart.guides"
-                :key="`detail-guide-label-${guide.key}`"
-                :x="detailChart.padding.left - 12"
-                :y="guide.y + 4"
-                class="chart-y-label"
-                text-anchor="end"
-              >
-                {{ guide.label }}
-              </text>
-
-              <line
-                :x1="detailChart.padding.left"
-                :y1="detailChart.padding.top"
-                :x2="detailChart.padding.left"
-                :y2="detailChart.chartBottom"
-                class="chart-axis"
-              />
-              <line
-                :x1="detailChart.padding.left"
-                :y1="detailChart.chartBottom"
-                :x2="detailChart.width - detailChart.padding.right"
-                :y2="detailChart.chartBottom"
-                class="chart-axis"
-              />
-
-              <polyline :points="detailChart.polyline" class="chart-line" />
-
-              <g v-for="point in detailChart.points" :key="`detail-point-${point.key}`">
-                <line
-                  :x1="point.x"
-                  :x2="point.x"
-                  :y1="point.y"
-                  :y2="detailChart.chartBottom"
-                  class="chart-drop"
-                />
-                <circle
-                  :cx="point.x"
-                  :cy="point.y"
-                  :r="selectedPoint?.key === point.key ? 8 : 6"
-                  :class="['chart-dot', 'chart-dot--detail', `chart-dot--${point.level}`]"
-                  @mouseenter="selectPoint(point.key)"
-                  @click.stop="selectPoint(point.key)"
-                />
-                <text
-                  v-if="shouldRenderPointLabel(point)"
-                  :x="point.x"
-                  :y="point.y - 14"
-                  class="chart-point-value"
-                  text-anchor="middle"
-                >
-                  {{ point.valueLabel }}
-                </text>
-                <text
-                  v-if="shouldRenderXAxisLabel(point)"
-                  :x="point.x"
-                  :y="detailChart.chartBottom + 20"
-                  class="chart-x-label"
-                  text-anchor="end"
-                  :transform="`rotate(-35 ${point.x} ${detailChart.chartBottom + 20})`"
-                >
-                  {{ point.fecha || point.label }}
-                </text>
-              </g>
-            </svg>
-          </div>
+          <EChart
+            :option="detailOption"
+            height="430px"
+            @select="handleChartSelect"
+          />
 
           <div class="chart-legend">
-            <div class="chart-legend-item">
-              <span class="chart-legend-dot chart-dot--normal" />
-              Normal
-            </div>
-            <div class="chart-legend-item">
-              <span class="chart-legend-dot chart-dot--warning" />
-              Precaucion
-            </div>
-            <div class="chart-legend-item">
-              <span class="chart-legend-dot chart-dot--alert" />
-              Alerta
+            <div
+              v-for="entry in levelLegend"
+              :key="entry.level"
+              class="chart-legend-item"
+            >
+              <span
+                class="chart-legend-dot"
+                :style="{ background: entry.color }"
+              />
+              {{ entry.title }}
             </div>
           </div>
         </div>
@@ -246,7 +122,7 @@
             <div class="chart-point-detail-row">
               <span class="chart-point-detail-label">Posicion</span>
               <span class="chart-point-detail-value">
-                {{ selectedPoint.index + 1 }} de {{ detailChart.points.length }}
+                {{ selectedPoint.index + 1 }} de {{ numericPoints.length }}
               </span>
             </div>
           </div>
@@ -270,9 +146,9 @@
           </thead>
           <tbody>
             <tr
-              v-for="point in detailChart.points"
+              v-for="point in numericPoints"
               :key="`row-${point.key}`"
-              :class="{ 'chart-table-row--active': selectedPoint?.key === point.key }"
+              :class="{ 'chart-table-row--active': selectedPointKey === point.key }"
               @click="selectPoint(point.key)"
             >
               <td>{{ point.index + 1 }}</td>
@@ -294,7 +170,9 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useDisplay } from "vuetify";
+import { useDisplay, useTheme } from "vuetify";
+import EChart from "@/components/charts/EChart.vue";
+import { chartInk, chartStatus, seriesColor } from "@/app/config/chart-theme";
 
 type InputPoint = {
   codigo?: string | null;
@@ -304,13 +182,6 @@ type InputPoint = {
 };
 
 type PointLevel = "normal" | "warning" | "alert";
-
-type ChartPadding = {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-};
 
 type NormalizedPoint = {
   key: string;
@@ -323,11 +194,6 @@ type NormalizedPoint = {
   index: number;
 };
 
-type PlottedPoint = NormalizedPoint & {
-  x: number;
-  y: number;
-};
-
 const props = defineProps<{
   title: string;
   subtitle?: string;
@@ -337,26 +203,10 @@ const props = defineProps<{
 
 const dialog = ref(false);
 const { mdAndDown } = useDisplay();
+const theme = useTheme();
+const isDark = computed(() => theme.global.current.value.dark);
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const selectedPointKey = ref<string | null>(null);
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 3;
-const ZOOM_STEP = 0.25;
-const zoomLevel = ref(1);
-
-const miniPadding: ChartPadding = {
-  left: 44,
-  right: 24,
-  top: 16,
-  bottom: 28,
-};
-
-const detailPadding: ChartPadding = {
-  left: 86,
-  right: 34,
-  top: 24,
-  bottom: 84,
-};
 
 function toLevel(value: unknown): PointLevel {
   const raw = String(value ?? "").trim().toUpperCase();
@@ -385,6 +235,22 @@ function levelTitle(level: PointLevel) {
   return "NORMAL";
 }
 
+/** Color del semaforo. Nunca comunica solo: va con etiqueta, leyenda y tabla. */
+function levelPaint(level: PointLevel) {
+  const status = chartStatus(isDark.value);
+  if (level === "alert") return status.critical;
+  if (level === "warning") return status.warning;
+  return status.good;
+}
+
+const levelLegend = computed(() =>
+  (["normal", "warning", "alert"] as PointLevel[]).map((level) => ({
+    level,
+    title: levelTitle(level),
+    color: levelPaint(level),
+  })),
+);
+
 const numericPoints = computed<NormalizedPoint[]>(() =>
   props.points
     .map((item, index) => ({
@@ -402,83 +268,167 @@ const numericPoints = computed<NormalizedPoint[]>(() =>
 
 const hasPoints = computed(() => numericPoints.value.length > 0);
 
-const minValue = computed(() =>
-  numericPoints.value.length
-    ? Math.min(...numericPoints.value.map((item) => item.value))
-    : 0,
+const yMinLabel = computed(() =>
+  hasPoints.value
+    ? formatValue(Math.min(...numericPoints.value.map((item) => item.value)))
+    : "",
+);
+const yMaxLabel = computed(() =>
+  hasPoints.value
+    ? formatValue(Math.max(...numericPoints.value.map((item) => item.value)))
+    : "",
 );
 
-const maxValue = computed(() =>
-  numericPoints.value.length
-    ? Math.max(...numericPoints.value.map((item) => item.value))
-    : 100,
-);
-
-const safeRange = computed(() => {
-  const diff = maxValue.value - minValue.value;
-  return diff === 0 ? Math.max(Math.abs(maxValue.value), 1) : diff;
-});
-
-function buildChartModel(width: number, height: number, padding: ChartPadding) {
-  const chartWidth = Math.max(width - padding.left - padding.right, 1);
-  const chartHeight = Math.max(height - padding.top - padding.bottom, 1);
-  const chartBottom = height - padding.bottom;
-
-  const points = numericPoints.value.map<PlottedPoint>((item, index) => {
-    const x =
-      numericPoints.value.length === 1
-        ? padding.left + chartWidth / 2
-        : padding.left + (chartWidth * index) / Math.max(numericPoints.value.length - 1, 1);
-    const y = chartBottom - ((item.value - minValue.value) / safeRange.value) * chartHeight;
-    return {
-      ...item,
-      x,
-      y,
-    };
-  });
-
-  const guides = Array.from({ length: 5 }, (_, index) => {
-    const ratio = index / 4;
-    const y = padding.top + chartHeight * ratio;
-    const value = maxValue.value - safeRange.value * ratio;
-    return {
-      key: index,
-      y,
-      label: formatValue(value),
-    };
-  });
-
-  return {
-    width,
-    height,
-    padding,
-    chartBottom,
-    points,
-    guides,
-    polyline: points.map((item) => `${item.x},${item.y}`).join(" "),
-    yMinLabel: formatValue(minValue.value),
-    yMaxLabel: formatValue(maxValue.value),
-    xStartLabel: points[0]?.fecha || points[0]?.label || "",
-    xEndLabel: points[points.length - 1]?.fecha || points[points.length - 1]?.label || "",
-  };
+/**
+ * Datos de la serie con el color del semaforo en cada punto.
+ *
+ * La linea va en el azul de la paleta y solo los puntos llevan color de
+ * estado: asi el color de estado no compite con la tendencia.
+ */
+function seriesData() {
+  return numericPoints.value.map((point) => ({
+    value: point.value,
+    itemStyle: { color: levelPaint(point.level) },
+  }));
 }
 
-const miniChart = computed(() => buildChartModel(420, 180, miniPadding));
-const detailChartWidth = computed(() =>
-  Math.round(Math.max(1080, 180 + numericPoints.value.length * 88) * zoomLevel.value),
-);
-const detailChartHeight = computed(() =>
-  Math.round(Math.max(430, 430 * Math.min(zoomLevel.value, 2))),
-);
-const detailChart = computed(() =>
-  buildChartModel(detailChartWidth.value, detailChartHeight.value, detailPadding),
-);
+const miniOption = computed(() => {
+  const ink = chartInk(isDark.value);
+  return {
+    grid: { left: 8, right: 12, top: 12, bottom: 6, containLabel: true },
+    tooltip: {
+      trigger: "axis" as const,
+      backgroundColor: ink.surface,
+      borderColor: ink.border,
+      borderWidth: 1,
+      textStyle: { color: ink.text, fontSize: 12 },
+      formatter: (params: any) => {
+        const point = numericPoints.value[params?.[0]?.dataIndex];
+        if (!point) return "";
+        return `<strong>${point.label}</strong><div>${point.valueLabel}</div><div style="opacity:.7">${levelTitle(point.level)}</div>`;
+      },
+    },
+    textStyle: { color: ink.text, fontFamily: "inherit" },
+    xAxis: {
+      type: "category" as const,
+      data: numericPoints.value.map((point) => point.fecha || point.label),
+      axisLine: { lineStyle: { color: ink.axis } },
+      axisTick: { show: false },
+      axisLabel: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value" as const,
+      scale: true,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: ink.muted, fontSize: 10 },
+      splitLine: { lineStyle: { color: ink.grid } },
+    },
+    series: [
+      {
+        type: "line" as const,
+        smooth: false,
+        symbolSize: 8,
+        lineStyle: { width: 2, color: seriesColor(0, isDark.value) },
+        data: seriesData(),
+      },
+    ],
+  };
+});
+
+const detailOption = computed(() => {
+  const ink = chartInk(isDark.value);
+  const total = numericPoints.value.length;
+  // Con muchas muestras se abre mostrando el tramo reciente; el control de
+  // zoom deja recorrer el resto sin comprimir las etiquetas.
+  const startPercent = total > 14 ? Math.max(0, 100 - (14 / total) * 100) : 0;
+
+  return {
+    grid: { left: 16, right: 24, top: 28, bottom: 92, containLabel: true },
+    tooltip: {
+      trigger: "axis" as const,
+      backgroundColor: ink.surface,
+      borderColor: ink.border,
+      borderWidth: 1,
+      textStyle: { color: ink.text, fontSize: 12 },
+      formatter: (params: any) => {
+        const point = numericPoints.value[params?.[0]?.dataIndex];
+        if (!point) return "";
+        return [
+          `<strong>${point.codigo || point.label}</strong>`,
+          `<div>${point.fecha || "Sin fecha"}</div>`,
+          `<div>${point.valueLabel}</div>`,
+          `<div style="opacity:.7">${levelTitle(point.level)}</div>`,
+        ].join("");
+      },
+    },
+    textStyle: { color: ink.text, fontFamily: "inherit" },
+    dataZoom: [
+      { type: "inside" as const, start: startPercent, end: 100 },
+      {
+        type: "slider" as const,
+        start: startPercent,
+        end: 100,
+        height: 22,
+        bottom: 18,
+        borderColor: ink.border,
+        fillerColor: isDark.value
+          ? "rgba(47,108,171,0.24)"
+          : "rgba(47,108,171,0.14)",
+        handleStyle: { color: seriesColor(0, isDark.value) },
+        textStyle: { color: ink.muted, fontSize: 10 },
+      },
+    ],
+    xAxis: {
+      type: "category" as const,
+      data: numericPoints.value.map((point) => point.fecha || point.label),
+      axisLine: { lineStyle: { color: ink.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: ink.muted, fontSize: 11, rotate: 35, hideOverlap: true },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value" as const,
+      scale: true,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: ink.muted,
+        fontSize: 11,
+        formatter: (value: number) => formatValue(value),
+      },
+      splitLine: { lineStyle: { color: ink.grid } },
+    },
+    series: [
+      {
+        type: "line" as const,
+        smooth: false,
+        symbolSize: 9,
+        lineStyle: { width: 2, color: seriesColor(0, isDark.value) },
+        emphasis: { focus: "series" as const, scale: 1.4 },
+        // Etiqueta directa solo cuando caben: con la serie completa a la vista
+        // un numero por punto se convierte en ruido ilegible.
+        label: {
+          show: total <= 12,
+          position: "top" as const,
+          color: ink.text,
+          fontSize: 11,
+          fontWeight: 600,
+          formatter: (params: any) =>
+            numericPoints.value[params.dataIndex]?.valueLabel ?? "",
+        },
+        data: seriesData(),
+      },
+    ],
+  };
+});
 
 const selectedPoint = computed(() => {
-  if (!detailChart.value.points.length) return null;
+  if (!numericPoints.value.length) return null;
   return (
-    detailChart.value.points.find((item) => item.key === selectedPointKey.value) ||
-    detailChart.value.points[detailChart.value.points.length - 1] ||
+    numericPoints.value.find((item) => item.key === selectedPointKey.value) ||
+    numericPoints.value[numericPoints.value.length - 1] ||
     null
   );
 });
@@ -498,54 +448,21 @@ watch(
   { immediate: true },
 );
 
-const detailLabelStep = computed(() => {
-  if (zoomLevel.value >= 1.6 || detailChart.value.points.length <= 8) return 1;
-  return Math.max(1, Math.ceil(detailChart.value.points.length / 6));
-});
-
-function clampZoom(next: number) {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(next.toFixed(2))));
-}
-
-function zoomIn() {
-  zoomLevel.value = clampZoom(zoomLevel.value + ZOOM_STEP);
-}
-
-function zoomOut() {
-  zoomLevel.value = clampZoom(zoomLevel.value - ZOOM_STEP);
-}
-
-function resetZoom() {
-  zoomLevel.value = 1;
-}
-
-function shouldRenderPointLabel(point: PlottedPoint) {
-  return (
-    selectedPointKey.value === point.key ||
-    zoomLevel.value >= 1.9 ||
-    detailChart.value.points.length <= 6
-  );
-}
-
-function shouldRenderXAxisLabel(point: PlottedPoint) {
-  if (zoomLevel.value >= 1.4 || detailChart.value.points.length <= 8) return true;
-  return (
-    point.index % detailLabelStep.value === 0 ||
-    selectedPointKey.value === point.key ||
-    point.index === detailChart.value.points.length - 1
-  );
-}
-
 function selectPoint(key: string) {
   selectedPointKey.value = key;
+}
+
+function handleChartSelect(params: any) {
+  const point = numericPoints.value[params?.dataIndex];
+  if (point) selectPoint(point.key);
 }
 
 function openDialog() {
   if (!hasPoints.value) return;
   if (!selectedPointKey.value) {
-    selectedPointKey.value = numericPoints.value[numericPoints.value.length - 1]?.key || null;
+    selectedPointKey.value =
+      numericPoints.value[numericPoints.value.length - 1]?.key || null;
   }
-  zoomLevel.value = 1;
   dialog.value = true;
 }
 </script>
@@ -553,9 +470,14 @@ function openDialog() {
 <style scoped>
 .chart-card {
   padding: 16px;
+  min-width: 0;
   border-radius: 20px;
   border: 1px solid var(--surface-border);
   background: var(--chart-card-bg);
+}
+
+.chart-card__copy {
+  min-width: 0;
 }
 
 .chart-card--interactive {
@@ -577,86 +499,12 @@ function openDialog() {
 .chart-shell {
   display: grid;
   gap: 6px;
-}
-
-.chart-svg {
-  width: 100%;
-  height: 180px;
-  display: block;
-}
-
-.chart-svg--detail {
-  width: 100%;
-  min-width: 960px;
-  height: 430px;
-}
-
-.chart-guide {
-  stroke: var(--chart-guide);
-  stroke-width: 1;
-}
-
-.chart-axis {
-  stroke: var(--chart-axis);
-  stroke-width: 1.2;
-}
-
-.chart-line {
-  fill: none;
-  stroke: var(--chart-line);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.chart-drop {
-  stroke: var(--chart-drop);
-  stroke-width: 1.2;
-  stroke-dasharray: 4 4;
-}
-
-.chart-dot {
-  stroke: var(--chart-dot-border);
-  stroke-width: 2;
-}
-
-.chart-dot--detail {
-  cursor: pointer;
-  transition:
-    transform 0.16s ease,
-    r 0.16s ease;
-}
-
-.chart-dot--normal,
-.chart-legend-dot.chart-dot--normal {
-  fill: #1f7a4b;
-  background: #1f7a4b;
-}
-
-.chart-dot--warning,
-.chart-legend-dot.chart-dot--warning {
-  fill: #c58b00;
-  background: #c58b00;
-}
-
-.chart-dot--alert,
-.chart-legend-dot.chart-dot--alert {
-  fill: #c0392b;
-  background: #c0392b;
-}
-
-.chart-range,
-.chart-labels {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--chart-label);
+  min-width: 0;
 }
 
 .chart-hint {
   font-size: 12px;
-  color: var(--chart-hint);
+  color: var(--chart-empty-text);
 }
 
 .chart-empty {
@@ -681,6 +529,10 @@ function openDialog() {
   background: var(--chart-dialog-header-bg);
 }
 
+.chart-dialog-header__copy {
+  min-width: 0;
+}
+
 .chart-dialog-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -692,64 +544,44 @@ function openDialog() {
   min-width: 0;
 }
 
-.chart-dialog-shell {
-  overflow: auto;
-  border-radius: 24px;
+.chart-dialog-side {
+  min-width: 0;
+  padding: 16px;
+  border-radius: 20px;
   border: 1px solid var(--surface-border);
   background: var(--chart-dialog-shell-bg);
-  padding: 12px;
-}
-
-.chart-dialog-side {
-  display: grid;
-  gap: 12px;
-  align-content: start;
 }
 
 .chart-point-detail {
   display: grid;
   gap: 10px;
-  padding: 16px;
-  border-radius: 22px;
-  border: 1px solid var(--surface-border);
-  background: var(--chart-detail-bg);
+  margin-top: 12px;
 }
 
 .chart-point-detail-row {
-  display: grid;
-  gap: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .chart-point-detail-label {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--chart-muted);
-}
-
-.chart-point-detail-value {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--app-text);
-}
-
-.chart-point-empty {
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--chart-empty-bg);
   color: var(--chart-empty-text);
 }
 
-.chart-y-label,
-.chart-x-label,
-.chart-point-value {
-  font-size: 12px;
-  fill: var(--chart-label);
+.chart-point-detail-value {
+  font-weight: 700;
+  text-align: right;
+  word-break: break-word;
 }
 
-.chart-point-value {
-  font-weight: 700;
-  fill: var(--chart-line);
+.chart-point-empty {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--chart-empty-text);
 }
 
 .chart-legend {
@@ -776,6 +608,7 @@ function openDialog() {
 
 .chart-table-wrap {
   padding: 12px 24px 24px;
+  min-width: 0;
 }
 
 .chart-table {
@@ -792,29 +625,15 @@ function openDialog() {
   background: var(--chart-table-active);
 }
 
-@media (max-width: 1100px) {
-  .chart-dialog-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-dialog-side {
-    order: -1;
+@media (prefers-reduced-motion: reduce) {
+  .chart-card--interactive {
+    transition: none;
   }
 }
 
-@media (max-width: 600px) {
-  .chart-dialog-header,
-  .chart-dialog-layout,
-  .chart-table-wrap {
-    padding-inline: 14px;
-  }
-
-  .chart-dialog-shell {
-    padding: 8px;
-  }
-
-  .chart-point-detail {
-    padding: 12px;
+@media (max-width: 1100px) {
+  .chart-dialog-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

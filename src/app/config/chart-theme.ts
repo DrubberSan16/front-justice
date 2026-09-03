@@ -117,3 +117,25 @@ export function chartBase(dark: boolean) {
     },
   };
 }
+
+/**
+ * Colores de estado (semáforo), reservados y nunca reutilizados como serie.
+ *
+ * Verde, ámbar y rojo se conservan a propósito pese a que el ámbar y el rojo no
+ * alcanzan el margen que la guía exige entre colores *categóricos*: son colores
+ * de **estado**, cuya regla es distinta —acompañarlos siempre de etiqueta, y
+ * nunca comunicar solo con color—. Cambiar el rojo por magenta pasaría el
+ * verificador pero rompería la convención de un semáforo de alertas, que es
+ * justo lo que el operador lee de un vistazo.
+ *
+ * Contraste verificado ≥ 3:1 contra ambas superficies, y en modo oscuro dentro
+ * de la banda de luminosidad (L 0.48–0.67), más estrecha que la clara.
+ *
+ * Quien los use está obligado a dar relieve: etiqueta de texto, leyenda o
+ * tabla de respaldo. `LubricantTrendChart` lleva las tres.
+ */
+export function chartStatus(dark: boolean) {
+  return dark
+    ? { good: "#3E9E6D", warning: "#BE8226", critical: "#E06253" }
+    : { good: "#2E7D52", warning: "#B26A00", critical: "#C0392B" };
+}
