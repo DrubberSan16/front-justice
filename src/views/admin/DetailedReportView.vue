@@ -133,7 +133,7 @@
               >{{ formatNumber(topOilOrder.cantidad) }} gal</small
             >
           </article>
-          <article class="metric-card">
+          <article v-if="muestraCostos" class="metric-card">
             <span>Costo de aceite</span
             ><strong>{{ formatCurrency(oilTotals.total_costo) }}</strong>
           </article>
@@ -154,8 +154,11 @@
             <span
               ><strong>{{ equipmentLabel(equipment) }}</strong
               ><small
-                >{{ formatNumber(equipment.total_cantidad) }} gal ·
-                {{ formatCurrency(equipment.total_costo) }}</small
+                >{{ formatNumber(equipment.total_cantidad) }} gal<template
+                  v-if="muestraCostos"
+                >
+                  · {{ formatCurrency(equipment.total_costo) }}</template
+                ></small
               ></span
             >
             <v-icon icon="mdi-chevron-right" aria-hidden="true" />
@@ -503,7 +506,7 @@
                 gal</strong
               >
             </article>
-            <article>
+            <article v-if="muestraCostos">
               <span>Costo</span
               ><strong>{{
                 formatCurrency(selectedEquipment?.total_costo)
@@ -622,7 +625,7 @@
                 <span>Horas de trabajo</span
                 ><strong>{{ formatNumber(totalResponsibleHours) }} h</strong>
               </article>
-              <article>
+              <article v-if="muestraCostos">
                 <span>Costo total</span
                 ><strong>{{ formatCurrency(totalWorkCost) }}</strong>
               </article>
@@ -681,7 +684,7 @@
                   <span>Entregado por bodega</span
                   ><strong>{{ oilDelivered ? "Sí" : "No registrado" }}</strong>
                 </article>
-                <article>
+                <article v-if="muestraCostos">
                   <span>Costo</span
                   ><strong>{{ formatCurrency(orderOilCost) }}</strong>
                 </article>
@@ -1233,6 +1236,23 @@ function formatNumber(value: unknown, digits = 2) {
     maximumFractionDigits: digits,
   }).format(Number.isFinite(numeric) ? numeric : 0);
 }
+/**
+ * Si esta sesion recibe importes de materiales.
+ *
+ * No se pregunta por el rol: se mira si el servidor mando el campo. El backend
+ * ya decide quien puede verlos, y comprobar el dato mantiene ambas partes
+ * sincronizadas sin duplicar la regla. Importa porque `formatCurrency` de un
+ * campo ausente imprime "$0,00", y un cero inventado desinforma mas que un
+ * hueco.
+ */
+const muestraCostos = computed(() => {
+  const totales = oilReport.value?.totals;
+  if (totales && typeof totales === "object") {
+    return Object.prototype.hasOwnProperty.call(totales, "total_costo");
+  }
+  return true;
+});
+
 function formatCurrency(value: unknown) {
   const numeric = Number(value ?? 0);
   return new Intl.NumberFormat("es-EC", {
