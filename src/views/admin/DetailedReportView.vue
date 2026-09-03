@@ -330,6 +330,24 @@
                 </button>
                 <span v-else>{{ systemRow(item).work_order_code }}</span>
               </template>
+              <template
+                v-for="listKey in LIST_CELL_KEYS"
+                :key="listKey"
+                #[`item.${listKey}`]="{ item }"
+              >
+                <v-btn
+                  v-if="listCellItems(item, listKey).length"
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-format-list-bulleted"
+                  @click="openListCell(item, listKey)"
+                >
+                  Ver {{ (LIST_CELL_LABELS[listKey] || listKey).toLowerCase() }}
+                  ({{ listCellItems(item, listKey).length }})
+                </v-btn>
+                <span v-else class="list-cell-empty">Sin datos</span>
+              </template>
               <template #item.responsables="{ item }">
                 <v-btn
                   v-if="rowResponsables(item).length"
@@ -717,6 +735,42 @@
           <p v-else class="muted-empty">
             No hay horas registradas para esta orden.
           </p>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="listaDialog" max-width="560" scrollable>
+      <v-card rounded="xl" class="list-dialog">
+        <v-card-title class="dialog-header"
+          ><div>
+            <span>{{ listaTitulo }}</span
+            ><strong>{{ listaSubtitulo || listaTitulo }}</strong
+            ><small>{{ listaItems.length }} registros</small>
+          </div>
+          <div class="dialog-header__actions">
+            <v-btn
+              v-if="canGoBackModal"
+              icon="mdi-arrow-left"
+              variant="text"
+              aria-label="Volver a la pantalla anterior"
+              @click="goBackModal('lista')"
+            />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar listado"
+              @click="closeModal('lista')"
+            />
+          </div></v-card-title
+        >
+        <v-divider />
+        <v-card-text class="list-dialog__body">
+          <div v-if="listaItems.length" class="responsible-list">
+            <div v-for="(entry, index) in listaItems" :key="`${entry}-${index}`">
+              <span>{{ entry }}</span>
+            </div>
+          </div>
+          <p v-else class="muted-empty">No hay registros para mostrar.</p>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -1756,7 +1810,12 @@ async function loadUserCatalog() {
  * Navegacion entre modales
  * --------------------------------------------------------------------- */
 
-type ModalName = "orders" | "equipment" | "detail" | "responsables";
+type ModalName =
+  | "orders"
+  | "equipment"
+  | "detail"
+  | "responsables"
+  | "lista";
 
 /**
  * Rastro de modales visitadas para poder volver atras.
@@ -1771,10 +1830,55 @@ const responsablesDialog = ref(false);
 const responsablesRows = ref<Array<{ label: string; hours: number }>>([]);
 const responsablesOrder = ref<string>("");
 
+/**
+ * Celdas que traen una lista unida por "|" (equipos, materiales, ordenes).
+ *
+ * Puestas en linea desbordaban la tabla: un solo material podia arrastrar la
+ * lista de una decena de unidades y estirar la pantalla entera. Se resumen con
+ * un boton y el contenido se lee en una modal.
+ */
+const listaDialog = ref(false);
+const listaTitulo = ref("");
+const listaSubtitulo = ref("");
+const listaItems = ref<string[]>([]);
+
+const LIST_CELL_LABELS: Record<string, string> = {
+  equipos: "Equipos",
+  materiales: "Materiales",
+  ordenes_trabajo: "Órdenes de trabajo",
+  bodegas: "Bodegas",
+  consumo_bodegas: "Bodegas de consumo",
+};
+
+const LIST_CELL_KEYS = Object.keys(LIST_CELL_LABELS);
+
+function splitListCell(value: unknown) {
+  return String(value ?? "")
+    .split("|")
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+}
+
+function listCellItems(item: AnyRow, key: string) {
+  return splitListCell(systemRawRow(item)?.[key]);
+}
+
+function openListCell(item: AnyRow, key: string) {
+  const raw = systemRawRow(item);
+  listaItems.value = listCellItems(item, key);
+  listaTitulo.value = LIST_CELL_LABELS[key] ?? key;
+  listaSubtitulo.value = String(
+    raw?.material_label || raw?.work_order_code || raw?.equipment_name || "",
+  );
+  modalTrail.value = [];
+  navigateModal(null, "lista");
+}
+
 function setModal(name: ModalName, open: boolean) {
   if (name === "orders") ordersDialog.value = open;
   else if (name === "equipment") equipmentDialog.value = open;
   else if (name === "detail") detailDialog.value = open;
+  else if (name === "lista") listaDialog.value = open;
   else responsablesDialog.value = open;
 }
 
@@ -1994,9 +2098,26 @@ onMounted(() => {
   display: block;
 }
 
-.system-table :deep(td),
+/* Solo las columnas cortas evitan el salto de linea. Aplicarlo a todas hacia
+   la tabla desmesuradamente ancha por culpa de las celdas de texto largo. */
 .system-table :deep(th) {
   white-space: nowrap;
+}
+
+.system-table :deep(td) {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.system-table :deep(td:first-child),
+.system-table :deep(td:nth-child(2)),
+.system-table :deep(td:nth-child(3)),
+.system-table :deep(td:nth-child(4)) {
+  white-space: nowrap;
+}
+
+.list-cell-empty {
+  color: rgba(var(--v-theme-on-surface), 0.55);
 }
 
 .detailed-report {
@@ -2004,10 +2125,20 @@ onMounted(() => {
   --manager-amber: 180, 83, 9;
   --manager-green: 21, 128, 61;
   display: grid;
+  /* Sin columna declarada, la pista implicita se dimensiona al contenido mas
+     ancho: una tabla larga estiraba TODAS las secciones (incluida la cabecera)
+     y la pantalla perdia el lado derecho. `minmax(0, 1fr)` fija el ancho al
+     contenedor y `min-width: 0` permite que cada seccion encoja; lo que no
+     quepa se desplaza dentro de su propia caja, no empujando la pagina. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 28px;
   max-width: 1500px;
   margin: 0 auto;
   color: rgb(var(--v-theme-on-surface));
+}
+
+.detailed-report > * {
+  min-width: 0;
 }
 .report-heading,
 .simple-section,
@@ -2250,8 +2381,16 @@ onMounted(() => {
 }
 .manager-table {
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
   border-radius: 18px;
+}
+
+/* El desplazamiento horizontal vive aqui dentro: la tabla ancha se recorre
+   sola en vez de arrastrar el resto de la pantalla. */
+.manager-table :deep(.v-table__wrapper) {
+  overflow-x: auto;
 }
 .manager-table :deep(th) {
   height: 56px !important;
