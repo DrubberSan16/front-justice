@@ -1602,6 +1602,7 @@ const SYSTEM_HIDDEN_FIELDS = new Set([
   "maintenance_kind",
   "is_maintenance",
   "responsables_meta",
+  "equipos_lista",
   "period_key",
   "_raw",
 ]);
@@ -1859,8 +1860,20 @@ function splitListCell(value: unknown) {
     .filter(Boolean);
 }
 
+/**
+ * La lista real de una celda agregada.
+ *
+ * Se prefiere el arreglo `<campo>_lista` cuando el backend lo manda: la
+ * etiqueta del equipo contiene " | " (marca | nombre), asi que partir la
+ * cadena unida por ese mismo separador trocearia cada nombre en dos.
+ */
 function listCellItems(item: AnyRow, key: string) {
-  return splitListCell(systemRawRow(item)?.[key]);
+  const raw = systemRawRow(item);
+  const lista = raw?.[`${key}_lista`];
+  if (Array.isArray(lista)) {
+    return lista.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+  }
+  return splitListCell(raw?.[key]);
 }
 
 function openListCell(item: AnyRow, key: string) {
