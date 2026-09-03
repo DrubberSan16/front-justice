@@ -71,6 +71,24 @@ const emit = defineEmits<{
 const theme = useTheme();
 const isDark = computed(() => theme.global.current.value.dark);
 
+/**
+ * Color utilizable por el lienzo.
+ *
+ * Varias pantallas heredaron el color como degradado CSS
+ * (`linear-gradient(90deg, #2f6cab 0%, ...)`), que un canvas no sabe
+ * interpretar: ECharts lo descartaba sin avisar y las barras salian del color
+ * del texto. Se rescata el primer tono del degradado para respetar la
+ * intencion de quien llama, y si no hay nada aprovechable se cae a la paleta
+ * validada.
+ */
+function resolveItemColor(raw: string | undefined, index: number) {
+  const value = String(raw || "").trim();
+  if (!value) return seriesColor(index, isDark.value);
+  if (/^(#|rgb|hsl)/i.test(value)) return value;
+  const primerTono = value.match(/#[0-9a-f]{3,8}|rgba?\([^)]+\)/i);
+  return primerTono?.[0] ?? seriesColor(index, isDark.value);
+}
+
 const normalizedItems = computed(() => {
   const source = Array.isArray(props.items) ? props.items : [];
   const maxValue = Math.max(...source.map((item) => Number(item?.value || 0)), 1);
@@ -83,7 +101,7 @@ const normalizedItems = computed(() => {
       value: rawValue,
       valueLabel: item.valueLabel || String(rawValue),
       helper: item.helper || "",
-      color: item.color || seriesColor(index, isDark.value),
+      color: resolveItemColor(item.color, index),
       percent: Math.max(0, Math.min(100, (rawValue / maxValue) * 100)),
     };
   });
