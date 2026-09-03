@@ -373,28 +373,28 @@
 
     <v-dialog v-model="ordersDialog" max-width="1240" scrollable>
       <v-card rounded="xl" class="list-dialog">
-        <v-card-title class="dialog-header"
-          ><div>
+        <v-card-title class="dialog-header">
+          <v-btn
+            v-if="canGoBackModal"
+            icon="mdi-arrow-left"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Volver a la pantalla anterior"
+            @click="goBackModal('orders')"
+          />
+          <div class="dialog-header__copy">
             <span>Órdenes de trabajo</span
             ><strong>{{ selectedStatusCard?.label || "Órdenes" }}</strong
             ><small>{{ rangeLabel }}</small>
           </div>
-          <div class="dialog-header__actions">
-            <v-btn
-              v-if="canGoBackModal"
-              icon="mdi-arrow-left"
-              variant="text"
-              aria-label="Volver a la pantalla anterior"
-              @click="goBackModal('orders')"
-            />
-            <v-btn
-              icon="mdi-close"
-              variant="text"
-              aria-label="Cerrar listado"
-              @click="closeModal('orders')"
-            />
-          </div></v-card-title
-        >
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar listado"
+            @click="closeModal('orders')"
+          />
+        </v-card-title>
         <v-divider />
         <v-card-text class="list-dialog__body">
           <v-text-field
@@ -456,28 +456,28 @@
 
     <v-dialog v-model="equipmentDialog" max-width="920" scrollable>
       <v-card rounded="xl" class="list-dialog">
-        <v-card-title class="dialog-header"
-          ><div>
+        <v-card-title class="dialog-header">
+          <v-btn
+            v-if="canGoBackModal"
+            icon="mdi-arrow-left"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Volver a la pantalla anterior"
+            @click="goBackModal('equipment')"
+          />
+          <div class="dialog-header__copy">
             <span>Consumo del equipo</span
             ><strong>{{ equipmentLabel(selectedEquipment || {}) }}</strong
             ><small>{{ rangeLabel }}</small>
           </div>
-          <div class="dialog-header__actions">
-            <v-btn
-              v-if="canGoBackModal"
-              icon="mdi-arrow-left"
-              variant="text"
-              aria-label="Volver a la pantalla anterior"
-              @click="goBackModal('equipment')"
-            />
-            <v-btn
-              icon="mdi-close"
-              variant="text"
-              aria-label="Cerrar detalle del equipo"
-              @click="closeModal('equipment')"
-            />
-          </div></v-card-title
-        >
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar detalle del equipo"
+            @click="closeModal('equipment')"
+          />
+        </v-card-title>
         <v-divider />
         <v-card-text class="list-dialog__body">
           <div class="equipment-summary">
@@ -534,20 +534,28 @@
 
     <v-dialog v-model="detailDialog" max-width="1080" scrollable>
       <v-card rounded="xl" class="detail-dialog">
-        <v-card-title class="dialog-header"
-          ><div>
+        <v-card-title class="dialog-header">
+          <v-btn
+            v-if="canGoBackModal"
+            icon="mdi-arrow-left"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Volver a la pantalla anterior"
+            @click="goBackModal('detail')"
+          />
+          <div class="dialog-header__copy">
             <span>{{ orderCode(selectedOrder || {}) }}</span
             ><strong>{{ orderTitle(selectedOrder || {}) }}</strong
             ><small>{{ equipmentLabel(selectedOrder || {}) }}</small>
           </div>
-          <div class="dialog-header__actions">
-            <v-btn
-              v-if="canGoBackModal"
-              icon="mdi-arrow-left"
-              variant="text"
-              aria-label="Volver a la pantalla anterior"
-              @click="goBackModal('detail')"
-            />
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar detalle"
+            @click="closeModal('detail')"
+          />
+          <div class="dialog-header__cta">
             <v-btn
               variant="tonal"
               color="primary"
@@ -556,14 +564,8 @@
               @click="openPdfPreview"
               >Previsualizar PDF</v-btn
             >
-            <v-btn
-              icon="mdi-close"
-              variant="text"
-              aria-label="Cerrar detalle"
-              @click="closeModal('detail')"
-            />
-          </div></v-card-title
-        >
+          </div>
+        </v-card-title>
         <v-divider />
         <v-card-text class="detail-dialog__body">
           <div v-if="detailLoading" class="detail-loading">
@@ -703,27 +705,27 @@
 
     <v-dialog v-model="responsablesDialog" max-width="520" scrollable>
       <v-card rounded="xl" class="list-dialog">
-        <v-card-title class="dialog-header"
-          ><div>
+        <v-card-title class="dialog-header">
+          <v-btn
+            v-if="canGoBackModal"
+            icon="mdi-arrow-left"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Volver a la pantalla anterior"
+            @click="goBackModal('responsables')"
+          />
+          <div class="dialog-header__copy">
             <span>Responsables</span><strong>{{ responsablesOrder }}</strong
             ><small>Horas registradas por cada persona</small>
           </div>
-          <div class="dialog-header__actions">
-            <v-btn
-              v-if="canGoBackModal"
-              icon="mdi-arrow-left"
-              variant="text"
-              aria-label="Volver a la pantalla anterior"
-              @click="goBackModal('responsables')"
-            />
-            <v-btn
-              icon="mdi-close"
-              variant="text"
-              aria-label="Cerrar responsables"
-              @click="closeModal('responsables')"
-            />
-          </div></v-card-title
-        >
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar responsables"
+            @click="closeModal('responsables')"
+          />
+        </v-card-title>
         <v-divider />
         <v-card-text class="list-dialog__body">
           <div v-if="responsablesRows.length" class="responsible-list">
@@ -741,28 +743,28 @@
 
     <v-dialog v-model="listaDialog" max-width="560" scrollable>
       <v-card rounded="xl" class="list-dialog">
-        <v-card-title class="dialog-header"
-          ><div>
+        <v-card-title class="dialog-header">
+          <v-btn
+            v-if="canGoBackModal"
+            icon="mdi-arrow-left"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Volver a la pantalla anterior"
+            @click="goBackModal('lista')"
+          />
+          <div class="dialog-header__copy">
             <span>{{ listaTitulo }}</span
             ><strong>{{ listaSubtitulo || listaTitulo }}</strong
             ><small>{{ listaItems.length }} registros</small>
           </div>
-          <div class="dialog-header__actions">
-            <v-btn
-              v-if="canGoBackModal"
-              icon="mdi-arrow-left"
-              variant="text"
-              aria-label="Volver a la pantalla anterior"
-              @click="goBackModal('lista')"
-            />
-            <v-btn
-              icon="mdi-close"
-              variant="text"
-              aria-label="Cerrar listado"
-              @click="closeModal('lista')"
-            />
-          </div></v-card-title
-        >
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar listado"
+            @click="closeModal('lista')"
+          />
+        </v-card-title>
         <v-divider />
         <v-card-text class="list-dialog__body">
           <div v-if="listaItems.length" class="responsible-list">
@@ -777,13 +779,20 @@
 
     <v-dialog v-model="pdfDialog" max-width="1000" scrollable>
       <v-card rounded="xl" class="list-dialog">
-        <v-card-title class="dialog-header"
-          ><div>
+        <v-card-title class="dialog-header">
+          <div class="dialog-header__copy">
             <span>Informe en PDF</span
             ><strong>{{ orderCode(selectedOrder || {}) }}</strong
             ><small>Revisa el informe antes de descargarlo</small>
           </div>
-          <div class="dialog-header__actions">
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar previsualización"
+            @click="closePdfPreview"
+          />
+          <div class="dialog-header__cta">
             <v-btn
               variant="tonal"
               color="primary"
@@ -792,14 +801,8 @@
               @click="downloadOrderReport"
               >Descargar</v-btn
             >
-            <v-btn
-              icon="mdi-close"
-              variant="text"
-              aria-label="Cerrar previsualización"
-              @click="closePdfPreview"
-            />
-          </div></v-card-title
-        >
+          </div>
+        </v-card-title>
         <v-divider />
         <v-card-text class="pdf-preview__body">
           <div v-if="pdfLoading" class="detail-loading">
@@ -2092,12 +2095,6 @@ onMounted(() => {
   text-decoration-thickness: 2px;
 }
 
-.dialog-header__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
 
 .pdf-preview__body {
   padding: 0;
@@ -2429,17 +2426,31 @@ onMounted(() => {
 .detail-dialog {
   max-height: 90vh;
 }
+/* Volver a la izquierda, titulo al centro y cerrar a la derecha; la accion
+   principal (previsualizar, descargar) va en su propia fila centrada.
+   Antes iban las tres en un contenedor que heredaba `display: grid` de la
+   regla de abajo y quedaban una encima de otra. */
 .dialog-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 14px;
   padding: 24px 26px;
   white-space: normal;
 }
 .dialog-header > div {
   display: grid;
   gap: 3px;
+  min-width: 0;
+}
+.dialog-header__nav {
+  align-self: start;
+  flex: 0 0 auto;
+}
+.dialog-header > .dialog-header__cta {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
 }
 .dialog-header span {
   color: rgb(var(--v-theme-primary));
