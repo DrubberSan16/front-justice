@@ -8,8 +8,11 @@
       <section class="report-heading" aria-labelledby="detailed-report-title">
         <div>
           <div class="report-heading__eyebrow">Vista gerencial</div>
-          <h1 id="detailed-report-title">Reporte detallado</h1>
-          <p>Datos concretos de órdenes, aceite e inventario.</p>
+          <h1 id="detailed-report-title">Dashboard Gerencia</h1>
+          <p>
+            Órdenes, aceite, inventario y reportes del sistema en un solo
+            tablero.
+          </p>
         </div>
         <div class="report-heading__actions" aria-label="Rango del reporte">
           <v-text-field
@@ -216,6 +219,138 @@
           >
         </v-data-table>
       </section>
+
+      <section class="simple-section" aria-labelledby="system-reports-title">
+        <div class="section-title-row">
+          <div>
+            <h2 id="system-reports-title">Reportes del sistema</h2>
+            <p>
+              Horas, costos, responsables e inventario del rango seleccionado.
+            </p>
+          </div>
+          <v-btn
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-refresh"
+            :loading="systemLoading"
+            @click="loadSystemReports"
+            >Actualizar</v-btn
+          >
+        </div>
+
+        <div class="system-filters">
+          <v-select
+            v-model="systemGroupBy"
+            :items="systemGroupOptions"
+            item-title="title"
+            item-value="value"
+            label="Agrupar por"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            @update:model-value="loadSystemReports"
+          />
+          <v-select
+            v-model="systemEquipmentId"
+            :items="systemEquipmentOptions"
+            item-title="label"
+            item-value="id"
+            label="Equipo"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
+            @update:model-value="loadSystemReports"
+          />
+          <v-select
+            v-model="systemWarehouseId"
+            :items="systemWarehouseOptions"
+            item-title="label"
+            item-value="id"
+            label="Bodega"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
+            @update:model-value="loadSystemReports"
+          />
+        </div>
+
+        <v-alert
+          v-if="systemError"
+          type="warning"
+          variant="tonal"
+          rounded="xl"
+          class="mb-3"
+          :text="systemError"
+        />
+
+        <v-tabs v-model="systemTab" color="primary" show-arrows>
+          <v-tab
+            v-for="section in systemSections"
+            :key="section.key"
+            :value="section.key"
+            :prepend-icon="section.icon"
+            >{{ section.title }} ({{ section.count }})</v-tab
+          >
+        </v-tabs>
+
+        <v-window v-model="systemTab">
+          <v-window-item
+            v-for="section in systemSections"
+            :key="section.key"
+            :value="section.key"
+          >
+            <div class="system-section-head">
+              <div>
+                <strong>{{ section.title }}</strong>
+                <span>{{ section.subtitle }}</span>
+              </div>
+              <v-chip label color="secondary" variant="tonal" size="small">{{
+                section.groupLabel
+              }}</v-chip>
+            </div>
+
+            <v-data-table
+              :headers="section.headers"
+              :items="section.rows"
+              :loading="systemLoading"
+              :items-per-page="10"
+              density="comfortable"
+              class="manager-table system-table"
+            >
+              <template #item.work_order_code="{ item }">
+                <button
+                  v-if="systemRawRow(item).work_order_id"
+                  type="button"
+                  class="order-link"
+                  @click="openOrderFromSystemRow(item)"
+                >
+                  {{ systemRow(item).work_order_code }}
+                </button>
+                <span v-else>{{ systemRow(item).work_order_code }}</span>
+              </template>
+              <template #item.responsables="{ item }">
+                <v-btn
+                  v-if="rowResponsables(item).length"
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-account-group-outline"
+                  @click="openResponsablesFromRow(item)"
+                  >Ver responsables</v-btn
+                >
+                <span v-else class="muted-empty">Sin responsables</span>
+              </template>
+              <template #no-data
+                ><div class="empty-table">
+                  No hay datos para este reporte con los filtros actuales.
+                </div></template
+              >
+            </v-data-table>
+          </v-window-item>
+        </v-window>
+      </section>
     </template>
 
     <v-dialog v-model="ordersDialog" max-width="1240" scrollable>
@@ -226,12 +361,22 @@
             ><strong>{{ selectedStatusCard?.label || "Órdenes" }}</strong
             ><small>{{ rangeLabel }}</small>
           </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            aria-label="Cerrar listado"
-            @click="ordersDialog = false"
-        /></v-card-title>
+          <div class="dialog-header__actions">
+            <v-btn
+              v-if="canGoBackModal"
+              icon="mdi-arrow-left"
+              variant="text"
+              aria-label="Volver a la pantalla anterior"
+              @click="goBackModal('orders')"
+            />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar listado"
+              @click="closeModal('orders')"
+            />
+          </div></v-card-title
+        >
         <v-divider />
         <v-card-text class="list-dialog__body">
           <v-text-field
@@ -299,12 +444,22 @@
             ><strong>{{ equipmentLabel(selectedEquipment || {}) }}</strong
             ><small>{{ rangeLabel }}</small>
           </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            aria-label="Cerrar detalle del equipo"
-            @click="equipmentDialog = false"
-        /></v-card-title>
+          <div class="dialog-header__actions">
+            <v-btn
+              v-if="canGoBackModal"
+              icon="mdi-arrow-left"
+              variant="text"
+              aria-label="Volver a la pantalla anterior"
+              @click="goBackModal('equipment')"
+            />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar detalle del equipo"
+              @click="closeModal('equipment')"
+            />
+          </div></v-card-title
+        >
         <v-divider />
         <v-card-text class="list-dialog__body">
           <div class="equipment-summary">
@@ -367,12 +522,30 @@
             ><strong>{{ orderTitle(selectedOrder || {}) }}</strong
             ><small>{{ equipmentLabel(selectedOrder || {}) }}</small>
           </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            aria-label="Cerrar detalle"
-            @click="detailDialog = false"
-        /></v-card-title>
+          <div class="dialog-header__actions">
+            <v-btn
+              v-if="canGoBackModal"
+              icon="mdi-arrow-left"
+              variant="text"
+              aria-label="Volver a la pantalla anterior"
+              @click="goBackModal('detail')"
+            />
+            <v-btn
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-file-pdf-box"
+              :disabled="detailLoading"
+              @click="openPdfPreview"
+              >Previsualizar PDF</v-btn
+            >
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar detalle"
+              @click="closeModal('detail')"
+            />
+          </div></v-card-title
+        >
         <v-divider />
         <v-card-text class="detail-dialog__body">
           <div v-if="detailLoading" class="detail-loading">
@@ -509,18 +682,113 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="responsablesDialog" max-width="520" scrollable>
+      <v-card rounded="xl" class="list-dialog">
+        <v-card-title class="dialog-header"
+          ><div>
+            <span>Responsables</span><strong>{{ responsablesOrder }}</strong
+            ><small>Horas registradas por cada persona</small>
+          </div>
+          <div class="dialog-header__actions">
+            <v-btn
+              v-if="canGoBackModal"
+              icon="mdi-arrow-left"
+              variant="text"
+              aria-label="Volver a la pantalla anterior"
+              @click="goBackModal('responsables')"
+            />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar responsables"
+              @click="closeModal('responsables')"
+            />
+          </div></v-card-title
+        >
+        <v-divider />
+        <v-card-text class="list-dialog__body">
+          <div v-if="responsablesRows.length" class="responsible-list">
+            <div v-for="row in responsablesRows" :key="row.label">
+              <span>{{ row.label }}</span
+              ><strong>{{ formatNumber(row.hours) }} h</strong>
+            </div>
+          </div>
+          <p v-else class="muted-empty">
+            No hay horas registradas para esta orden.
+          </p>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="pdfDialog" max-width="1000" scrollable>
+      <v-card rounded="xl" class="list-dialog">
+        <v-card-title class="dialog-header"
+          ><div>
+            <span>Informe en PDF</span
+            ><strong>{{ orderCode(selectedOrder || {}) }}</strong
+            ><small>Revisa el informe antes de descargarlo</small>
+          </div>
+          <div class="dialog-header__actions">
+            <v-btn
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-download"
+              :disabled="pdfLoading"
+              @click="downloadOrderReport"
+              >Descargar</v-btn
+            >
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar previsualización"
+              @click="closePdfPreview"
+            />
+          </div></v-card-title
+        >
+        <v-divider />
+        <v-card-text class="pdf-preview__body">
+          <div v-if="pdfLoading" class="detail-loading">
+            <v-progress-circular indeterminate color="primary" />Generando el
+            informe...
+          </div>
+          <v-alert
+            v-else-if="pdfError"
+            type="warning"
+            variant="tonal"
+            rounded="xl"
+            :text="pdfError"
+          />
+          <iframe
+            v-else-if="pdfUrl"
+            :src="pdfUrl"
+            title="Informe de la orden de trabajo"
+            class="pdf-preview__frame"
+          />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { useMenuStore } from "@/app/stores/menu.store";
 import {
   currentDateInputValue,
   formatDateTime as formatAppDateTime,
 } from "@/app/utils/date-time";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { listAllPages } from "@/app/utils/list-all-pages";
+import { DEFAULT_CONTEXT_CACHE_TTL_MS } from "@/app/utils/request-cache";
+import {
+  buildWorkOrderReportPdfBlob,
+  downloadWorkOrderReportPdf,
+  type WorkOrderReportData,
+} from "@/app/utils/work-order-report-documents";
 import {
   isGeneralManager,
   isSuperAdministrator,
@@ -529,8 +797,28 @@ import {
 type AnyRow = Record<string, any>;
 type StatusKey = "planned" | "open" | "closed";
 const auth = useAuthStore();
+const menuStore = useMenuStore();
+
+/**
+ * Este tablero absorbio "Reportes del sistema", que vivia en un modulo aparte y
+ * llego a tener dos entradas de menu distintas ("Reporte Gerencial" y "Reporte
+ * Sistema"). Se aceptan los tres nombres para que nadie pierda el acceso que ya
+ * tenia mientras se consolidan los permisos.
+ */
+const managerPerms = computed(() =>
+  getPermissionsForAnyComponent(menuStore.tree, [
+    "dashboard-gerencia",
+    "reportes-sistema",
+    "Reporte Gerencial",
+    "Reporte Sistema",
+    "Reportes del sistema",
+  ]),
+);
 const canAccess = computed(
-  () => isGeneralManager(auth.user) || isSuperAdministrator(auth.user),
+  () =>
+    managerPerms.value.isReaded ||
+    isGeneralManager(auth.user) ||
+    isSuperAdministrator(auth.user),
 );
 const today = currentDateInputValue();
 const startDate = ref(`${today.slice(0, 7)}-01`);
@@ -835,18 +1123,20 @@ function formatDateTime(value: unknown) {
 function openOrdersModal(status: StatusKey) {
   activeStatus.value = status;
   orderSearch.value = "";
+  modalTrail.value = [];
   ordersDialog.value = true;
 }
 function openEquipmentDetail(equipment: AnyRow) {
   selectedEquipment.value = equipment;
+  modalTrail.value = [];
   equipmentDialog.value = true;
 }
 function openOrderFromList(order: AnyRow) {
-  ordersDialog.value = false;
+  navigateModal("orders", "detail");
   void openOrderDetail(order);
 }
 function openOrderFromEquipment(order: AnyRow) {
-  equipmentDialog.value = false;
+  navigateModal("equipment", "detail");
   void openOrderDetail(order);
 }
 
@@ -1054,6 +1344,7 @@ async function openOrderDetail(order: AnyRow) {
   selectedOrder.value = order;
   detailDialog.value = true;
   detailLoading.value = true;
+  detailHeader.value = { ...order };
   detailError.value = null;
   const id = String(order?.id || order?.work_order_id || "").trim();
   try {
@@ -1080,10 +1371,618 @@ async function openOrderDetail(order: AnyRow) {
     detailLoading.value = false;
   }
 }
-onMounted(loadReport);
+/* ------------------------------------------------------------------------
+ * Reportes del sistema (antes un modulo aparte)
+ * --------------------------------------------------------------------- */
+
+const systemPayload = ref<AnyRow | null>(null);
+const systemLoading = ref(false);
+const systemError = ref<string | null>(null);
+const systemTab = ref("horas_trabajadas");
+const systemGroupBy = ref("OT");
+const systemWarehouseId = ref<string | null>(null);
+const systemEquipmentId = ref<string | null>(null);
+const userCatalogRows = ref<AnyRow[]>([]);
+
+const systemGroupOptions = [
+  { title: "OT", value: "OT" },
+  { title: "Bodega", value: "BODEGA" },
+  { title: "Equipo", value: "EQUIPO" },
+  { title: "Responsable", value: "RESPONSABLE" },
+  { title: "Material", value: "MATERIAL" },
+  { title: "Mes", value: "MES" },
+];
+
+const SYSTEM_SECTION_DEFS = [
+  {
+    key: "horas_trabajadas",
+    title: "Horas trabajadas",
+    subtitle: "Horas registradas por OT, responsable o agrupacion seleccionada.",
+    icon: "mdi-timer-outline",
+  },
+  {
+    key: "costo_mantenimiento",
+    title: "Costo de mantenimiento",
+    subtitle: "Valor de los materiales usados en ordenes de mantenimiento.",
+    icon: "mdi-cash-wrench",
+  },
+  {
+    key: "responsables_ot",
+    title: "Quienes trabajaron",
+    subtitle: "Responsables con horas registradas por orden de trabajo.",
+    icon: "mdi-account-hard-hat-outline",
+  },
+  {
+    key: "costo_inventario",
+    title: "Costo del inventario",
+    subtitle: "Inventario valorizado por bodega o material.",
+    icon: "mdi-warehouse",
+  },
+  {
+    key: "repuestos_cambiados",
+    title: "Repuestos cambiados",
+    subtitle:
+      "Solo reemplazos con flujo completo: salio el repuesto nuevo de bodega y el viejo entro a chatarra.",
+    icon: "mdi-cog-transfer-outline",
+  },
+  {
+    key: "inventario_consumido",
+    title: "Inventario consumido",
+    subtitle: "Materiales usados en las ordenes segun la agrupacion activa.",
+    icon: "mdi-package-variant-minus",
+  },
+  {
+    key: "top_materiales_utilizados",
+    title: "Top 10 materiales",
+    subtitle: "Materiales mas usados en el rango consultado.",
+    icon: "mdi-podium-gold",
+  },
+];
+
+/**
+ * `total_horas` son las horas que realmente reportaron los responsables y
+ * `horas_a_realizar_ot` la hora pactada en la OT. Las etiquetas estaban al
+ * reves, que es justo el par que se presta a confusion.
+ */
+const SYSTEM_FIELD_LABELS: Record<string, string> = {
+  fecha_referencia: "Fecha",
+  periodo: "Periodo",
+  work_order_code: "Codigo OT",
+  work_order_title: "Titulo OT",
+  work_order_status: "Estado OT",
+  maintenance_kind_label: "Tipo",
+  equipment_label: "Equipo",
+  equipment_name: "Equipo",
+  plan_name: "Plan",
+  procedure_label: "Plantilla",
+  consumo_bodegas: "Bodegas consumo",
+  horometro_actual_ot: "Horometro actual",
+  horas_a_realizar_ot: "Horas",
+  responsable: "Responsable",
+  responsables: "Responsables",
+  ordenes_trabajo: "Ordenes trabajo",
+  equipos: "Equipos",
+  bodegas: "Bodegas",
+  material_label: "Material",
+  total_horas: "Horas - hombre",
+  total_responsables: "Cantidad responsables",
+  total_ordenes: "OT",
+  total_items: "Registros",
+  total_materiales: "Materiales",
+  materiales: "Materiales",
+  total_cantidad: "Cantidad",
+  total_costo: "Costo total",
+  total_stock: "Stock actual",
+  costo_unitario: "Costo unitario",
+  costo_unitario_promedio: "Costo unitario promedio",
+  total_costo_inventario: "Costo inventario",
+};
+
+const SYSTEM_OT_COLUMNS = [
+  "work_order_code",
+  "work_order_status",
+  "maintenance_kind_label",
+  "fecha_referencia",
+  "equipment_name",
+  "plan_name",
+  "horometro_actual_ot",
+  "horas_a_realizar_ot",
+];
+
+const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
+  horas_trabajadas: {
+    OT: [...SYSTEM_OT_COLUMNS, "total_horas", "total_responsables", "responsables"],
+  },
+  costo_mantenimiento: {
+    OT: [...SYSTEM_OT_COLUMNS, "total_costo", "total_cantidad", "materiales"],
+  },
+  responsables_ot: {
+    OT: [...SYSTEM_OT_COLUMNS, "total_horas", "total_responsables", "responsables"],
+  },
+  repuestos_cambiados: {
+    OT: [...SYSTEM_OT_COLUMNS, "material_label", "total_cantidad", "total_costo"],
+  },
+  inventario_consumido: {
+    OT: [...SYSTEM_OT_COLUMNS, "material_label", "total_cantidad", "total_costo"],
+  },
+};
+
+/**
+ * Campos que nunca son columna: identificadores internos y duplicados.
+ *
+ * La bodega se retira de la vista por OT (no aporta al leer y competia por el
+ * ancho con el equipo y el material), pero NO se oculta globalmente: al agrupar
+ * por bodega es justo la columna que identifica la fila. Lo mismo vale para
+ * `equipment_label` al agrupar por equipo. Quitarlas de aqui y dejar que la
+ * lista de columnas por OT decida es lo que mantiene ambas vistas legibles.
+ */
+const SYSTEM_HIDDEN_FIELDS = new Set([
+  "work_order_id",
+  "equipment_id",
+  "equipment_code",
+  "plan_id",
+  "plan_code",
+  "procedure_id",
+  "procedure_code",
+  "procedure_name",
+  "bodega_id",
+  "producto_id",
+  "user_id",
+  "work_order_type",
+  "maintenance_kind",
+  "is_maintenance",
+  "responsables_meta",
+  "period_key",
+  "_raw",
+]);
+
+const systemWarehouseOptions = computed<AnyRow[]>(() =>
+  Array.isArray(systemPayload.value?.catalogs?.bodegas)
+    ? systemPayload.value.catalogs.bodegas
+    : [],
+);
+const systemEquipmentOptions = computed<AnyRow[]>(() =>
+  Array.isArray(systemPayload.value?.catalogs?.equipos)
+    ? systemPayload.value.catalogs.equipos
+    : [],
+);
+
+const userCatalogMap = computed(
+  () =>
+    new Map(
+      userCatalogRows.value.map(
+        (item) => [String(item?.id || "").trim(), item] as const,
+      ),
+    ),
+);
+
+function isUuidLike(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return false;
+  return (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalized,
+    ) || /^[0-9a-f]{32}$/i.test(normalized)
+  );
+}
+
+function buildUserDisplayName(user: AnyRow | null | undefined) {
+  const label = String(
+    user?.nameSurname || user?.nameUser || user?.email || "",
+  ).trim();
+  if (label) return label;
+  const fallbackId = String(user?.id || "").trim();
+  return fallbackId && !isUuidLike(fallbackId) ? fallbackId : "Usuario asignado";
+}
+
+function resolveResponsibleLabel(value: unknown, userId?: unknown) {
+  const normalizedUserId = String(userId ?? "").trim();
+  if (normalizedUserId) {
+    const catalogUser = userCatalogMap.value.get(normalizedUserId);
+    if (catalogUser) return buildUserDisplayName(catalogUser);
+  }
+  const raw = String(value ?? "").trim();
+  if (raw && !isUuidLike(raw)) return raw;
+  if (raw) {
+    const catalogUser = userCatalogMap.value.get(raw);
+    if (catalogUser) return buildUserDisplayName(catalogUser);
+  }
+  return "Usuario asignado";
+}
+
+function looksLikeDate(value: unknown) {
+  return /^\d{4}-\d{2}-\d{2}/.test(String(value ?? "").trim());
+}
+
+function formatSystemCell(key: string, value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  if (Array.isArray(value)) return value.join(" | ");
+  if (typeof value === "boolean") return value ? "Si" : "No";
+  if (typeof value === "object") return JSON.stringify(value);
+  if (looksLikeDate(value) && /fecha/i.test(key)) {
+    const raw = String(value);
+    return raw.includes("T") ? formatDateTime(raw) : raw.slice(0, 10);
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && String(value).trim() !== "") {
+    if (/costo|valor/i.test(key)) return formatCurrency(numeric);
+    if (/hora/i.test(key)) return `${formatNumber(numeric)} h`;
+    return formatNumber(
+      numeric,
+      /ordenes|items|materiales|responsables/i.test(key) ? 0 : 4,
+    );
+  }
+  return String(value);
+}
+
+function systemVisibleKeys(rows: AnyRow[], preferred?: string[]) {
+  const keys = new Set<string>();
+  for (const row of rows)
+    for (const key of Object.keys(row || {}))
+      if (!SYSTEM_HIDDEN_FIELDS.has(key)) keys.add(key);
+  return preferred?.length
+    ? preferred.filter((key) => keys.has(key))
+    : [...keys];
+}
+
+const systemSections = computed(() =>
+  SYSTEM_SECTION_DEFS.map((section) => {
+    const source = systemPayload.value?.reports?.[section.key] ?? {};
+    const rawRows: AnyRow[] = Array.isArray(source?.rows) ? source.rows : [];
+    const groupBy = String(
+      source?.group_by || systemPayload.value?.filters?.group_by || "OT",
+    )
+      .trim()
+      .toUpperCase();
+    const keys = systemVisibleKeys(
+      rawRows,
+      SYSTEM_COLUMN_OVERRIDES[section.key]?.[groupBy],
+    );
+    return {
+      ...section,
+      count: rawRows.length,
+      groupLabel: `Agrupado por ${groupBy}`,
+      headers: keys.map((key) => ({
+        title: SYSTEM_FIELD_LABELS[key] ?? key,
+        key,
+      })),
+      // Se guarda la fila cruda junto a la formateada: el enlace de la OT y el
+      // boton de responsables necesitan los identificadores que la tabla oculta.
+      rows: rawRows.map((row) => ({
+        ...Object.fromEntries(
+          keys.map((key) => [key, formatSystemCell(key, row?.[key])]),
+        ),
+        _raw: row,
+      })),
+    };
+  }),
+);
+
+function systemRow(item: AnyRow): AnyRow {
+  return (item?.raw ?? item) as AnyRow;
+}
+
+function systemRawRow(item: AnyRow): AnyRow {
+  return (systemRow(item)?._raw ?? systemRow(item)) as AnyRow;
+}
+
+function rowResponsables(item: AnyRow) {
+  const raw = systemRawRow(item);
+  const meta = Array.isArray(raw?.responsables_meta) ? raw.responsables_meta : [];
+  if (meta.length) {
+    return meta.map((entry: AnyRow) => ({
+      label: resolveResponsibleLabel(
+        entry?.display_name ??
+          entry?.nameSurname ??
+          entry?.username ??
+          entry?.user_id,
+        entry?.user_id,
+      ),
+      hours: Number(entry?.horas || 0),
+    }));
+  }
+  return String(raw?.responsables || "")
+    .split("|")
+    .map((chunk) => String(chunk || "").trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const match = chunk.match(/^(.*?)\s*\(([\d.,]+)\s*h\)$/);
+      return match
+        ? {
+            label: resolveResponsibleLabel(match[1]),
+            hours: Number(String(match[2]).replace(",", ".")) || 0,
+          }
+        : { label: resolveResponsibleLabel(chunk), hours: 0 };
+    });
+}
+
+async function loadSystemReports() {
+  if (!canAccess.value || invalidDateRange.value) return;
+  systemLoading.value = true;
+  systemError.value = null;
+  try {
+    const { data } = await api.get(
+      "/kpi_maintenance/inteligencia/reportes-sistema",
+      {
+        params: {
+          from: startDate.value,
+          to: endDate.value,
+          bodega_id: systemWarehouseId.value || undefined,
+          equipment_id: systemEquipmentId.value || undefined,
+          group_by: systemGroupBy.value || undefined,
+        },
+      },
+    );
+    systemPayload.value = unwrap(data);
+  } catch (requestError: any) {
+    systemError.value =
+      requestError?.response?.data?.message ||
+      "No se pudieron generar los reportes del sistema.";
+  } finally {
+    systemLoading.value = false;
+  }
+}
+
+async function loadUserCatalog() {
+  try {
+    const rows = await listAllPages(
+      "/kpi_security/users",
+      { includeDeleted: false },
+      { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+    );
+    userCatalogRows.value = Array.isArray(rows) ? rows : [];
+  } catch {
+    userCatalogRows.value = [];
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Navegacion entre modales
+ * --------------------------------------------------------------------- */
+
+type ModalName = "orders" | "equipment" | "detail" | "responsables";
+
+/**
+ * Rastro de modales visitadas para poder volver atras.
+ *
+ * Encadenar modales cerrando la anterior perdia el hilo: quien entraba a una
+ * orden desde la lista no tenia forma de regresar a la lista. El rastro guarda
+ * de donde se vino; el estado de cada modal vive en sus propios refs, asi que
+ * volver es simplemente reabrir la bandera correspondiente.
+ */
+const modalTrail = ref<ModalName[]>([]);
+const responsablesDialog = ref(false);
+const responsablesRows = ref<Array<{ label: string; hours: number }>>([]);
+const responsablesOrder = ref<string>("");
+
+function setModal(name: ModalName, open: boolean) {
+  if (name === "orders") ordersDialog.value = open;
+  else if (name === "equipment") equipmentDialog.value = open;
+  else if (name === "detail") detailDialog.value = open;
+  else responsablesDialog.value = open;
+}
+
+function navigateModal(from: ModalName | null, to: ModalName) {
+  if (from) {
+    modalTrail.value.push(from);
+    setModal(from, false);
+  }
+  setModal(to, true);
+}
+
+const canGoBackModal = computed(() => modalTrail.value.length > 0);
+
+function goBackModal(current: ModalName) {
+  const previous = modalTrail.value.pop();
+  if (!previous) return;
+  setModal(current, false);
+  setModal(previous, true);
+}
+
+function closeModal(current: ModalName) {
+  setModal(current, false);
+  modalTrail.value = [];
+}
+
+function openResponsablesFromRow(item: AnyRow) {
+  const raw = systemRawRow(item);
+  responsablesRows.value = rowResponsables(item);
+  responsablesOrder.value = String(raw?.work_order_code || "Orden");
+  modalTrail.value = [];
+  navigateModal(null, "responsables");
+}
+
+async function openOrderFromSystemRow(item: AnyRow) {
+  const raw = systemRawRow(item);
+  const id = String(raw?.work_order_id || "").trim();
+  if (!id) return;
+  modalTrail.value = [];
+  navigateModal(null, "detail");
+  await openOrderDetail({
+    id,
+    code: raw?.work_order_code,
+    title: raw?.work_order_title,
+    equipment_label: raw?.equipment_name,
+  });
+}
+
+/* ------------------------------------------------------------------------
+ * Previsualizacion del informe en PDF
+ * --------------------------------------------------------------------- */
+
+const pdfDialog = ref(false);
+const pdfLoading = ref(false);
+const pdfError = ref<string | null>(null);
+const pdfUrl = ref<string | null>(null);
+
+function buildWorkOrderReportData(): WorkOrderReportData {
+  return {
+    code: orderCode(selectedOrder.value || detailHeader.value || {}),
+    title: orderTitle(selectedOrder.value || detailHeader.value || {}),
+    equipmentLabel: equipmentLabel(
+      detailHeader.value || selectedOrder.value || {},
+    ),
+    statusLabel: String(
+      detailHeader.value?.status_workflow || detailHeader.value?.status || "",
+    ),
+    maintenanceKindLabel: String(
+      detailHeader.value?.maintenance_kind_label ||
+        detailHeader.value?.maintenance_kind ||
+        "",
+    ),
+    openedAt: formatDateTime(
+      detailHeader.value?.started_at || detailHeader.value?.created_at,
+    ),
+    closedAt: formatDateTime(detailHeader.value?.closed_at),
+    horometroAnterior: formatHours(detailHeader.value?.horometro_anterior),
+    horometroActual: formatHours(detailHeader.value?.horometro_actual),
+    totalHours: totalResponsibleHours.value,
+    totalCost: formatCurrency(totalWorkCost.value),
+    responsables: responsibleRows.value.map((row) => ({
+      label: row.label,
+      hours: row.hours,
+    })),
+    materiales: materialRows.value.map((row) => ({
+      label: row.label,
+      delivered: row.delivered,
+      scrapped: row.scrapped,
+    })),
+    oilQuantity: orderOilQuantity.value,
+    oilCost: formatCurrency(orderOilCost.value),
+    oilDelivered: oilDelivered.value,
+    createdBy: String(
+      detailHeader.value?.created_by_label ||
+        detailHeader.value?.created_by ||
+        "",
+    ),
+    processedBy: String(
+      detailHeader.value?.processed_by_label || firstHistoryActor.value || "",
+    ),
+    updatedBy: String(
+      detailHeader.value?.updated_by || lastHistoryActor.value || "",
+    ),
+  };
+}
+
+function releasePdfUrl() {
+  if (pdfUrl.value) URL.revokeObjectURL(pdfUrl.value);
+  pdfUrl.value = null;
+}
+
+/**
+ * La previsualizacion se superpone al detalle a proposito: quien mira el PDF
+ * sigue teniendo debajo la orden de la que salio.
+ */
+async function openPdfPreview() {
+  pdfDialog.value = true;
+  pdfLoading.value = true;
+  pdfError.value = null;
+  releasePdfUrl();
+  try {
+    const blob = await buildWorkOrderReportPdfBlob(buildWorkOrderReportData());
+    pdfUrl.value = URL.createObjectURL(blob);
+  } catch (requestError: any) {
+    pdfError.value =
+      requestError?.message || "No se pudo generar el informe en PDF.";
+  } finally {
+    pdfLoading.value = false;
+  }
+}
+
+function closePdfPreview() {
+  pdfDialog.value = false;
+  releasePdfUrl();
+}
+
+async function downloadOrderReport() {
+  try {
+    await downloadWorkOrderReportPdf(buildWorkOrderReportData());
+  } catch (requestError: any) {
+    pdfError.value =
+      requestError?.message || "No se pudo descargar el informe en PDF.";
+  }
+}
+
+onBeforeUnmount(releasePdfUrl);
+
+onMounted(() => {
+  void loadReport();
+  void loadUserCatalog();
+  void loadSystemReports();
+});
 </script>
 
 <style scoped>
+.system-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.system-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 2px 10px;
+}
+
+.system-section-head strong {
+  display: block;
+  font-size: 0.98rem;
+}
+
+.system-section-head span {
+  display: block;
+  font-size: 0.82rem;
+  color: rgb(var(--v-theme-on-surface-variant, 100 116 139));
+}
+
+/* El codigo de OT es el punto de entrada al informe: se ve como enlace pero
+   sigue siendo un boton, que es lo que de verdad hace. */
+.order-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: rgb(var(--v-theme-primary));
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.order-link:hover,
+.order-link:focus-visible {
+  text-decoration-thickness: 2px;
+}
+
+.dialog-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pdf-preview__body {
+  padding: 0;
+  min-height: 60vh;
+}
+
+.pdf-preview__frame {
+  width: 100%;
+  height: 70vh;
+  border: 0;
+  display: block;
+}
+
+.system-table :deep(td),
+.system-table :deep(th) {
+  white-space: nowrap;
+}
+
 .detailed-report {
   --manager-blue: 37, 99, 235;
   --manager-amber: 180, 83, 9;

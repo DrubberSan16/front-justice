@@ -261,10 +261,12 @@ export const router = createRouter({
           },
         },
         {
+          // "Reportes del sistema" se fusiono con el Dashboard Gerencia. Se
+          // conserva el nombre de la ruta porque hay enlaces que apuntan aqui
+          // (el hub de Inteligencia, marcadores y correos antiguos).
           path: "reportes-sistema",
           name: "reportes-sistema",
-          component: () => import("@/views/admin/SystemReportsView.vue"),
-          meta: { title: "Reportes del sistema", viewFile: "views/admin/SystemReportsView.vue" },
+          redirect: { name: "dashboard-gerencia" },
         },
         {
           path: "reporte-diario",

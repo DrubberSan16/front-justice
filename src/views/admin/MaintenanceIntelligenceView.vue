@@ -2358,7 +2358,7 @@ const kpiCards = computed<IntelligenceCard[]>(() => [
   },
   {
     key: "reportes-sistema",
-    label: "Reportes sistema",
+    label: "Dashboard Gerencia",
     value: 6,
     helper: "Horas, costos, responsables e inventario en una sola vista",
     icon: "mdi-chart-box-multiple-outline",
