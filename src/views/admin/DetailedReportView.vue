@@ -348,6 +348,19 @@
                 </v-btn>
                 <span v-else class="list-cell-empty">Sin datos</span>
               </template>
+              <template #item.detalle_ordenes="{ item }">
+                <v-btn
+                  v-if="ordenDetalleRows(item).length"
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-file-document-outline"
+                  @click="openOrdenesDetalle(item)"
+                >
+                  Ver detalle ({{ ordenDetalleRows(item).length }})
+                </v-btn>
+                <span v-else class="list-cell-empty">Sin órdenes</span>
+              </template>
               <template #item.responsables="{ item }">
                 <v-btn
                   v-if="rowResponsables(item).length"
@@ -773,6 +786,66 @@
             </div>
           </div>
           <p v-else class="muted-empty">No hay registros para mostrar.</p>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="ordenesDialog" max-width="780" scrollable>
+      <v-card rounded="xl" class="list-dialog">
+        <v-card-title class="dialog-header">
+          <v-btn
+            v-if="canGoBackModal"
+            icon="mdi-arrow-left"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Volver a la pantalla anterior"
+            @click="goBackModal('ordenes')"
+          />
+          <div class="dialog-header__copy">
+            <span>Órdenes de trabajo</span
+            ><strong>{{ ordenesSubtitulo }}</strong
+            ><small>{{ ordenesRows.length }} órdenes · toca el número para ver el informe</small>
+          </div>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            class="dialog-header__nav"
+            aria-label="Cerrar listado"
+            @click="closeModal('ordenes')"
+          />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="list-dialog__body">
+          <v-table v-if="ordenesRows.length" density="compact" class="ordenes-table">
+            <thead>
+              <tr>
+                <th>N.º de orden</th>
+                <th>Equipo</th>
+                <th>Tipo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(orden, index) in ordenesRows"
+                :key="`${orden.work_order_code}-${index}`"
+              >
+                <td>
+                  <button
+                    v-if="orden.work_order_id"
+                    type="button"
+                    class="order-link"
+                    @click="openOrderFromDetalle(orden)"
+                  >
+                    {{ orden.work_order_code || "Sin código" }}
+                  </button>
+                  <span v-else>{{ orden.work_order_code || "Sin código" }}</span>
+                </td>
+                <td>{{ orden.equipment_name || "Sin equipo" }}</td>
+                <td>{{ orden.maintenance_kind_label || "Sin definir" }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+          <p v-else class="muted-empty">No hay órdenes para mostrar.</p>
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -1537,6 +1610,7 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
   equipos: "Equipos",
   bodegas: "Bodegas",
   material_label: "Material",
+  detalle_ordenes: "Detalle",
   total_horas: "Horas - hombre",
   total_responsables: "Cantidad responsables",
   total_ordenes: "OT",
@@ -1591,6 +1665,11 @@ const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
  */
 const SYSTEM_HIDDEN_FIELDS = new Set([
   "work_order_id",
+  "equipos",
+  "equipos_lista",
+  "bodegas",
+  "consumo_bodegas",
+  "ordenes_trabajo",
   "equipment_id",
   "equipment_code",
   "plan_id",
@@ -1819,7 +1898,8 @@ type ModalName =
   | "equipment"
   | "detail"
   | "responsables"
-  | "lista";
+  | "lista"
+  | "ordenes";
 
 /**
  * Rastro de modales visitadas para poder volver atras.
@@ -1846,15 +1926,66 @@ const listaTitulo = ref("");
 const listaSubtitulo = ref("");
 const listaItems = ref<string[]>([]);
 
+/**
+ * Celdas que siguen siendo una lista simple.
+ *
+ * Equipos, ordenes y bodegas se retiraron como columnas propias: eran tres
+ * botones seguidos diciendo casi lo mismo. Ahora una sola columna de detalle
+ * lleva las ordenes con su equipo y su tipo, que es lo que explica la fila.
+ */
 const LIST_CELL_LABELS: Record<string, string> = {
-  equipos: "Equipos",
   materiales: "Materiales",
-  ordenes_trabajo: "Órdenes de trabajo",
-  bodegas: "Bodegas",
-  consumo_bodegas: "Bodegas de consumo",
 };
 
 const LIST_CELL_KEYS = Object.keys(LIST_CELL_LABELS);
+
+/**
+ * Ordenes que explican una fila resumida, con su equipo y su tipo.
+ *
+ * El numero de orden queda enlazado al informe: desde aqui se entra al detalle
+ * y la flecha de volver devuelve a esta lista.
+ */
+type OrdenDetalle = {
+  work_order_id?: string | null;
+  work_order_code?: string | null;
+  equipment_name?: string | null;
+  maintenance_kind_label?: string | null;
+};
+
+const ordenesDialog = ref(false);
+const ordenesRows = ref<OrdenDetalle[]>([]);
+const ordenesSubtitulo = ref("");
+
+function ordenDetalleRows(item: AnyRow): OrdenDetalle[] {
+  const raw = systemRawRow(item)?.detalle_ordenes;
+  return Array.isArray(raw) ? (raw as OrdenDetalle[]) : [];
+}
+
+function openOrdenesDetalle(item: AnyRow) {
+  const raw = systemRawRow(item);
+  ordenesRows.value = ordenDetalleRows(item);
+  ordenesSubtitulo.value = String(
+    raw?.material_label ||
+      raw?.responsable ||
+      raw?.equipment_name ||
+      raw?.bodega_label ||
+      raw?.periodo ||
+      "Resumen",
+  );
+  modalTrail.value = [];
+  navigateModal(null, "ordenes");
+}
+
+async function openOrderFromDetalle(orden: OrdenDetalle) {
+  const id = String(orden?.work_order_id || "").trim();
+  if (!id) return;
+  navigateModal("ordenes", "detail");
+  await openOrderDetail({
+    id,
+    code: orden.work_order_code,
+    equipment_label: orden.equipment_name,
+  });
+}
 
 function splitListCell(value: unknown) {
   return String(value ?? "")
@@ -1895,6 +2026,7 @@ function setModal(name: ModalName, open: boolean) {
   else if (name === "equipment") equipmentDialog.value = open;
   else if (name === "detail") detailDialog.value = open;
   else if (name === "lista") listaDialog.value = open;
+  else if (name === "ordenes") ordenesDialog.value = open;
   else responsablesDialog.value = open;
 }
 
@@ -2124,6 +2256,17 @@ onMounted(() => {
 .system-table :deep(td:nth-child(3)),
 .system-table :deep(td:nth-child(4)) {
   white-space: nowrap;
+}
+
+.ordenes-table {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ordenes-table :deep(td),
+.ordenes-table :deep(th) {
+  white-space: normal;
 }
 
 .list-cell-empty {
