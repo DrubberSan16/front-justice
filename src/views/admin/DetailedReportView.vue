@@ -780,7 +780,10 @@ import {
   currentDateInputValue,
   formatDateTime as formatAppDateTime,
 } from "@/app/utils/date-time";
-import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import {
+  resolveEquipmentBrand,
+  resolveEquipmentModel,
+} from "@/app/utils/equipment-display";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { DEFAULT_CONTEXT_CACHE_TTL_MS } from "@/app/utils/request-cache";
@@ -802,16 +805,17 @@ const menuStore = useMenuStore();
 /**
  * Este tablero absorbio "Reportes del sistema", que vivia en un modulo aparte y
  * llego a tener dos entradas de menu distintas ("Reporte Gerencial" y "Reporte
- * Sistema"). Se aceptan los tres nombres para que nadie pierda el acceso que ya
- * tenia mientras se consolidan los permisos.
+ * Sistema") apuntando ambas a `reportes-sistema`.
+ *
+ * La busqueda es por `urlComponent`, nunca por el nombre visible del menu, asi
+ * que aqui solo tienen sentido los dos componentes. Los permisos ya se
+ * consolidaron sobre `dashboard-gerencia`; `reportes-sistema` queda como red de
+ * seguridad por si alguna asignacion vieja sobrevive.
  */
 const managerPerms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, [
     "dashboard-gerencia",
     "reportes-sistema",
-    "Reporte Gerencial",
-    "Reporte Sistema",
-    "Reportes del sistema",
   ]),
 );
 const canAccess = computed(
@@ -1044,11 +1048,17 @@ function equipmentLabel(item: AnyRow) {
   ).trim();
   if (!name)
     return String(item?.equipment_label || equipmentId || "Sin equipo");
-  return buildEquipmentDisplayTitle({
-    ...item,
-    ...catalogItem,
-    nombre: name,
-  });
+  const source = { ...item, ...catalogItem, nombre: name };
+  // Misma identidad que muestran las tablas del reporte:
+  // `marca | nombre - modelo (nombre real)`.
+  const brand = resolveEquipmentBrand(source);
+  const model = resolveEquipmentModel(source);
+  const realName = String(
+    catalogItem?.nombre_real || item?.equipment_nombre_real || "",
+  ).trim();
+  const identity = [name, model].filter(Boolean).join(" - ");
+  const withBrand = brand ? `${brand} | ${identity}` : identity;
+  return realName ? `${withBrand} (${realName})` : withBrand;
 }
 function materialLabel(item: AnyRow) {
   const code = String(item?.producto_codigo || item?.codigo || "").trim();
@@ -1147,8 +1157,14 @@ async function loadWorkOrders() {
   orders.value = asArray(data);
 }
 async function loadEquipmentCatalog() {
-  const { data } = await api.get("/kpi_maintenance/equipos");
-  equipmentCatalog.value = asArray(data);
+  // Sin recorrer las paginas solo llegaban los 10 primeros equipos, y al resto
+  // no se le resolvia la marca: aparecian como "Sin marca" pese a tenerla.
+  const rows = await listAllPages(
+    "/kpi_maintenance/equipos",
+    {},
+    { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+  );
+  equipmentCatalog.value = Array.isArray(rows) ? rows : [];
 }
 async function loadInventoryReport() {
   inventoryLoading.value = true;
