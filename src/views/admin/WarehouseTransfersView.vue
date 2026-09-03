@@ -197,7 +197,7 @@
             color="error"
             variant="tonal"
             prepend-icon="mdi-cancel"
-            :disabled="isGuideAuthorizedSummary(item) && !isSuperAdministrator(auth.user)"
+            :disabled="isGuideAuthorizedSummary(item) && !canForceAuthorizedGuideAnnulment"
             @click="openAnnulTransfer(item)"
           >
             {{ isGuideAuthorizedSummary(item) ? "Forzar anulación" : "Anular" }}
@@ -210,27 +210,42 @@
   <v-dialog v-model="annulDialog" :max-width="520">
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
-        Anular transferencia de bodega
+        {{
+          isForcedAuthorizedGuideAnnulment
+            ? "Confirmar anulación forzada"
+            : "Anular transferencia de bodega"
+        }}
       </v-card-title>
       <v-card-text>
-        ¿Seguro que deseas anular la transferencia
-        <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se generará el reverso
-        del stock y se conservará la auditoría del usuario y la fecha de anulación.
+        <template v-if="!isForcedAuthorizedGuideAnnulment">
+          ¿Seguro que deseas anular la transferencia
+          <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se generará el reverso
+          del stock y se conservará la auditoría del usuario y la fecha de anulación.
+        </template>
         <v-alert
           v-if="isForcedAuthorizedGuideAnnulment"
           type="warning"
           variant="tonal"
-          class="mt-4"
+          class="mt-2"
         >
-          La guía continuará autorizada en el SRI. Esta acción forzada solo anula la
-          transferencia y genera los movimientos inversos de stock y Kardex.
+          <p class="font-weight-bold mb-2">
+            ¿Confirmas que la guía de remisión asociada a la transferencia
+            {{ annullingTransfer?.codigo || "" }} ya fue anulada directamente en el SRI?
+          </p>
+          Justice KPI no anula la guía ante el SRI. Al continuar, solo se anulará la
+          transferencia en el sistema y se generarán los movimientos inversos de stock y
+          Kardex.
         </v-alert>
       </v-card-text>
       <v-card-actions class="pa-4">
         <v-spacer />
         <v-btn variant="text" @click="annulDialog = false">Cancelar</v-btn>
         <v-btn color="error" :loading="annullingTransferId !== ''" @click="confirmAnnulTransfer">
-          {{ isForcedAuthorizedGuideAnnulment ? "Anular obligatoriamente" : "Anular" }}
+          {{
+            isForcedAuthorizedGuideAnnulment
+              ? "Sí, ya fue anulada en el SRI"
+              : "Anular"
+          }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -1301,6 +1316,9 @@ const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
 const canManageAdministrativeDocuments = computed(() =>
   canManageAdministrativeOperations(auth.user),
+);
+const canForceAuthorizedGuideAnnulment = computed(
+  () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
 );
 const canConfigureSri = canManageAdministrativeDocuments;
 const canManuallyConfirmGuideAuthorization = computed(
@@ -3647,7 +3665,7 @@ function openAnnulTransfer(item: TransferRow) {
   if (
     !canManageAdministrativeDocuments.value ||
     isAnnulledTransfer(item) ||
-    (isGuideAuthorizedSummary(item) && !isSuperAdministrator(auth.user))
+    (isGuideAuthorizedSummary(item) && !canForceAuthorizedGuideAnnulment.value)
   ) {
     return;
   }
