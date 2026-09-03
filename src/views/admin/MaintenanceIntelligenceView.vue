@@ -73,35 +73,52 @@
         </v-chip>
       </div>
 
-      <div class="intelligence-kpi-grid">
-          <v-card
+      <!-- Antes eran siete tarjetas grandes que ocupaban toda la pantalla para
+           decir un numero cada una. En tabla se lee de un vistazo y sigue
+           llevando a cada modulo. -->
+      <v-table density="compact" class="intelligence-modules">
+        <thead>
+          <tr>
+            <th>Módulo</th>
+            <th class="intelligence-modules__value">Registros</th>
+            <th class="intelligence-modules__action" />
+          </tr>
+        </thead>
+        <tbody>
+          <tr
             v-for="card in kpiCards"
             :key="card.key"
-            rounded="lg"
-            :class="['kpi-card', 'h-100', { 'intelligence-kpi--clickable': Boolean(card.routeName || card.key === 'lubricantes-dashboard') }]"
-            :style="{ '--kpi-accent': card.accent }"
-            :role="card.routeName || card.key === 'lubricantes-dashboard' ? 'button' : undefined"
-            :tabindex="card.routeName || card.key === 'lubricantes-dashboard' ? 0 : undefined"
+            :class="{ 'intelligence-modules__row--clickable': isModuleOpenable(card) }"
+            :role="isModuleOpenable(card) ? 'button' : undefined"
+            :tabindex="isModuleOpenable(card) ? 0 : undefined"
             @click="openCard(card)"
             @keydown.enter="openCard(card)"
             @keydown.space.prevent="openCard(card)"
           >
-            <div class="kpi-card__top">
-              <div class="kpi-card__icon"><v-icon :icon="card.icon" size="22" /></div>
-              <v-icon
-                :icon="card.routeName || card.key === 'lubricantes-dashboard' ? 'mdi-arrow-top-right' : 'mdi-chart-box-outline'"
-                size="18"
-                class="kpi-card__arrow"
-              />
-            </div>
-            <div class="kpi-card__value-row">
-              <div class="kpi-card__value">{{ card.value }}</div>
-            </div>
-            <div class="kpi-card__label">{{ card.label }}</div>
-            <div class="kpi-card__helper">{{ card.helper }}</div>
-            <div v-if="card.routeName || card.key === 'lubricantes-dashboard'" class="kpi-card__link">Explorar módulo</div>
-          </v-card>
-      </div>
+            <td>
+              <div class="intelligence-modules__module">
+                <v-icon :icon="card.icon" size="19" />
+                <div>
+                  <strong>{{ card.label }}</strong>
+                  <span>{{ card.helper }}</span>
+                </div>
+              </div>
+            </td>
+            <td class="intelligence-modules__value">{{ card.value }}</td>
+            <td class="intelligence-modules__action">
+              <v-btn
+                v-if="isModuleOpenable(card)"
+                size="small"
+                variant="text"
+                color="primary"
+                append-icon="mdi-arrow-top-right"
+                @click.stop="openCard(card)"
+                >Abrir</v-btn
+              >
+            </td>
+          </tr>
+        </tbody>
+      </v-table>
     </v-card>
 
     <v-row>
@@ -2157,6 +2174,10 @@ async function exportOilReport(format: "excel" | "pdf") {
   }
 }
 
+function isModuleOpenable(card: any) {
+  return Boolean(card?.routeName || card?.key === "lubricantes-dashboard");
+}
+
 function openCard(card: IntelligenceCard) {
   if (card.key === "lubricantes-dashboard") {
     dashboardDialog.value = true;
@@ -2654,6 +2675,67 @@ function setMotionRoot(el: unknown) {
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.intelligence-modules {
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.intelligence-modules :deep(th) {
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.intelligence-modules__module {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 3px 0;
+}
+
+.intelligence-modules__module .v-icon {
+  flex: 0 0 auto;
+  color: rgb(var(--v-theme-primary));
+}
+
+.intelligence-modules__module strong {
+  display: block;
+  font-size: 0.92rem;
+}
+
+.intelligence-modules__module span {
+  display: block;
+  font-size: 0.78rem;
+  color: rgba(var(--v-theme-on-surface), 0.62);
+}
+
+.intelligence-modules__value {
+  width: 120px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.intelligence-modules__action {
+  width: 110px;
+  text-align: right;
+}
+
+.intelligence-modules__row--clickable {
+  cursor: pointer;
+}
+
+.intelligence-modules__row--clickable:hover {
+  background: rgba(var(--v-theme-primary), 0.06);
+}
+
+.intelligence-modules__row--clickable:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
 }
 
 .intelligence-kpi-grid {

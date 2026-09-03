@@ -63,18 +63,24 @@
         </div>
       </v-card>
 
-      <v-row dense class="mt-2">
-        <v-col v-for="card in summaryCards" :key="card.label" cols="12" sm="6" xl="3">
-          <v-card rounded="xl" :class="['summary-card', 'js-hover-card', `summary-card--${card.tone}`, 'h-100']">
-            <div class="summary-card__top">
-              <div class="summary-card__icon"><v-icon :icon="card.icon" size="21" /></div>
-              <span>RESUMEN</span>
-            </div>
-            <div class="summary-card__value">{{ card.value }}</div>
-            <div class="summary-card__label">{{ card.label }}</div>
-          </v-card>
-        </v-col>
-      </v-row>
+      <!-- Eran ocho tarjetas grandes para ocho numeros: ocupaban toda la
+           pantalla antes de llegar a los datos. En tabla el resumen entra de
+           una sola vez. -->
+      <v-card rounded="xl" class="enterprise-surface mt-2 pa-4">
+        <div class="text-subtitle-1 font-weight-bold mb-1">Resumen del día</div>
+        <div class="text-body-2 text-medium-emphasis mb-3">{{ reportPayload?.filters?.label || filters.fecha || "Sin fecha" }}</div>
+        <v-table density="compact" class="daily-summary">
+          <tbody>
+            <tr v-for="card in summaryCards" :key="card.label">
+              <td class="daily-summary__icon">
+                <v-icon :icon="card.icon" size="18" />
+              </td>
+              <td>{{ card.label }}</td>
+              <td class="daily-summary__value">{{ card.value }}</td>
+            </tr>
+          </tbody>
+        </v-table>
+      </v-card>
 
       <v-row dense class="mt-2">
         <v-col cols="12" lg="6">
@@ -633,6 +639,24 @@ function setMotionRoot(el: unknown) {
 </script>
 
 <style scoped>
+.daily-summary {
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.daily-summary__icon {
+  width: 46px;
+  color: rgb(var(--v-theme-primary));
+}
+
+.daily-summary__value {
+  width: 140px;
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .daily-report-page {
   --report-primary: 37, 99, 235;
   --report-success: 22, 163, 74;

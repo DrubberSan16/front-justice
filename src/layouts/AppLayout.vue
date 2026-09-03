@@ -167,10 +167,14 @@ function onLogout() {
 </script>
 
 <style scoped>
-.app-layout { min-height: 100vh; }
+/* El armazon ocupa exactamente la ventana y no crece con el contenido: asi el
+   menu y la barra superior quedan siempre a la vista y solo se desplaza el
+   area central. Antes la pagina entera crecia y habia que volver arriba para
+   cambiar de pantalla. */
+.app-layout { height: 100vh; min-height: 100vh; overflow: hidden; }
 .app-drawer { --nav-text: #153246; --nav-muted: #526b7b; --nav-border: rgba(16, 68, 97, 0.15); --nav-surface: rgba(255, 255, 255, 0.7); --nav-hover: rgba(19, 93, 134, 0.1); --nav-active: rgba(35, 113, 158, 0.16); --nav-accent: #966016; border-right: 0 !important; color: var(--nav-text); background: radial-gradient(circle at 0 0, rgba(45, 128, 176, 0.16), transparent 32%), linear-gradient(180deg, #f6fbfd 0%, #edf5f8 58%, #e5f0f4 100%); box-shadow: 12px 0 38px rgba(4, 18, 31, 0.1); }
 :global(:root[data-theme="dark"] .app-drawer) { --nav-text: #eef6fb; --nav-muted: #b7cbd8; --nav-border: rgba(255, 255, 255, 0.1); --nav-surface: rgba(255, 255, 255, 0.055); --nav-hover: rgba(255, 255, 255, 0.075); --nav-active: rgba(45, 128, 176, 0.27); --nav-accent: #e0b46f; background: radial-gradient(circle at 0 0, rgba(45, 128, 176, 0.2), transparent 32%), linear-gradient(180deg, #071a2c 0%, #0a263d 58%, #0d3048 100%); }
-.app-drawer :deep(.v-navigation-drawer__content) { scrollbar-color: var(--nav-border) transparent; }
+.app-drawer :deep(.v-navigation-drawer__content) { overflow-y: auto; scrollbar-color: var(--nav-border) transparent; }
 .app-drawer__header { position: relative; display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; }
 .app-brand { display: flex; min-width: 0; align-items: center; gap: 13px; }
 .app-brand__mark { flex: 0 0 auto; width: 48px; height: 48px; padding: 5px; overflow: hidden; border: 1px solid rgba(20, 75, 104, 0.15); border-radius: 13px; background: #fff; box-shadow: 0 8px 22px rgba(7, 32, 50, 0.1); }
@@ -200,7 +204,9 @@ function onLogout() {
 .app-topbar__branch { width: min(310px, 30vw); margin-left: 24px; }
 .app-topbar__branch-select :deep(.v-field) { border-radius: 13px; background: var(--field-background); }
 .app-topbar__actions { display: flex; align-items: center; gap: 6px; padding-right: 14px; }
-.app-main { min-width: 0; background: var(--app-page-background); }
+/* El desplazamiento vive aqui. `overscroll-behavior` evita que al llegar al
+   final el gesto arrastre la pagina de fondo. */
+.app-main { min-width: 0; background: var(--app-page-background); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .app-container { width: 100%; max-width: none; margin: 0; padding: clamp(16px, 2.2vw, 32px); }
 @media (max-width: 959px) { .app-topbar__branch { width: min(260px, 38vw); margin-left: 12px; } }
 @media (max-width: 700px) { .app-topbar__eyebrow { display: none; } .app-topbar__branch { display: none; } .app-container { padding: 14px 12px 24px; } }
