@@ -34,10 +34,10 @@
     </div>
 
     <v-row dense class="mb-2">
-      <v-col cols="12" md="4">
+      <v-col cols="12" md="3">
         <v-text-field
           v-model="search"
-          label="Buscar"
+          label="Buscar OT"
           variant="outlined"
           density="compact"
           prepend-inner-icon="mdi-magnify"
@@ -45,6 +45,20 @@
         />
       </v-col>
       <v-col cols="12" md="3">
+        <v-autocomplete
+          v-model="equipmentFilter"
+          :items="equipmentOptions"
+          item-title="title"
+          item-value="value"
+          label="Buscar por equipo"
+          variant="outlined"
+          density="compact"
+          prepend-inner-icon="mdi-engine-outline"
+          :loading="loadingEquipmentCatalog"
+          clearable
+        />
+      </v-col>
+      <v-col cols="12" md="2">
         <v-select
           v-model="maintenanceKindFilter"
           :items="maintenanceKindFilterOptions"
@@ -74,7 +88,7 @@
           density="compact"
         />
       </v-col>
-      <v-col cols="12" md="1" class="d-flex align-center justify-end">
+      <v-col cols="12" class="d-flex align-center justify-end">
         <div class="d-flex flex-wrap justify-end" style="gap: 8px;">
           <v-btn
             color="primary"
@@ -106,7 +120,7 @@
       :items="rows"
       :loading="loading"
       loading-text="Obteniendo órdenes de trabajo..."
-      class="elevation-0 table-enterprise enterprise-table"
+      class="elevation-0 table-enterprise enterprise-table work-orders-list-table"
     >
       <template #item.status_workflow="{ item }">
         <div class="d-flex flex-column" style="gap: 3px; min-width: 185px;">
@@ -146,44 +160,51 @@
         {{ formatDecimalValue((item._raw ?? item)?.horometro_actual ?? (item._raw ?? item)?.valor_json?.horometro_actual) || "-" }}
       </template>
       <template #item.actions="{ item }">
-        <div class="d-flex align-center" style="gap:4px">
+        <div class="work-order-actions">
           <v-btn
-            v-if="canAccessWorkOrderReports"
+            v-if="workOrderActions(item._raw ?? item).length === 1"
             size="small"
-            variant="text"
-            prepend-icon="mdi-file-excel"
-            :loading="isExportingWorkOrderRow(item._raw ?? item, 'excel')"
-            @click.stop="exportWorkOrderRow(item._raw ?? item, 'excel')"
+            :variant="workOrderActions(item._raw ?? item)[0]?.variant || 'tonal'"
+            :color="workOrderActions(item._raw ?? item)[0]?.color"
+            :prepend-icon="workOrderActions(item._raw ?? item)[0]?.icon"
+            :loading="isWorkOrderActionLoading(workOrderActions(item._raw ?? item)[0], item._raw ?? item)"
+            @click.stop="executeWorkOrderAction(workOrderActions(item._raw ?? item)[0], item._raw ?? item)"
           >
-            Excel
+            {{ workOrderActions(item._raw ?? item)[0]?.label }}
           </v-btn>
-          <v-btn
-            v-if="canAccessWorkOrderReports"
-            size="small"
-            variant="text"
-            prepend-icon="mdi-file-pdf-box"
-            :loading="isExportingWorkOrderRow(item._raw ?? item, 'pdf')"
-            @click.stop="exportWorkOrderRow(item._raw ?? item, 'pdf')"
+          <v-menu
+            v-else-if="workOrderActions(item._raw ?? item).length > 1"
+            location="bottom end"
           >
-            PDF
-          </v-btn>
-          <v-btn
-            v-if="canEdit"
-            icon="mdi-pencil"
-            variant="text"
-            :disabled="isAnnulledWorkOrder(item._raw ?? item)"
-            @click="openEdit(item._raw ?? item)"
-          />
-          <v-btn
-            v-if="canAnnulDocuments && !isAnnulledWorkOrder(item._raw ?? item)"
-            size="small"
-            prepend-icon="mdi-cancel"
-            variant="tonal"
-            color="error"
-            @click="openDelete(item._raw ?? item)"
-          >
-            Anular
-          </v-btn>
+            <template #activator="{ props }">
+              <v-btn
+                v-bind="props"
+                size="small"
+                variant="tonal"
+                prepend-icon="mdi-dots-vertical"
+                :aria-label="`Acciones de la orden ${(item._raw ?? item)?.code || (item._raw ?? item)?.codigo || ''}`"
+                @click.stop
+              >
+                Acciones
+              </v-btn>
+            </template>
+            <v-list density="compact" min-width="190">
+              <v-list-item
+                v-for="action in workOrderActions(item._raw ?? item)"
+                :key="action.key"
+                :prepend-icon="action.icon"
+                :title="action.label"
+                :base-color="action.color"
+                :disabled="isWorkOrderActionLoading(action, item._raw ?? item)"
+                @click="executeWorkOrderAction(action, item._raw ?? item)"
+              >
+                <template v-if="isWorkOrderActionLoading(action, item._raw ?? item)" #append>
+                  <v-progress-circular indeterminate size="18" width="2" />
+                </template>
+              </v-list-item>
+            </v-list>
+          </v-menu>
+          <span v-else class="text-medium-emphasis">—</span>
         </div>
       </template>
     </v-data-table>
@@ -1853,11 +1874,13 @@ const issuingMaterials = ref(false);
 const exportState = reactive<Record<string, boolean>>({});
 const error = ref<string | null>(null);
 const search = ref("");
+const equipmentFilter = ref<string | null>("");
 const records = ref<any[]>([]);
 const maintenanceKindFilter = ref<string | null>("");
 const dateFromFilter = ref("");
 const dateToFilter = ref("");
 const appliedMaintenanceKindFilter = ref("");
+const appliedEquipmentFilter = ref("");
 const appliedDateFromFilter = ref("");
 const appliedDateToFilter = ref("");
 const tablePage = ref(1);
@@ -1886,6 +1909,7 @@ const currentWorkOrderRecord = ref<any | null>(null);
 
 const equipmentOptions = ref<any[]>([]);
 const equipmentCatalogRows = ref<any[]>([]);
+const loadingEquipmentCatalog = ref(false);
 const equipmentComponentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
@@ -1910,6 +1934,7 @@ const procedureCatalog = ref<any[]>([]);
 const userCatalogRows = ref<any[]>([]);
 const taskEvidenceInputKeys = ref<Record<string, number>>({});
 let catalogsPromise: Promise<void> | null = null;
+let equipmentCatalogPromise: Promise<void> | null = null;
 let consumoSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let consumoProductsRequestId = 0;
 const taskResponsiblesTargetId = ref("");
@@ -2037,6 +2062,52 @@ const canPersistHeader = computed(() => (editingId.value ? canEdit.value : canCr
 const canAccessWorkOrderReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "ordenes_trabajo"),
 );
+
+type WorkOrderActionKey = "excel" | "pdf" | "edit" | "annul";
+type WorkOrderRowAction = {
+  key: WorkOrderActionKey;
+  label: string;
+  icon: string;
+  color?: string;
+  variant?: "text" | "tonal";
+};
+
+function workOrderActions(item: any): WorkOrderRowAction[] {
+  const actions: WorkOrderRowAction[] = [];
+  if (canAccessWorkOrderReports.value) {
+    actions.push(
+      { key: "excel", label: "Exportar Excel", icon: "mdi-file-excel", variant: "text" },
+      { key: "pdf", label: "Exportar PDF", icon: "mdi-file-pdf-box", variant: "text" },
+    );
+  }
+  if (canEdit.value && !isAnnulledWorkOrder(item)) {
+    actions.push({ key: "edit", label: "Editar", icon: "mdi-pencil", variant: "text" });
+  }
+  if (canAnnulDocuments.value && !isAnnulledWorkOrder(item)) {
+    actions.push({ key: "annul", label: "Anular", icon: "mdi-cancel", color: "error", variant: "tonal" });
+  }
+  return actions;
+}
+
+function isWorkOrderActionLoading(action: WorkOrderRowAction | undefined, item: any) {
+  if (action?.key === "excel" || action?.key === "pdf") {
+    return isExportingWorkOrderRow(item, action.key);
+  }
+  return false;
+}
+
+function executeWorkOrderAction(action: WorkOrderRowAction | undefined, item: any) {
+  if (!action) return;
+  if (action.key === "excel" || action.key === "pdf") {
+    void exportWorkOrderRow(item, action.key);
+    return;
+  }
+  if (action.key === "edit") {
+    void openEdit(item);
+    return;
+  }
+  openDelete(item);
+}
 
 const maintenanceKindOptions = [
   { title: "Correctivo", value: "CORRECTIVO" },
@@ -2365,14 +2436,14 @@ const closeRestrictionText = computed(() => {
 });
 
 const headers = [
-  { title: "Code", key: "code" },
-  { title: "Type", key: "type" },
-  { title: "Title", key: "title" },
+  { title: "Código", key: "code", fixed: true, width: 150 },
+  { title: "Tipo", key: "type" },
+  { title: "Título", key: "title" },
   { title: "Equipo", key: "equipment_label" },
   { title: "Bodega", key: "bodega_label" },
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
-  { title: "Tipo", key: "maintenance_kind_label" },
+  { title: "Tipo mantenimiento", key: "maintenance_kind_label" },
   { title: "Clase", key: "emergency_label" },
   { title: "Horometro actual", key: "horometro_actual" },
   { title: "Fecha programada", key: "scheduled_program_date_label" },
@@ -3692,13 +3763,20 @@ async function syncConsumoUnitCost() {
     consumoForm.costo_unitario = "";
   }
 }
+const equipmentLabelById = computed(
+  () =>
+    new Map(
+      equipmentOptions.value.map((option: any) => [
+        String(option?.value || ""),
+        String(option?.title || ""),
+      ]),
+    ),
+);
+
 function getEquipmentLabel(item: any) {
   if (!item) return "";
-  const catalogLabel = equipmentOptions.value.find(
-    (option) =>
-      String(option.value) ===
-      String(item.equipment_id || item.equipo_id || ""),
-  )?.title;
+  const equipmentId = String(item.equipment_id || item.equipo_id || "");
+  const catalogLabel = equipmentLabelById.value.get(equipmentId);
   return (
     catalogLabel
     || (item?.equipment_nombre || item?.equipo_nombre
@@ -3709,22 +3787,53 @@ function getEquipmentLabel(item: any) {
   );
 }
 
+function setEquipmentCatalog(equipos: any[]) {
+  equipmentCatalogRows.value = equipos;
+  equipmentOptions.value = equipos.map((item: any) => ({
+    value: item.id,
+    title: buildEquipmentDisplayTitle(item),
+  }));
+}
+
+async function loadEquipmentCatalog() {
+  loadingEquipmentCatalog.value = true;
+  try {
+    setEquipmentCatalog(await listAll("/kpi_maintenance/equipos"));
+  } catch (requestError: any) {
+    ui.error(
+      requestError?.response?.data?.message ||
+        "No se pudo cargar el catálogo de equipos con sus marcas.",
+    );
+    throw requestError;
+  } finally {
+    loadingEquipmentCatalog.value = false;
+  }
+}
+
+async function ensureEquipmentCatalogLoaded(force = false) {
+  if (equipmentOptions.value.length && !force) return;
+  if (equipmentCatalogPromise && !force) {
+    await equipmentCatalogPromise;
+    return;
+  }
+  equipmentCatalogPromise = loadEquipmentCatalog();
+  try {
+    await equipmentCatalogPromise;
+  } finally {
+    equipmentCatalogPromise = null;
+  }
+}
 
 async function loadCatalogs() {
   loadingCatalogs.value = true;
   try {
-    const [equipos, planes, procedimientos, bodegas, usuarios] = await Promise.all([
-      listAll("/kpi_maintenance/equipos"),
+    const [, planes, procedimientos, bodegas, usuarios] = await Promise.all([
+      ensureEquipmentCatalogLoaded(),
       listAll("/kpi_maintenance/planes"),
       listAll("/kpi_maintenance/inteligencia/procedimientos"),
       listAll("/kpi_inventory/bodegas"),
       listAll("/kpi_security/users"),
     ]);
-    equipmentCatalogRows.value = equipos;
-    equipmentOptions.value = equipos.map((item: any) => ({
-      value: item.id,
-      title: buildEquipmentDisplayTitle(item),
-    }));
     planOptions.value = planes.map(normalize);
     procedureCatalog.value = procedimientos;
     procedureOptions.value = procedimientos.map(normalize);
@@ -5288,10 +5397,12 @@ async function safeGetExportList(url: string) {
 const hasActiveListFilters = computed(() =>
   Boolean(
     search.value.trim() ||
+      equipmentFilter.value ||
       maintenanceKindFilter.value ||
       dateFromFilter.value ||
       dateToFilter.value ||
       appliedMaintenanceKindFilter.value ||
+      appliedEquipmentFilter.value ||
       appliedDateFromFilter.value ||
       appliedDateToFilter.value,
   ),
@@ -5627,6 +5738,7 @@ async function applyListFilters() {
   }
 
   appliedMaintenanceKindFilter.value = String(maintenanceKindFilter.value || "").trim();
+  appliedEquipmentFilter.value = String(equipmentFilter.value || "").trim();
   appliedDateFromFilter.value = nextDateFrom;
   appliedDateToFilter.value = nextDateTo;
   tablePage.value = 1;
@@ -5635,10 +5747,12 @@ async function applyListFilters() {
 
 async function clearListFilters() {
   search.value = "";
+  equipmentFilter.value = "";
   maintenanceKindFilter.value = "";
   dateFromFilter.value = "";
   dateToFilter.value = "";
   appliedMaintenanceKindFilter.value = "";
+  appliedEquipmentFilter.value = "";
   appliedDateFromFilter.value = "";
   appliedDateToFilter.value = "";
   tablePage.value = 1;
@@ -5766,6 +5880,7 @@ async function loadDetailData() {
 
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase();
+  const selectedEquipmentId = String(appliedEquipmentFilter.value || "").trim();
   return records.value
     .map((r) => ({
       ...r,
@@ -5788,7 +5903,13 @@ const rows = computed(() => {
         operational_date_label: getWorkOrderOperationalDateLabel(r),
       }).toLowerCase(),
     }))
-    .filter((r) => !q || r._search.includes(q));
+    .filter((r) => {
+      const rowEquipmentId = String(r.equipment_id || r.equipo_id || "");
+      return (
+        (!selectedEquipmentId || rowEquipmentId === selectedEquipmentId) &&
+        (!q || r._search.includes(q))
+      );
+    });
 });
 
 function resetAllForms() {
@@ -6905,7 +7026,7 @@ async function confirmDelete() {
 
 onMounted(async () => {
   try {
-    await fetchWorkOrders();
+    await Promise.all([fetchWorkOrders(), ensureEquipmentCatalogLoaded()]);
   } catch {
     // errores específicos ya manejados en cada método
   }
@@ -7173,6 +7294,39 @@ watch(
   border: 1px solid var(--surface-border);
   overflow: hidden;
   background: var(--surface-base);
+}
+
+.work-orders-list-table :deep(.v-table__wrapper) {
+  overflow-x: auto;
+}
+
+.work-orders-list-table :deep(table) {
+  min-width: 1500px;
+}
+
+/* El código mantiene identificable la OT durante el desplazamiento horizontal. */
+.work-orders-list-table :deep(th:first-child),
+.work-orders-list-table :deep(td:first-child) {
+  position: sticky;
+  left: 0;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 1px 0 rgba(var(--v-theme-on-surface), 0.12);
+}
+
+.work-orders-list-table :deep(th:first-child) {
+  z-index: 4;
+}
+
+.work-orders-list-table :deep(td:first-child) {
+  z-index: 2;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.work-order-actions {
+  display: flex;
+  align-items: center;
+  min-width: 116px;
 }
 
 .work-order-dialog-card,
