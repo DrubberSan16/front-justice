@@ -1741,6 +1741,15 @@
       </v-card-text>
     </v-card>
   </v-dialog>
+
+  <PdfPreviewDialog
+    :state="workOrderPdfPreview.state"
+    :url="workOrderPdfPreview.url.value"
+    @close="workOrderPdfPreview.close"
+    @download="workOrderPdfPreview.download"
+    @print="workOrderPdfPreview.openInNewTab"
+    @update:visible="workOrderPdfPreview.handleVisibility"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1758,8 +1767,9 @@ import {
   buildWorkOrdersListingReport,
   buildWorkOrderReport,
   type WorkOrdersListingOrder,
+  type ReportDefinition,
+  buildReportPdfBlob,
   downloadReportExcel,
-  downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { canManageAdministrativeOperations, isSuperAdministrator } from "@/app/utils/role-access";
@@ -1768,9 +1778,14 @@ import {
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 
 const ui = useUiStore();
+const workOrderPdfPreview = usePdfPreview({
+  title: "Previsualización del informe de la orden",
+});
 const { smAndDown } = useDisplay();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
@@ -2380,6 +2395,34 @@ function getTaskResponsiblesSummary(task: any) {
   return `${responsibleLabel} · ${formatTaskHours(totalHours)} h`;
 }
 
+/**
+ * Filas de tarea para el informe: una por responsable.
+ *
+ * El informe debe decir quien hizo cada trabajo y si dejo alguna novedad, y eso
+ * no cabe en una sola fila por tarea. Cuando la tarea no tiene responsables
+ * registrados igual se emite una fila, porque el trabajo se hizo aunque nadie
+ * quedara asignado.
+ */
+function buildTaskReportRows(task: any) {
+  const base = {
+    plan: getPlanLabelForTask(task),
+    tarea: getTaskLabelForTask(task),
+    tipo_captura: getFriendlyTaskCaptureType(task),
+    valor_registrado: getTaskReportValue(task),
+    observacion: task?.observacion ?? "",
+    requisitos: getTaskRequirementChips(task).join(" | "),
+  };
+  const responsables = getTaskResponsibles(task);
+  if (!responsables.length) {
+    return [{ ...base, responsable: "Sin responsables", horas: 0 }];
+  }
+  return responsables.map((responsable: any) => ({
+    ...base,
+    responsable: String(responsable?.display_name || "Usuario asignado"),
+    horas: Number(responsable?.horas || 0),
+  }));
+}
+
 function getTaskDefaultResponsibles() {
   const selectedIds = Array.isArray(selectedProcedure.value?.responsabilidades)
     ? selectedProcedure.value.responsabilidades
@@ -2847,6 +2890,7 @@ const workOrderReportDefinition = computed(() =>
       plan_operativo: resolvedOperationalPlanLabel.value,
       fecha_programacion: headerForm.fecha_programacion,
       fecha_operativa: getWorkOrderOperationalDate(currentWorkOrderAudit.value),
+      horometro_anterior: resolvedHorometroAnterior.value,
       horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       alerta: selectedAlertLabel.value,
@@ -2857,15 +2901,7 @@ const workOrderReportDefinition = computed(() =>
       prevencion: headerForm.prevencion,
       ...traceability,
     },
-    tasks: taskRows.value.map((item: any) => ({
-      plan: getPlanLabelForTask(item),
-      tarea: getTaskLabelForTask(item),
-      tipo_captura: getFriendlyTaskCaptureType(item),
-      valor_registrado: getTaskReportValue(item),
-      responsables: getTaskResponsiblesSummary(item),
-      observacion: item?.observacion ?? "",
-      requisitos: getTaskRequirementChips(item).join(" | "),
-    })),
+    tasks: taskRows.value.flatMap((item: any) => buildTaskReportRows(item)),
     attachments: attachmentRows.value.map((item: any) => buildWorkOrderAttachmentReportRow(item)),
     consumos: consumoRows.value.map((item: any) => ({
       bodega: item?.bodega_label || "",
@@ -2909,6 +2945,15 @@ const workOrderReportDefinition = computed(() =>
   }
 );
 
+async function openWorkOrderPdfPreview(report: ReportDefinition) {
+  await workOrderPdfPreview.open({
+    title: report.title,
+    subtitle: report.subtitle,
+    fileName: report.fileName,
+    build: () => buildReportPdfBlob(report),
+  });
+}
+
 async function exportWorkOrder(format: "excel" | "pdf") {
   if (!canAccessWorkOrderReports.value) {
     ui.error("No tienes permisos para generar reportes de órdenes de trabajo.");
@@ -2921,7 +2966,7 @@ async function exportWorkOrder(format: "excel" | "pdf") {
     if (format === "excel") {
       await downloadReportExcel(workOrderReportDefinition.value);
     } else {
-      await downloadReportPdf(workOrderReportDefinition.value);
+      await openWorkOrderPdfPreview(workOrderReportDefinition.value);
     }
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte de la orden de trabajo.";
@@ -4880,6 +4925,22 @@ const resolvedHorasARealizar = computed(() => {
   return fromProcedure != null ? Number(fromProcedure.toFixed(2)) : null;
 });
 
+/**
+ * Horometro con el que arranco la orden.
+ *
+ * El backend lo guarda en `valor_json.horometro_anterior` cuando la lectura de
+ * la OT difiere de la del equipo. El informe necesita el par completo (inicial
+ * y final) para que se pueda leer cuanto trabajo el equipo entre ambas.
+ */
+const resolvedHorometroAnterior = computed(() => {
+  const audit = currentWorkOrderAudit.value ?? {};
+  const valorJson = parseValorJson(audit?.valor_json);
+  const stored = parseNullableNumber(
+    audit?.horometro_anterior ?? valorJson?.horometro_anterior,
+  );
+  return stored != null ? Number(stored.toFixed(2)) : null;
+});
+
 const resolvedHorometroActual = computed(() => {
   const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
   if (persistedSnapshot != null) return Number(persistedSnapshot.toFixed(2));
@@ -5198,6 +5259,8 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
     plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
     fecha_operativa: getWorkOrderOperationalDate(item) || "",
     fecha_programacion: getWorkOrderScheduledProgramDateLabel(item),
+    horometro_anterior:
+      item?.horometro_anterior ?? item?.valor_json?.horometro_anterior ?? "",
     horometro_actual: item?.horometro_actual ?? item?.valor_json?.horometro_actual ?? "",
     horas_a_realizar:
       item?.horas_a_realizar ??
@@ -5335,15 +5398,7 @@ async function fetchWorkOrderExportBundle(order: any) {
 
   return {
     header: buildListedWorkOrderHeaderRow(header, history),
-    tasks: normalizedTasks.map((item: any) => ({
-      plan: getPlanLabelForTask(item),
-      tarea: getTaskLabelForTask(item),
-      tipo_captura: getFriendlyTaskCaptureType(item),
-      valor_registrado: getTaskReportValue(item),
-      responsables: getTaskResponsiblesSummary(item),
-      observacion: item?.observacion ?? "",
-      requisitos: getTaskRequirementChips(item).join(" | "),
-    })),
+    tasks: normalizedTasks.flatMap((item: any) => buildTaskReportRows(item)),
     attachments: asArray(attachmentsRes.data).map((item: any) =>
       buildWorkOrderAttachmentReportRow(item),
     ),
@@ -5376,6 +5431,7 @@ function buildSingleWorkOrderReportFromBundle(bundle: WorkOrdersListingOrder) {
       plan_operativo: header.plan_operativo || "",
       fecha_programacion: header.fecha_programacion || "",
       fecha_operativa: header.fecha_operativa || "",
+      horometro_anterior: header.horometro_anterior ?? "",
       horometro_actual: header.horometro_actual ?? "",
       horas_a_realizar: header.horas_a_realizar ?? "",
       causa: header.causa || "",
@@ -5412,7 +5468,7 @@ async function exportWorkOrderRow(item: any, format: "excel" | "pdf") {
     if (format === "excel") {
       await downloadReportExcel(report);
     } else {
-      await downloadReportPdf(report);
+      await openWorkOrderPdfPreview(report);
     }
   } catch (e: any) {
     error.value =
@@ -5478,7 +5534,7 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
     if (format === "excel") {
       await downloadReportExcel(report);
     } else {
-      await downloadReportPdf(report);
+      await openWorkOrderPdfPreview(report);
     }
   } catch (e: any) {
     error.value = e?.response?.data?.message || e?.message || "No se pudo generar el reporte consolidado.";

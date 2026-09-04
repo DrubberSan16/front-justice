@@ -45,7 +45,7 @@
               <div class="kardex-filter-panel__icon"><v-icon icon="mdi-tune-variant" size="21" /></div>
               <div>
                 <strong>Filtros del kardex</strong>
-                <span>Acota la consulta por fechas, bodega o material.</span>
+                <span>Acota la consulta por fechas, bodega, material o equipo.</span>
               </div>
               <v-chip v-if="activeKardexFilterCount" color="primary" variant="tonal" size="small">
                 {{ activeKardexFilterCount }} activos
@@ -67,6 +67,11 @@
             <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.categoria_id"
                 :items="categoryFilterOptions" item-title="title" item-value="value" label="Categoría"
                 variant="outlined" hide-details clearable /></v-col>
+            <v-col cols="12" sm="6" md="3"><v-autocomplete v-model="kardexFilters.equipment_id"
+                :items="equipmentFilterOptions" item-title="title" item-value="value"
+                label="Equipo (unidad de generación)" variant="outlined" hide-details clearable
+                :no-data-text="'No hay unidades de generación registradas'"
+                hint="Deja solo los materiales y movimientos de las OT de ese equipo" persistent-hint /></v-col>
             <v-col cols="12" sm="6" md="3"><v-select v-model="kardexFilters.tipo_movimiento"
                 :items="kardexMovementTypeOptions" item-title="title" item-value="value" label="Tipo movimiento"
                 variant="outlined" hide-details clearable /></v-col>
@@ -507,6 +512,15 @@
         </v-card>
       </v-dialog>
 
+      <PdfPreviewDialog
+        :state="inventoryPdfPreview.state"
+        :url="inventoryPdfPreview.url.value"
+        @close="inventoryPdfPreview.close"
+        @download="inventoryPdfPreview.download"
+        @print="inventoryPdfPreview.openInNewTab"
+        @update:visible="inventoryPdfPreview.handleVisibility"
+      />
+
       <v-dialog v-model="movementDialog.open" max-width="1480" scrollable>
         <v-card rounded="xl" class="enterprise-surface">
           <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap:12px">
@@ -646,12 +660,19 @@ import {
   buildInventoryStockReport,
   buildReportPdfBlob,
   downloadReportExcel,
-  downloadReportPdf,
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { listAllPages } from "@/app/utils/list-all-pages";
+import { DEFAULT_CONTEXT_CACHE_TTL_MS } from "@/app/utils/request-cache";
+import {
+  resolveEquipmentBrand,
+  resolveEquipmentModel,
+} from "@/app/utils/equipment-display";
 import { canViewAnnulledRecords } from "@/app/utils/role-access";
+import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 
 type MovementType = "INGRESO" | "SALIDA";
@@ -667,6 +688,7 @@ type KardexFilterState = {
   producto_id: string;
   linea_id: string;
   categoria_id: string;
+  equipment_id: string;
   tipo_movimiento?: string;
   include_annulled?: boolean;
 };
@@ -693,6 +715,9 @@ const kardexPdfPreview = reactive({
   fileName: "",
 });
 let kardexPdfPreviewRequestId = 0;
+const inventoryPdfPreview = usePdfPreview({
+  title: "Previsualización del reporte de Kardex",
+});
 const movementDocumentPdfUrl = ref("");
 const movementDocumentDialog = reactive({
   open: false,
@@ -757,6 +782,7 @@ const kardexFilters = reactive<KardexFilterState>({
   producto_id: "",
   linea_id: "",
   categoria_id: "",
+  equipment_id: "",
   tipo_movimiento: "",
   include_annulled: false,
 });
@@ -789,6 +815,24 @@ const categoryFilterOptions = computed(() =>
     title: [category.codigo, category.nombre].filter(Boolean).join(" - "),
   })),
 );
+/**
+ * Equipos que se pueden usar como filtro del kardex.
+ *
+ * Solo las unidades de generacion: son las unicas que llevan un historial de
+ * mantenimiento lo bastante continuo como para que "que material entro o salio
+ * por este equipo" sea una pregunta con respuesta. Al elegir uno, el backend
+ * deja unicamente los movimientos originados por sus ordenes de trabajo.
+ */
+const generationEquipments = ref<any[]>([]);
+const generationEquipmentsLoaded = ref(false);
+const equipmentFilterOptions = computed(() =>
+  generationEquipments.value
+    .map((equipment) => ({
+      value: String(equipment.id),
+      title: buildEquipmentFilterLabel(equipment),
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title, "es")),
+);
 const hasActiveKardexFilters = computed(() =>
   Boolean(
     kardexFilters.search ||
@@ -796,6 +840,7 @@ const hasActiveKardexFilters = computed(() =>
     kardexFilters.producto_id ||
     kardexFilters.linea_id ||
     kardexFilters.categoria_id ||
+    kardexFilters.equipment_id ||
     kardexFilters.tipo_movimiento ||
     kardexFilters.include_annulled ||
     kardexFilters.desde !== defaultKardexDateFrom ||
@@ -808,6 +853,7 @@ const activeKardexFilterCount = computed(() => [
   kardexFilters.producto_id,
   kardexFilters.linea_id,
   kardexFilters.categoria_id,
+  kardexFilters.equipment_id,
   kardexFilters.tipo_movimiento,
   kardexFilters.include_annulled,
   kardexFilters.desde !== defaultKardexDateFrom,
@@ -841,6 +887,75 @@ function removeMovementDetail(localId: string) { movementDetails.value = movemen
 function resetMovementDocumentForm() { documentForm.tipo = "INGRESO"; documentForm.fecha = formatDateForInput(); documentForm.bodegaId = ""; documentForm.referencia = ""; documentForm.observacion = ""; movementDetails.value = [createMovementDetail()]; }
 function openMovementDialog(type: MovementType) { if (!canCreate.value) { ui.error("No tienes permisos para registrar ingresos o egresos."); return; } documentForm.tipo = type; movementDialog.open = true; }
 function closeMovementDialog() { if (!savingDocument.value) movementDialog.open = false; }
+/**
+ * Identidad del equipo tal como la muestran el resto de tableros:
+ * `marca | nombre - modelo (nombre real)`. El codigo no se ensena nunca porque
+ * en campo la unidad se conoce por su nombre.
+ */
+function buildEquipmentFilterLabel(equipment: any) {
+  const brand = resolveEquipmentBrand(equipment);
+  const model = resolveEquipmentModel(equipment);
+  const name = String(equipment?.nombre || "").trim();
+  const realName = String(equipment?.nombre_real || "").trim();
+  const identity = [name, model].filter(Boolean).join(" - ");
+  if (!identity) return realName || brand || String(equipment?.codigo || "Equipo");
+  const withBrand = brand ? `${brand} | ${identity}` : identity;
+  return realName ? `${withBrand} (${realName})` : withBrand;
+}
+
+/**
+ * Tipos cuyo nombre identifica una unidad de generacion. Se compara sin tildes
+ * ni mayusculas porque el catalogo los tiene escritos de varias formas.
+ */
+function isGenerationEquipmentType(type: any) {
+  const normalized = String(type?.nombre || type?.codigo || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase();
+  return normalized.includes("GENERACION") || normalized.includes("GENERADOR");
+}
+
+async function ensureGenerationEquipmentsLoaded(force = false) {
+  if (generationEquipmentsLoaded.value && !force) return;
+  try {
+    const types = await listAllPages(
+      "/kpi_maintenance/tipo-equipo",
+      {},
+      { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+    );
+    const generationTypeIds = (Array.isArray(types) ? types : [])
+      .filter(isGenerationEquipmentType)
+      .map((type: any) => String(type?.id || "").trim())
+      .filter(Boolean);
+    if (!generationTypeIds.length) {
+      generationEquipments.value = [];
+      generationEquipmentsLoaded.value = true;
+      return;
+    }
+    const pages = await Promise.all(
+      generationTypeIds.map((equipoTipoId) =>
+        listAllPages(
+          "/kpi_maintenance/equipos",
+          { equipo_tipo_id: equipoTipoId },
+          { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+        ),
+      ),
+    );
+    const byId = new Map<string, any>();
+    for (const equipment of pages.flat()) {
+      const id = String(equipment?.id || "").trim();
+      if (id) byId.set(id, equipment);
+    }
+    generationEquipments.value = [...byId.values()];
+    generationEquipmentsLoaded.value = true;
+  } catch {
+    // Sin catalogo el filtro simplemente no ofrece equipos; el kardex sigue
+    // consultandose con el resto de filtros.
+    generationEquipments.value = [];
+    generationEquipmentsLoaded.value = false;
+  }
+}
+
 async function ensureMovementCatalogsLoaded(force = false) {
   if (inventoryCatalogLoaded.value && !force) return;
   movementCatalogLoading.value = true;
@@ -1029,6 +1144,7 @@ function buildKardexRequestParams(filters: KardexFilterState) {
     producto_id: filters.producto_id || undefined,
     linea_id: filters.linea_id || undefined,
     categoria_id: filters.categoria_id || undefined,
+    equipment_id: filters.equipment_id || undefined,
     tipo_movimiento: filters.tipo_movimiento || undefined,
     include_annulled: filters.include_annulled ? true : undefined,
   };
@@ -1101,6 +1217,29 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
   }
   return movementRows;
 }
+/**
+ * Columnas que el kardex impreso no lleva.
+ *
+ * En papel el reporte se lee de corrido y estas cinco no explican el
+ * movimiento: linea y categoria clasifican el material (ya identificado por su
+ * codigo), concepto repite lo que dicen tipo y referencia, agrupacion solo
+ * existia para partir la tabla en secciones y el estado de registro solo tiene
+ * sentido cuando se consultan anulados en pantalla. En Excel siguen estando.
+ */
+const KARDEX_PDF_OMITTED_KEYS = [
+  "agrupacion",
+  "linea",
+  "categoria",
+  "concepto",
+  "estado_registro",
+];
+
+function stripKardexPdfColumns(row: Record<string, any>) {
+  return Object.fromEntries(
+    Object.entries(row).filter(([key]) => !KARDEX_PDF_OMITTED_KEYS.includes(key)),
+  );
+}
+
 function getKardexExportGrouping(group: any, filters: KardexFilterState) {
   if (inventoryGroupBy.value === "linea") return group.linea_label || "Sin linea";
   if (inventoryGroupBy.value === "categoria") return group.categoria_label || "Sin categoria";
@@ -1117,6 +1256,7 @@ function buildKardexFilterDescription(filters: KardexFilterState) {
   if (filters.producto_id) labels.push(`Material: ${kardexProductOptions.value.find((item) => item.value === filters.producto_id)?.title || filters.producto_id}`);
   if (filters.linea_id) labels.push(`Linea: ${lineFilterOptions.value.find((item) => item.value === filters.linea_id)?.title || filters.linea_id}`);
   if (filters.categoria_id) labels.push(`Categoria: ${categoryFilterOptions.value.find((item) => item.value === filters.categoria_id)?.title || filters.categoria_id}`);
+  if (filters.equipment_id) labels.push(`Equipo: ${equipmentFilterOptions.value.find((item) => item.value === filters.equipment_id)?.title || filters.equipment_id}`);
   if (filters.tipo_movimiento) labels.push(`Tipo: ${filters.tipo_movimiento === 'INGRESO' ? 'Ingreso' : filters.tipo_movimiento === 'SALIDA' ? 'Egreso' : filters.tipo_movimiento}`);
   if (filters.include_annulled) labels.push("Incluye movimientos anulados");
   return labels.join(" | ");
@@ -1341,26 +1481,22 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
           documento: movement.documento || "",
           tipo_movimiento: movement.tipo_movimiento || "",
           referencia: movement.referencia || "",
-          concepto: movement.concepto || "",
           bodega: movement.bodega || "",
           entrada: Number(movement.entrada || 0),
           salida: Number(movement.salida || 0),
           stock: Number(movement.stock || 0),
           usuario_responsable: movement.usuario_responsable || "SYSTEM",
-          estado_registro: movement.estado_registro || "VIGENTE",
         })),
         columns: [
           { key: "fecha_emision", header: "Fecha emisión", width: 15, format: "datetime" },
           { key: "documento", header: "Documento", width: 14 },
           { key: "tipo_movimiento", header: "Tipo", width: 10 },
           { key: "referencia", header: "Referencia", width: 14 },
-          { key: "concepto", header: "Concepto", width: 14 },
           { key: "bodega", header: "Bodega", width: 18 },
           { key: "entrada", header: "Entrada", width: 10, format: "number" },
           { key: "salida", header: "Salida", width: 10, format: "number" },
           { key: "stock", header: "Stock", width: 10, format: "number" },
           { key: "usuario_responsable", header: "Usuario responsable", width: 16 },
-          { key: "estado_registro", header: "Estado", width: 24 },
         ],
       },
     ],
@@ -1425,6 +1561,14 @@ function openKardexPdfPreviewForPrint() {
   if (!kardexPdfPreviewUrl.value) return;
   window.open(kardexPdfPreviewUrl.value, "_blank", "noopener,noreferrer");
 }
+async function openInventoryPdfPreview(report: ReportDefinition) {
+  await inventoryPdfPreview.open({
+    title: report.title,
+    subtitle: report.subtitle,
+    fileName: report.fileName,
+    build: () => buildReportPdfBlob(report),
+  });
+}
 function exportKey(format: "excel" | "pdf") { return `inventory:${format}`; }
 function isExporting(format: "excel" | "pdf") { return Boolean(exportState[exportKey(format)]); }
 async function exportInventoryReport(format: "excel" | "pdf") {
@@ -1458,6 +1602,7 @@ async function exportInventoryReport(format: "excel" | "pdf") {
       stock_final: Number(group.stock_final || 0),
       movimientos: Number(group.movimientos_count || 0),
     }));
+    const isPdf = format === "pdf";
     const report = buildInventoryStockReport({
       groupLabel: inventoryGroupingOptions.find((item) => item.value === inventoryGroupBy.value)?.title || "Material",
       title: "Reporte de Kardex",
@@ -1471,11 +1616,14 @@ async function exportInventoryReport(format: "excel" | "pdf") {
         { label: "Entradas", value: exportedEntries },
         { label: "Salidas", value: exportedOutputs },
       ],
-      rows,
-      movementRows,
+      rows: isPdf ? rows.map(stripKardexPdfColumns) : rows,
+      movementRows: isPdf ? movementRows.map(stripKardexPdfColumns) : movementRows,
+      // Sin agrupacion el PDF sale como una sola tabla: es justo lo que se
+      // retira junto con linea, categoria, concepto y estado de registro.
+      groupBy: isPdf ? [] : undefined,
     });
     if (format === "excel") await downloadReportExcel(report);
-    else await downloadReportPdf(report);
+    else await openInventoryPdfPreview(report);
   } catch (error: any) {
     ui.error(error?.message || "No se pudo generar el reporte de Kardex.");
   } finally {
@@ -1532,6 +1680,7 @@ function clearKardexFilters() {
   kardexFilters.producto_id = "";
   kardexFilters.linea_id = "";
   kardexFilters.categoria_id = "";
+  kardexFilters.equipment_id = "";
   kardexFilters.tipo_movimiento = "";
   kardexFilters.include_annulled = false;
   kardexFilters.desde = defaultKardexDateFrom;
@@ -1661,7 +1810,7 @@ watch(
   },
 );
 watch(expandedMaterials, (current, previous) => { const previousSet = new Set((previous ?? []).map((item) => String(item))); current.map((item) => String(item)).filter((item) => !previousSet.has(item)).forEach((productoId) => void loadMaterialDetail(productoId)); }, { deep: true });
-onMounted(async () => { if (!canRead.value) return; await Promise.allSettled([loadKardex(), ensureMovementCatalogsLoaded(), restoreImportJob()]); });
+onMounted(async () => { if (!canRead.value) return; await Promise.allSettled([loadKardex(), ensureMovementCatalogsLoaded(), ensureGenerationEquipmentsLoaded(), restoreImportJob()]); });
 onBeforeUnmount(() => {
   stopImportPolling();
   kardexPdfPreviewRequestId += 1;

@@ -109,10 +109,21 @@ function drawLabelValue(
   doc.text(lines.slice(0, 2), x, y + 13);
 }
 
-export async function downloadWarehouseTransferPdf(
+export function warehouseTransferPdfFileName(transfer: WarehouseTransferLike) {
+  return `${fileName(transfer.codigo)}-guia-interna.pdf`;
+}
+
+/**
+ * Arma el documento y devuelve el blob en vez de guardarlo.
+ *
+ * La pantalla lo previsualiza antes de decidir si lo descarga; separar el
+ * armado del guardado es lo que permite que ambas cosas usen exactamente el
+ * mismo PDF.
+ */
+export async function buildWarehouseTransferPdfBlob(
   transfer: WarehouseTransferLike,
   generatedBy = "Sistema",
-) {
+): Promise<Blob> {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
@@ -392,5 +403,18 @@ export async function downloadWarehouseTransferPdf(
     doc.text(`Página ${page} de ${pageCount}`, rightX, pageHeight - 23, { align: "right" });
   }
 
-  doc.save(`${fileName(transfer.codigo)}-guia-interna.pdf`);
+  return doc.output("blob");
+}
+
+export async function downloadWarehouseTransferPdf(
+  transfer: WarehouseTransferLike,
+  generatedBy = "Sistema",
+) {
+  const blob = await buildWarehouseTransferPdfBlob(transfer, generatedBy);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = warehouseTransferPdfFileName(transfer);
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

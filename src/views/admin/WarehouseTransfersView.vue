@@ -110,13 +110,37 @@
       </template>
 
       <template #item.egreso_bodega_codigo="{ item }">
-        <v-chip size="small" variant="tonal" color="error">
+        <v-chip
+          v-if="item.movimiento_salida_id && item.egreso_bodega_codigo"
+          size="small"
+          variant="tonal"
+          color="error"
+          link
+          class="movement-link"
+          :title="`Ver el egreso ${item.egreso_bodega_codigo}`"
+          @click="openMovementDocument(item, 'SALIDA')"
+        >
+          {{ item.egreso_bodega_codigo }}
+        </v-chip>
+        <v-chip v-else size="small" variant="tonal" color="error">
           {{ item.egreso_bodega_codigo || "-" }}
         </v-chip>
       </template>
 
       <template #item.ingreso_bodega_codigo="{ item }">
-        <v-chip size="small" variant="tonal" color="success">
+        <v-chip
+          v-if="item.movimiento_ingreso_id && item.ingreso_bodega_codigo"
+          size="small"
+          variant="tonal"
+          color="success"
+          link
+          class="movement-link"
+          :title="`Ver el ingreso ${item.ingreso_bodega_codigo}`"
+          @click="openMovementDocument(item, 'INGRESO')"
+        >
+          {{ item.ingreso_bodega_codigo }}
+        </v-chip>
+        <v-chip v-else size="small" variant="tonal" color="success">
           {{ item.ingreso_bodega_codigo || "-" }}
         </v-chip>
       </template>
@@ -1055,6 +1079,115 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog
+    :model-value="movementDocument.open"
+    :fullscreen="mdAndDown"
+    :max-width="mdAndDown ? undefined : 1080"
+    scrollable
+    @update:model-value="(value: boolean) => !value && closeMovementDocument()"
+  >
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="d-flex align-center justify-space-between flex-wrap px-5 py-4" style="gap: 12px">
+        <div>
+          <div class="text-h6 font-weight-bold">{{ movementDocumentTitle }}</div>
+          <div class="text-body-2 text-medium-emphasis">
+            {{ movementDocument.documentNumber || "Sin número" }} ·
+            transferencia {{ movementDocument.transferCode || "-" }}
+          </div>
+        </div>
+        <v-btn icon="mdi-close" variant="text" density="comfortable" @click="closeMovementDocument" />
+      </v-card-title>
+      <v-divider />
+      <v-card-text class="pa-5">
+        <v-progress-linear v-if="movementDocument.loading" indeterminate color="primary" rounded height="8" />
+        <v-alert v-else-if="movementDocument.error" type="error" variant="tonal">
+          {{ movementDocument.error }}
+        </v-alert>
+        <template v-else-if="movementDocument.document">
+          <div class="movement-summary">
+            <article>
+              <span>Fecha</span>
+              <strong>{{ formatDateTime(movementDocument.document.fecha_movimiento, "-") }}</strong>
+            </article>
+            <article>
+              <span>Bodega</span>
+              <strong>{{ movementDocument.document.bodega_label || "-" }}</strong>
+            </article>
+            <article>
+              <span>Referencia</span>
+              <strong>{{ movementDocument.document.referencia || "-" }}</strong>
+            </article>
+            <article>
+              <span>Estado</span>
+              <strong>{{ movementDocument.document.estado || movementDocument.document.status || "-" }}</strong>
+            </article>
+            <article>
+              <span>Ítems</span>
+              <strong>{{ movementDocument.document.total_items || movementDocumentDetails.length }}</strong>
+            </article>
+            <article>
+              <span>Cantidad</span>
+              <strong>{{ formatNumber(movementDocument.document.total_cantidad) }}</strong>
+            </article>
+            <article>
+              <span>Costo total</span>
+              <strong>{{ formatCurrency(movementDocument.document.total_costos) }}</strong>
+            </article>
+            <article>
+              <span>Responsable</span>
+              <strong>{{ movementDocument.document.created_by || "SYSTEM" }}</strong>
+            </article>
+          </div>
+
+          <v-alert
+            v-if="movementDocument.document.observacion"
+            type="info"
+            variant="tonal"
+            class="mt-4"
+            :text="movementDocument.document.observacion"
+          />
+
+          <v-table density="comfortable" class="mt-4">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Material</th>
+                <th>Condición</th>
+                <th class="text-right">Cantidad</th>
+                <th class="text-right">Costo unitario</th>
+                <th class="text-right">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="detail in movementDocumentDetails" :key="detail.id">
+                <td>{{ detail.producto_codigo || "-" }}</td>
+                <td>{{ detail.producto_nombre || "-" }}</td>
+                <td>{{ detail.condicion_material || "-" }}</td>
+                <td class="text-right">{{ formatNumber(detail.cantidad) }}</td>
+                <td class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
+                <td class="text-right">{{ formatCurrency(detail.subtotal_costo) }}</td>
+              </tr>
+              <tr v-if="!movementDocumentDetails.length">
+                <td colspan="6" class="text-center text-medium-emphasis py-4">
+                  El documento no registra materiales.
+                </td>
+              </tr>
+            </tbody>
+          </v-table>
+        </template>
+      </v-card-text>
+    </v-card>
+  </v-dialog>
+
+  <PdfPreviewDialog
+    :state="transferPdfPreview.state"
+    :url="transferPdfPreview.url.value"
+    @close="transferPdfPreview.close"
+    @download="downloadTransferPdfFromPreview"
+    @print="transferPdfPreview.openInNewTab"
+    @update:visible="transferPdfPreview.handleVisibility"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1071,7 +1204,11 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
-import { downloadWarehouseTransferPdf } from "@/app/utils/warehouse-transfer-documents";
+import {
+  buildWarehouseTransferPdfBlob,
+  warehouseTransferPdfFileName,
+} from "@/app/utils/warehouse-transfer-documents";
+import { usePdfPreview } from "@/app/utils/pdf-preview";
 import {
   canManageAdministrativeOperations,
   canViewAnnulledRecords,
@@ -1082,6 +1219,7 @@ import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 
 type CatalogOption = { value: string; title: string };
 
@@ -1161,6 +1299,8 @@ type TransferRow = TransferGuideSummary & {
   bodega_destino_label?: string | null;
   egreso_bodega_codigo?: string | null;
   ingreso_bodega_codigo?: string | null;
+  movimiento_salida_id?: string | null;
+  movimiento_ingreso_id?: string | null;
   estado?: string | null;
   total_items?: number;
   total_cantidad?: string | number | null;
@@ -1300,6 +1440,28 @@ type GuideTransporterOption = GuideTransporterCatalogRow & {
 };
 
 const ui = useUiStore();
+const transferPdfPreview = usePdfPreview({
+  title: "Previsualización de la transferencia",
+});
+
+/**
+ * Detalle del documento de bodega detras de los codigos IB y EB.
+ *
+ * La transferencia genera dos movimientos reales de inventario (el egreso de la
+ * bodega origen y el ingreso en la destino) y hasta ahora la tabla solo mostraba
+ * sus numeros. Ahora el numero es el enlace: se abre el documento que realmente
+ * movio el stock, con sus materiales y cantidades.
+ */
+const movementDocument = reactive({
+  open: false,
+  loading: false,
+  error: "",
+  kind: "INGRESO" as "INGRESO" | "SALIDA",
+  transferCode: "",
+  documentNumber: "",
+  document: null as any,
+});
+let movementDocumentRequestId = 0;
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 const { mdAndDown } = useDisplay();
@@ -3709,22 +3871,91 @@ async function downloadTransferPdf(item: TransferRow) {
 
   transferPdfDownloadingId.value = transferId;
   try {
-    const { data } = await api.get(
-      `/kpi_inventory/transferencias-bodega/${transferId}`,
-      { meta: { skipGlobalLoading: true } } as any,
-    );
-    const transfer = (data?.data ?? data) as TransferRow;
-    await downloadWarehouseTransferPdf(transfer, getUserName());
-    ui.success("PDF de la transferencia descargado correctamente.");
-  } catch (error: any) {
-    ui.error(
-      error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo descargar el PDF de la transferencia.",
-    );
+    await transferPdfPreview.open({
+      title: `Transferencia ${item.codigo || ""}`.trim(),
+      subtitle: [item.bodega_origen_label, item.bodega_destino_label]
+        .filter(Boolean)
+        .join(" → "),
+      fileName: warehouseTransferPdfFileName(item as any),
+      build: async () => {
+        const { data } = await api.get(
+          `/kpi_inventory/transferencias-bodega/${transferId}`,
+          { meta: { skipGlobalLoading: true } } as any,
+        );
+        const transfer = (data?.data ?? data) as TransferRow;
+        return buildWarehouseTransferPdfBlob(transfer as any, getUserName());
+      },
+    });
   } finally {
     transferPdfDownloadingId.value = "";
   }
+}
+
+function downloadTransferPdfFromPreview() {
+  transferPdfPreview.download();
+  ui.success("PDF de la transferencia descargado correctamente.");
+}
+
+const movementDocumentDetails = computed(() => {
+  const details = movementDocument.document?.detalles;
+  return Array.isArray(details) ? details : [];
+});
+
+const movementDocumentTitle = computed(() =>
+  movementDocument.kind === "INGRESO"
+    ? "Ingreso de bodega (IB)"
+    : "Egreso de bodega (EB)",
+);
+
+async function openMovementDocument(
+  item: TransferRow,
+  kind: "INGRESO" | "SALIDA",
+) {
+  const documentId = String(
+    (kind === "INGRESO" ? item?.movimiento_ingreso_id : item?.movimiento_salida_id) ||
+      "",
+  ).trim();
+  if (!documentId) return;
+  const requestId = ++movementDocumentRequestId;
+  movementDocument.open = true;
+  movementDocument.loading = true;
+  movementDocument.error = "";
+  movementDocument.kind = kind;
+  movementDocument.transferCode = String(item?.codigo || "");
+  movementDocument.documentNumber = String(
+    (kind === "INGRESO" ? item?.ingreso_bodega_codigo : item?.egreso_bodega_codigo) ||
+      "",
+  );
+  movementDocument.document = null;
+  try {
+    const { data } = await api.get(
+      `/kpi_inventory/kardex/documentos/${documentId}`,
+      {
+        params: { include_annulled: isAnnulledTransfer(item) ? true : undefined },
+      },
+    );
+    if (requestId !== movementDocumentRequestId) return;
+    movementDocument.document = data?.data ?? data ?? null;
+    if (!movementDocument.document) {
+      throw new Error("El documento no devolvió información.");
+    }
+  } catch (error: any) {
+    if (requestId !== movementDocumentRequestId) return;
+    movementDocument.error =
+      error?.response?.data?.message ||
+      error?.message ||
+      "No se pudo consultar el documento de bodega.";
+  } finally {
+    if (requestId === movementDocumentRequestId) movementDocument.loading = false;
+  }
+}
+
+function closeMovementDocument() {
+  movementDocumentRequestId += 1;
+  movementDocument.open = false;
+  movementDocument.loading = false;
+  movementDocument.error = "";
+  movementDocument.document = null;
 }
 
 async function consultGuide(item: TransferRow) {
@@ -4162,6 +4393,39 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* Los codigos IB y EB dejan de ser una etiqueta: abren el documento que movio
+   el stock, y por eso se comportan (y se ven) como un enlace. */
+.movement-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.movement-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 12px;
+}
+
+.movement-summary article {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 14px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+
+.movement-summary span {
+  display: block;
+  font-size: 0.76rem;
+  color: rgb(var(--v-theme-on-surface-variant, 100 116 139));
+}
+
+.movement-summary strong {
+  display: block;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
 .guide-form-fieldset {
   border: 0;
   margin: 0;

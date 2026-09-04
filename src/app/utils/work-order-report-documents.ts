@@ -125,7 +125,7 @@ export async function buildWorkOrderReportPdfBlob(
     theme: "grid",
     styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [31, 61, 122], textColor: 255, fontStyle: "bold" },
-    head: [["Horómetro anterior", "Horómetro actual", "Horas - hombre", "Costo total"]],
+    head: [["Horómetro inicial", "Horómetro final", "Horas - hombre", "Costo total"]],
     body: [
       [
         safeText(data.horometroAnterior),

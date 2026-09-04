@@ -274,6 +274,15 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <PdfPreviewDialog
+    :state="orderPdfPreview.state"
+    :url="orderPdfPreview.url.value"
+    @close="orderPdfPreview.close"
+    @download="downloadOrderPdfFromPreview"
+    @print="orderPdfPreview.openInNewTab"
+    @update:visible="orderPdfPreview.handleVisibility"
+  />
 </template>
 
 <script setup lang="ts">
@@ -287,7 +296,12 @@ import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
-import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
+import {
+  buildPurchaseOrderPdfBlob,
+  purchaseOrderPdfFileName,
+} from "@/app/utils/purchase-order-documents";
+import { usePdfPreview } from "@/app/utils/pdf-preview";
+import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -330,6 +344,9 @@ type PurchaseOrderRow = {
 };
 
 const ui = useUiStore();
+const orderPdfPreview = usePdfPreview({
+  title: "Previsualización de la orden de compra",
+});
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
@@ -467,10 +484,17 @@ const purchaseProducts = computed(() =>
   products.value.filter((item) => !item?.es_servicio),
 );
 
+/**
+ * La orden de compra nombra el material como `nombre (descripcion)`.
+ *
+ * El codigo interno no le dice nada al proveedor, que es quien lee el
+ * documento; el nombre comercial mas la descripcion es lo que identifica la
+ * pieza al cotizar.
+ */
 const catalogProductOptions = computed<CatalogOption[]>(() =>
   purchaseProducts.value.map((item) => ({
     value: String(item.id),
-    title: `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
+    title: `${buildProductDisplayTitle(item, { includeCode: false })} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
   })),
 );
 
@@ -982,16 +1006,20 @@ async function downloadPdf(item: PurchaseOrderRow) {
     ui.error("No tienes permisos para descargar este reporte.");
     return;
   }
-  try {
-    const { data } = await api.get(`/kpi_inventory/ordenes-compra/${item.id}`);
-    await downloadPurchaseOrderPdf(data?.data ?? data, getUserName());
-  } catch (error: any) {
-    ui.error(
-      error?.response?.data?.message ||
-      error?.message ||
-      "No se pudo generar el PDF de la orden de compra.",
-    );
-  }
+  await orderPdfPreview.open({
+    title: `Orden de compra ${item.codigo || ""}`.trim(),
+    subtitle: item.proveedor_nombre || "",
+    fileName: purchaseOrderPdfFileName(item as any),
+    build: async () => {
+      const { data } = await api.get(`/kpi_inventory/ordenes-compra/${item.id}`);
+      return buildPurchaseOrderPdfBlob(data?.data ?? data, getUserName());
+    },
+  });
+}
+
+function downloadOrderPdfFromPreview() {
+  orderPdfPreview.download();
+  ui.success("PDF de la orden de compra descargado correctamente.");
 }
 
 onMounted(async () => {

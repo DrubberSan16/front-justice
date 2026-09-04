@@ -1,9 +1,10 @@
 import { formatDateOnly, formatDateTime as formatAppDateTime } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 
-type PurchaseOrderDetailLike = {
+export type PurchaseOrderDetailLike = {
   codigo_producto?: string | null;
   nombre_producto?: string | null;
+  descripcion_producto?: string | null;
   cantidad?: string | number | null;
   costo_unitario?: string | number | null;
   descuento?: string | number | null;
@@ -96,10 +97,32 @@ function safeText(value: unknown, fallback = "-") {
   return text || fallback;
 }
 
-export async function downloadPurchaseOrderPdf(
+export function purchaseOrderPdfFileName(order: PurchaseOrderLike) {
+  return `${safeText(order.codigo, "orden_compra")}.pdf`;
+}
+
+/**
+ * Nomenclatura del material en la orden de compra: `nombre (descripcion)`.
+ *
+ * El proveedor no reconoce el codigo interno, asi que la columna ITEM lleva el
+ * nombre comercial y, entre parentesis, la descripcion que lo desambigua.
+ */
+export function purchaseOrderItemLabel(detail: PurchaseOrderDetailLike) {
+  const name = repairText(detail.nombre_producto).trim();
+  const description = repairText(detail.descripcion_producto).trim();
+  const base = name || repairText(detail.codigo_producto).trim();
+  if (!base) return "-";
+  return description ? `${base} (${description})` : base;
+}
+
+/**
+ * Arma el documento y devuelve el blob en vez de guardarlo: la pantalla lo
+ * previsualiza y decide si lo descarga.
+ */
+export async function buildPurchaseOrderPdfBlob(
   order: PurchaseOrderLike,
   userName = "Sistema",
-) {
+): Promise<Blob> {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
     import("jspdf-autotable"),
@@ -267,7 +290,7 @@ export async function downloadPurchaseOrderPdf(
     body: details.length
       ? details.map((detail) => [
           safeText(detail.codigo_producto),
-          safeText(detail.nombre_producto),
+          purchaseOrderItemLabel(detail),
           formatNumber(detail.cantidad, 2),
           formatMoney(detail.costo_unitario),
           formatMoney(detail.descuento),
@@ -338,5 +361,18 @@ export async function downloadPurchaseOrderPdf(
     pageHeight - 26,
   );
 
-  doc.save(`${safeText(order.codigo, "orden_compra")}.pdf`);
+  return doc.output("blob");
+}
+
+export async function downloadPurchaseOrderPdf(
+  order: PurchaseOrderLike,
+  userName = "Sistema",
+) {
+  const blob = await buildPurchaseOrderPdfBlob(order, userName);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = purchaseOrderPdfFileName(order);
+  anchor.click();
+  URL.revokeObjectURL(url);
 }

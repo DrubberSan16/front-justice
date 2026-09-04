@@ -1769,6 +1769,8 @@ export function buildInventoryStockReport(payload: {
   primarySheetName?: string;
   primaryNote?: string;
   fileName?: string;
+  /** Columnas por las que se abren secciones. Vacio = una sola tabla plana. */
+  groupBy?: string[];
 }) {
   return {
     fileName: payload.fileName || `inventario_${formatDateForInput(new Date())}`,
@@ -1780,7 +1782,7 @@ export function buildInventoryStockReport(payload: {
         name: payload.primarySheetName || "Inventario",
         rows: payload.rows,
         note: payload.primaryNote || `Vista consolidada y agrupada por ${payload.groupLabel}.`,
-        groupBy: ["agrupacion"],
+        groupBy: payload.groupBy ?? ["agrupacion"],
       },
       ...(payload.movementRows?.length ? [{ name: "Kardex", rows: payload.movementRows }] : []),
     ],
@@ -1855,6 +1857,7 @@ export function buildWorkOrderReport(payload: {
       plan_operativo: header.plan_operativo || "",
       fecha_programacion: header.fecha_programacion || "",
       fecha_operativa: header.fecha_operativa || "",
+      horometro_anterior: header.horometro_anterior ?? "",
       horometro_actual: header.horometro_actual ?? "",
       horas_a_realizar: header.horas_a_realizar ?? "",
       alerta: header.alerta || "",
@@ -1910,12 +1913,21 @@ export type WorkOrdersListingOrder = {
 };
 
 const WORK_ORDER_DETAIL_COLUMNS = {
+  /**
+   * Una fila por responsable y tarea.
+   *
+   * El informe respondia "que se hizo" pero no "quien lo hizo": la columna de
+   * responsables resumia "2 responsables - 4 h" y la novedad quedaba pegada a la
+   * tarea, sin decir de quien era. Abrir la fila por persona deja las tres
+   * respuestas juntas: nombre, trabajo realizado y novedad.
+   */
   tasks: [
-    { key: "plan", header: "Plan", width: 20 },
-    { key: "tarea", header: "Tarea", width: 34 },
-    { key: "valor_registrado", header: "Resultado", width: 28 },
-    { key: "responsables", header: "Responsable", width: 22 },
-    { key: "observacion", header: "Observación", width: 28 },
+    { key: "responsable", header: "Responsable", width: 22 },
+    { key: "tarea", header: "Trabajo realizado", width: 32 },
+    { key: "valor_registrado", header: "Resultado", width: 26 },
+    { key: "horas", header: "Horas", width: 10, format: "number" },
+    { key: "observacion", header: "Novedad", width: 28 },
+    { key: "plan", header: "Plan", width: 18 },
   ] satisfies ReportColumn[],
   attachments: [
     { key: "vista_previa", header: "Vista", width: 18 },
@@ -1963,10 +1975,8 @@ function buildWorkOrderSectionSheets(
   const title = String(header.titulo || header.title || "").trim();
   const formatActor = (user: unknown, date: unknown) =>
     [String(user || "").trim(), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
-  const formatHorometer = () =>
-    header.horometro_actual !== "" && header.horometro_actual != null
-      ? `${formatValue(header.horometro_actual)} h`
-      : "-";
+  const formatHorometer = (value: unknown) =>
+    value !== "" && value != null ? `${formatValue(value)} h` : "-";
   const info: ReportSummaryItem[] = [
     { label: "Orden", value: [code, title && title !== code ? title : ""].filter(Boolean).join(" - ") || "-" },
     { label: "Estado", value: header.estado || "-" },
@@ -1977,7 +1987,11 @@ function buildWorkOrderSectionSheets(
     },
     { label: "Mantenimiento", value: header.tipo_mantenimiento || "-" },
     { label: "Clase", value: header.clase_orden || "-" },
-    { label: "Horómetro OT", value: formatHorometer() },
+    {
+      label: "Horómetro inicial",
+      value: formatHorometer(header.horometro_anterior),
+    },
+    { label: "Horómetro final", value: formatHorometer(header.horometro_actual) },
     {
       label: "Horas de trabajo",
       value:

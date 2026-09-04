@@ -186,6 +186,79 @@
             class="order-search"
           />
         </div>
+
+        <div class="system-filters">
+          <v-text-field
+            v-model="inventoryFilters.codigo"
+            label="Código"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+          />
+          <v-text-field
+            v-model="inventoryFilters.nombre"
+            label="Nombre"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+          />
+          <v-text-field
+            v-model="inventoryFilters.descripcion"
+            label="Descripción"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+          />
+          <v-select
+            v-model="inventoryFilters.marca"
+            :items="inventoryBrandOptions"
+            label="Marca"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+          />
+          <v-select
+            v-model="inventoryFilters.categoria"
+            :items="inventoryCategoryOptions"
+            label="Categoría"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+          />
+          <v-select
+            v-model="inventoryFilters.unidad"
+            :items="inventoryUnitOptions"
+            label="Unidad de medida"
+            variant="outlined"
+            density="comfortable"
+            clearable
+            hide-details
+          />
+          <v-select
+            v-model="inventoryFilters.esAceite"
+            :items="INVENTORY_OIL_OPTIONS"
+            item-title="title"
+            item-value="value"
+            label="Aceite"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+          />
+          <v-btn
+            variant="tonal"
+            color="secondary"
+            prepend-icon="mdi-filter-remove-outline"
+            :disabled="!hasInventoryFilters"
+            @click="clearInventoryFilters"
+            >Limpiar filtros</v-btn
+          >
+        </div>
+
         <v-data-table
           :headers="inventoryHeaders"
           :items="visibleInventory"
@@ -194,9 +267,12 @@
           density="comfortable"
           class="manager-table"
         >
-          <template #item.material_label="{ item }"
-            ><strong>{{ materialLabel(item) }}</strong></template
-          >
+          <template #item.material_label="{ item }">
+            <strong>{{ materialLabel(item) }}</strong>
+            <div v-if="materialAttributesLabel(item)" class="material-attrs">
+              {{ materialAttributesLabel(item) }}
+            </div>
+          </template>
           <template #item.inventario_inicial="{ item }">{{
             formatNumber(item.inventario_inicial)
           }}</template>
@@ -379,6 +455,163 @@
               <template #no-data
                 ><div class="empty-table">
                   No hay datos para este reporte con los filtros actuales.
+                </div></template
+              >
+            </v-data-table>
+          </v-window-item>
+        </v-window>
+      </section>
+
+      <section
+        class="simple-section"
+        aria-labelledby="maintenance-cost-title"
+      >
+        <div class="section-title-row">
+          <div>
+            <h2 id="maintenance-cost-title">Costo de mantenimiento</h2>
+            <p>
+              Valor de los materiales usados en órdenes de mantenimiento,
+              separado por tipo de equipo.
+            </p>
+          </div>
+          <v-btn
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-refresh"
+            :loading="maintenanceCostLoading"
+            :disabled="invalidMaintenanceCostRange"
+            @click="loadMaintenanceCostReport"
+            >Actualizar</v-btn
+          >
+        </div>
+
+        <div class="system-filters">
+          <v-text-field
+            v-model="maintenanceCostStart"
+            type="date"
+            label="Fecha de inicio"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+          />
+          <v-text-field
+            v-model="maintenanceCostEnd"
+            type="date"
+            label="Fecha de fin"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+          />
+          <v-select
+            v-model="maintenanceCostWarehouseId"
+            :items="maintenanceCostWarehouseOptions"
+            item-title="label"
+            item-value="id"
+            label="Bodega"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
+            @update:model-value="loadMaintenanceCostReport"
+          />
+        </div>
+
+        <v-alert
+          v-if="invalidMaintenanceCostRange"
+          type="warning"
+          variant="tonal"
+          rounded="xl"
+          class="mb-3"
+          >La fecha de inicio no puede ser posterior a la fecha de
+          fin.</v-alert
+        >
+        <v-alert
+          v-else-if="maintenanceCostError"
+          type="warning"
+          variant="tonal"
+          rounded="xl"
+          class="mb-3"
+          :text="maintenanceCostError"
+        />
+
+        <v-tabs v-model="maintenanceCostTab" color="primary" show-arrows>
+          <v-tab
+            v-for="tab in maintenanceCostTabs"
+            :key="tab.key"
+            :value="tab.key"
+            :prepend-icon="tab.icon"
+            >{{ tab.title }} ({{ tab.rows.length }})</v-tab
+          >
+        </v-tabs>
+
+        <v-window v-model="maintenanceCostTab">
+          <v-window-item
+            v-for="tab in maintenanceCostTabs"
+            :key="tab.key"
+            :value="tab.key"
+          >
+            <div class="system-section-head">
+              <div>
+                <strong>{{ tab.title }}</strong>
+                <span>{{ tab.subtitle }}</span>
+              </div>
+              <v-chip label color="secondary" variant="tonal" size="small"
+                >{{ maintenanceCostRangeLabel }}</v-chip
+              >
+            </div>
+
+            <v-data-table
+              :headers="maintenanceCostHeaders"
+              :items="tab.rows"
+              :loading="maintenanceCostLoading"
+              :items-per-page="10"
+              density="comfortable"
+              class="manager-table system-table"
+            >
+              <template #item.work_order_code="{ item }">
+                <button
+                  v-if="systemRawRow(item).work_order_id"
+                  type="button"
+                  class="order-link"
+                  @click="openOrderFromSystemRow(item)"
+                >
+                  {{ systemRow(item).work_order_code }}
+                </button>
+                <span v-else>{{ systemRow(item).work_order_code }}</span>
+              </template>
+              <template #item.materiales="{ item }">
+                <v-btn
+                  v-if="listCellItems(item, 'materiales').length"
+                  size="small"
+                  variant="tonal"
+                  color="primary"
+                  prepend-icon="mdi-format-list-bulleted"
+                  @click="openListCell(item, 'materiales')"
+                >
+                  Ver materiales ({{ listCellItems(item, "materiales").length }})
+                </v-btn>
+                <span v-else class="list-cell-empty">Sin datos</span>
+              </template>
+              <template #body.append>
+                <tr v-if="tab.rows.length" class="totals-row">
+                  <td
+                    v-for="(header, index) in maintenanceCostHeaders"
+                    :key="`total-${header.key}`"
+                  >
+                    <template v-if="index === 0">Total del tab</template>
+                    <template v-else-if="header.key === 'total_costo'">{{
+                      formatCurrency(tab.totalCosto)
+                    }}</template>
+                    <template v-else-if="header.key === 'total_cantidad'">{{
+                      formatNumber(tab.totalCantidad, 4)
+                    }}</template>
+                  </td>
+                </tr>
+              </template>
+              <template #no-data
+                ><div class="empty-table">
+                  No hay costos de mantenimiento para este tipo de equipo con
+                  los filtros actuales.
                 </div></template
               >
             </v-data-table>
@@ -905,7 +1138,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -1143,13 +1376,126 @@ const selectedEquipmentOrders = computed(() => {
     );
   });
 });
+/**
+ * Filtros del inventario del periodo.
+ *
+ * La busqueda libre sigue siendo la entrada rapida; estos campos existen para
+ * acotar por los atributos del material (los mismos que distinguen un aceite de
+ * un repuesto) sin tener que recordar como se llama exactamente el producto.
+ */
+const inventoryFilters = reactive({
+  codigo: "",
+  nombre: "",
+  descripcion: "",
+  marca: null as string | null,
+  categoria: null as string | null,
+  unidad: null as string | null,
+  esAceite: "TODOS" as "TODOS" | "SI" | "NO",
+});
+
+const INVENTORY_OIL_OPTIONS = [
+  { title: "Todos los materiales", value: "TODOS" },
+  { title: "Solo aceites", value: "SI" },
+  { title: "Sin aceites", value: "NO" },
+];
+
+function inventoryAttribute(row: AnyRow, key: string) {
+  return String(row?.[key] ?? "").trim();
+}
+
+function buildInventoryOptions(key: string) {
+  return [
+    ...new Set(
+      inventoryRows.value
+        .map((row) => inventoryAttribute(row, key))
+        .filter(Boolean),
+    ),
+  ].sort((left, right) => left.localeCompare(right, "es"));
+}
+
+const inventoryBrandOptions = computed(() =>
+  buildInventoryOptions("producto_marca"),
+);
+const inventoryCategoryOptions = computed(() =>
+  buildInventoryOptions("producto_categoria"),
+);
+const inventoryUnitOptions = computed(() =>
+  buildInventoryOptions("producto_unidad_medida"),
+);
+
+const hasInventoryFilters = computed(
+  () =>
+    Boolean(
+      inventoryFilters.codigo ||
+        inventoryFilters.nombre ||
+        inventoryFilters.descripcion ||
+        inventoryFilters.marca ||
+        inventoryFilters.categoria ||
+        inventoryFilters.unidad,
+    ) || inventoryFilters.esAceite !== "TODOS",
+);
+
+function clearInventoryFilters() {
+  inventoryFilters.codigo = "";
+  inventoryFilters.nombre = "";
+  inventoryFilters.descripcion = "";
+  inventoryFilters.marca = null;
+  inventoryFilters.categoria = null;
+  inventoryFilters.unidad = null;
+  inventoryFilters.esAceite = "TODOS";
+}
+
+function includesText(value: unknown, needle: string) {
+  if (!needle) return true;
+  return String(value ?? "")
+    .toLocaleLowerCase("es")
+    .includes(needle.toLocaleLowerCase("es"));
+}
+
+function materialAttributesLabel(row: AnyRow) {
+  const parts = [
+    inventoryAttribute(row, "producto_marca"),
+    inventoryAttribute(row, "producto_categoria"),
+    inventoryAttribute(row, "producto_unidad_medida"),
+  ].filter(Boolean);
+  if (row?.producto_es_aceite) parts.push("Aceite");
+  return parts.join(" · ");
+}
+
 const visibleInventory = computed(() => {
   const search = inventorySearch.value.trim().toLocaleLowerCase("es");
-  return search
-    ? inventoryRows.value.filter((row) =>
-        materialLabel(row).toLocaleLowerCase("es").includes(search),
-      )
-    : inventoryRows.value;
+  const codigo = String(inventoryFilters.codigo || "").trim();
+  const nombre = String(inventoryFilters.nombre || "").trim();
+  const descripcion = String(inventoryFilters.descripcion || "").trim();
+  return inventoryRows.value.filter((row) => {
+    if (search && !materialLabel(row).toLocaleLowerCase("es").includes(search))
+      return false;
+    if (!includesText(row?.producto_codigo, codigo)) return false;
+    if (!includesText(row?.producto_nombre, nombre)) return false;
+    if (!includesText(row?.producto_descripcion, descripcion)) return false;
+    if (
+      inventoryFilters.marca &&
+      inventoryAttribute(row, "producto_marca") !== inventoryFilters.marca
+    )
+      return false;
+    if (
+      inventoryFilters.categoria &&
+      inventoryAttribute(row, "producto_categoria") !==
+        inventoryFilters.categoria
+    )
+      return false;
+    if (
+      inventoryFilters.unidad &&
+      inventoryAttribute(row, "producto_unidad_medida") !==
+        inventoryFilters.unidad
+    )
+      return false;
+    if (inventoryFilters.esAceite === "SI" && !row?.producto_es_aceite)
+      return false;
+    if (inventoryFilters.esAceite === "NO" && row?.producto_es_aceite)
+      return false;
+    return true;
+  });
 });
 
 function equipmentLabel(item: AnyRow) {
@@ -1567,12 +1913,6 @@ const SYSTEM_SECTION_DEFS = [
     icon: "mdi-timer-outline",
   },
   {
-    key: "costo_mantenimiento",
-    title: "Costo de mantenimiento",
-    subtitle: "Valor de los materiales usados en ordenes de mantenimiento.",
-    icon: "mdi-cash-wrench",
-  },
-  {
     key: "responsables_ot",
     title: "Quienes trabajaron",
     subtitle: "Responsables con horas registradas por orden de trabajo.",
@@ -1706,6 +2046,10 @@ const SYSTEM_HIDDEN_FIELDS = new Set([
   "responsables_meta",
   "equipos_lista",
   "period_key",
+  // El tipo de equipo solo lo usa la seccion de costo de mantenimiento, que
+  // arma sus pestanas con el; como columna repetiria lo que ya dice el equipo.
+  "equipment_type_id",
+  "equipment_type_label",
   "_raw",
 ]);
 
@@ -1906,6 +2250,152 @@ async function loadUserCatalog() {
     userCatalogRows.value = Array.isArray(rows) ? rows : [];
   } catch {
     userCatalogRows.value = [];
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Costo de mantenimiento
+ *
+ * Vive en su propia seccion, no como una pestana mas de "Reportes del
+ * sistema": se lee por tipo de equipo (una pestana por tipo y una totalizada
+ * al final) y responde a su propio rango de fechas y bodega, porque el costo
+ * casi nunca se revisa con el mismo recorte que el resto del tablero.
+ * --------------------------------------------------------------------- */
+
+const MAINTENANCE_COST_TOTAL_TAB = "__TOTALIZADO__";
+
+const maintenanceCostPayload = ref<AnyRow | null>(null);
+const maintenanceCostLoading = ref(false);
+const maintenanceCostError = ref<string | null>(null);
+const maintenanceCostStart = ref(startDate.value);
+const maintenanceCostEnd = ref(endDate.value);
+const maintenanceCostWarehouseId = ref<string | null>(null);
+const maintenanceCostTab = ref(MAINTENANCE_COST_TOTAL_TAB);
+
+const invalidMaintenanceCostRange = computed(
+  () =>
+    !maintenanceCostStart.value ||
+    !maintenanceCostEnd.value ||
+    maintenanceCostStart.value > maintenanceCostEnd.value,
+);
+
+const maintenanceCostRangeLabel = computed(() => {
+  const formatter = new Intl.DateTimeFormat("es-EC", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const from = new Date(`${maintenanceCostStart.value}T12:00:00`);
+  const to = new Date(`${maintenanceCostEnd.value}T12:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()))
+    return "Rango sin definir";
+  return `${formatter.format(from)} al ${formatter.format(to)}`;
+});
+
+/**
+ * Las bodegas llegan dentro del propio reporte. Mientras no haya respuesta se
+ * reutilizan las del bloque de sistema para que el selector no aparezca vacio.
+ */
+const maintenanceCostWarehouseOptions = computed<AnyRow[]>(() => {
+  const own = maintenanceCostPayload.value?.catalogs?.bodegas;
+  if (Array.isArray(own) && own.length) return own;
+  return systemWarehouseOptions.value;
+});
+
+const maintenanceCostRawRows = computed<AnyRow[]>(() => {
+  const rows = maintenanceCostPayload.value?.reports?.costo_mantenimiento?.rows;
+  return Array.isArray(rows) ? rows : [];
+});
+
+const maintenanceCostHeaders = computed(() => {
+  const keys = systemVisibleKeys(
+    maintenanceCostRawRows.value,
+    SYSTEM_COLUMN_OVERRIDES.costo_mantenimiento?.OT,
+  );
+  return keys.map((key) => ({
+    title: SYSTEM_FIELD_LABELS[key] ?? key,
+    key,
+  }));
+});
+
+function buildMaintenanceCostRow(row: AnyRow) {
+  return {
+    ...Object.fromEntries(
+      maintenanceCostHeaders.value.map((header) => [
+        header.key,
+        formatSystemCell(header.key, row?.[header.key]),
+      ]),
+    ),
+    _raw: row,
+  };
+}
+
+function sumMaintenanceCost(rows: AnyRow[], key: string) {
+  return rows.reduce((acc, row) => acc + Number(row?.[key] || 0), 0);
+}
+
+const maintenanceCostTabs = computed(() => {
+  const byType = new Map<string, AnyRow[]>();
+  for (const row of maintenanceCostRawRows.value) {
+    const label =
+      String(row?.equipment_type_label || "").trim() || "Sin tipo de equipo";
+    const current = byType.get(label) ?? [];
+    current.push(row);
+    byType.set(label, current);
+  }
+  const typeTabs = [...byType.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0], "es"))
+    .map(([label, rows]) => ({
+      key: label,
+      title: label,
+      subtitle: `Órdenes de mantenimiento de equipos del tipo ${label}.`,
+      icon: "mdi-engine-outline",
+      rows: rows.map(buildMaintenanceCostRow),
+      totalCosto: sumMaintenanceCost(rows, "total_costo"),
+      totalCantidad: sumMaintenanceCost(rows, "total_cantidad"),
+    }));
+  return [
+    ...typeTabs,
+    {
+      key: MAINTENANCE_COST_TOTAL_TAB,
+      title: "Totalizado",
+      subtitle: "Todos los tipos de equipo sumados en un solo listado.",
+      icon: "mdi-sigma",
+      rows: maintenanceCostRawRows.value.map(buildMaintenanceCostRow),
+      totalCosto: sumMaintenanceCost(maintenanceCostRawRows.value, "total_costo"),
+      totalCantidad: sumMaintenanceCost(
+        maintenanceCostRawRows.value,
+        "total_cantidad",
+      ),
+    },
+  ];
+});
+
+async function loadMaintenanceCostReport() {
+  if (!canAccess.value || invalidMaintenanceCostRange.value) return;
+  maintenanceCostLoading.value = true;
+  maintenanceCostError.value = null;
+  try {
+    const { data } = await api.get(
+      "/kpi_maintenance/inteligencia/reportes-sistema",
+      {
+        params: {
+          from: maintenanceCostStart.value,
+          to: maintenanceCostEnd.value,
+          bodega_id: maintenanceCostWarehouseId.value || undefined,
+          // Siempre por OT: las pestanas ya separan por tipo de equipo y el
+          // totalizado suma esas mismas filas.
+          group_by: "OT",
+        },
+      },
+    );
+    maintenanceCostPayload.value = unwrap(data);
+  } catch (requestError: any) {
+    maintenanceCostError.value =
+      requestError?.response?.data?.message ||
+      "No se pudo generar el costo de mantenimiento.";
+  } finally {
+    maintenanceCostLoading.value = false;
   }
 }
 
@@ -2197,6 +2687,7 @@ onMounted(() => {
   void loadReport();
   void loadUserCatalog();
   void loadSystemReports();
+  void loadMaintenanceCostReport();
 });
 </script>
 
@@ -2226,6 +2717,22 @@ onMounted(() => {
   display: block;
   font-size: 0.82rem;
   color: rgb(var(--v-theme-on-surface-variant, 100 116 139));
+}
+
+/* Atributos del material bajo su nombre: explican por que una fila sobrevive
+   a los filtros de marca, categoria, unidad o aceite. */
+.material-attrs {
+  font-size: 0.76rem;
+  color: rgb(var(--v-theme-on-surface-variant, 100 116 139));
+}
+
+/* La sumatoria cierra la tabla: se despega del zebra con un borde superior y
+   se lee en negrita para no confundirla con un registro mas. */
+.totals-row td {
+  font-weight: 700;
+  border-top: 2px solid rgb(var(--v-theme-primary, 47 108 171));
+  background: rgba(var(--v-theme-primary, 47 108 171), 0.06);
+  font-variant-numeric: tabular-nums;
 }
 
 /* El codigo de OT es el punto de entrada al informe: se ve como enlace pero
