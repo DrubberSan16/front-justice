@@ -169,116 +169,148 @@
         </div>
       </section>
 
+      <section class="simple-section" aria-labelledby="priming-title">
+        <div class="section-title-row">
+          <div>
+            <h2 id="priming-title">Control de cebado y consumo de aceite</h2>
+            <p>
+              Galones por máquina, acumulado semanal y mensual, con nivel por
+              orden.
+            </p>
+          </div>
+          <v-icon icon="mdi-oil" size="34" color="primary" aria-hidden="true" />
+        </div>
+        <div class="priming-legend" aria-label="Niveles de consumo por orden">
+          <span
+            ><i class="priming-dot priming-dot--green" />0 a 5 gal ·
+            normal</span
+          >
+          <span
+            ><i class="priming-dot priming-dot--amber" />Más de 5 y menos de 10
+            gal · seguimiento</span
+          >
+          <span
+            ><i class="priming-dot priming-dot--red" />10 gal o más ·
+            crítico</span
+          >
+        </div>
+        <v-data-table
+          :headers="primingHeaders"
+          :items="primingRows"
+          :loading="primingLoading"
+          :items-per-page="10"
+          density="comfortable"
+          class="manager-table"
+          no-data-text="Sin consumo de aceite registrado en cebado"
+        >
+          <template #item.equipo_nombre="{ item }">
+            <strong>{{ item.equipo_nombre }}</strong>
+            <div v-if="item.equipo_descripcion" class="material-attrs">
+              {{ item.equipo_descripcion }}
+            </div>
+          </template>
+          <template #item.galones_periodo="{ item }"
+            >{{ formatNumber(item.galones_periodo) }} gal</template
+          >
+          <template #item.galones_semana="{ item }"
+            >{{ formatNumber(item.galones_semana) }} gal</template
+          >
+          <template #item.galones_mes="{ item }"
+            >{{ formatNumber(item.galones_mes) }} gal</template
+          >
+          <template #item.galones_max_orden="{ item }"
+            >{{ formatNumber(item.galones_max_orden) }} gal</template
+          >
+          <template #item.niveles="{ item }">
+            <div class="priming-levels">
+              <span
+                v-if="item.ots_criticas"
+                class="priming-chip priming-chip--red"
+                >{{ item.ots_criticas }} crítica(s)</span
+              >
+              <span
+                v-if="item.ots_seguimiento"
+                class="priming-chip priming-chip--amber"
+                >{{ item.ots_seguimiento }} seguimiento</span
+              >
+              <span
+                v-if="!item.ots_criticas && !item.ots_seguimiento"
+                class="priming-chip priming-chip--green"
+                >Todas normales</span
+              >
+            </div>
+          </template>
+          <template #item.acciones="{ item }">
+            <v-btn
+              icon="mdi-magnify-expand"
+              size="small"
+              variant="text"
+              color="primary"
+              :aria-label="`Ver detalle de ${item.equipo_nombre}`"
+              @click="openPrimingDetail(item)"
+            />
+          </template>
+        </v-data-table>
+      </section>
+
       <section class="simple-section" aria-labelledby="inventory-title">
         <div class="section-title-row">
           <div>
             <h2 id="inventory-title">Inventario del período</h2>
-            <p>{{ rangeLabel }}</p>
+            <p>{{ rangeLabel }} · Resumen compacto basado en el Kardex.</p>
           </div>
-          <v-text-field
-            v-model="inventorySearch"
-            label="Buscar material"
-            prepend-inner-icon="mdi-magnify"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-            class="order-search"
-          />
+          <div class="inventory-searches">
+            <v-text-field
+              v-model="inventorySearch"
+              label="Buscar material"
+              prepend-inner-icon="mdi-magnify"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              hide-details
+              @update:model-value="scheduleInventoryReload"
+            />
+            <v-autocomplete
+              v-model="inventoryEquipmentId"
+              :items="generationEquipmentOptions"
+              item-title="title"
+              item-value="value"
+              label="Unidad de generación"
+              prepend-inner-icon="mdi-engine-outline"
+              variant="outlined"
+              density="comfortable"
+              clearable
+              hide-details
+              no-data-text="No hay unidades de generación"
+              @update:model-value="applyInventoryEquipmentFilter"
+            />
+          </div>
         </div>
 
-        <div class="system-filters">
-          <v-text-field
-            v-model="inventoryFilters.codigo"
-            label="Código"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-          />
-          <v-text-field
-            v-model="inventoryFilters.nombre"
-            label="Nombre"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-          />
-          <v-text-field
-            v-model="inventoryFilters.descripcion"
-            label="Descripción"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-          />
-          <v-select
-            v-model="inventoryFilters.marca"
-            :items="inventoryBrandOptions"
-            label="Marca"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-          />
-          <v-select
-            v-model="inventoryFilters.categoria"
-            :items="inventoryCategoryOptions"
-            label="Categoría"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-          />
-          <v-select
-            v-model="inventoryFilters.unidad"
-            :items="inventoryUnitOptions"
-            label="Unidad de medida"
-            variant="outlined"
-            density="comfortable"
-            clearable
-            hide-details
-          />
-          <v-select
-            v-model="inventoryFilters.esAceite"
-            :items="INVENTORY_OIL_OPTIONS"
-            item-title="title"
-            item-value="value"
-            label="Aceite"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-          />
-          <v-btn
-            variant="tonal"
-            color="secondary"
-            prepend-icon="mdi-filter-remove-outline"
-            :disabled="!hasInventoryFilters"
-            @click="clearInventoryFilters"
-            >Limpiar filtros</v-btn
-          >
-        </div>
-
-        <v-data-table
+        <v-data-table-server
+          v-model:page="inventoryPage"
+          v-model:items-per-page="inventoryItemsPerPage"
           :headers="inventoryHeaders"
-          :items="visibleInventory"
+          :items="inventoryRows"
+          :items-length="inventoryTotalItems"
           :loading="inventoryLoading"
-          :items-per-page="10"
+          :items-per-page-options="[10, 25, 50]"
           density="comfortable"
           class="manager-table"
+          @update:options="loadInventoryReport"
         >
           <template #item.material_label="{ item }">
             <strong>{{ materialLabel(item) }}</strong>
-            <div v-if="materialAttributesLabel(item)" class="material-attrs">
-              {{ materialAttributesLabel(item) }}
+            <div v-if="item.unidad_label" class="material-attrs">
+              {{ item.unidad_label }}
             </div>
           </template>
-          <template #item.inventario_inicial="{ item }">{{
-            formatNumber(item.inventario_inicial)
+          <template #item.stock_inicial="{ item }">{{
+            formatNumber(item.stock_inicial)
           }}</template>
-          <template #item.ingresos="{ item }"
+          <template #item.entradas="{ item }"
             ><span class="value-positive"
-              >+{{ formatNumber(item.ingresos) }}</span
+              >+{{ formatNumber(item.entradas) }}</span
             ></template
           >
           <template #item.salidas="{ item }"
@@ -286,17 +318,58 @@
               >-{{ formatNumber(item.salidas) }}</span
             ></template
           >
-          <template #item.inventario_actual="{ item }"
-            ><strong>{{
-              formatNumber(item.inventario_actual)
-            }}</strong></template
+          <template #item.stock_final="{ item }"
+            ><strong>{{ formatNumber(item.stock_final) }}</strong></template
           >
+          <template #item.costo_unitario="{ item }">
+            <strong>{{ formatCurrency(item.costo_unitario) }}</strong>
+          </template>
           <template #no-data
             ><div class="empty-table">
               No hay movimientos de inventario en este rango.
             </div></template
           >
-        </v-data-table>
+        </v-data-table-server>
+        <div
+          class="inventory-totals"
+          aria-label="Totales del inventario del período"
+        >
+          <article>
+            <span>Ingresó</span>
+            <strong class="value-positive"
+              >+{{ formatNumber(inventoryTotals.entradas) }}</strong
+            >
+            <small
+              >{{ formatCurrency(inventoryTotals.costo_entradas) }} en
+              material</small
+            >
+          </article>
+          <article>
+            <span>Salió</span>
+            <strong class="value-negative"
+              >-{{ formatNumber(inventoryTotals.salidas) }}</strong
+            >
+            <small
+              >{{ formatCurrency(inventoryTotals.costo_salidas) }} en
+              material</small
+            >
+          </article>
+          <article class="inventory-totals__grand">
+            <span
+              >Gasto total<template v-if="selectedInventoryEquipmentLabel">
+                · {{ selectedInventoryEquipmentLabel }}</template
+              ></span
+            >
+            <strong>{{ formatCurrency(inventoryTotals.costo_total) }}</strong>
+            <small
+              >{{ formatNumber(inventoryTotals.movimientos, 0) }} movimientos ·
+              {{
+                formatNumber(inventoryTotals.materiales, 0)
+              }}
+              materiales</small
+            >
+          </article>
+        </div>
       </section>
 
       <section class="simple-section" aria-labelledby="system-reports-title">
@@ -422,8 +495,10 @@
                   prepend-icon="mdi-format-list-bulleted"
                   @click="openListCell(item, listKey)"
                 >
-                  Ver {{ (LIST_CELL_LABELS[listKey] || listKey).toLowerCase() }}
-                  ({{ listCellItems(item, listKey).length }})
+                  Ver
+                  {{ (LIST_CELL_LABELS[listKey] || listKey).toLowerCase() }} ({{
+                    listCellItems(item, listKey).length
+                  }})
                 </v-btn>
                 <span v-else class="list-cell-empty">Sin datos</span>
               </template>
@@ -462,10 +537,7 @@
         </v-window>
       </section>
 
-      <section
-        class="simple-section"
-        aria-labelledby="maintenance-cost-title"
-      >
+      <section class="simple-section" aria-labelledby="maintenance-cost-title">
         <div class="section-title-row">
           <div>
             <h2 id="maintenance-cost-title">Costo de mantenimiento</h2>
@@ -522,8 +594,7 @@
           variant="tonal"
           rounded="xl"
           class="mb-3"
-          >La fecha de inicio no puede ser posterior a la fecha de
-          fin.</v-alert
+          >La fecha de inicio no puede ser posterior a la fecha de fin.</v-alert
         >
         <v-alert
           v-else-if="maintenanceCostError"
@@ -555,9 +626,9 @@
                 <strong>{{ tab.title }}</strong>
                 <span>{{ tab.subtitle }}</span>
               </div>
-              <v-chip label color="secondary" variant="tonal" size="small"
-                >{{ maintenanceCostRangeLabel }}</v-chip
-              >
+              <v-chip label color="secondary" variant="tonal" size="small">{{
+                maintenanceCostRangeLabel
+              }}</v-chip>
             </div>
 
             <v-data-table
@@ -588,7 +659,9 @@
                   prepend-icon="mdi-format-list-bulleted"
                   @click="openListCell(item, 'materiales')"
                 >
-                  Ver materiales ({{ listCellItems(item, "materiales").length }})
+                  Ver materiales ({{
+                    listCellItems(item, "materiales").length
+                  }})
                 </v-btn>
                 <span v-else class="list-cell-empty">Sin datos</span>
               </template>
@@ -619,6 +692,79 @@
         </v-window>
       </section>
     </template>
+
+    <v-dialog v-model="primingDetailDialog" max-width="1080" scrollable>
+      <v-card rounded="xl" class="detail-dialog">
+        <v-card-title class="dialog-header priming-dialog-header">
+          <div>
+            <span>Detalle de cebado y aceite</span>
+            <strong>{{ primingDetailEquipment?.equipo_nombre }}</strong>
+            <small>{{ primingDetailEquipment?.equipo_descripcion }}</small>
+          </div>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            aria-label="Cerrar detalle de cebado"
+            @click="primingDetailDialog = false"
+          />
+        </v-card-title>
+        <v-card-text class="detail-dialog__body">
+          <v-alert type="info" variant="tonal" density="comfortable">
+            Cada fila corresponde a una orden de cebado. La tendencia compara su
+            consumo con la orden anterior del mismo equipo.
+          </v-alert>
+          <div v-if="primingDetailLoading" class="detail-loading">
+            <v-progress-circular indeterminate size="30" />
+            <span>Cargando detalle…</span>
+          </div>
+          <template v-else>
+            <EChart
+              v-if="primingChartOption"
+              :option="primingChartOption"
+              height="280px"
+            />
+            <v-data-table
+              :headers="primingDetailHeaders"
+              :items="primingDetailRows"
+              :items-per-page="10"
+              density="comfortable"
+              class="manager-table"
+              no-data-text="Sin órdenes de cebado en este período"
+            >
+              <template #item.fecha="{ item }">{{
+                formatShortDate(item.fecha)
+              }}</template>
+              <template #item.galones="{ item }"
+                >{{ formatNumber(item.galones) }} gal</template
+              >
+              <template #item.tendencia="{ item }">
+                <span
+                  v-if="item.tendencia && item.tendencia !== 'SIN_REFERENCIA'"
+                  class="priming-trend"
+                >
+                  <v-icon :icon="primingTrendIcon(item.tendencia)" size="16" />
+                  {{ primingTrendLabel(item.tendencia) }}
+                </span>
+                <span v-else class="text-medium-emphasis">Primera orden</span>
+              </template>
+              <template #item.semaforo="{ item }">
+                <span
+                  v-if="item.semaforo"
+                  :class="[
+                    'priming-chip',
+                    `priming-chip--${String(item.semaforo.nivel || '').toLowerCase()}`,
+                  ]"
+                  >{{ item.semaforo.etiqueta }}</span
+                >
+              </template>
+              <template #item.costo="{ item }">{{
+                formatCurrency(item.costo)
+              }}</template>
+            </v-data-table>
+          </template>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
 
     <v-dialog v-model="ordersDialog" max-width="1240" scrollable>
       <v-card rounded="xl" class="list-dialog">
@@ -1017,7 +1163,10 @@
         <v-divider />
         <v-card-text class="list-dialog__body">
           <div v-if="listaItems.length" class="responsible-list">
-            <div v-for="(entry, index) in listaItems" :key="`${entry}-${index}`">
+            <div
+              v-for="(entry, index) in listaItems"
+              :key="`${entry}-${index}`"
+            >
               <span>{{ entry }}</span>
             </div>
           </div>
@@ -1040,7 +1189,10 @@
           <div class="dialog-header__copy">
             <span>Órdenes de trabajo</span
             ><strong>{{ ordenesSubtitulo }}</strong
-            ><small>{{ ordenesRows.length }} órdenes · toca el número para ver el informe</small>
+            ><small
+              >{{ ordenesRows.length }} órdenes · toca el número para ver el
+              informe</small
+            >
           </div>
           <v-btn
             icon="mdi-close"
@@ -1052,7 +1204,11 @@
         </v-card-title>
         <v-divider />
         <v-card-text class="list-dialog__body">
-          <v-table v-if="ordenesRows.length" density="compact" class="ordenes-table">
+          <v-table
+            v-if="ordenesRows.length"
+            density="compact"
+            class="ordenes-table"
+          >
             <thead>
               <tr>
                 <th>N.º de orden</th>
@@ -1074,7 +1230,9 @@
                   >
                     {{ orden.work_order_code || "Sin código" }}
                   </button>
-                  <span v-else>{{ orden.work_order_code || "Sin código" }}</span>
+                  <span v-else>{{
+                    orden.work_order_code || "Sin código"
+                  }}</span>
                 </td>
                 <td>{{ orden.equipment_name || "Sin equipo" }}</td>
                 <td>{{ orden.maintenance_kind_label || "Sin definir" }}</td>
@@ -1138,8 +1296,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
+import EChart from "@/components/charts/EChart.vue";
+import { chartBase, seriesColor } from "@/app/config/chart-theme";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import {
@@ -1167,6 +1328,7 @@ type AnyRow = Record<string, any>;
 type StatusKey = "planned" | "open" | "closed";
 const auth = useAuthStore();
 const menuStore = useMenuStore();
+const theme = useTheme();
 
 /**
  * Este tablero absorbio "Reportes del sistema", que vivia en un modulo aparte y
@@ -1201,6 +1363,26 @@ const activeStatus = ref<StatusKey>("open");
 const orderSearch = ref("");
 const inventorySearch = ref("");
 const inventoryRows = ref<AnyRow[]>([]);
+const inventoryPage = ref(1);
+const inventoryItemsPerPage = ref(10);
+const inventoryTotalItems = ref(0);
+const inventoryEquipmentId = ref<string | null>(null);
+const inventoryTotals = ref<AnyRow>({
+  materiales: 0,
+  movimientos: 0,
+  entradas: 0,
+  salidas: 0,
+  costo_entradas: 0,
+  costo_salidas: 0,
+  costo_total: 0,
+});
+const generationEquipments = ref<AnyRow[]>([]);
+const primingRows = ref<AnyRow[]>([]);
+const primingLoading = ref(false);
+const primingDetailDialog = ref(false);
+const primingDetailLoading = ref(false);
+const primingDetailEquipment = ref<AnyRow | null>(null);
+const primingDetailRows = ref<AnyRow[]>([]);
 const oilReport = ref<AnyRow | null>(null);
 const selectedOilProductId = ref<string | null>(null);
 const equipmentCatalog = ref<AnyRow[]>([]);
@@ -1222,17 +1404,76 @@ const inventoryHeaders = [
   { title: "Material", key: "material_label" },
   {
     title: "Inicio del rango",
-    key: "inventario_inicial",
+    key: "stock_inicial",
     align: "end" as const,
   },
-  { title: "Ingresó", key: "ingresos", align: "end" as const },
+  { title: "Ingresó", key: "entradas", align: "end" as const },
   { title: "Salió", key: "salidas", align: "end" as const },
   {
-    title: "Inventario al cierre",
-    key: "inventario_actual",
+    title: "Finalizó",
+    key: "stock_final",
     align: "end" as const,
   },
+  { title: "Costo por ítem", key: "costo_unitario", align: "end" as const },
 ];
+
+const primingHeaders = [
+  { title: "Equipo", key: "equipo_nombre" },
+  { title: "Cebados", key: "ots_cebado", align: "end" as const },
+  { title: "Galones período", key: "galones_periodo", align: "end" as const },
+  { title: "Semana", key: "galones_semana", align: "end" as const },
+  { title: "Mes", key: "galones_mes", align: "end" as const },
+  { title: "Mayor orden", key: "galones_max_orden", align: "end" as const },
+  { title: "Órdenes por nivel", key: "niveles", sortable: false },
+  { title: "", key: "acciones", sortable: false, align: "end" as const },
+];
+
+const primingDetailHeaders = computed(() => {
+  const headers: AnyRow[] = [
+    { title: "Orden", key: "orden" },
+    { title: "Fecha", key: "fecha" },
+    { title: "Producto", key: "producto" },
+    { title: "Galones", key: "galones", align: "end" as const },
+    { title: "Tendencia", key: "tendencia" },
+    { title: "Nivel", key: "semaforo" },
+  ];
+  if (primingDetailRows.value.some((item) => "costo" in item)) {
+    headers.push({ title: "Costo", key: "costo", align: "end" as const });
+  }
+  return headers;
+});
+
+const primingChartOption = computed(() => {
+  if (!primingDetailRows.value.length) return null;
+  const base = chartBase(theme.global.current.value.dark);
+  return {
+    ...base,
+    tooltip: { ...base.tooltip, trigger: "item" as const },
+    xAxis: {
+      ...base.xAxis,
+      data: primingDetailRows.value.map((item) => item.orden),
+    },
+    yAxis: { ...base.yAxis, name: "Galones" },
+    series: [
+      {
+        name: "Galones",
+        type: "bar" as const,
+        barMaxWidth: 26,
+        itemStyle: {
+          color: seriesColor(0, theme.global.current.value.dark),
+          borderRadius: [4, 4, 0, 0],
+        },
+        label: {
+          show: true,
+          position: "top" as const,
+          color: base.textStyle.color,
+          fontSize: 11,
+        },
+        data: primingDetailRows.value.map((item) => Number(item.galones || 0)),
+      },
+    ],
+  };
+});
 
 function unwrap(payload: any): any {
   return payload?.data?.data ?? payload?.data ?? payload ?? null;
@@ -1376,127 +1617,29 @@ const selectedEquipmentOrders = computed(() => {
     );
   });
 });
-/**
- * Filtros del inventario del periodo.
- *
- * La busqueda libre sigue siendo la entrada rapida; estos campos existen para
- * acotar por los atributos del material (los mismos que distinguen un aceite de
- * un repuesto) sin tener que recordar como se llama exactamente el producto.
- */
-const inventoryFilters = reactive({
-  codigo: "",
-  nombre: "",
-  descripcion: "",
-  marca: null as string | null,
-  categoria: null as string | null,
-  unidad: null as string | null,
-  esAceite: "TODOS" as "TODOS" | "SI" | "NO",
-});
-
-const INVENTORY_OIL_OPTIONS = [
-  { title: "Todos los materiales", value: "TODOS" },
-  { title: "Solo aceites", value: "SI" },
-  { title: "Sin aceites", value: "NO" },
-];
-
-function inventoryAttribute(row: AnyRow, key: string) {
-  return String(row?.[key] ?? "").trim();
-}
-
-function buildInventoryOptions(key: string) {
-  return [
-    ...new Set(
-      inventoryRows.value
-        .map((row) => inventoryAttribute(row, key))
-        .filter(Boolean),
-    ),
-  ].sort((left, right) => left.localeCompare(right, "es"));
-}
-
-const inventoryBrandOptions = computed(() =>
-  buildInventoryOptions("producto_marca"),
-);
-const inventoryCategoryOptions = computed(() =>
-  buildInventoryOptions("producto_categoria"),
-);
-const inventoryUnitOptions = computed(() =>
-  buildInventoryOptions("producto_unidad_medida"),
+const generationEquipmentOptions = computed(() =>
+  generationEquipments.value
+    .map((equipment) => ({
+      value: String(equipment.id),
+      title: equipmentLabel(equipment),
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title, "es")),
 );
 
-const hasInventoryFilters = computed(
+const selectedInventoryEquipmentLabel = computed(
   () =>
-    Boolean(
-      inventoryFilters.codigo ||
-        inventoryFilters.nombre ||
-        inventoryFilters.descripcion ||
-        inventoryFilters.marca ||
-        inventoryFilters.categoria ||
-        inventoryFilters.unidad,
-    ) || inventoryFilters.esAceite !== "TODOS",
+    generationEquipmentOptions.value.find(
+      (item) => item.value === inventoryEquipmentId.value,
+    )?.title || "",
 );
 
-function clearInventoryFilters() {
-  inventoryFilters.codigo = "";
-  inventoryFilters.nombre = "";
-  inventoryFilters.descripcion = "";
-  inventoryFilters.marca = null;
-  inventoryFilters.categoria = null;
-  inventoryFilters.unidad = null;
-  inventoryFilters.esAceite = "TODOS";
+function isGenerationEquipmentType(type: AnyRow) {
+  const normalized = String(type?.nombre || type?.codigo || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  return normalized.includes("GENERACION") || normalized.includes("GENERADOR");
 }
-
-function includesText(value: unknown, needle: string) {
-  if (!needle) return true;
-  return String(value ?? "")
-    .toLocaleLowerCase("es")
-    .includes(needle.toLocaleLowerCase("es"));
-}
-
-function materialAttributesLabel(row: AnyRow) {
-  const parts = [
-    inventoryAttribute(row, "producto_marca"),
-    inventoryAttribute(row, "producto_categoria"),
-    inventoryAttribute(row, "producto_unidad_medida"),
-  ].filter(Boolean);
-  if (row?.producto_es_aceite) parts.push("Aceite");
-  return parts.join(" · ");
-}
-
-const visibleInventory = computed(() => {
-  const search = inventorySearch.value.trim().toLocaleLowerCase("es");
-  const codigo = String(inventoryFilters.codigo || "").trim();
-  const nombre = String(inventoryFilters.nombre || "").trim();
-  const descripcion = String(inventoryFilters.descripcion || "").trim();
-  return inventoryRows.value.filter((row) => {
-    if (search && !materialLabel(row).toLocaleLowerCase("es").includes(search))
-      return false;
-    if (!includesText(row?.producto_codigo, codigo)) return false;
-    if (!includesText(row?.producto_nombre, nombre)) return false;
-    if (!includesText(row?.producto_descripcion, descripcion)) return false;
-    if (
-      inventoryFilters.marca &&
-      inventoryAttribute(row, "producto_marca") !== inventoryFilters.marca
-    )
-      return false;
-    if (
-      inventoryFilters.categoria &&
-      inventoryAttribute(row, "producto_categoria") !==
-        inventoryFilters.categoria
-    )
-      return false;
-    if (
-      inventoryFilters.unidad &&
-      inventoryAttribute(row, "producto_unidad_medida") !==
-        inventoryFilters.unidad
-    )
-      return false;
-    if (inventoryFilters.esAceite === "SI" && !row?.producto_es_aceite)
-      return false;
-    if (inventoryFilters.esAceite === "NO" && row?.producto_es_aceite)
-      return false;
-    return true;
-  });
-});
 
 function equipmentLabel(item: AnyRow) {
   const equipmentId = String(
@@ -1582,6 +1725,25 @@ function formatNumber(value: unknown, digits = 2) {
     maximumFractionDigits: digits,
   }).format(Number.isFinite(numeric) ? numeric : 0);
 }
+function formatShortDate(value: unknown) {
+  const date = new Date(String(value || ""));
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("es-EC", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+function primingTrendIcon(value: string) {
+  if (value === "AL_ALZA") return "mdi-trending-up";
+  if (value === "A_LA_BAJA") return "mdi-trending-down";
+  return "mdi-trending-neutral";
+}
+function primingTrendLabel(value: string) {
+  if (value === "AL_ALZA") return "Al alza";
+  if (value === "A_LA_BAJA") return "A la baja";
+  return "Estable";
+}
 /**
  * Si esta sesion recibe importes de materiales.
  *
@@ -1662,19 +1824,110 @@ async function loadEquipmentCatalog() {
   );
   equipmentCatalog.value = Array.isArray(rows) ? rows : [];
 }
-async function loadInventoryReport() {
+async function loadGenerationEquipments() {
+  try {
+    const types = await listAllPages(
+      "/kpi_maintenance/tipo-equipo",
+      {},
+      { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+    );
+    const typeIds = (Array.isArray(types) ? types : [])
+      .filter(isGenerationEquipmentType)
+      .map((type) => String(type?.id || "").trim())
+      .filter(Boolean);
+    const pages = await Promise.all(
+      typeIds.map((equipmentTypeId) =>
+        listAllPages(
+          "/kpi_maintenance/equipos",
+          { equipo_tipo_id: equipmentTypeId },
+          { cacheTtlMs: DEFAULT_CONTEXT_CACHE_TTL_MS },
+        ),
+      ),
+    );
+    const byId = new Map<string, AnyRow>();
+    for (const equipment of pages.flat()) {
+      const id = String(equipment?.id || "").trim();
+      if (id) byId.set(id, equipment);
+    }
+    generationEquipments.value = [...byId.values()];
+  } catch {
+    generationEquipments.value = [];
+  }
+}
+async function loadInventoryReport(options?: {
+  page?: number;
+  itemsPerPage?: number;
+}) {
+  if (invalidDateRange.value) return;
+  if (options?.page) inventoryPage.value = options.page;
+  if (options?.itemsPerPage) inventoryItemsPerPage.value = options.itemsPerPage;
   inventoryLoading.value = true;
   try {
-    const { data } = await api.get(
-      "/kpi_maintenance/inteligencia/inventario-mensual",
-      { params: { from: startDate.value, to: endDate.value } },
-    );
+    const { data } = await api.get("/kpi_inventory/kardex/resumen-material", {
+      params: {
+        desde: startDate.value,
+        hasta: endDate.value,
+        search: inventorySearch.value.trim() || undefined,
+        equipment_id: inventoryEquipmentId.value || undefined,
+        page: inventoryPage.value,
+        limit: inventoryItemsPerPage.value,
+      },
+    });
     const payload = unwrap(data);
-    inventoryRows.value = Array.isArray(payload?.inventory)
-      ? payload.inventory
-      : [];
+    inventoryRows.value = Array.isArray(payload?.groups) ? payload.groups : [];
+    inventoryTotals.value = payload?.totals || {};
+    inventoryTotalItems.value = Number(payload?.pagination?.total || 0);
   } finally {
     inventoryLoading.value = false;
+  }
+}
+let inventoryReloadTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleInventoryReload() {
+  if (inventoryReloadTimer) clearTimeout(inventoryReloadTimer);
+  inventoryPage.value = 1;
+  inventoryReloadTimer = setTimeout(() => void loadInventoryReport(), 350);
+}
+function applyInventoryEquipmentFilter() {
+  inventoryPage.value = 1;
+  void loadInventoryReport();
+}
+async function loadPrimingReport() {
+  if (invalidDateRange.value) return;
+  primingLoading.value = true;
+  try {
+    const { data } = await api.get(
+      "/kpi_maintenance/dashboard-administracion/cebado",
+      { params: { desde: startDate.value, hasta: endDate.value } },
+    );
+    const payload = unwrap(data);
+    primingRows.value = Array.isArray(payload?.cebado) ? payload.cebado : [];
+  } finally {
+    primingLoading.value = false;
+  }
+}
+async function openPrimingDetail(equipment: AnyRow) {
+  primingDetailEquipment.value = equipment;
+  primingDetailRows.value = [];
+  primingDetailDialog.value = true;
+  primingDetailLoading.value = true;
+  try {
+    const { data } = await api.get(
+      "/kpi_maintenance/dashboard-administracion/detalle",
+      {
+        params: {
+          bloque: "cebado",
+          equipo_id: equipment?.equipo_id,
+          desde: startDate.value,
+          hasta: endDate.value,
+        },
+      },
+    );
+    const payload = unwrap(data);
+    primingDetailRows.value = Array.isArray(payload?.filas)
+      ? payload.filas
+      : [];
+  } finally {
+    primingDetailLoading.value = false;
   }
 }
 async function loadOilReport() {
@@ -1701,9 +1954,11 @@ async function loadReport() {
   try {
     await Promise.all([
       loadEquipmentCatalog(),
+      loadGenerationEquipments(),
       loadWorkOrders(),
       loadInventoryReport(),
       loadOilReport(),
+      loadPrimingReport(),
     ]);
   } catch (requestError: any) {
     const message = requestError?.response?.data?.message;
@@ -1909,7 +2164,8 @@ const SYSTEM_SECTION_DEFS = [
   {
     key: "horas_trabajadas",
     title: "Horas trabajadas",
-    subtitle: "Horas registradas por OT, responsable o agrupacion seleccionada.",
+    subtitle:
+      "Horas registradas por OT, responsable o agrupacion seleccionada.",
     icon: "mdi-timer-outline",
   },
   {
@@ -1998,19 +2254,39 @@ const SYSTEM_OT_COLUMNS = [
 
 const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
   horas_trabajadas: {
-    OT: [...SYSTEM_OT_COLUMNS, "total_horas", "total_responsables", "responsables"],
+    OT: [
+      ...SYSTEM_OT_COLUMNS,
+      "total_horas",
+      "total_responsables",
+      "responsables",
+    ],
   },
   costo_mantenimiento: {
     OT: [...SYSTEM_OT_COLUMNS, "total_costo", "total_cantidad", "materiales"],
   },
   responsables_ot: {
-    OT: [...SYSTEM_OT_COLUMNS, "total_horas", "total_responsables", "responsables"],
+    OT: [
+      ...SYSTEM_OT_COLUMNS,
+      "total_horas",
+      "total_responsables",
+      "responsables",
+    ],
   },
   repuestos_cambiados: {
-    OT: [...SYSTEM_OT_COLUMNS, "material_label", "total_cantidad", "total_costo"],
+    OT: [
+      ...SYSTEM_OT_COLUMNS,
+      "material_label",
+      "total_cantidad",
+      "total_costo",
+    ],
   },
   inventario_consumido: {
-    OT: [...SYSTEM_OT_COLUMNS, "material_label", "total_cantidad", "total_costo"],
+    OT: [
+      ...SYSTEM_OT_COLUMNS,
+      "material_label",
+      "total_cantidad",
+      "total_costo",
+    ],
   },
 };
 
@@ -2089,7 +2365,9 @@ function buildUserDisplayName(user: AnyRow | null | undefined) {
   ).trim();
   if (label) return label;
   const fallbackId = String(user?.id || "").trim();
-  return fallbackId && !isUuidLike(fallbackId) ? fallbackId : "Usuario asignado";
+  return fallbackId && !isUuidLike(fallbackId)
+    ? fallbackId
+    : "Usuario asignado";
 }
 
 function resolveResponsibleLabel(value: unknown, userId?: unknown) {
@@ -2185,7 +2463,9 @@ function systemRawRow(item: AnyRow): AnyRow {
 
 function rowResponsables(item: AnyRow) {
   const raw = systemRawRow(item);
-  const meta = Array.isArray(raw?.responsables_meta) ? raw.responsables_meta : [];
+  const meta = Array.isArray(raw?.responsables_meta)
+    ? raw.responsables_meta
+    : [];
   if (meta.length) {
     return meta.map((entry: AnyRow) => ({
       label: resolveResponsibleLabel(
@@ -2454,12 +2734,7 @@ async function loadMaintenanceCostReport() {
  * --------------------------------------------------------------------- */
 
 type ModalName =
-  | "orders"
-  | "equipment"
-  | "detail"
-  | "responsables"
-  | "lista"
-  | "ordenes";
+  "orders" | "equipment" | "detail" | "responsables" | "lista" | "ordenes";
 
 /**
  * Rastro de modales visitadas para poder volver atras.
@@ -2731,7 +3006,10 @@ async function downloadOrderReport() {
   }
 }
 
-onBeforeUnmount(releasePdfUrl);
+onBeforeUnmount(() => {
+  releasePdfUrl();
+  if (inventoryReloadTimer) clearTimeout(inventoryReloadTimer);
+});
 
 onMounted(() => {
   void loadReport();
@@ -2747,6 +3025,112 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.inventory-searches {
+  display: grid;
+  width: min(720px, 100%);
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.inventory-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin-top: 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
+  border-radius: 16px;
+  background: rgba(var(--v-theme-on-surface), 0.11);
+}
+
+.inventory-totals article {
+  display: grid;
+  gap: 5px;
+  min-height: 104px;
+  align-content: center;
+  padding: 16px 20px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.inventory-totals span,
+.inventory-totals small {
+  color: rgba(var(--v-theme-on-surface), 0.68);
+}
+
+.inventory-totals strong {
+  font-size: 1.28rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inventory-totals__grand {
+  background: rgba(var(--manager-blue), 0.07) !important;
+}
+
+.priming-legend,
+.priming-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.priming-legend {
+  margin-bottom: 16px;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  font-size: 0.86rem;
+}
+
+.priming-legend span,
+.priming-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.priming-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.priming-dot--green,
+.priming-chip--verde,
+.priming-chip--green {
+  --priming-color: 21, 128, 61;
+}
+
+.priming-dot--amber,
+.priming-chip--amarillo,
+.priming-chip--amber {
+  --priming-color: 180, 83, 9;
+}
+
+.priming-dot--red,
+.priming-chip--rojo,
+.priming-chip--red {
+  --priming-color: 185, 28, 28;
+}
+
+.priming-dot {
+  background: rgb(var(--priming-color));
+}
+
+.priming-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--priming-color), 0.35);
+  border-radius: 999px;
+  color: rgb(var(--priming-color));
+  background: rgba(var(--priming-color), 0.1);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.priming-dialog-header {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .system-section-head {
@@ -2803,7 +3187,6 @@ onMounted(() => {
 .order-link:focus-visible {
   text-decoration-thickness: 2px;
 }
-
 
 .pdf-preview__body {
   padding: 0;
@@ -3442,6 +3825,8 @@ onMounted(() => {
   .status-grid,
   .metric-grid,
   .equipment-grid,
+  .inventory-searches,
+  .inventory-totals,
   .detail-summary,
   .oil-detail,
   .audit-grid,
