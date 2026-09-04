@@ -21,6 +21,7 @@ export function isSuperAdministrator(user: AuthUser): boolean {
     "SUPERADMINISTRADOR",
     "SUPER_ADMINISTRADOR",
     "SUPER ADMIN",
+    "SUPER_ADMIN",
   ].includes(roleName);
 }
 
