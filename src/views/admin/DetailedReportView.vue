@@ -739,7 +739,7 @@
             <EChart
               v-if="primingChartOption"
               :option="primingChartOption"
-              height="280px"
+              height="clamp(150px, 24vh, 280px)"
             />
             <v-data-table
               :headers="primingDetailHeaders"
@@ -778,6 +778,23 @@
               <template #item.costo="{ item }">{{
                 formatCurrency(item.costo)
               }}</template>
+              <template #body.append>
+                <tr v-if="primingDetailRows.length" class="totals-row">
+                  <td
+                    v-for="(header, index) in primingDetailHeaders"
+                    :key="`total-${header.key}`"
+                    :class="header.align === 'end' ? 'text-end' : ''"
+                  >
+                    <template v-if="index === 0">Total del equipo</template>
+                    <template v-else-if="header.key === 'galones'"
+                      >{{ formatNumber(primingDetailTotals.galones) }} gal</template
+                    >
+                    <template v-else-if="header.key === 'costo'">{{
+                      formatCurrency(primingDetailTotals.costo)
+                    }}</template>
+                  </td>
+                </tr>
+              </template>
             </v-data-table>
           </template>
         </v-card-text>
@@ -1465,6 +1482,22 @@ const primingDetailHeaders = computed(() => {
   }
   return headers;
 });
+
+/**
+ * Suma de lo que muestra la modal, no solo de la pagina visible de la tabla.
+ * La pregunta que se hace quien la abre es cuanto aceite lleva ese equipo en el
+ * periodo, y esa cifra no puede depender de en que pagina de la tabla este.
+ */
+const primingDetailTotals = computed(() => ({
+  galones: primingDetailRows.value.reduce(
+    (acc, row) => acc + Number(row?.galones || 0),
+    0,
+  ),
+  costo: primingDetailRows.value.reduce(
+    (acc, row) => acc + Number(row?.costo || 0),
+    0,
+  ),
+}));
 
 const primingChartOption = computed(() => {
   if (!primingDetailRows.value.length) return null;
@@ -3594,7 +3627,13 @@ onMounted(() => {
   color: rgba(var(--v-theme-on-surface), 0.65);
 }
 .list-dialog,
+/* El cuerpo del detalle es quien desplaza, no la pagina.
+   Con la tarjeta a `max-height` pero sin columna flexible, al reducir el alto
+   util (zoom al 100% o mas, o una pantalla mas baja) el contenido se recortaba
+   sin barra: se veia la cabecera de la tabla y las filas quedaban fuera. */
 .detail-dialog {
+  display: flex;
+  flex-direction: column;
   max-height: 90vh;
 }
 /* Volver a la izquierda, titulo al centro y cerrar a la derecha; la accion
@@ -3635,11 +3674,26 @@ onMounted(() => {
   color: rgba(var(--v-theme-on-surface), 0.68);
   font-size: 0.92rem;
 }
+/* Un grid sin `grid-template-columns` se dimensiona al contenido mas ancho:
+   una tabla larga estiraba la modal entera. La columna explicita y el
+   `min-width: 0` de los hijos la mantienen dentro de su caja. */
 .list-dialog__body,
 .detail-dialog__body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   padding: 24px 26px 30px;
+}
+
+.list-dialog__body > *,
+.detail-dialog__body > * {
+  min-width: 0;
+}
+
+.detail-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .orders-list,
 .orders-loading {

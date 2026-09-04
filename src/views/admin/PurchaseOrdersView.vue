@@ -87,16 +87,48 @@
       </template>
 
       <template #item.actions="{ item }">
-        <div class="responsive-actions">
-          <v-btn v-if="canViewCosts" icon="mdi-file-pdf-box" variant="text" color="error" :disabled="!canDownloadPdf"
-            @click="downloadPdf(item)" />
-          <v-btn v-if="canEdit" icon="mdi-pencil" variant="text"
-            :disabled="item.tiene_transferencia || isAnnulled(item)" @click="openEdit(item)" />
-          <v-btn v-if="canAnnulDocuments && !isAnnulled(item)" size="small" prepend-icon="mdi-cancel" variant="tonal"
-            color="error" :disabled="item.tiene_transferencia" @click="openDelete(item)">
-            Anular
-          </v-btn>
-        </div>
+        <v-menu location="bottom end">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              size="small"
+              variant="tonal"
+              color="primary"
+              append-icon="mdi-chevron-down"
+              :aria-label="`Acciones de la orden de compra ${item.codigo}`"
+            >
+              Acciones
+            </v-btn>
+          </template>
+
+          <v-list density="compact" min-width="240">
+            <v-list-item
+              v-if="canPreviewOrderPdf"
+              prepend-icon="mdi-file-pdf-box"
+              title="Ver / descargar PDF"
+              @click="downloadPdf(item)"
+            />
+            <v-list-item
+              v-if="canEditOrder(item)"
+              prepend-icon="mdi-pencil"
+              title="Editar"
+              @click="openEdit(item)"
+            />
+            <v-list-item
+              v-if="canAnnulOrder(item)"
+              prepend-icon="mdi-cancel"
+              title="Anular"
+              base-color="error"
+              @click="openDelete(item)"
+            />
+            <v-list-item
+              v-if="!hasOrderActions(item)"
+              prepend-icon="mdi-information-outline"
+              title="Sin acciones disponibles"
+              disabled
+            />
+          </v-list>
+        </v-menu>
       </template>
     </v-data-table-server>
   </v-card>
@@ -369,6 +401,30 @@ const canAnnulDocuments = computed(() => canManageAdministrativeOperations(auth.
 const canDownloadPdf = computed(() =>
   canViewCosts.value && hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"),
 );
+
+/**
+ * Que puede hacer de verdad esta sesion sobre cada orden.
+ *
+ * El menu de acciones lista solo lo ejecutable: una opcion deshabilitada ocupa
+ * el mismo sitio que una util y obliga a leerla para descartarla. Las reglas de
+ * negocio siguen siendo las mismas de antes: una orden ya transferida no se
+ * edita ni se anula, y una anulada no se toca.
+ */
+const canPreviewOrderPdf = computed(() => canDownloadPdf.value);
+
+function canEditOrder(item: PurchaseOrderRow) {
+  return canEdit.value && !item?.tiene_transferencia && !isAnnulled(item);
+}
+
+function canAnnulOrder(item: PurchaseOrderRow) {
+  return (
+    canAnnulDocuments.value && !isAnnulled(item) && !item?.tiene_transferencia
+  );
+}
+
+function hasOrderActions(item: PurchaseOrderRow) {
+  return canPreviewOrderPdf.value || canEditOrder(item) || canAnnulOrder(item);
+}
 
 const loading = ref(false);
 const saving = ref(false);
@@ -1100,5 +1156,20 @@ watch(
 
 .purchase-summary :deep(.v-chip__content) {
   font-weight: 600;
+}
+
+/* El codigo identifica la orden durante el desplazamiento horizontal.
+   Mismo patron que la tabla de transferencias de bodega. */
+.enterprise-table :deep(th:first-child),
+.enterprise-table :deep(td:first-child) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 1px 0 rgba(var(--v-theme-on-surface), 0.1);
+}
+
+.enterprise-table :deep(th:first-child) {
+  z-index: 3;
 }
 </style>
