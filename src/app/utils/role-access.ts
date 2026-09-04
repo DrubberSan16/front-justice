@@ -35,7 +35,16 @@ export function canViewAnnulledRecords(user: AuthUser): boolean {
 }
 
 export function isGeneralManager(user: AuthUser): boolean {
-  return getRoleName(user) === "GERENTE GENERAL";
+  return ["GERENTE GENERAL", "GERENCIA GENERAL"].includes(getRoleName(user));
+}
+
+/** Los importes de materiales solo pertenecen a perfiles administrativos. */
+export function canViewMaterialCosts(user: AuthUser): boolean {
+  return (
+    isGeneralManager(user) ||
+    isAdministrator(user) ||
+    isSuperAdministrator(user)
+  );
 }
 
 export function canManageAdministrativeOperations(user: AuthUser): boolean {

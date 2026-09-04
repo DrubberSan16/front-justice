@@ -432,7 +432,8 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
-import { isSuperAdministrator } from "@/app/utils/role-access";
+import { canViewMaterialCosts, isSuperAdministrator } from "@/app/utils/role-access";
+import { isMaterialCostKey } from "@/app/utils/material-cost-visibility";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
@@ -461,6 +462,7 @@ const canCreate = computed(() => moduleConfig.value?.allowCreate !== false && me
 const canEdit = computed(() => moduleConfig.value?.allowEdit !== false && menuPermissions.value.isEdited);
 const canDelete = computed(() => moduleConfig.value?.allowDelete !== false && menuPermissions.value.permitDeleted);
 const canPurgeModule = computed(() => Boolean(moduleConfig.value) && isSuperAdministrator(auth.user));
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const isStockBodegaModule = computed(() => moduleConfig.value?.key === "stock-bodega");
 const isWarehouseModule = computed(() => moduleConfig.value?.key === "bodegas");
 const isThirdPartyModule = computed(() => moduleConfig.value?.key === "terceros");
@@ -672,6 +674,7 @@ function isStockMaterialConditionField(field: MaintenanceField) {
 }
 
 function shouldShowFormField(field: MaintenanceField) {
+  if (!canViewCosts.value && isMaterialCostKey(field.key)) return false;
   if (!isStockBodegaModule.value) return true;
   if (field.key === "stock_usado") return Boolean(form.es_usado);
   return true;
@@ -1049,11 +1052,12 @@ const headers = computed(() => {
     "stock_actual",
     "es_usado",
   ];
-  const tableFields = isStockBodegaModule.value
+  const tableFields = (isStockBodegaModule.value
     ? stockTableFieldKeys
         .map((key) => cfg.fields.find((field) => field.key === key))
         .filter((field): field is MaintenanceField => Boolean(field))
-    : cfg.fields.slice(0, 6);
+    : cfg.fields.slice(0, 6)
+  ).filter((field) => canViewCosts.value || !isMaterialCostKey(field.key));
   const base = tableFields.map((field) => ({
     title: field.label,
     key: field.key,
@@ -1293,10 +1297,14 @@ function buildProductsReport(sourceRows: any[]): ReportDefinition {
     es_aceite: row?.es_aceite ? "Sí" : "No",
     sku: row?.sku || "",
     codigo_barras: row?.codigo_barras || "",
-    ultimo_costo: Number(row?.ultimo_costo || 0),
-    costo_promedio: Number(row?.costo_promedio || 0),
-    precio_venta: Number(row?.precio_venta || 0),
-    porcentaje_utilidad: Number(row?.porcentaje_utilidad || 0),
+    ...(canViewCosts.value
+      ? {
+          ultimo_costo: Number(row?.ultimo_costo || 0),
+          costo_promedio: Number(row?.costo_promedio || 0),
+          precio_venta: Number(row?.precio_venta || 0),
+          porcentaje_utilidad: Number(row?.porcentaje_utilidad || 0),
+        }
+      : {}),
     estado: row?.status || "",
   }));
 
@@ -1333,10 +1341,14 @@ function buildProductsReport(sourceRows: any[]): ReportDefinition {
           { key: "es_aceite", header: "Es aceite", width: 12 },
           { key: "sku", header: "SKU", width: 16 },
           { key: "codigo_barras", header: "Código de barras", width: 18 },
-          { key: "ultimo_costo", header: "Último costo", format: "currency", width: 14 },
-          { key: "costo_promedio", header: "Costo promedio", format: "currency", width: 15 },
-          { key: "precio_venta", header: "Precio venta", format: "currency", width: 14 },
-          { key: "porcentaje_utilidad", header: "% utilidad", format: "number", width: 12 },
+          ...(canViewCosts.value
+            ? [
+                { key: "ultimo_costo", header: "Último costo", format: "currency" as const, width: 14 },
+                { key: "costo_promedio", header: "Costo promedio", format: "currency" as const, width: 15 },
+                { key: "precio_venta", header: "Precio venta", format: "currency" as const, width: 14 },
+                { key: "porcentaje_utilidad", header: "% utilidad", format: "number" as const, width: 12 },
+              ]
+            : []),
           { key: "estado", header: "Estado", width: 12 },
         ],
       },
@@ -1371,6 +1383,7 @@ function sanitizePayload() {
 
   for (const field of cfg.fields) {
     if (field.sendInPayload === false) continue;
+    if (!canViewCosts.value && isMaterialCostKey(field.key)) continue;
     let val = form[field.key];
     if (field.type === "number") {
       val = val === "" || val === null || val === undefined ? "0" : String(val);
@@ -1411,6 +1424,7 @@ function validateForm() {
 
   for (const field of cfg.fields) {
     if (field.sendInPayload === false) continue;
+    if (!canViewCosts.value && isMaterialCostKey(field.key)) continue;
     if (!field.required) continue;
     const val = form[field.key];
     if (field.type === "boolean") continue;

@@ -371,7 +371,7 @@
             </v-row>
 
             <v-row dense class="mb-2">
-              <v-col cols="12" lg="6">
+              <v-col v-if="canViewCosts" cols="12" lg="6">
                 <LubricantTrendChart
                   title="Costo por rango"
                   subtitle="Evolución del costo del aceite según el periodo filtrado"
@@ -453,7 +453,7 @@
                         <th>OT</th>
                         <th>Tipo</th>
                         <th>{{ oilQuantityUnitLabel }}</th>
-                        <th>Costo</th>
+                        <th v-if="canViewCosts">Costo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -475,10 +475,10 @@
                         </td>
                         <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                         <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
-                        <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
+                        <td v-if="canViewCosts">${{ formatDetailedNumber(item.subtotal, 2) }}</td>
                       </tr>
                       <tr v-if="!oilPeakDayDetailRows.length">
-                        <td colspan="5" class="text-center text-medium-emphasis py-4">
+                        <td :colspan="canViewCosts ? 5 : 4" class="text-center text-medium-emphasis py-4">
                           No existe un día pico identificado para este aceite.
                         </td>
                       </tr>
@@ -1041,7 +1041,7 @@
               <v-chip label color="secondary" variant="tonal">
                 {{ oilKpi?.totals?.total_equipos ?? 0 }} equipos
               </v-chip>
-              <v-chip label color="warning" variant="tonal">
+              <v-chip v-if="canViewCosts" label color="warning" variant="tonal">
                 ${{ formatDetailedNumber(oilKpi?.totals?.total_costo, 2) }}
               </v-chip>
               <v-chip v-if="oilKpi?.filters?.solo_cebado" label color="deep-orange" variant="tonal">
@@ -1056,7 +1056,7 @@
               <div class="text-h6 font-weight-bold">{{ oilTotalMovements }}</div>
               <div class="text-caption text-medium-emphasis">Registros de consumo consolidados</div>
             </div>
-            <div class="indicator-tile">
+            <div v-if="canViewCosts" class="indicator-tile">
               <div class="text-caption text-medium-emphasis">Costo promedio por {{ oilQuantityUnitLabel }}</div>
               <div class="text-h6 font-weight-bold">${{ formatDetailedNumber(oilAverageCostPerUnit, 2) }}</div>
               <div class="text-caption text-medium-emphasis">Costo unitario promedio del rango</div>
@@ -1114,7 +1114,7 @@
                 empty-text="No existen estados de OT asociados al aceite."
               />
             </v-col>
-            <v-col cols="12" lg="6">
+            <v-col v-if="canViewCosts" cols="12" lg="6">
               <LubricantTrendChart
                 title="Costo por rango"
                 subtitle="Comportamiento del costo del aceite según el periodo filtrado"
@@ -1144,7 +1144,7 @@
                       <th>Tipo mtto</th>
                       <th>Equipo</th>
                       <th>{{ oilQuantityUnitLabel }}</th>
-                      <th>Costo</th>
+                      <th v-if="canViewCosts">Costo</th>
                       <th>Mov.</th>
                       <th>Estado</th>
                       <th>Bodega</th>
@@ -1160,13 +1160,13 @@
                       <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                       <td>{{ item.equipment_label }}</td>
                       <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
-                      <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
+                      <td v-if="canViewCosts">${{ formatDetailedNumber(item.subtotal, 2) }}</td>
                       <td>{{ item.movimientos ?? 0 }}</td>
                       <td>{{ item.work_order_status || "Sin estado" }}</td>
                       <td>{{ item.bodega_label }}</td>
                     </tr>
                     <tr v-if="!oilWorkOrderRows.length">
-                      <td colspan="9" class="text-center text-medium-emphasis py-4">
+                      <td :colspan="canViewCosts ? 9 : 8" class="text-center text-medium-emphasis py-4">
                         No existen órdenes de trabajo con consumo de este aceite en el rango consultado.
                       </td>
                     </tr>
@@ -1185,7 +1185,7 @@
                       <th>OT</th>
                       <th>Tipo</th>
                       <th>{{ oilQuantityUnitLabel }}</th>
-                      <th>Costo</th>
+                      <th v-if="canViewCosts">Costo</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1197,10 +1197,10 @@
                       </td>
                       <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
                       <td class="font-weight-medium">{{ formatDetailedNumber(item.cantidad) }}</td>
-                      <td>${{ formatDetailedNumber(item.subtotal, 2) }}</td>
+                      <td v-if="canViewCosts">${{ formatDetailedNumber(item.subtotal, 2) }}</td>
                     </tr>
                     <tr v-if="!oilPeakDayDetailRows.length">
-                      <td colspan="5" class="text-center text-medium-emphasis py-4">
+                      <td :colspan="canViewCosts ? 5 : 4" class="text-center text-medium-emphasis py-4">
                         No existe un día pico identificado para este aceite.
                       </td>
                     </tr>
@@ -1216,7 +1216,7 @@
                       <th>Bodega</th>
                       <th>OT</th>
                       <th>{{ oilQuantityUnitLabel }}</th>
-                      <th>Costo</th>
+                      <th v-if="canViewCosts">Costo</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1224,10 +1224,10 @@
                       <td>{{ item.bodega_label }}</td>
                       <td>{{ item.total_ordenes }}</td>
                       <td class="font-weight-medium">{{ formatDetailedNumber(item.total_cantidad) }}</td>
-                      <td>${{ formatDetailedNumber(item.total_costo, 2) }}</td>
+                      <td v-if="canViewCosts">${{ formatDetailedNumber(item.total_costo, 2) }}</td>
                     </tr>
                     <tr v-if="!oilWarehouseRows.length">
-                      <td colspan="4" class="text-center text-medium-emphasis py-4">
+                      <td :colspan="canViewCosts ? 4 : 3" class="text-center text-medium-emphasis py-4">
                         Sin consumo agrupado por bodega.
                       </td>
                     </tr>
@@ -1303,6 +1303,7 @@ import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import ReadonlyDetailDialog from "@/components/ui/ReadonlyDetailDialog.vue";
 import { lubricantCompartments } from "@/app/config/lubricant-analysis";
 import { hasReportAccess } from "@/app/config/report-access";
+import { canViewMaterialCosts } from "@/app/utils/role-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import {
@@ -1398,6 +1399,7 @@ const perms = computed(() =>
   ]),
 );
 const canRead = computed(() => perms.value.isReaded);
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const canAccessIntelligenceReports = computed(() =>
   hasReportAccess(
     auth.user?.effectiveReportes ?? auth.user?.reportes,
@@ -2107,16 +2109,16 @@ async function exportOilReport(format: "excel" | "pdf") {
             value: Number(item.cantidad || 0),
           })),
       },
-      {
+      ...(canViewCosts.value ? [{
         title: "Costo por rango",
         subtitle: "Evolución del costo del aceite consumido",
-        type: "line",
+        type: "line" as const,
         unit: "USD",
         points: oilCostTrendChartPoints.value.slice(-12).map((point, index) => ({
           label: chartPointLabel(point, `P${index + 1}`),
           value: Number(point.valor || 0),
         })),
-      },
+      }] : []),
       {
         title: "Picos diarios de consumo",
         subtitle: "Consumo agregado por día",
@@ -2161,6 +2163,7 @@ async function exportOilReport(format: "excel" | "pdf") {
       statusRows: oilStatusRows.value,
       unitLabel: oilQuantityUnitLabel.value,
       charts: reportCharts,
+      showCosts: canViewCosts.value,
     });
     if (format === "excel") {
       await downloadReportExcel(report);

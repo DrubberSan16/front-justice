@@ -237,7 +237,7 @@
         </v-card>
       </v-col>
 
-      <v-col v-if="canCreate" cols="12">
+      <v-col v-if="canCreate && canViewCosts" cols="12">
         <v-card rounded="xl" class="pa-4 enterprise-surface kardex-upload-card">
           <div class="d-flex align-start justify-space-between flex-wrap mb-4" style="gap:16px">
             <div>
@@ -405,8 +405,8 @@
                             <th>Condición</th>
                             <th>Lote / serie</th>
                             <th class="text-right">Cantidad</th>
-                            <th class="text-right">Costo unitario</th>
-                            <th class="text-right">Subtotal</th>
+                            <th v-if="canViewCosts" class="text-right">Costo unitario</th>
+                            <th v-if="canViewCosts" class="text-right">Subtotal</th>
                             <th>Observación</th>
                           </tr>
                         </thead>
@@ -420,12 +420,12 @@
                             <td>{{ detail.condicion_material || '-' }}</td>
                             <td>{{ [detail.lote, detail.serie].filter(Boolean).join(' / ') || '-' }}</td>
                             <td class="text-right">{{ formatNumberForDisplay(detail.cantidad || 0) }}</td>
-                            <td class="text-right">{{ formatDocumentCurrency(detail.costo_unitario) }}</td>
-                            <td class="text-right font-weight-medium">{{ formatDocumentCurrency(detail.subtotal_costo) }}</td>
+                            <td v-if="canViewCosts" class="text-right">{{ formatDocumentCurrency(detail.costo_unitario) }}</td>
+                            <td v-if="canViewCosts" class="text-right font-weight-medium">{{ formatDocumentCurrency(detail.subtotal_costo) }}</td>
                             <td>{{ detail.observacion || '-' }}</td>
                           </tr>
                           <tr v-if="!movementDocumentDialog.document.detalles?.length">
-                            <td colspan="8" class="text-center text-medium-emphasis">El documento no tiene materiales registrados.</td>
+                            <td :colspan="canViewCosts ? 8 : 6" class="text-center text-medium-emphasis">El documento no tiene materiales registrados.</td>
                           </tr>
                         </tbody>
                       </table>
@@ -669,7 +669,7 @@ import {
   resolveEquipmentBrand,
   resolveEquipmentModel,
 } from "@/app/utils/equipment-display";
-import { canViewAnnulledRecords } from "@/app/utils/role-access";
+import { canViewAnnulledRecords, canViewMaterialCosts } from "@/app/utils/role-access";
 import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
@@ -756,6 +756,7 @@ const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
 const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const isAnnulledMovementDocument = computed(
   () => movementDocumentDialog.document?.anulado === true,
 );
@@ -1292,7 +1293,7 @@ function buildMovementDocumentReport(document: any): ReportDefinition {
       { label: "Referencia", value: document?.referencia || "-" },
       { label: "Ítems", value: document?.total_items || details.length },
       { label: "Cantidad", value: Number(document?.total_cantidad || 0) },
-      { label: `Costo total (${currency})`, value: Number(document?.total_costos || 0) },
+      ...(canViewCosts.value ? [{ label: `Costo total (${currency})`, value: Number(document?.total_costos || 0) }] : []),
       { label: "Responsable", value: document?.created_by || "SYSTEM" },
     ],
     sheets: [
@@ -1310,8 +1311,10 @@ function buildMovementDocumentReport(document: any): ReportDefinition {
           serie: detail.serie || "",
           vencimiento: detail.fecha_vencimiento || "",
           cantidad: Number(detail.cantidad || 0),
-          costo_unitario: Number(detail.costo_unitario || 0),
-          subtotal: Number(detail.subtotal_costo || 0),
+          ...(canViewCosts.value ? {
+            costo_unitario: Number(detail.costo_unitario || 0),
+            subtotal: Number(detail.subtotal_costo || 0),
+          } : {}),
           observacion: detail.observacion || "",
         })),
         columns: [
@@ -1324,8 +1327,10 @@ function buildMovementDocumentReport(document: any): ReportDefinition {
           { key: "serie", header: "Serie", width: 14 },
           { key: "vencimiento", header: "Vencimiento", width: 13, format: "date" },
           { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
-          { key: "costo_unitario", header: `Costo unit. (${currency})`, width: 14, format: "currency" },
-          { key: "subtotal", header: `Subtotal (${currency})`, width: 14, format: "currency" },
+          ...(canViewCosts.value ? [
+            { key: "costo_unitario", header: `Costo unit. (${currency})`, width: 14, format: "currency" as const },
+            { key: "subtotal", header: `Subtotal (${currency})`, width: 14, format: "currency" as const },
+          ] : []),
           { key: "observacion", header: "Observación", width: 24 },
         ],
       },
@@ -1779,8 +1784,8 @@ function stopImportPolling() { if (importPollHandle.value != null) { window.clea
 async function fetchImportJobStatus(jobId: string) { const { data } = await api.get(`/kpi_inventory/kardex/import/${jobId}`); importJob.value = data?.data ?? data; if (!importJob.value) { persistImportJobId(null); stopImportPolling(); return; } const status = String(importJob.value.status || "").toUpperCase(); if (status === "COMPLETED") { stopImportPolling(); persistImportJobId(null); lastBulkSummary.value = importJob.value.summary ?? null; importJob.value = null; notifyImportLifecycle({ title: "Carga de inventario finalizada", message: "El archivo de inventario se proceso correctamente.", variant: "success", tag: "inventory-import-completed" }); await Promise.allSettled([loadKardex(), refreshCatalogsIfLoaded()]); } else if (status === "FAILED") { stopImportPolling(); persistImportJobId(null); const failureMessage = importJob.value.error_message || "La carga de inventario fallo."; importJob.value = null; notifyImportLifecycle({ title: "Carga de inventario fallida", message: failureMessage, variant: "error", tag: "inventory-import-failed" }); } }
 function startImportPolling(jobId: string) { stopImportPolling(); importPollHandle.value = window.setInterval(() => { void fetchImportJobStatus(jobId).catch(() => undefined); }, 2500); }
 async function restoreImportJob() { const jobId = getPersistedImportJobId(); if (!jobId) return; try { await fetchImportJobStatus(jobId); if (importJob.value) startImportPolling(jobId); } catch { persistImportJobId(null); importJob.value = null; } }
-async function processXlsx() { if (!canCreate.value) return ui.error("No tienes permisos para procesar cargas masivas."); const file = getSelectedImportFile(); if (!file) return ui.error("Debes seleccionar un archivo CSV o XLSX."); uploading.value = true; try { const formData = new FormData(); formData.append("file", file); formData.append("requested_by", getUserName()); const { data } = await api.post("/kpi_inventory/kardex/import/upload", formData, { headers: { "Content-Type": "multipart/form-data" } }); const job = data?.data ?? data; importJob.value = job; lastBulkSummary.value = null; xlsxFile.value = null; if (job?.id) { persistImportJobId(job.id); notifyImportLifecycle({ title: "Carga de inventario iniciada", message: "Archivo recibido. El sistema lo esta procesando en segundo plano.", variant: "info", requestPermission: true, tag: "inventory-import-started" }); startImportPolling(job.id); await fetchImportJobStatus(job.id); } else { ui.open("La carga fue recibida, pero no se pudo identificar el job.", "warning"); } } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo procesar la carga masiva."); } finally { uploading.value = false; } }
-async function downloadTemplate() { downloadingTemplate.value = true; try { const response = await api.post("/kpi_inventory/kardex/import/template", null, { responseType: "blob" }); const blob = new Blob([response.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const url = window.URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "FORMATO_CARGA_MASIVA_INVENTARIO.xlsx"; link.click(); window.URL.revokeObjectURL(url); } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo descargar el formato."); } finally { downloadingTemplate.value = false; } }
+async function processXlsx() { if (!canCreate.value || !canViewCosts.value) return ui.error("Solo gerencia general y administradores pueden procesar cargas valorizadas."); const file = getSelectedImportFile(); if (!file) return ui.error("Debes seleccionar un archivo CSV o XLSX."); uploading.value = true; try { const formData = new FormData(); formData.append("file", file); formData.append("requested_by", getUserName()); const { data } = await api.post("/kpi_inventory/kardex/import/upload", formData, { headers: { "Content-Type": "multipart/form-data" } }); const job = data?.data ?? data; importJob.value = job; lastBulkSummary.value = null; xlsxFile.value = null; if (job?.id) { persistImportJobId(job.id); notifyImportLifecycle({ title: "Carga de inventario iniciada", message: "Archivo recibido. El sistema lo esta procesando en segundo plano.", variant: "info", requestPermission: true, tag: "inventory-import-started" }); startImportPolling(job.id); await fetchImportJobStatus(job.id); } else { ui.open("La carga fue recibida, pero no se pudo identificar el job.", "warning"); } } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo procesar la carga masiva."); } finally { uploading.value = false; } }
+async function downloadTemplate() { if (!canViewCosts.value) return ui.error("Solo gerencia general y administradores pueden descargar el formato valorizado."); downloadingTemplate.value = true; try { const response = await api.post("/kpi_inventory/kardex/import/template", null, { responseType: "blob" }); const blob = new Blob([response.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const url = window.URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "FORMATO_CARGA_MASIVA_INVENTARIO.xlsx"; link.click(); window.URL.revokeObjectURL(url); } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo descargar el formato."); } finally { downloadingTemplate.value = false; } }
 watch(() => movementDialog.open, async (open) => { if (open) await ensureMovementCatalogsLoaded(true); else if (!savingDocument.value) resetMovementDocumentForm(); });
 watch(
   () => documentForm.tipo,

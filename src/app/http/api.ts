@@ -4,6 +4,8 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { normalizeRequestPayload } from "@/app/http/request-context";
+import { canViewMaterialCosts } from "@/app/utils/role-access";
+import { stripMaterialCosts } from "@/app/utils/material-cost-visibility";
 
 type TrackedRequestConfig = {
   meta?: {
@@ -202,6 +204,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => {
     finalizeTrackedRequest(response.config as TrackedRequestConfig);
+    const auth = useAuthStore();
+    if (!canViewMaterialCosts(auth.user)) {
+      response.data = stripMaterialCosts(response.data);
+    }
     return response;
   },
   async (err) => {
@@ -229,5 +235,5 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(err);
-  }
+  },
 );

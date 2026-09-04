@@ -320,10 +320,10 @@
                 <tr>
                   <th>Material</th>
                   <th class="text-right">Cantidad</th>
-                  <th class="text-right">Costo unitario</th>
-                  <th class="text-right">Descuento</th>
-                  <th class="text-right">IVA</th>
-                  <th class="text-right">Total</th>
+                  <th v-if="canViewCosts" class="text-right">Costo unitario</th>
+                  <th v-if="canViewCosts" class="text-right">Descuento</th>
+                  <th v-if="canViewCosts" class="text-right">IVA</th>
+                  <th v-if="canViewCosts" class="text-right">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -335,13 +335,13 @@
                     </div>
                   </td>
                   <td class="text-right">{{ formatNumber(detail.cantidad) }}</td>
-                  <td class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
-                  <td class="text-right">{{ formatCurrency(detail.descuento) }}</td>
-                  <td class="text-right">{{ formatCurrency(detail.iva_total) }}</td>
-                  <td class="text-right font-weight-bold">{{ formatCurrency(detail.total) }}</td>
+                  <td v-if="canViewCosts" class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
+                  <td v-if="canViewCosts" class="text-right">{{ formatCurrency(detail.descuento) }}</td>
+                  <td v-if="canViewCosts" class="text-right">{{ formatCurrency(detail.iva_total) }}</td>
+                  <td v-if="canViewCosts" class="text-right font-weight-bold">{{ formatCurrency(detail.total) }}</td>
                 </tr>
                 <tr v-if="!linkedOrder.detalles?.length">
-                  <td colspan="6" class="text-center text-medium-emphasis py-4">
+                  <td :colspan="canViewCosts ? 6 : 2" class="text-center text-medium-emphasis py-4">
                     La orden de compra no registra materiales.
                   </td>
                 </tr>
@@ -349,7 +349,7 @@
             </table>
           </div>
 
-          <div class="purchase-order-totals mt-4">
+          <div v-if="canViewCosts" class="purchase-order-totals mt-4">
             <span>Subtotal: <strong>{{ formatCurrency(linkedOrder.subtotal) }}</strong></span>
             <span>Descuento: <strong>{{ formatCurrency(linkedOrder.descuento_total) }}</strong></span>
             <span>IVA: <strong>{{ formatCurrency(linkedOrder.iva_total) }}</strong></span>
@@ -362,7 +362,7 @@
         <v-spacer />
         <v-btn variant="text" @click="linkedOrderDialog = false">Cerrar</v-btn>
         <v-btn
-          v-if="canDownloadPurchaseOrderPdf && linkedOrder"
+          v-if="canViewCosts && canDownloadPurchaseOrderPdf && linkedOrder"
           color="primary"
           prepend-icon="mdi-file-pdf-box"
           :loading="linkedOrderPdfDownloading"
@@ -580,8 +580,8 @@
                 <th>Cant. usado</th>
                 <th>Stock por condición</th>
                 <th>Total transferible</th>
-                <th>Costo ref.</th>
-                <th>Subtotal ref.</th>
+                <th v-if="canViewCosts">Costo ref.</th>
+                <th v-if="canViewCosts">Subtotal ref.</th>
                 <th>Obs.</th>
                 <th></th>
               </tr>
@@ -681,10 +681,10 @@
                     Revisa el reparto Nuevo/Usado: supera el stock de una condición o el total transferible.
                   </div>
                 </td>
-                <td class="text-right font-weight-medium">
+                <td v-if="canViewCosts" class="text-right font-weight-medium">
                   {{ formatCurrency(detail.costo_unitario) }}
                 </td>
-                <td class="text-right font-weight-bold">
+                <td v-if="canViewCosts" class="text-right font-weight-bold">
                   {{ formatCurrency(detailSubtotal(detail)) }}
                 </td>
                 <td>
@@ -704,12 +704,12 @@
                 </td>
               </tr>
               <tr v-if="!form.detalles.length">
-                <td colspan="10" class="text-center text-medium-emphasis py-4">
+                <td :colspan="canViewCosts ? 10 : 8" class="text-center text-medium-emphasis py-4">
                   No hay materiales cargados para esta transferencia.
                 </td>
               </tr>
             </tbody>
-            <tfoot>
+            <tfoot v-if="canViewCosts">
               <tr>
                 <td colspan="6" class="text-right font-weight-bold">Total referencial</td>
                 <td></td>
@@ -1314,7 +1314,7 @@
               <span>Cantidad</span>
               <strong>{{ formatNumber(movementDocument.document.total_cantidad) }}</strong>
             </article>
-            <article>
+            <article v-if="canViewCosts">
               <span>Costo total</span>
               <strong>{{ formatCurrency(movementDocument.document.total_costos) }}</strong>
             </article>
@@ -1339,8 +1339,8 @@
                 <th>Material</th>
                 <th>Condición</th>
                 <th class="text-right">Cantidad</th>
-                <th class="text-right">Costo unitario</th>
-                <th class="text-right">Subtotal</th>
+                <th v-if="canViewCosts" class="text-right">Costo unitario</th>
+                <th v-if="canViewCosts" class="text-right">Subtotal</th>
               </tr>
             </thead>
             <tbody>
@@ -1349,11 +1349,11 @@
                 <td>{{ detail.producto_nombre || "-" }}</td>
                 <td>{{ detail.condicion_material || "-" }}</td>
                 <td class="text-right">{{ formatNumber(detail.cantidad) }}</td>
-                <td class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
-                <td class="text-right">{{ formatCurrency(detail.subtotal_costo) }}</td>
+                <td v-if="canViewCosts" class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
+                <td v-if="canViewCosts" class="text-right">{{ formatCurrency(detail.subtotal_costo) }}</td>
               </tr>
               <tr v-if="!movementDocumentDetails.length">
-                <td colspan="6" class="text-center text-medium-emphasis py-4">
+                <td :colspan="canViewCosts ? 6 : 4" class="text-center text-medium-emphasis py-4">
                   El documento no registra materiales.
                 </td>
               </tr>
@@ -1398,6 +1398,7 @@ import { usePdfPreview } from "@/app/utils/pdf-preview";
 import {
   canManageAdministrativeOperations,
   canViewAnnulledRecords,
+  canViewMaterialCosts,
   isAdministrator,
   isSuperAdministrator,
 } from "@/app/utils/role-access";
@@ -1680,6 +1681,7 @@ const perms = computed(() =>
   ]),
 );
 const canRead = computed(() => perms.value.isReaded);
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
 const canManageAdministrativeDocuments = computed(() =>
@@ -1689,7 +1691,7 @@ const canForceAuthorizedGuideAnnulment = computed(
   () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
 );
 const canDownloadPurchaseOrderPdf = computed(() =>
-  hasReportAccess(
+  canViewCosts.value && hasReportAccess(
     auth.user?.effectiveReportes ?? auth.user?.reportes,
     "inventario",
   ),
@@ -4142,7 +4144,7 @@ async function downloadTransferPdf(item: TransferRow) {
           { meta: { skipGlobalLoading: true } } as any,
         );
         const transfer = (data?.data ?? data) as TransferRow;
-        return buildWarehouseTransferPdfBlob(transfer as any, getUserName());
+        return buildWarehouseTransferPdfBlob(transfer as any, getUserName(), canViewCosts.value);
       },
     });
   } finally {

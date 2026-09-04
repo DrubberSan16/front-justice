@@ -123,6 +123,7 @@ export function warehouseTransferPdfFileName(transfer: WarehouseTransferLike) {
 export async function buildWarehouseTransferPdfBlob(
   transfer: WarehouseTransferLike,
   generatedBy = "Sistema",
+  showCosts = true,
 ): Promise<Blob> {
   const [{ jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
@@ -312,8 +313,7 @@ export async function buildWarehouseTransferPdfBlob(
       "MATERIAL",
       "DESCRIPCIÓN",
       "CANT.",
-      "COSTO U.",
-      "SUBTOTAL",
+      ...(showCosts ? ["COSTO U.", "SUBTOTAL"] : []),
       "OBSERVACIÓN",
     ]],
     body: details.length
@@ -323,16 +323,16 @@ export async function buildWarehouseTransferPdfBlob(
           text(detail.nombre_producto),
           text(detail.descripcion_producto),
           formatNumber(detail.cantidad, 2),
-          formatMoney(detail.costo_unitario),
-          formatMoney(detail.subtotal),
+          ...(showCosts
+            ? [formatMoney(detail.costo_unitario), formatMoney(detail.subtotal)]
+            : []),
           text(detail.observacion),
         ])
-      : [[1, "-", "Sin materiales registrados", "-", "0,00", "$0,00", "$0,00", "-"]],
+      : [[1, "-", "Sin materiales registrados", "-", "0,00", ...(showCosts ? ["$0,00", "$0,00"] : []), "-"]],
     foot: [[
       { content: "TOTALES", colSpan: 4, styles: { halign: "right" } },
       formatNumber(totalQuantity, 2),
-      "",
-      formatMoney(totalAmount),
+      ...(showCosts ? ["", formatMoney(totalAmount)] : []),
       `${details.length || numberValue(transfer.total_items)} ítem(s)`,
     ]],
     didDrawPage: (data: any) => {

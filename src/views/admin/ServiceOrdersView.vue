@@ -98,7 +98,7 @@
         </div>
       </template>
 
-      <template #item.total="{ item }">
+      <template v-if="canViewCosts" #item.total="{ item }">
         {{ formatCurrency(item.total) }}
       </template>
 
@@ -131,6 +131,7 @@
       <template #item.actions="{ item }">
         <div class="responsive-actions">
           <v-btn
+            v-if="canViewCosts"
             icon="mdi-file-pdf-box"
             variant="text"
             color="error"
@@ -278,11 +279,11 @@
               <tr>
                 <th class="material-column">Servicio</th>
                 <th class="compact-column">Cant.</th>
-                <th class="compact-column">P. unit.</th>
-                <th class="compact-column">Desc.</th>
-                <th class="compact-column">% Desc.</th>
-                <th class="compact-column">IVA %</th>
-                <th class="total-column">Total</th>
+                <th v-if="canViewCosts" class="compact-column">P. unit.</th>
+                <th v-if="canViewCosts" class="compact-column">Desc.</th>
+                <th v-if="canViewCosts" class="compact-column">% Desc.</th>
+                <th v-if="canViewCosts" class="compact-column">IVA %</th>
+                <th v-if="canViewCosts" class="total-column">Total</th>
                 <th class="observation-column">Obs.</th>
                 <th></th>
               </tr>
@@ -315,7 +316,7 @@
                     hide-details
                   />
                 </td>
-                <td class="compact-column">
+                <td v-if="canViewCosts" class="compact-column">
                   <v-text-field
                     v-model="detail.costo_unitario"
                     type="number"
@@ -325,7 +326,7 @@
                     hide-details
                   />
                 </td>
-                <td class="compact-column">
+                <td v-if="canViewCosts" class="compact-column">
                   <v-text-field
                     v-model="detail.descuento"
                     type="number"
@@ -335,7 +336,7 @@
                     hide-details
                   />
                 </td>
-                <td class="compact-column">
+                <td v-if="canViewCosts" class="compact-column">
                   <v-text-field
                     v-model="detail.porcentaje_descuento"
                     type="number"
@@ -345,7 +346,7 @@
                     hide-details
                   />
                 </td>
-                <td class="compact-column">
+                <td v-if="canViewCosts" class="compact-column">
                   <v-text-field
                     v-model="detail.iva_porcentaje"
                     type="number"
@@ -355,7 +356,7 @@
                     hide-details
                   />
                 </td>
-                <td class="text-right font-weight-bold total-column">
+                <td v-if="canViewCosts" class="text-right font-weight-bold total-column">
                   {{ formatCurrency(detailGrandTotal(detail)) }}
                 </td>
                 <td class="observation-column">
@@ -378,7 +379,7 @@
           </table>
         </div>
 
-        <div class="d-flex flex-wrap justify-end mt-4 purchase-summary" style="gap: 12px;">
+        <div v-if="canViewCosts" class="d-flex flex-wrap justify-end mt-4 purchase-summary" style="gap: 12px;">
           <v-chip color="info" variant="tonal">Subtotal: {{ formatCurrency(orderTotals.subtotal) }}</v-chip>
           <v-chip color="warning" variant="tonal">Descuento: {{ formatCurrency(orderTotals.descuento) }}</v-chip>
           <v-chip color="secondary" variant="tonal">Subtotal con desc.: {{ formatCurrency(orderTotals.subtotalConDescuento) }}</v-chip>
@@ -441,6 +442,7 @@ import {
   canViewAnnulledRecords,
 } from "@/app/utils/role-access";
 import { isAnnulledStateValue } from "@/app/utils/annulled-records";
+import { canViewMaterialCosts } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 
 type CatalogOption = { value: string; title: string };
@@ -490,11 +492,12 @@ const perms = computed(() =>
   ]),
 );
 const canRead = computed(() => perms.value.isReaded);
-const canCreate = computed(() => perms.value.isCreated);
-const canEdit = computed(() => perms.value.isEdited);
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
+const canCreate = computed(() => perms.value.isCreated && canViewCosts.value);
+const canEdit = computed(() => perms.value.isEdited && canViewCosts.value);
 const canAnnulDocuments = computed(() => canManageAdministrativeOperations(auth.user));
 const canDownloadPdf = computed(() =>
-  hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"),
+  canViewCosts.value && hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"),
 );
 
 const loading = ref(false);
@@ -575,7 +578,7 @@ const form = reactive({
   detalles: [] as OrderDetailForm[],
 });
 
-const headers = [
+const headers = computed(() => [
   { title: "Código", key: "codigo" },
   { title: "Fecha", key: "fecha_emision_label" },
   { title: "Para", key: "proveedor_nombre" },
@@ -583,10 +586,10 @@ const headers = [
   { title: "Lugar entrega", key: "lugar_entrega" },
   { title: "Estado", key: "estado" },
   { title: "Equipos", key: "equipos_label", sortable: false },
-  { title: "Total", key: "total" },
+  ...(canViewCosts.value ? [{ title: "Total", key: "total" }] : []),
   { title: "Servicio realizado", key: "servicio_realizado", sortable: false, align: "center" as const },
   { title: "Acciones", key: "actions", sortable: false },
-];
+]);
 
 const supplierOptions = computed<CatalogOption[]>(() =>
   suppliers.value.map((item) => ({
@@ -616,7 +619,9 @@ const serviceProducts = computed(() =>
 const catalogProductOptions = computed<CatalogOption[]>(() =>
   serviceProducts.value.map((item) => ({
     value: String(item.id),
-    title: `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`,
+    title: canViewCosts.value
+      ? `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`
+      : buildProductDisplayTitle(item),
   })),
 );
 

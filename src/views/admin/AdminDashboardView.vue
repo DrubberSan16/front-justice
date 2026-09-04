@@ -243,7 +243,7 @@
             :items-per-page="10"
             class="enterprise-table"
           >
-            <template #item.costo="{ item }">{{ money(row(item).costo) }}</template>
+            <template v-if="canViewCosts" #item.costo="{ item }">{{ money(row(item).costo) }}</template>
             <template #item.acciones="{ item }">
               <v-btn
                 icon="mdi-magnify-expand"
@@ -389,10 +389,14 @@ import { useTheme } from "vuetify";
 import EChart from "@/components/charts/EChart.vue";
 import { MAX_SERIES, chartBase, seriesColor } from "@/app/config/chart-theme";
 import { useMenuStore } from "@/app/stores/menu.store";
+import { useAuthStore } from "@/app/stores/auth.store";
 import { useDataChanged } from "@/app/utils/use-data-changed";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { canViewMaterialCosts } from "@/app/utils/role-access";
 
 const menuStore = useMenuStore();
+const auth = useAuthStore();
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const canRead = computed(
   () =>
     getPermissionsForAnyComponent(menuStore.tree, [
@@ -488,14 +492,14 @@ const headersCebado = [
   { title: "Órdenes por nivel", key: "niveles" },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ];
-const headersRepuestos = [
+const headersRepuestos = computed(() => [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Descripción", key: "equipo_descripcion" },
   { title: "OT", key: "ots", align: "end" as const },
   { title: "Cantidad", key: "cantidad", align: "end" as const },
-  { title: "Costo", key: "costo", align: "end" as const },
+  ...(canViewCosts.value ? [{ title: "Costo", key: "costo", align: "end" as const }] : []),
   { title: "", key: "acciones", sortable: false, align: "end" as const },
-];
+]);
 const headersProyeccion = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Marca", key: "marca" },
@@ -758,15 +762,20 @@ const HEADERS_DETALLE: Record<string, any[]> = {
 
 const detalleTitulo = computed(() => TITULOS[detalleBloque.value] ?? "Detalle");
 const detalleExplicacion = computed(() => EXPLICACIONES[detalleBloque.value] ?? "");
-const detalleHeaders = computed(() => HEADERS_DETALLE[detalleBloque.value] ?? []);
+const detalleHeaders = computed(() =>
+  (HEADERS_DETALLE[detalleBloque.value] ?? []).filter(
+    (header) => canViewCosts.value || header.key !== "costo",
+  ),
+);
 
 /** Gráfico del modal: una barra por orden, solo donde tiene sentido medirlo así. */
 const detalleChartOption = computed(() => {
   const bloque = detalleBloque.value;
   if (!["cebado", "repuestos"].includes(bloque) || !detalleFilas.value.length) return null;
 
-  const campo = bloque === "cebado" ? "galones" : "costo";
-  const etiqueta = bloque === "cebado" ? "Galones" : "Costo";
+  const useCost = bloque === "repuestos" && canViewCosts.value;
+  const campo = bloque === "cebado" ? "galones" : useCost ? "costo" : "cantidad";
+  const etiqueta = bloque === "cebado" ? "Galones" : useCost ? "Costo" : "Cantidad";
   // Mismo orden que la tabla: de la OT mas reciente a la mas antigua. Antes se
   // invertia aqui, asi que tabla y grafico se leian al reves uno del otro y
   // comparar una fila con su barra inducia a error.

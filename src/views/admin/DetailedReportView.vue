@@ -204,7 +204,7 @@
           no-data-text="Sin consumo de aceite registrado en cebado"
         >
           <template #item.equipo_nombre="{ item }">
-            <strong>{{ item.equipo_nombre }}</strong>
+            <strong>{{ equipmentLabel(item) }}</strong>
             <div v-if="item.equipo_descripcion" class="material-attrs">
               {{ item.equipo_descripcion }}
             </div>
@@ -246,7 +246,7 @@
               size="small"
               variant="text"
               color="primary"
-              :aria-label="`Ver detalle de ${item.equipo_nombre}`"
+              :aria-label="`Ver detalle de ${equipmentLabel(item)}`"
               @click="openPrimingDetail(item)"
             />
           </template>
@@ -321,7 +321,7 @@
           <template #item.stock_final="{ item }"
             ><strong>{{ formatNumber(item.stock_final) }}</strong></template
           >
-          <template #item.costo_unitario="{ item }">
+          <template v-if="canViewCosts" #item.costo_unitario="{ item }">
             <strong>{{ formatCurrency(item.costo_unitario) }}</strong>
           </template>
           <template #no-data
@@ -339,7 +339,7 @@
             <strong class="value-positive"
               >+{{ formatNumber(inventoryTotals.entradas) }}</strong
             >
-            <small
+            <small v-if="canViewCosts"
               >{{ formatCurrency(inventoryTotals.costo_entradas) }} en
               material</small
             >
@@ -349,12 +349,12 @@
             <strong class="value-negative"
               >-{{ formatNumber(inventoryTotals.salidas) }}</strong
             >
-            <small
+            <small v-if="canViewCosts"
               >{{ formatCurrency(inventoryTotals.costo_salidas) }} en
               material</small
             >
           </article>
-          <article class="inventory-totals__grand">
+          <article v-if="canViewCosts" class="inventory-totals__grand">
             <span
               >Gasto total<template v-if="selectedInventoryEquipmentLabel">
                 · {{ selectedInventoryEquipmentLabel }}</template
@@ -482,6 +482,15 @@
                 </button>
                 <span v-else>{{ systemRow(item).work_order_code }}</span>
               </template>
+              <template #item.equipment_name="{ item }">
+                <span class="system-cell system-cell--equipment">{{ systemRow(item).equipment_name }}</span>
+              </template>
+              <template #item.equipment_label="{ item }">
+                <span class="system-cell system-cell--equipment">{{ systemRow(item).equipment_label }}</span>
+              </template>
+              <template #item.plan_name="{ item }">
+                <span class="system-cell system-cell--plan">{{ systemRow(item).plan_name }}</span>
+              </template>
               <template
                 v-for="listKey in LIST_CELL_KEYS"
                 :key="listKey"
@@ -537,7 +546,7 @@
         </v-window>
       </section>
 
-      <section class="simple-section" aria-labelledby="maintenance-cost-title">
+      <section v-if="canViewCosts" class="simple-section" aria-labelledby="maintenance-cost-title">
         <div class="section-title-row">
           <div>
             <h2 id="maintenance-cost-title">Costo de mantenimiento</h2>
@@ -650,6 +659,15 @@
                 </button>
                 <span v-else>{{ systemRow(item).work_order_code }}</span>
               </template>
+              <template #item.equipment_name="{ item }">
+                <span class="system-cell system-cell--equipment">{{ systemRow(item).equipment_name }}</span>
+              </template>
+              <template #item.equipment_label="{ item }">
+                <span class="system-cell system-cell--equipment">{{ systemRow(item).equipment_label }}</span>
+              </template>
+              <template #item.plan_name="{ item }">
+                <span class="system-cell system-cell--plan">{{ systemRow(item).plan_name }}</span>
+              </template>
               <template #item.materiales="{ item }">
                 <v-btn
                   v-if="listCellItems(item, 'materiales').length"
@@ -698,7 +716,7 @@
         <v-card-title class="dialog-header priming-dialog-header">
           <div>
             <span>Detalle de cebado y aceite</span>
-            <strong>{{ primingDetailEquipment?.equipo_nombre }}</strong>
+            <strong>{{ equipmentLabel(primingDetailEquipment || {}) }}</strong>
             <small>{{ primingDetailEquipment?.equipo_descripcion }}</small>
           </div>
           <v-btn
@@ -914,7 +932,7 @@
                 }}</small></span
               >
               <span class="equipment-order-list__amount"
-                >{{ formatNumber(order.cantidad) }} gal<small>{{
+                >{{ formatNumber(order.cantidad) }} gal<small v-if="muestraCostos">{{
                   formatCurrency(order.subtotal || order.total_costo)
                 }}</small></span
               ><v-icon icon="mdi-chevron-right" />
@@ -1305,6 +1323,7 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import {
   currentDateInputValue,
+  formatDateOnly as formatAppDateOnly,
   formatDateTime as formatAppDateTime,
 } from "@/app/utils/date-time";
 import {
@@ -1320,6 +1339,7 @@ import {
   type WorkOrderReportData,
 } from "@/app/utils/work-order-report-documents";
 import {
+  canViewMaterialCosts,
   isGeneralManager,
   isSuperAdministrator,
 } from "@/app/utils/role-access";
@@ -1327,6 +1347,7 @@ import {
 type AnyRow = Record<string, any>;
 type StatusKey = "planned" | "open" | "closed";
 const auth = useAuthStore();
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const menuStore = useMenuStore();
 const theme = useTheme();
 
@@ -1400,7 +1421,7 @@ const detailIssues = ref<AnyRow[]>([]);
 const detailScraps = ref<AnyRow[]>([]);
 const detailHistory = ref<AnyRow[]>([]);
 
-const inventoryHeaders = [
+const inventoryHeaders = computed(() => [
   { title: "Material", key: "material_label" },
   {
     title: "Inicio del rango",
@@ -1414,8 +1435,10 @@ const inventoryHeaders = [
     key: "stock_final",
     align: "end" as const,
   },
-  { title: "Costo por ítem", key: "costo_unitario", align: "end" as const },
-];
+  ...(canViewCosts.value
+    ? [{ title: "Costo por ítem", key: "costo_unitario", align: "end" as const }]
+    : []),
+]);
 
 const primingHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
@@ -1437,7 +1460,7 @@ const primingDetailHeaders = computed(() => {
     { title: "Tendencia", key: "tendencia" },
     { title: "Nivel", key: "semaforo" },
   ];
-  if (primingDetailRows.value.some((item) => "costo" in item)) {
+  if (canViewCosts.value && primingDetailRows.value.some((item) => "costo" in item)) {
     headers.push({ title: "Costo", key: "costo", align: "end" as const });
   }
   return headers;
@@ -1754,6 +1777,7 @@ function primingTrendLabel(value: string) {
  * hueco.
  */
 const muestraCostos = computed(() => {
+  if (!canViewCosts.value) return false;
   const totales = oilReport.value?.totals;
   if (totales && typeof totales === "object") {
     return Object.prototype.hasOwnProperty.call(totales, "total_costo");
@@ -2389,15 +2413,35 @@ function looksLikeDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}/.test(String(value ?? "").trim());
 }
 
+const SYSTEM_STATUS_LABELS: Record<string, string> = {
+  REVIEW: "EN REVISIÓN",
+  IN_REVIEW: "EN REVISIÓN",
+  CLOSED: "CERRADA",
+  COMPLETED: "FINALIZADA",
+  PLANNED: "PLANIFICADA",
+  SCHEDULED: "PROGRAMADA",
+  OPEN: "ABIERTA",
+  IN_PROGRESS: "EN PROGRESO",
+  BLOCKED: "BLOQUEADA",
+  CANCELLED: "CANCELADA",
+  CANCELED: "CANCELADA",
+  VOIDED: "ANULADA",
+  ANNULLED: "ANULADA",
+};
+
+function formatSystemStatus(value: unknown) {
+  const normalized = normalizeStatus(value).replace(/[\s-]+/g, "_");
+  return SYSTEM_STATUS_LABELS[normalized] || String(value || "");
+}
+
 function formatSystemCell(key: string, value: unknown) {
   if (value === null || value === undefined || value === "") return "";
   if (Array.isArray(value)) return value.join(" | ");
   if (typeof value === "boolean") return value ? "Si" : "No";
   if (typeof value === "object") return JSON.stringify(value);
-  if (looksLikeDate(value) && /fecha/i.test(key)) {
-    const raw = String(value);
-    return raw.includes("T") ? formatDateTime(raw) : raw.slice(0, 10);
-  }
+  if (/status|estado/i.test(key)) return formatSystemStatus(value);
+  if (looksLikeDate(value) && /fecha|date|(?:^|_)at$|inicio|fin|periodo/i.test(key))
+    return formatAppDateOnly(value, String(value));
   const numeric = Number(value);
   if (Number.isFinite(numeric) && String(value).trim() !== "") {
     if (/costo|valor/i.test(key)) return formatCurrency(numeric);
@@ -2421,7 +2465,9 @@ function systemVisibleKeys(rows: AnyRow[], preferred?: string[]) {
 }
 
 const systemSections = computed(() =>
-  SYSTEM_SECTION_DEFS.map((section) => {
+  SYSTEM_SECTION_DEFS.filter(
+    (section) => canViewCosts.value || section.key !== "costo_inventario",
+  ).map((section) => {
     const source = systemPayload.value?.reports?.[section.key] ?? {};
     const rawRows: AnyRow[] = Array.isArray(source?.rows) ? source.rows : [];
     const groupBy = String(
@@ -3209,6 +3255,28 @@ onMounted(() => {
 .system-table :deep(td) {
   white-space: normal;
   word-break: break-word;
+}
+
+.system-table :deep(table) {
+  min-width: 1120px;
+}
+
+.system-cell {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.system-cell--equipment {
+  min-width: 260px;
+}
+
+.system-cell--plan {
+  min-width: 210px;
 }
 
 .system-table :deep(td:first-child),

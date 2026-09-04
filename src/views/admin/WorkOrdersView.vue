@@ -1828,7 +1828,7 @@ import {
   downloadReportExcel,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
-import { canManageAdministrativeOperations, isSuperAdministrator } from "@/app/utils/role-access";
+import { canManageAdministrativeOperations, canViewMaterialCosts, isSuperAdministrator } from "@/app/utils/role-access";
 import {
   appendOilIndicator,
   buildProductDisplayTitle,
@@ -2346,7 +2346,7 @@ function readOnlyWorkflowMessage() {
   return "La OT esta cerrada y no permite edicion.";
 }
 
-const canViewCosts = computed(() => ["GERENTE", "ADMINISTRADOR"].includes(currentRoleName.value));
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const closeRestrictionText = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value) return "";
   if (isOperatorRole.value) {

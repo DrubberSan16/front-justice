@@ -1594,12 +1594,14 @@ export function buildOilConsumptionReport(payload: {
   statusRows: AnyRow[];
   unitLabel?: string;
   charts?: ReportChart[];
+  showCosts?: boolean;
 }) {
   const kpi = payload.kpi ?? {};
   const filters = kpi.filters ?? {};
   const totals = kpi.totals ?? {};
   const selectedProduct = kpi.selected_product ?? {};
   const unitLabel = String(payload.unitLabel || "gal").trim() || "gal";
+  const showCosts = payload.showCosts !== false;
   const productLabel = String(
     selectedProduct.label
       || [selectedProduct.codigo, selectedProduct.nombre].filter(Boolean).join(" - ")
@@ -1618,7 +1620,7 @@ export function buildOilConsumptionReport(payload: {
     equipo: item.equipment_label ?? "Sin equipo",
     cantidad: item.cantidad ?? 0,
     diferencia_anterior: item.diferencia_vs_anterior ?? "",
-    costo_total: item.subtotal ?? 0,
+    ...(showCosts ? { costo_total: item.subtotal ?? 0 } : {}),
     estado: item.work_order_status ?? "Sin estado",
     bodega: item.bodega_label ?? "Sin bodega",
   }));
@@ -1631,7 +1633,7 @@ export function buildOilConsumptionReport(payload: {
       { label: "Aceite", value: productLabel },
       { label: "Período", value: periodLabel },
       { label: "Cantidad total", value: `${formatValue(totals.total_cantidad ?? 0)} ${unitLabel}` },
-      { label: "Costo total", value: Number(totals.total_costo ?? 0) },
+      ...(showCosts ? [{ label: "Costo total", value: Number(totals.total_costo ?? 0) }] : []),
       { label: "Órdenes", value: Number(totals.total_ordenes ?? workOrderRows.length) },
       { label: "Equipos", value: Number(totals.total_equipos ?? payload.equipmentRows.length) },
       { label: "Promedio por OT", value: `${formatValue(totals.promedio_por_orden ?? 0)} ${unitLabel}` },
@@ -1651,7 +1653,7 @@ export function buildOilConsumptionReport(payload: {
           { key: "equipo", header: "Equipo", width: 22 },
           { key: "cantidad", header: `Cantidad (${unitLabel})`, width: 12, format: "number" },
           { key: "diferencia_anterior", header: "Dif. anterior", width: 11, format: "number" },
-          { key: "costo_total", header: "Costo total", width: 12, format: "currency" },
+          ...(showCosts ? [{ key: "costo_total", header: "Costo total", width: 12, format: "currency" as const }] : []),
           { key: "estado", header: "Estado", width: 12 },
           { key: "bodega", header: "Bodega", width: 20 },
         ],
