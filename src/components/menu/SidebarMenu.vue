@@ -85,7 +85,24 @@ async function loadEquipmentTypes() {
 }
 
 function buildEquipmentTypeChildren(node: MenuNode): MenuNode[] {
-  return equipmentTypes.value
+  // Al colgarle hijos, "Equipos" pasa a ser un grupo desplegable y su activador
+  // ya solo abre y cierra: se perdia el acceso directo a la lista completa que
+  // habia antes. Este primer hijo lo devuelve.
+  const todos: MenuNode = {
+    id: "equipos-todos",
+    parentId: node.id,
+    nombre: "Todos los equipos",
+    descripcion: "Listado completo, sin filtrar por tipo",
+    icon: "$mdiFormatListBulleted",
+    urlComponent: node.urlComponent,
+    menuPosition: "",
+    status: "ACTIVE",
+    permissions: node.permissions,
+    children: [],
+    virtual: true,
+    routeLocation: { name: "equipos" },
+  };
+  const tipos = equipmentTypes.value
     .map((type) => ({
       id: `equipos-tipo-${type?.id}`,
       parentId: node.id,
@@ -105,6 +122,7 @@ function buildEquipmentTypeChildren(node: MenuNode): MenuNode[] {
       },
     }))
     .sort((left, right) => left.nombre.localeCompare(right.nombre, "es"));
+  return [todos, ...tipos];
 }
 
 function withEquipmentTypes(nodes: MenuNode[]): MenuNode[] {

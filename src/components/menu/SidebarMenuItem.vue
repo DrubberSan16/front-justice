@@ -84,7 +84,30 @@ function goToNode(node: MenuNode) {
 .sidebar-group :deep(.v-list-group__items) { padding-left: 10px; }
 /* Los hijos calculados (tipos de equipo) pesan menos que una entrada del menu
    real: son un filtro sobre la misma pantalla, no otro modulo. */
-.sidebar-item--virtual { min-height: 42px; font-size: 0.83rem; font-weight: 550; }
-.sidebar-item--virtual .sidebar-item__icon { width: 26px; height: 26px; }
+.sidebar-item--virtual { min-height: 40px; font-size: 0.8rem; font-weight: 550; }
+
+/* El nombre del tipo tiene que leerse entero.
+   Vuetify recorta el titulo con puntos suspensivos, y en este nivel el ancho
+   util cae a 95 px (dos indentaciones de grupo mas el hueco del icono) cuando
+   los nombres piden entre 100 y 162 px: los diez salian cortados y dos tipos
+   distintos quedaban identicos en pantalla ("EQUIPO DE FI..." para CPT y para
+   TPTA). Se deja que el texto fluya a varias lineas en vez de recortarlo. */
+.sidebar-item--virtual :deep(.v-list-item-title) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+  padding-block: 3px;
+}
+
+/* El icono repetido en cada tipo se comia ancho justo donde falta; un punto
+   marca la jerarquia igual de bien y devuelve esos pixeles al nombre. */
+.sidebar-item--virtual .sidebar-item__icon {
+  width: 16px;
+  height: 16px;
+  background: none;
+}
+.sidebar-item--virtual :deep(.v-list-item__prepend) { width: 22px; min-width: 22px; }
+.sidebar-item--virtual :deep(.v-list-item__spacer) { width: 6px; }
 @media (prefers-reduced-motion: reduce) { .sidebar-item { transition: none; } }
 </style>
