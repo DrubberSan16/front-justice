@@ -84,29 +84,27 @@
       @update:options="handleServerOptionsUpdate"
     >
       <template #item.fecha_transferencia="{ item }">
-        {{ formatDate(item.fecha_transferencia) }}
+        {{ formatDateOnly(item.fecha_transferencia, "-") }}
       </template>
 
       <template #item.orden_compra_codigo="{ item }">
-        <v-chip size="small" variant="tonal" :color="item.orden_compra_codigo ? 'info' : 'secondary'">
+        <v-btn
+          v-if="item.orden_compra_id && item.orden_compra_codigo"
+          size="small"
+          variant="text"
+          color="info"
+          prepend-icon="mdi-open-in-new"
+          class="purchase-order-link"
+          aria-haspopup="dialog"
+          :aria-label="`Ver orden de compra ${item.orden_compra_codigo}`"
+          :loading="linkedOrderLoadingId === item.orden_compra_id"
+          @click="openLinkedPurchaseOrder(item)"
+        >
+          {{ item.orden_compra_codigo }}
+        </v-btn>
+        <v-chip v-else size="small" variant="tonal" color="secondary">
           {{ item.orden_compra_codigo || "Manual" }}
         </v-chip>
-      </template>
-
-      <template #item.estado="{ item }">
-        <div class="d-flex flex-column" style="gap: 3px; min-width: 180px;">
-          <v-chip size="small" variant="tonal" :color="transferStateColor(item.estado)">
-            {{ item.estado || "COMPLETADA" }}
-          </v-chip>
-          <span v-if="isAnnulledTransfer(item)" class="text-caption text-medium-emphasis">
-            Anulada por {{ item.anulado_por || item.updated_by || "SYSTEM" }} ·
-            {{ formatDateTime(item.anulado_at || item.updated_at, "-") }}
-          </span>
-        </div>
-      </template>
-
-      <template #item.total_cantidad="{ item }">
-        {{ formatNumber(item.total_cantidad) }}
       </template>
 
       <template #item.egreso_bodega_codigo="{ item }">
@@ -170,77 +168,211 @@
       </template>
 
       <template #item.acciones="{ item }">
-        <div class="d-flex flex-wrap" style="gap: 8px; min-width: 520px;">
-          <v-btn
-            size="small"
-            color="primary"
-            variant="tonal"
-            :prepend-icon="isGuideAuthorizedSummary(item) ? 'mdi-eye-outline' : 'mdi-file-document-plus-outline'"
-            :disabled="!canGenerateGuide(item)"
-            @click="openGuideDialog(item)"
-          >
-            {{ guideActionLabel(item) }}
-          </v-btn>
-          <v-btn
-            size="small"
-            color="secondary"
-            variant="tonal"
-            prepend-icon="mdi-file-pdf-box"
-            :loading="transferPdfDownloadingId === item.id"
-            :disabled="!item.id"
-            @click="downloadTransferPdf(item)"
-          >
-            Descargar PDF
-          </v-btn>
-          <v-btn
-            v-if="item.guia_remision_id && !isGuideAuthorizedSummary(item)"
-            size="small"
-            variant="text"
-            prepend-icon="mdi-cloud-search-outline"
-            :loading="
-              consultingGuideId === item.guia_remision_id ||
-              isGuideAuthorizationPendingSummary(item)
-            "
-            :disabled="isGuideAuthorizationPendingSummary(item)"
-            @click="consultGuide(item)"
-          >
-            Consultar SRI
-          </v-btn>
-          <v-btn
-            v-if="item.guia_remision_id && isGuideAuthorizedSummary(item)"
-            size="small"
-            variant="text"
-            prepend-icon="mdi-download"
-            @click="downloadGuideXml(item, preferredGuideXmlKind(item))"
-          >
-            {{ preferredGuideXmlLabel(item) }}
-          </v-btn>
-          <v-btn
-            v-if="canManageAdministrativeDocuments && !isAnnulledTransfer(item)"
-            size="small"
-            color="error"
-            variant="tonal"
-            prepend-icon="mdi-cancel"
-            :disabled="isGuideAuthorizedSummary(item) && !canForceAuthorizedGuideAnnulment"
-            @click="openAnnulTransfer(item)"
-          >
-            {{ isGuideAuthorizedSummary(item) ? "Forzar anulación" : "Anular" }}
-          </v-btn>
-          <v-btn
-            v-if="canReverseTransferAnnulment && isAnnulledTransfer(item)"
-            size="small"
-            color="warning"
-            variant="tonal"
-            prepend-icon="mdi-undo-variant"
-            :loading="reversingTransferId === item.id"
-            @click="openReverseAnnulment(item)"
-          >
-            Reversar anulación
-          </v-btn>
-        </div>
+        <v-menu location="bottom end">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              size="small"
+              variant="tonal"
+              color="primary"
+              append-icon="mdi-chevron-down"
+              :aria-label="`Acciones de la transferencia ${item.codigo}`"
+            >
+              Acciones
+            </v-btn>
+          </template>
+
+          <v-list density="compact" min-width="260">
+            <v-list-item
+              v-if="canGenerateGuide(item)"
+              :prepend-icon="
+                isGuideAuthorizedSummary(item)
+                  ? 'mdi-eye-outline'
+                  : 'mdi-file-document-plus-outline'
+              "
+              :title="guideActionLabel(item)"
+              @click="openGuideDialog(item)"
+            />
+            <v-list-item
+              v-if="item.id"
+              prepend-icon="mdi-file-pdf-box"
+              title="Descargar transferencia PDF"
+              :disabled="transferPdfDownloadingId === item.id"
+              @click="downloadTransferPdf(item)"
+            />
+            <v-list-item
+              v-if="item.guia_remision_id && !isGuideAuthorizedSummary(item)"
+              prepend-icon="mdi-cloud-search-outline"
+              title="Consultar SRI"
+              :disabled="
+                consultingGuideId === item.guia_remision_id ||
+                isGuideAuthorizationPendingSummary(item)
+              "
+              @click="consultGuide(item)"
+            />
+            <v-list-item
+              v-if="item.guia_remision_id && isGuideAuthorizedSummary(item)"
+              prepend-icon="mdi-file-code-outline"
+              :title="preferredGuideXmlLabel(item)"
+              @click="downloadGuideXml(item, preferredGuideXmlKind(item))"
+            />
+            <v-list-item
+              v-if="canAnnulTransfer(item)"
+              prepend-icon="mdi-cancel"
+              :title="isGuideAuthorizedSummary(item) ? 'Forzar anulación' : 'Anular'"
+              base-color="error"
+              @click="openAnnulTransfer(item)"
+            />
+            <v-list-item
+              v-if="canReverseTransferAnnulment && isAnnulledTransfer(item)"
+              prepend-icon="mdi-undo-variant"
+              title="Reversar anulación"
+              base-color="warning"
+              :disabled="reversingTransferId === item.id"
+              @click="openReverseAnnulment(item)"
+            />
+          </v-list>
+        </v-menu>
       </template>
     </v-data-table-server>
   </v-card>
+
+  <v-dialog
+    v-model="linkedOrderDialog"
+    :fullscreen="isDialogFullscreen"
+    :max-width="isDialogFullscreen ? undefined : 1100"
+  >
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="d-flex align-center justify-space-between ga-3">
+        <div>
+          <div class="text-subtitle-1 font-weight-bold">Orden de compra vinculada</div>
+          <div class="text-caption text-medium-emphasis">
+            Consulta de solo lectura
+          </div>
+        </div>
+        <v-btn
+          icon="mdi-close"
+          variant="text"
+          aria-label="Cerrar detalle de la orden de compra"
+          @click="linkedOrderDialog = false"
+        />
+      </v-card-title>
+      <v-divider />
+      <v-progress-linear v-if="linkedOrderLoading" indeterminate color="primary" />
+      <v-card-text class="pt-4">
+        <v-alert v-if="linkedOrderError" type="error" variant="tonal">
+          {{ linkedOrderError }}
+        </v-alert>
+
+        <template v-else-if="linkedOrder">
+          <div class="purchase-order-summary">
+            <article>
+              <span>Código</span>
+              <strong>{{ linkedOrder.codigo || "-" }}</strong>
+            </article>
+            <article>
+              <span>Fecha de emisión</span>
+              <strong>{{ formatDateOnly(linkedOrder.fecha_emision, "-") }}</strong>
+            </article>
+            <article>
+              <span>Fecha requerida</span>
+              <strong>{{ formatDateOnly(linkedOrder.fecha_requerida, "-") }}</strong>
+            </article>
+            <article>
+              <span>Estado</span>
+              <v-chip size="small" variant="tonal" color="info">
+                {{ linkedOrder.estado || "-" }}
+              </v-chip>
+            </article>
+            <article>
+              <span>Proveedor</span>
+              <strong>{{ linkedOrder.proveedor_nombre || "-" }}</strong>
+              <small v-if="linkedOrder.proveedor_identificacion">
+                {{ linkedOrder.proveedor_identificacion }}
+              </small>
+            </article>
+            <article>
+              <span>Bodega</span>
+              <strong>{{ linkedOrder.bodega_label || "-" }}</strong>
+            </article>
+            <article>
+              <span>Referencia</span>
+              <strong>{{ linkedOrder.referencia || "-" }}</strong>
+            </article>
+            <article>
+              <span>Condición de pago</span>
+              <strong>{{ linkedOrder.condicion_pago || "-" }}</strong>
+            </article>
+            <article>
+              <span>Vendedor / sede</span>
+              <strong>{{ linkedOrder.vendedor || "-" }}</strong>
+            </article>
+            <article class="purchase-order-summary__wide">
+              <span>Observación</span>
+              <strong>{{ linkedOrder.observacion || "-" }}</strong>
+            </article>
+          </div>
+
+          <div class="text-subtitle-1 font-weight-bold mt-6 mb-2">Materiales</div>
+          <div class="transfer-details-table">
+            <table class="details-table purchase-order-details-table">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th class="text-right">Cantidad</th>
+                  <th class="text-right">Costo unitario</th>
+                  <th class="text-right">Descuento</th>
+                  <th class="text-right">IVA</th>
+                  <th class="text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="detail in linkedOrder.detalles || []" :key="detail.id || detail.producto_id">
+                  <td>
+                    <strong>{{ detail.nombre_producto || detail.codigo_producto || "-" }}</strong>
+                    <div v-if="detail.descripcion_producto" class="text-caption text-medium-emphasis">
+                      {{ detail.descripcion_producto }}
+                    </div>
+                  </td>
+                  <td class="text-right">{{ formatNumber(detail.cantidad) }}</td>
+                  <td class="text-right">{{ formatCurrency(detail.costo_unitario) }}</td>
+                  <td class="text-right">{{ formatCurrency(detail.descuento) }}</td>
+                  <td class="text-right">{{ formatCurrency(detail.iva_total) }}</td>
+                  <td class="text-right font-weight-bold">{{ formatCurrency(detail.total) }}</td>
+                </tr>
+                <tr v-if="!linkedOrder.detalles?.length">
+                  <td colspan="6" class="text-center text-medium-emphasis py-4">
+                    La orden de compra no registra materiales.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="purchase-order-totals mt-4">
+            <span>Subtotal: <strong>{{ formatCurrency(linkedOrder.subtotal) }}</strong></span>
+            <span>Descuento: <strong>{{ formatCurrency(linkedOrder.descuento_total) }}</strong></span>
+            <span>IVA: <strong>{{ formatCurrency(linkedOrder.iva_total) }}</strong></span>
+            <span>Total: <strong>{{ formatCurrency(linkedOrder.total) }}</strong></span>
+          </div>
+        </template>
+      </v-card-text>
+      <v-divider />
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn variant="text" @click="linkedOrderDialog = false">Cerrar</v-btn>
+        <v-btn
+          v-if="canDownloadPurchaseOrderPdf && linkedOrder"
+          color="primary"
+          prepend-icon="mdi-file-pdf-box"
+          :loading="linkedOrderPdfDownloading"
+          @click="downloadLinkedPurchaseOrderPdf"
+        >
+          Descargar OC en PDF
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 
   <v-dialog v-model="annulDialog" :max-width="520">
     <v-card rounded="xl" class="enterprise-dialog">
@@ -1254,8 +1386,10 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
-import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
+import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
+import { hasReportAccess } from "@/app/config/report-access";
+import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
 import {
   buildWarehouseTransferPdfBlob,
   warehouseTransferPdfFileName,
@@ -1302,21 +1436,40 @@ type PurchaseOrderDetailRow = {
   producto_id: string;
   codigo_producto?: string | null;
   nombre_producto?: string | null;
+  descripcion_producto?: string | null;
   cantidad?: string | number | null;
   cantidad_preaprobada?: string | number | null;
   cantidad_transferida?: string | number | null;
   cantidad_preaprobada_disponible?: string | number | null;
   costo_unitario?: string | number | null;
+  descuento?: string | number | null;
+  porcentaje_descuento?: string | number | null;
+  iva_porcentaje?: string | number | null;
+  iva_total?: string | number | null;
   subtotal?: string | number | null;
+  total?: string | number | null;
   observacion?: string | null;
 };
 
 type PurchaseOrderRow = {
   id: string;
   codigo: string;
+  fecha_emision?: string | null;
+  fecha_requerida?: string | null;
   proveedor_nombre?: string | null;
+  proveedor_identificacion?: string | null;
   bodega_destino_id?: string | null;
   bodega_label?: string | null;
+  estado?: string | null;
+  referencia?: string | null;
+  condicion_pago?: string | null;
+  vendedor?: string | null;
+  observacion?: string | null;
+  moneda?: string | null;
+  subtotal?: string | number | null;
+  descuento_total?: string | number | null;
+  iva_total?: string | number | null;
+  total?: string | number | null;
   detalles?: PurchaseOrderDetailRow[];
 };
 
@@ -1345,6 +1498,7 @@ type TransferRow = TransferGuideSummary & {
   id: string;
   codigo: string;
   fecha_transferencia?: string | null;
+  orden_compra_id?: string | null;
   orden_compra_codigo?: string | null;
   orden_compra_proveedor?: string | null;
   bodega_origen_label?: string | null;
@@ -1534,6 +1688,12 @@ const canManageAdministrativeDocuments = computed(() =>
 const canForceAuthorizedGuideAnnulment = computed(
   () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
 );
+const canDownloadPurchaseOrderPdf = computed(() =>
+  hasReportAccess(
+    auth.user?.effectiveReportes ?? auth.user?.reportes,
+    "inventario",
+  ),
+);
 const canConfigureSri = canManageAdministrativeDocuments;
 const canManuallyConfirmGuideAuthorization = computed(
   () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
@@ -1554,6 +1714,12 @@ const canReverseTransferAnnulment = computed(() =>
 const loading = ref(false);
 const saving = ref(false);
 const orderLoading = ref(false);
+const linkedOrderDialog = ref(false);
+const linkedOrderLoading = ref(false);
+const linkedOrderLoadingId = ref("");
+const linkedOrderPdfDownloading = ref(false);
+const linkedOrder = ref<PurchaseOrderRow | null>(null);
+const linkedOrderError = ref("");
 const dialog = ref(false);
 const annulDialog = ref(false);
 const annullingTransfer = ref<TransferRow | null>(null);
@@ -1721,17 +1887,13 @@ const guideForm = reactive({
 });
 
 const headers = [
-  { title: "Código", key: "codigo" },
+  { title: "Código", key: "codigo", fixed: true, width: 150 },
   { title: "Fecha", key: "fecha_transferencia" },
   { title: "Orden de compra", key: "orden_compra_codigo" },
-  { title: "Proveedor", key: "orden_compra_proveedor" },
   { title: "Origen", key: "bodega_origen_label" },
   { title: "Destino", key: "bodega_destino_label" },
   { title: "EB", key: "egreso_bodega_codigo" },
   { title: "IB", key: "ingreso_bodega_codigo" },
-  { title: "Items", key: "total_items" },
-  { title: "Cantidad total", key: "total_cantidad" },
-  { title: "Estado", key: "estado" },
   { title: "Guía SRI", key: "guia_remision", sortable: false },
   { title: "Acciones", key: "acciones", sortable: false },
 ];
@@ -3194,6 +3356,15 @@ function canGenerateGuide(item: TransferRow) {
   return ["COMPLETADA", "COMPLETADO", "FINALIZADA", "FINALIZADO", "APROBADA", "APROBADO"].includes(normalized);
 }
 
+function canAnnulTransfer(item: TransferRow) {
+  if (!canManageAdministrativeDocuments.value || isAnnulledTransfer(item)) {
+    return false;
+  }
+  return (
+    !isGuideAuthorizedSummary(item) || canForceAuthorizedGuideAnnulment.value
+  );
+}
+
 function applyGuideStatusToTransferRow(
   row: TransferRow,
   guide: GuideResponse,
@@ -3290,12 +3461,6 @@ async function handleGuideStatusSocketUpdate(payload: {
 function isAnnulledTransfer(item: TransferRow) {
   if (item?.anulado === true) return true;
   return isAnnulledStateValue(item?.estado);
-}
-
-function transferStateColor(state?: string | null) {
-  return String(state || "").trim().toUpperCase() === "ANULADA"
-    ? "error"
-    : "success";
 }
 
 function connectGuideStatusSocket() {
@@ -3985,6 +4150,49 @@ async function downloadTransferPdf(item: TransferRow) {
   }
 }
 
+async function openLinkedPurchaseOrder(item: TransferRow) {
+  const orderId = String(item.orden_compra_id || "").trim();
+  if (!orderId || linkedOrderLoading.value) return;
+
+  linkedOrder.value = null;
+  linkedOrderError.value = "";
+  linkedOrderDialog.value = true;
+  linkedOrderLoading.value = true;
+  linkedOrderLoadingId.value = orderId;
+  try {
+    const { data } = await api.get(`/kpi_inventory/ordenes-compra/${orderId}`);
+    linkedOrder.value = (data?.data ?? data) as PurchaseOrderRow;
+  } catch (error: any) {
+    linkedOrderError.value =
+      error?.response?.data?.message ||
+      error?.message ||
+      "No se pudo cargar la orden de compra vinculada.";
+  } finally {
+    linkedOrderLoading.value = false;
+    linkedOrderLoadingId.value = "";
+  }
+}
+
+async function downloadLinkedPurchaseOrderPdf() {
+  if (!linkedOrder.value || linkedOrderPdfDownloading.value) return;
+  if (!canDownloadPurchaseOrderPdf.value) {
+    ui.error("No tienes permisos para descargar este reporte.");
+    return;
+  }
+
+  linkedOrderPdfDownloading.value = true;
+  try {
+    await downloadPurchaseOrderPdf(linkedOrder.value, getUserName());
+    ui.success("PDF de la orden de compra descargado correctamente.");
+  } catch (error: any) {
+    ui.error(
+      error?.message || "No se pudo descargar el PDF de la orden de compra.",
+    );
+  } finally {
+    linkedOrderPdfDownloading.value = false;
+  }
+}
+
 function downloadTransferPdfFromPreview() {
   transferPdfPreview.download();
   ui.success("PDF de la transferencia descargado correctamente.");
@@ -4487,6 +4695,72 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* El codigo identifica la transferencia durante el desplazamiento horizontal. */
+.enterprise-table :deep(th:first-child),
+.enterprise-table :deep(td:first-child) {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 1px 0 rgba(var(--v-theme-on-surface), 0.1);
+}
+
+.enterprise-table :deep(th:first-child) {
+  z-index: 3;
+}
+
+.purchase-order-link {
+  min-width: 0;
+  padding-inline: 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.purchase-order-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
+  gap: 12px;
+}
+
+.purchase-order-summary article {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 14px;
+}
+
+.purchase-order-summary span,
+.purchase-order-summary small {
+  display: block;
+  color: rgb(var(--v-theme-on-surface-variant, 100 116 139));
+}
+
+.purchase-order-summary span {
+  margin-bottom: 3px;
+  font-size: 0.76rem;
+}
+
+.purchase-order-summary strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.purchase-order-summary__wide {
+  grid-column: 1 / -1;
+}
+
+.purchase-order-details-table {
+  min-width: 760px;
+}
+
+.purchase-order-totals {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  font-size: 0.9rem;
+}
+
 /* Los codigos IB y EB dejan de ser una etiqueta: abren el documento que movio
    el stock, y por eso se comportan (y se ven) como un enlace. */
 .movement-link {
