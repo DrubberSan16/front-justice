@@ -2263,6 +2263,7 @@ async function loadUserCatalog() {
  * --------------------------------------------------------------------- */
 
 const MAINTENANCE_COST_TOTAL_TAB = "__TOTALIZADO__";
+const MAINTENANCE_COST_NO_TYPE_TAB = "__SIN_TIPO__";
 
 const maintenanceCostPayload = ref<AnyRow | null>(null);
 const maintenanceCostLoading = ref(false);
@@ -2334,40 +2335,89 @@ function sumMaintenanceCost(rows: AnyRow[], key: string) {
   return rows.reduce((acc, row) => acc + Number(row?.[key] || 0), 0);
 }
 
+/**
+ * Catalogo de tipos de equipo: manda el, no los datos.
+ *
+ * Las pestanas se abrian desde las filas del reporte, asi que un tipo sin costo
+ * en el rango simplemente no existia y uno recien creado no aparecia hasta que
+ * alguien le cargara una OT. Ahora cada tipo del catalogo tiene su pestana,
+ * aunque salga vacia, y el tablero sigue al maestro de tipos de equipo.
+ */
+const maintenanceCostTypeCatalog = computed<AnyRow[]>(() => {
+  const rows = maintenanceCostPayload.value?.catalogs?.tipos_equipo;
+  return Array.isArray(rows) ? rows : [];
+});
+
+function buildMaintenanceCostTab(
+  key: string,
+  title: string,
+  subtitle: string,
+  icon: string,
+  rows: AnyRow[],
+) {
+  return {
+    key,
+    title,
+    subtitle,
+    icon,
+    rows: rows.map(buildMaintenanceCostRow),
+    totalCosto: sumMaintenanceCost(rows, "total_costo"),
+    totalCantidad: sumMaintenanceCost(rows, "total_cantidad"),
+  };
+}
+
 const maintenanceCostTabs = computed(() => {
-  const byType = new Map<string, AnyRow[]>();
+  const byTypeId = new Map<string, AnyRow[]>();
+  const withoutType: AnyRow[] = [];
   for (const row of maintenanceCostRawRows.value) {
-    const label =
-      String(row?.equipment_type_label || "").trim() || "Sin tipo de equipo";
-    const current = byType.get(label) ?? [];
+    const typeId = String(row?.equipment_type_id || "").trim();
+    if (!typeId) {
+      withoutType.push(row);
+      continue;
+    }
+    const current = byTypeId.get(typeId) ?? [];
     current.push(row);
-    byType.set(label, current);
+    byTypeId.set(typeId, current);
   }
-  const typeTabs = [...byType.entries()]
-    .sort((left, right) => left[0].localeCompare(right[0], "es"))
-    .map(([label, rows]) => ({
-      key: label,
-      title: label,
-      subtitle: `Órdenes de mantenimiento de equipos del tipo ${label}.`,
-      icon: "mdi-engine-outline",
-      rows: rows.map(buildMaintenanceCostRow),
-      totalCosto: sumMaintenanceCost(rows, "total_costo"),
-      totalCantidad: sumMaintenanceCost(rows, "total_cantidad"),
-    }));
+
+  const catalogTabs = maintenanceCostTypeCatalog.value.map((type) => {
+    const typeId = String(type?.id || "").trim();
+    const label =
+      String(type?.label || type?.nombre || type?.codigo || "").trim() ||
+      "Tipo sin nombre";
+    return buildMaintenanceCostTab(
+      typeId || label,
+      label,
+      `Órdenes de mantenimiento de equipos del tipo ${label}.`,
+      "mdi-engine-outline",
+      byTypeId.get(typeId) ?? [],
+    );
+  });
+
+  // Solo si de verdad hay costo sin tipo: una pestana vacia "Sin tipo" seria
+  // ruido en un catalogo que si los tiene todos.
+  const orphanTabs = withoutType.length
+    ? [
+        buildMaintenanceCostTab(
+          MAINTENANCE_COST_NO_TYPE_TAB,
+          "Sin tipo de equipo",
+          "Órdenes cuyo equipo no tiene tipo asignado.",
+          "mdi-help-rhombus-outline",
+          withoutType,
+        ),
+      ]
+    : [];
+
   return [
-    ...typeTabs,
-    {
-      key: MAINTENANCE_COST_TOTAL_TAB,
-      title: "Totalizado",
-      subtitle: "Todos los tipos de equipo sumados en un solo listado.",
-      icon: "mdi-sigma",
-      rows: maintenanceCostRawRows.value.map(buildMaintenanceCostRow),
-      totalCosto: sumMaintenanceCost(maintenanceCostRawRows.value, "total_costo"),
-      totalCantidad: sumMaintenanceCost(
-        maintenanceCostRawRows.value,
-        "total_cantidad",
-      ),
-    },
+    ...catalogTabs,
+    ...orphanTabs,
+    buildMaintenanceCostTab(
+      MAINTENANCE_COST_TOTAL_TAB,
+      "Totalizado",
+      "Todos los tipos de equipo sumados en un solo listado.",
+      "mdi-sigma",
+      maintenanceCostRawRows.value,
+    ),
   ];
 });
 

@@ -827,11 +827,51 @@
               </template>
               <template #item.nombre="{ item }">
                 <a
+                  v-if="attachmentOpenUrl(item._raw ?? item)"
+                  :href="attachmentOpenUrl(item._raw ?? item)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {{ (item._raw ?? item).nombre }}
+                </a>
+                <a
+                  v-else
                   href="#"
                   @click.prevent="openAttachment(item._raw ?? item)"
                 >
                   {{ (item._raw ?? item).nombre }}
                 </a>
+              </template>
+              <template #item.evidencia="{ item }">
+                <a
+                  v-if="attachmentOpenUrl(item._raw ?? item)"
+                  :href="attachmentOpenUrl(item._raw ?? item)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="attachment-evidence-link"
+                  :title="`Abrir ${(item._raw ?? item).nombre || 'la evidencia'} en otra pestaña`"
+                >
+                  <img
+                    v-if="attachmentThumbUrl(item._raw ?? item)"
+                    :src="attachmentThumbUrl(item._raw ?? item)"
+                    :alt="`Evidencia ${(item._raw ?? item).nombre || ''}`"
+                    class="attachment-evidence-thumb"
+                    loading="lazy"
+                  />
+                  <span class="attachment-evidence-label">
+                    <v-icon icon="mdi-open-in-new" size="15" />
+                    {{ attachmentThumbUrl(item._raw ?? item) ? "Ver imagen" : "Ver evidencia" }}
+                  </span>
+                </a>
+                <v-btn
+                  v-else
+                  size="small"
+                  variant="text"
+                  prepend-icon="mdi-open-in-new"
+                  @click="openAttachment(item._raw ?? item)"
+                >
+                  Ver evidencia
+                </v-btn>
               </template>
               <template #item.actions="{ item }">
                 <v-btn v-if="canManageWorkOrderUploads" icon="mdi-delete" variant="text" color="error" @click="deleteAttachment(item._raw ?? item)" />
@@ -1682,7 +1722,23 @@
                 density="compact"
                 class="table-enterprise enterprise-table"
                 :items-per-page="10"
-              />
+              >
+                <template #item.visualizacion="{ item }">
+                  <a
+                    v-if="item.url_visualizacion"
+                    :href="item.url_visualizacion"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="attachment-evidence-link"
+                  >
+                    <span class="attachment-evidence-label">
+                      <v-icon icon="mdi-open-in-new" size="15" />
+                      {{ item.visualizacion }}
+                    </span>
+                  </a>
+                  <span v-else class="text-medium-emphasis">Sin enlace</span>
+                </template>
+              </v-data-table>
             </v-expansion-panel-text>
           </v-expansion-panel>
 
@@ -2561,6 +2617,7 @@ const attachmentHeaders = [
   { title: "Tipo", key: "tipo" },
   { title: "Origen", key: "origen", sortable: false },
   { title: "Nombre", key: "nombre" },
+  { title: "Evidencia", key: "evidencia", sortable: false },
   { title: "Acciones", key: "actions", sortable: false },
 ];
 
@@ -2773,9 +2830,10 @@ const reportPreviewAttachments = computed(() =>
     tipo_archivo: getFriendlyAttachmentType(item),
     origen: getAttachmentOriginLabel(item),
     nombre: item?.nombre || "",
-    visualizacion: isAttachmentImage(item)
-      ? "Imagen adjunta"
-      : getAttachmentReportUrl(item) || "Sin enlace",
+    // La columna imprimia la URL completa como texto plano. Ahora viaja aparte
+    // y la celda muestra una etiqueta corta que abre la evidencia.
+    visualizacion: isAttachmentImage(item) ? "Ver imagen" : "Ver evidencia",
+    url_visualizacion: getAttachmentReportUrl(item),
   })),
 );
 const reportPreviewHistory = computed(() =>
@@ -4170,6 +4228,23 @@ function getAttachmentMediaUrl(attachment: any) {
   if (/^(https?:|blob:|data:)/i.test(rawUrl)) return rawUrl;
   const normalizedPath = rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`;
   return `https://justicecompany-ec.com${normalizedPath}`;
+}
+
+/**
+ * Enlace directo a la evidencia, para abrirla en otra pestana.
+ *
+ * La lista solo ofrecia un `href="#"` con un handler: no se podia abrir en una
+ * pestana nueva ni copiar la direccion. Con la URL real el navegador hace lo
+ * que ya sabe hacer, y el handler queda de respaldo para los adjuntos que aun
+ * no la traen resuelta (hay que pedirsela al backend).
+ */
+function attachmentOpenUrl(attachment: any) {
+  return getAttachmentReportUrl(attachment);
+}
+
+/** Miniatura: solo para imagenes, que son las que se pueden previsualizar. */
+function attachmentThumbUrl(attachment: any) {
+  return isAttachmentImage(attachment) ? getAttachmentMediaUrl(attachment) : "";
 }
 
 function buildWorkOrderAttachmentReportRow(attachment: any, compact = false) {
@@ -7059,6 +7134,38 @@ watch(
 <style scoped>
 .work-orders-shell {
   overflow: hidden;
+}
+
+/* La evidencia se abre en otra pestana: la miniatura y la etiqueta forman un
+   solo enlace para que el area de clic sea toda la celda util. */
+.attachment-evidence-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: rgb(var(--v-theme-primary, 21 101 192));
+  min-width: 0;
+}
+
+.attachment-evidence-link:hover .attachment-evidence-label {
+  text-decoration: underline;
+}
+
+.attachment-evidence-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.16);
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  display: block;
+}
+
+.attachment-evidence-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .table-enterprise {

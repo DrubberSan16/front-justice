@@ -97,6 +97,47 @@ const REPORT_THEME = {
   zebra: "F7FAFC",
 };
 
+/** Azul de enlace: se separa del azul de marca para que se lea como clicable. */
+const REPORT_LINK_COLOR: [number, number, number] = [21, 101, 192];
+
+function applyReportLinkStyles(cell: any) {
+  if (!cell?.styles) return;
+  cell.styles.textColor = REPORT_LINK_COLOR;
+}
+
+/**
+ * Subraya el texto de una celda para que se lea como hipervinculo.
+ *
+ * jsPDF-autotable no tiene estilo de subrayado, asi que se reproduce el mismo
+ * calculo de linea base que hace al dibujar el texto (`autoTableText`) y se
+ * traza la raya debajo. Va envuelto en try/catch a proposito: el subrayado es
+ * un adorno y no puede tumbar la generacion del informe si una version futura
+ * de la libreria cambia el calculo.
+ */
+function underlineReportLinkText(doc: any, hookData: any) {
+  try {
+    const lines: string[] = Array.isArray(hookData?.cell?.text) ? hookData.cell.text : [];
+    const label = String(lines[0] ?? "").trim();
+    if (!label || typeof hookData?.cell?.getTextPos !== "function") return;
+    const position = hookData.cell.getTextPos();
+    const fontSize = doc.internal.getFontSize() / doc.internal.scaleFactor;
+    const lineHeightFactor =
+      typeof doc.getLineHeightFactor === "function" ? doc.getLineHeightFactor() : 1.15;
+    const lineHeight = fontSize * lineHeightFactor;
+    const valign = hookData.cell.styles?.valign ?? "top";
+    let baseline = position.y + fontSize * 0.85;
+    if (valign === "middle") baseline -= (lines.length / 2) * lineHeight;
+    else if (valign === "bottom") baseline -= lines.length * lineHeight;
+    const width = doc.getTextWidth(label);
+    if (!Number.isFinite(width) || width <= 0) return;
+    doc.setDrawColor(...REPORT_LINK_COLOR);
+    doc.setLineWidth(0.4);
+    doc.line(position.x, baseline + 1.2, position.x + width, baseline + 1.2);
+  } catch {
+    // Sin subrayado el enlace sigue siendo azul y sigue abriendo la evidencia.
+  }
+}
+
 /**
  * Nombre visible del usuario que genera el archivo. Se resuelve desde la sesión
  * activa para que todos los reportes del sistema estampen fecha y usuario sin
@@ -807,6 +848,22 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
                 ext: { width: 84, height: rowHeight - 8 },
               });
               row.getCell(previewColumnIndex + 1).value = "";
+            } else if (linkValue) {
+              // La imagen no se pudo incrustar: la celda queda como enlace en
+              // vez de como un texto muerto que no lleva a la evidencia.
+              const previewCell = row.getCell(previewColumnIndex + 1);
+              previewCell.value = { text: "Ver imagen", hyperlink: linkValue };
+              previewCell.font = {
+                name: "Arial",
+                size: 9,
+                color: { argb: "0563C1" },
+                underline: true,
+              };
+              previewCell.alignment = {
+                horizontal: "left",
+                vertical: "middle",
+                wrapText: true,
+              };
             }
           }
         }
@@ -1182,23 +1239,39 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
         columns.map((column) => repairText(String(formatValue(resolveColumnValue(row, column))))),
       ),
       didParseCell: (hookData: any) => {
-        if (
-          sheet.media &&
-          hookData.section === "body" &&
-          previewColumnIndex >= 0 &&
-          hookData.column.index === previewColumnIndex
-        ) {
-          const row = safeRows[hookData.row.index] ?? {};
+        if (!sheet.media || hookData.section !== "body") return;
+        const row = safeRows[hookData.row.index] ?? {};
+        const linkUrl = repairText(
+          String(resolveRowValueByKey(row, sheet.media.linkUrlKey || "") || ""),
+        ).trim();
+
+        if (previewColumnIndex >= 0 && hookData.column.index === previewColumnIndex) {
           const imageUrl = repairText(String(resolveRowValueByKey(row, sheet.media.imageUrlKey) || "")).trim();
           if (imageUrl) {
-            hookData.cell.text = imageMap.has(imageUrl) ? [""] : ["Ver imagen"];
+            const isEmbedded = imageMap.has(imageUrl);
+            // Sin la imagen incrustada la celda solo decia "Ver imagen" y no
+            // llevaba a ninguna parte. Ahora es la etiqueta de un enlace: se
+            // pinta como tal y abre la evidencia en el navegador.
+            hookData.cell.text = isEmbedded ? [""] : ["Ver imagen"];
             hookData.cell.styles.minCellHeight = Math.max(sheet.media.rowHeight ?? 58, 58);
+            if (!isEmbedded && linkUrl) applyReportLinkStyles(hookData.cell);
           }
+        }
+
+        if (
+          linkColumnIndex >= 0 &&
+          hookData.column.index === linkColumnIndex &&
+          linkUrl
+        ) {
+          applyReportLinkStyles(hookData.cell);
         }
       },
       didDrawCell: (hookData: any) => {
         if (!sheet.media || hookData.section !== "body") return;
         const row = safeRows[hookData.row.index] ?? {};
+        const linkUrl = repairText(
+          String(resolveRowValueByKey(row, sheet.media.linkUrlKey || "") || ""),
+        ).trim();
 
         if (previewColumnIndex >= 0 && hookData.column.index === previewColumnIndex) {
           const imageUrl = repairText(String(resolveRowValueByKey(row, sheet.media.imageUrlKey) || "")).trim();
@@ -1217,12 +1290,22 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
               undefined,
               "FAST",
             );
+          } else if (imageUrl && linkUrl) {
+            underlineReportLinkText(doc, hookData);
+          }
+          // La miniatura tambien abre la evidencia: quien la ve pequena en el
+          // papel suele querer el original, y hacer clic encima es el gesto
+          // natural.
+          if (imageUrl && linkUrl) {
+            doc.link(hookData.cell.x, hookData.cell.y, hookData.cell.width, hookData.cell.height, {
+              url: linkUrl,
+            });
           }
         }
 
         if (linkColumnIndex >= 0 && hookData.column.index === linkColumnIndex) {
-          const linkUrl = repairText(String(resolveRowValueByKey(row, sheet.media.linkUrlKey || "") || "")).trim();
           if (linkUrl) {
+            underlineReportLinkText(doc, hookData);
             doc.link(hookData.cell.x, hookData.cell.y, hookData.cell.width, hookData.cell.height, {
               url: linkUrl,
             });

@@ -226,6 +226,17 @@
           >
             {{ isGuideAuthorizedSummary(item) ? "Forzar anulación" : "Anular" }}
           </v-btn>
+          <v-btn
+            v-if="canReverseTransferAnnulment && isAnnulledTransfer(item)"
+            size="small"
+            color="warning"
+            variant="tonal"
+            prepend-icon="mdi-undo-variant"
+            :loading="reversingTransferId === item.id"
+            @click="openReverseAnnulment(item)"
+          >
+            Reversar anulación
+          </v-btn>
         </div>
       </template>
     </v-data-table-server>
@@ -270,6 +281,47 @@
               ? "Sí, ya fue anulada en el SRI"
               : "Anular"
           }}
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <v-dialog v-model="reverseAnnulmentDialog" :max-width="560">
+    <v-card rounded="xl" class="enterprise-dialog">
+      <v-card-title class="text-subtitle-1 font-weight-bold">
+        Reversar anulación de la transferencia
+      </v-card-title>
+      <v-card-text>
+        ¿Seguro que deseas reversar la anulación de la transferencia
+        <strong>{{ reversingTransfer?.codigo || "" }}</strong>? La transferencia
+        vuelve a aplicarse tal como estaba: el stock regresa a
+        <strong>{{ reversingTransfer?.bodega_destino_label || "la bodega destino" }}</strong>,
+        se reactivan sus movimientos de bodega y su Kardex, y la orden de compra
+        recupera la cantidad transferida.
+        <v-alert type="info" variant="tonal" class="mt-3">
+          Si el material ya se consumió después de anular, el stock de origen no
+          alcanzará para devolverlo y la operación se detendrá sin cambiar nada.
+        </v-alert>
+        <v-alert
+          v-if="reversingTransfer?.guia_remision_id"
+          type="warning"
+          variant="tonal"
+          class="mt-3"
+        >
+          La guía de remisión vuelve a un estado vigente en Justice KPI, pero el
+          SRI es la fuente de verdad: usa "Consultar SRI" después de reversar
+          para refrescar su estado real.
+        </v-alert>
+      </v-card-text>
+      <v-card-actions class="pa-4">
+        <v-spacer />
+        <v-btn variant="text" @click="reverseAnnulmentDialog = false">Cancelar</v-btn>
+        <v-btn
+          color="warning"
+          :loading="reversingTransferId !== ''"
+          @click="confirmReverseAnnulment"
+        >
+          Reversar anulación
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -1489,6 +1541,15 @@ const canManuallyConfirmGuideAuthorization = computed(
 const canManageSriSignature = computed(
   () => (canCreate.value || canEdit.value) && isSuperAdministrator(auth.user),
 );
+/**
+ * Reversar una anulacion reaplica stock, kardex y movimientos de un documento
+ * ya cerrado, asi que queda en manos de una sola persona: el Super
+ * Administrador. El backend exige el mismo rol; esto solo evita ofrecer un
+ * boton que iba a ser rechazado.
+ */
+const canReverseTransferAnnulment = computed(() =>
+  isSuperAdministrator(auth.user),
+);
 
 const loading = ref(false);
 const saving = ref(false);
@@ -1502,6 +1563,9 @@ const isForcedAuthorizedGuideAnnulment = computed(
     Boolean(annullingTransfer.value) &&
     isGuideAuthorizedSummary(annullingTransfer.value as TransferRow),
 );
+const reverseAnnulmentDialog = ref(false);
+const reversingTransfer = ref<TransferRow | null>(null);
+const reversingTransferId = ref("");
 const sriConfigDialog = ref(false);
 const guideDialog = ref(false);
 const guideSaving = ref(false);
@@ -3862,6 +3926,36 @@ async function confirmAnnulTransfer() {
     );
   } finally {
     annullingTransferId.value = "";
+  }
+}
+
+function openReverseAnnulment(item: TransferRow) {
+  if (!canReverseTransferAnnulment.value || !isAnnulledTransfer(item)) return;
+  reversingTransfer.value = item;
+  reverseAnnulmentDialog.value = true;
+}
+
+async function confirmReverseAnnulment() {
+  const transferId = String(reversingTransfer.value?.id || "").trim();
+  if (!transferId || reversingTransferId.value) return;
+  reversingTransferId.value = transferId;
+  try {
+    await api.patch(
+      `/kpi_inventory/transferencias-bodega/${transferId}/reversar-anulacion`,
+    );
+    ui.success("Anulación reversada: la transferencia volvió a aplicarse.");
+    reverseAnnulmentDialog.value = false;
+    reversingTransfer.value = null;
+    stockRowsLoaded.value = false;
+    await hydrateView();
+  } catch (error: any) {
+    ui.error(
+      error?.response?.data?.message ||
+        error?.message ||
+        "No se pudo reversar la anulación de la transferencia.",
+    );
+  } finally {
+    reversingTransferId.value = "";
   }
 }
 
