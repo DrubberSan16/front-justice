@@ -2437,13 +2437,12 @@ const closeRestrictionText = computed(() => {
 
 const headers = [
   { title: "Código", key: "code", fixed: true, width: 150 },
-  { title: "Tipo", key: "type" },
+  { title: "Tipo mantenimiento", key: "maintenance_kind_label" },
   { title: "Título", key: "title" },
   { title: "Equipo", key: "equipment_label" },
   { title: "Bodega", key: "bodega_label" },
   { title: "Compartimiento", key: "equipment_component_label" },
   { title: "Estado", key: "status_workflow" },
-  { title: "Tipo mantenimiento", key: "maintenance_kind_label" },
   { title: "Clase", key: "emergency_label" },
   { title: "Horometro actual", key: "horometro_actual" },
   { title: "Fecha programada", key: "scheduled_program_date_label" },
