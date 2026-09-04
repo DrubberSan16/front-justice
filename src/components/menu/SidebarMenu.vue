@@ -27,14 +27,105 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useMenuStore } from "@/app/stores/menu.store";
 import type { MenuNode } from "@/app/types/menu.types";
+import { listAllPages } from "@/app/utils/list-all-pages";
+import { normalizeMenuRouteKey } from "@/app/utils/menu-route-catalog";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import SidebarMenuItem from "@/components/menu/SidebarMenuItem.vue";
 
 defineProps<{ collapsed?: boolean }>();
 const menu = useMenuStore();
 const search = ref("");
+
+/**
+ * Tipos de equipo colgados del nodo "Equipos".
+ *
+ * No se dan de alta en `tb_menu`: se calculan desde el catalogo, asi que un
+ * tipo nuevo aparece en el menu sin tocar la base ni el codigo, y uno retirado
+ * desaparece solo. Cada hijo lleva a la misma pantalla de equipos, filtrada por
+ * su tipo.
+ */
+const equipmentTypes = ref<Array<Record<string, any>>>([]);
+
+function isEquipmentNode(node: MenuNode) {
+  return normalizeMenuRouteKey(node.urlComponent) === "equipos";
+}
+
+function findEquipmentNode(nodes: MenuNode[]): MenuNode | null {
+  for (const node of nodes) {
+    if (isEquipmentNode(node)) return node;
+    const found = findEquipmentNode(node.children ?? []);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function loadEquipmentTypes() {
+  const node = findEquipmentNode(menu.tree);
+  // Sin permiso de lectura sobre Equipos el nodo no esta en el arbol y no hay
+  // nada que colgar: tampoco se pide el catalogo.
+  if (!node || !node.permissions?.isReaded) {
+    equipmentTypes.value = [];
+    return;
+  }
+  try {
+    const rows = await listAllPages(
+      "/kpi_maintenance/tipo-equipo",
+      {},
+      { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+    );
+    equipmentTypes.value = Array.isArray(rows) ? rows : [];
+  } catch {
+    // El menu no se rompe por esto: sin catalogo, "Equipos" sigue siendo una
+    // entrada normal que abre la lista completa.
+    equipmentTypes.value = [];
+  }
+}
+
+function buildEquipmentTypeChildren(node: MenuNode): MenuNode[] {
+  return equipmentTypes.value
+    .map((type) => ({
+      id: `equipos-tipo-${type?.id}`,
+      parentId: node.id,
+      nombre:
+        String(type?.nombre || type?.codigo || "").trim() || "Sin nombre",
+      descripcion: String(type?.descripcion || "").trim(),
+      icon: "$mdiEngineOutline",
+      urlComponent: node.urlComponent,
+      menuPosition: String(type?.codigo || ""),
+      status: "ACTIVE",
+      permissions: node.permissions,
+      children: [],
+      virtual: true,
+      routeLocation: {
+        name: "equipos",
+        query: { tipo: String(type?.id || "") },
+      },
+    }))
+    .sort((left, right) => left.nombre.localeCompare(right.nombre, "es"));
+}
+
+function withEquipmentTypes(nodes: MenuNode[]): MenuNode[] {
+  return nodes.map((node) => {
+    if (isEquipmentNode(node) && equipmentTypes.value.length) {
+      return {
+        ...node,
+        children: [...(node.children ?? []), ...buildEquipmentTypeChildren(node)],
+      };
+    }
+    const children = node.children ?? [];
+    return children.length
+      ? { ...node, children: withEquipmentTypes(children) }
+      : node;
+  });
+}
+
+const augmentedTree = computed(() => withEquipmentTypes(menu.tree));
+
+onMounted(loadEquipmentTypes);
+watch(() => menu.tree, loadEquipmentTypes, { deep: false });
 
 function filterNodes(nodes: MenuNode[], term: string): MenuNode[] {
   return nodes.flatMap((node) => {
@@ -47,7 +138,7 @@ function filterNodes(nodes: MenuNode[], term: string): MenuNode[] {
 
 const filteredTree = computed(() => {
   const term = search.value.trim().toLocaleLowerCase("es");
-  return term ? filterNodes(menu.tree, term) : menu.tree;
+  return term ? filterNodes(augmentedTree.value, term) : augmentedTree.value;
 });
 </script>
 

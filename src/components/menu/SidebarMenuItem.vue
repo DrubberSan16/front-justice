@@ -19,8 +19,8 @@
     :title="node.nombre"
     :active="isActive"
     rounded="xl"
-    class="sidebar-item"
-    @click="goToComponent(node.urlComponent)"
+    :class="['sidebar-item', { 'sidebar-item--virtual': node.virtual }]"
+    @click="goToNode(node)"
   >
     <template #prepend><span class="sidebar-item__icon"><v-icon :icon="icon" /></span></template>
   </v-list-item>
@@ -41,16 +41,36 @@ const icon = computed(() => resolveIcon(props.node.icon));
 const moduleScope = computed(() => props.moduleScope ?? props.node.nombre);
 
 function nodeMatchesRoute(node: MenuNode): boolean {
+  // Los nodos virtuales comparten ruta entre si (todos los tipos de equipo van
+  // a `equipos`), asi que el nombre de ruta no basta para saber cual esta
+  // activo: hay que mirar tambien el parametro que los diferencia.
+  if (node.routeLocation && typeof node.routeLocation === "object") {
+    const target = node.routeLocation as Record<string, any>;
+    if (target.name !== route.name) return false;
+    const expected = target.query ?? {};
+    return Object.entries(expected).every(
+      ([key, value]) => String(route.query[key] ?? "") === String(value ?? ""),
+    );
+  }
   const target = resolveMenuRouteLocation(router, node.urlComponent);
   const targetName = target && typeof target === "object" && "name" in target ? target.name : null;
-  return targetName === route.name || (node.children ?? []).some(nodeMatchesRoute);
+  // Un padre real no debe quedar activo solo porque uno de sus hijos virtuales
+  // lo este: el hijo ya se resalta por su cuenta.
+  const childMatches = (node.children ?? []).some(
+    (child) => !child.virtual && nodeMatchesRoute(child),
+  );
+  return targetName === route.name || childMatches;
 }
 
 const isActive = computed(() => nodeMatchesRoute(props.node));
 
-function goToComponent(urlComponent: string) {
-  const target = resolveMenuRouteLocation(router, urlComponent);
-  if (target) router.push(target);
+function goToNode(node: MenuNode) {
+  if (node.routeLocation) {
+    void router.push(node.routeLocation);
+    return;
+  }
+  const target = resolveMenuRouteLocation(router, node.urlComponent);
+  if (target) void router.push(target);
 }
 </script>
 
@@ -62,5 +82,9 @@ function goToComponent(urlComponent: string) {
 .sidebar-item__icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; color: var(--nav-muted); background: var(--nav-surface); }
 .sidebar-item.v-list-item--active .sidebar-item__icon { color: var(--nav-accent); background: color-mix(in srgb, var(--nav-accent) 14%, transparent); }
 .sidebar-group :deep(.v-list-group__items) { padding-left: 10px; }
+/* Los hijos calculados (tipos de equipo) pesan menos que una entrada del menu
+   real: son un filtro sobre la misma pantalla, no otro modulo. */
+.sidebar-item--virtual { min-height: 42px; font-size: 0.83rem; font-weight: 550; }
+.sidebar-item--virtual .sidebar-item__icon { width: 26px; height: 26px; }
 @media (prefers-reduced-motion: reduce) { .sidebar-item { transition: none; } }
 </style>

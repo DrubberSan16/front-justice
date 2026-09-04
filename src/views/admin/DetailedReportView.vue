@@ -3676,11 +3676,22 @@ onMounted(() => {
 }
 /* Un grid sin `grid-template-columns` se dimensiona al contenido mas ancho:
    una tabla larga estiraba la modal entera. La columna explicita y el
-   `min-width: 0` de los hijos la mantienen dentro de su caja. */
+   `min-width: 0` de los hijos la mantienen dentro de su caja.
+
+   `grid-auto-rows: max-content` + `align-content: start` son lo que hace que la
+   modal se pueda leer en pantallas bajas: un grid con alto definido reparte ese
+   alto entre sus filas `auto` y las COMPRIME por debajo de su contenido en vez
+   de desbordar, asi que el `overflow-y` de abajo no llegaba a activarse nunca.
+   Medido en el caso del detalle de cebado: la tabla quedaba en 54 px (solo el
+   pie), con `.v-table__wrapper` a 0 px recortado por su `overflow: hidden`,
+   mientras `tbody` media 163 px. Con las filas a contenido, el cuerpo desborda,
+   aparece la barra y vuelven a verse cabecera y registros. */
 .list-dialog__body,
 .detail-dialog__body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 20px;
   padding: 24px 26px 30px;
 }
