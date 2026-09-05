@@ -1429,6 +1429,7 @@ type StockRow = {
   stock_critico?: string | number | null;
   stock_disponible?: string | number | null;
   cantidad_reservada_activa?: string | number | null;
+  costo_promedio_bodega?: string | number | null;
   es_usado?: boolean | null;
 };
 
@@ -3305,7 +3306,16 @@ function handleDetailProductChange(detail: TransferDetailForm) {
   if (!product) return;
   detail.codigo_producto = String(product.codigo || "");
   detail.nombre_producto = String(product.nombre || "");
-  detail.costo_unitario = String(product.costo_promedio || product.ultimo_costo || 0);
+  // El backend valoriza con el costo de la bodega origen y solo cae al del
+  // material cuando esa bodega no tiene precio propio: la sugerencia sigue la
+  // misma regla para que lo que se ve sea lo que se guarda.
+  const sourceStock = currentStockByProduct.value.get(String(product.id));
+  detail.costo_unitario = String(
+    toNumber(sourceStock?.costo_promedio_bodega) ||
+      product.costo_promedio ||
+      product.ultimo_costo ||
+      0,
+  );
   detail.cantidad_nuevo = "0";
   detail.cantidad_usado = "0";
   detail.cantidad_critico = "0";
