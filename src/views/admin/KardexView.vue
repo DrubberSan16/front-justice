@@ -619,7 +619,8 @@
                         label="Precio unitario" prefix="$" variant="outlined" density="comfortable"
                         :disabled="savingDocument" />
                       <div class="text-caption text-medium-emphasis mt-1">
-                        Vacío mantiene el costo actual del material.
+                        Precio para esta bodega. Vacío usa el que ya tiene aquí
+                        o, si no tiene, el del material.
                       </div>
                     </td>
                     <td class="obs-col"><v-text-field v-model="detail.observacion"

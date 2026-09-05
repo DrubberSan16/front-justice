@@ -55,8 +55,9 @@ export function isWarehouseKeeper(user: AuthUser): boolean {
 /**
  * Bodega no ve importes, pero es quien recibe la mercadería y sabe a qué precio
  * entró: puede fijar el costo unitario al registrar un ingreso de bodega en
- * Kardex. Es lo único que puede hacer con los importes, y solo ahí; el resto
- * de perfiles conserva sus permisos tal cual.
+ * Kardex. El precio es de esa bodega, no del material, porque el mismo repuesto
+ * puede costar distinto en cada una. Es lo único que puede hacer con los
+ * importes, y solo ahí; el resto de perfiles conserva sus permisos tal cual.
  */
 export function canSetIncomeUnitCost(user: AuthUser): boolean {
   return isWarehouseKeeper(user);
