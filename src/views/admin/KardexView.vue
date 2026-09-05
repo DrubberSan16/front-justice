@@ -582,6 +582,7 @@
                     <th class="condition-col">Condición</th>
                     <th class="stock-col">Disponible</th>
                     <th class="qty-col">Cantidad</th>
+                    <th v-if="showIncomeUnitCost" class="price-col">Precio unitario</th>
                     <th class="obs-col">{{ documentForm.tipo === 'SALIDA' ? 'Responsable' : 'Observacion' }}</th>
                     <th class="action-col"></th>
                   </tr>
@@ -612,6 +613,14 @@
                       <div v-if="detailExceedsStock(detail)" class="text-caption text-error mt-1">Supera el disponible
                         de {{
                           formatNumberForDisplay(getDetailAvailableStock(detail)) }}.</div>
+                    </td>
+                    <td v-if="showIncomeUnitCost" class="price-col">
+                      <v-text-field v-model="detail.costoUnitario" type="number" min="0" step="0.0001"
+                        label="Precio unitario" prefix="$" variant="outlined" density="comfortable"
+                        :disabled="savingDocument" />
+                      <div class="text-caption text-medium-emphasis mt-1">
+                        Vacío mantiene el costo actual del material.
+                      </div>
                     </td>
                     <td class="obs-col"><v-text-field v-model="detail.observacion"
                         :label="documentForm.tipo === 'SALIDA' ? 'Responsable' : 'Observacion'" variant="outlined"
@@ -669,7 +678,11 @@ import {
   resolveEquipmentBrand,
   resolveEquipmentModel,
 } from "@/app/utils/equipment-display";
-import { canViewAnnulledRecords, canViewMaterialCosts } from "@/app/utils/role-access";
+import {
+  canSetIncomeUnitCost,
+  canViewAnnulledRecords,
+  canViewMaterialCosts,
+} from "@/app/utils/role-access";
 import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
@@ -679,7 +692,7 @@ type MovementType = "INGRESO" | "SALIDA";
 type StockCondition = "NUEVO" | "USADO" | "CRITICO";
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_nuevo?: string | number; stock_usado?: string | number; stock_disponible?: string | number; stock_critico?: string | number; cantidad_reservada_activa?: string | number; es_usado?: boolean; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
 type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; anulado?: boolean; anulado_por?: string | null; anulado_at?: string | null; };
-type MovementDetailForm = { localId: string; productoId: string; condicionMaterial: StockCondition; cantidad: string; observacion: string; };
+type MovementDetailForm = { localId: string; productoId: string; condicionMaterial: StockCondition; cantidad: string; costoUnitario: string; observacion: string; };
 type KardexFilterState = {
   desde: string;
   hasta: string;
@@ -757,6 +770,14 @@ const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
 const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
 const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
+/**
+ * El precio de entrada solo se pide donde tiene sentido: bodega registrando
+ * un ingreso. En un egreso el costo lo pone el inventario.
+ */
+const canPriceIncome = computed(() => canSetIncomeUnitCost(auth.user));
+const showIncomeUnitCost = computed(
+  () => canPriceIncome.value && documentForm.tipo === "INGRESO",
+);
 const isAnnulledMovementDocument = computed(
   () => movementDocumentDialog.document?.anulado === true,
 );
@@ -772,7 +793,7 @@ const canAnnulMovementDocument = computed(() =>
 const canAccessInventoryReports = computed(() => hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"));
 const KARDEX_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
 const documentForm = reactive({ tipo: "INGRESO" as MovementType, fecha: formatDateForInput(), bodegaId: "", referencia: "", observacion: "" });
-const movementDetails = ref<MovementDetailForm[]>([{ localId: `detail-${Date.now()}`, productoId: "", condicionMaterial: "NUEVO", cantidad: "", observacion: "" }]);
+const movementDetails = ref<MovementDetailForm[]>([{ localId: `detail-${Date.now()}`, productoId: "", condicionMaterial: "NUEVO", cantidad: "", costoUnitario: "", observacion: "" }]);
 const defaultKardexDateFrom = formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const defaultKardexDateTo = formatDateForInput();
 const kardexFilters = reactive<KardexFilterState>({
@@ -872,7 +893,7 @@ const kardexPageFrom = computed(() => kardexPagination.total > 0 ? (kardexPagina
 const kardexPageTo = computed(() => kardexPagination.total > 0 ? Math.min(kardexPagination.total, kardexPagination.page * kardexPagination.limit) : 0);
 const documentTotalQuantity = computed(() => movementDetails.value.reduce((sum, detail) => sum + parsePositiveNumber(detail.cantidad), 0));
 const movementDialogTitle = computed(() => documentForm.tipo === "INGRESO" ? "Ingreso de bodega" : "Egreso de bodega");
-function createMovementDetail(): MovementDetailForm { return { localId: `detail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, productoId: "", condicionMaterial: "NUEVO", cantidad: "", observacion: "" }; }
+function createMovementDetail(): MovementDetailForm { return { localId: `detail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, productoId: "", condicionMaterial: "NUEVO", cantidad: "", costoUnitario: "", observacion: "" }; }
 function parsePositiveNumber(value: string | number) { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : 0; }
 function getUserName() { return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM"; }
 function formatKardexProductName(productId: unknown, fallbackName?: unknown) {
@@ -1722,6 +1743,7 @@ async function saveMovementDocument() {
     producto_id: string;
     cantidad: number;
     condicion_material: StockCondition;
+    costo_unitario?: number;
     observacion?: string;
   }> = [];
   for (const [index, detail] of candidateDetails.entries()) {
@@ -1738,10 +1760,24 @@ async function saveMovementDocument() {
         `La fila ${index + 1} supera el stock transferible de la condición seleccionada.`,
       );
     }
+    const precioUnitario = showIncomeUnitCost.value
+      ? parsePositiveNumber(detail.costoUnitario)
+      : 0;
+    if (
+      showIncomeUnitCost.value &&
+      String(detail.costoUnitario || "").trim() &&
+      !precioUnitario
+    ) {
+      return ui.error(
+        `El precio unitario de la fila ${index + 1} debe ser mayor a cero.`,
+      );
+    }
     payloadDetails.push({
       producto_id: detail.productoId,
       cantidad,
       condicion_material: detail.condicionMaterial,
+      // Sin precio el backend sigue valorizando con el costo del material.
+      costo_unitario: precioUnitario || undefined,
       observacion: detail.observacion || undefined,
     });
   }
@@ -2249,6 +2285,11 @@ onBeforeUnmount(() => {
 
 .qty-col {
   min-width: 160px;
+  width: 14%;
+}
+
+.price-col {
+  min-width: 170px;
   width: 14%;
 }
 

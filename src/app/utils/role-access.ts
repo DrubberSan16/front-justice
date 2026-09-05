@@ -48,6 +48,20 @@ export function canViewMaterialCosts(user: AuthUser): boolean {
   );
 }
 
+export function isWarehouseKeeper(user: AuthUser): boolean {
+  return ["BODEGA", "BODEGUERO"].includes(getRoleName(user));
+}
+
+/**
+ * Bodega no ve importes, pero es quien recibe la mercadería y sabe a qué precio
+ * entró: puede fijar el costo unitario al registrar un ingreso de bodega en
+ * Kardex. Es lo único que puede hacer con los importes, y solo ahí; el resto
+ * de perfiles conserva sus permisos tal cual.
+ */
+export function canSetIncomeUnitCost(user: AuthUser): boolean {
+  return isWarehouseKeeper(user);
+}
+
 export function canManageAdministrativeOperations(user: AuthUser): boolean {
   return ["ADMINISTRADOR", "SUPER ADMINISTRADOR", "GERENTE GENERAL"].includes(
     getRoleName(user),
