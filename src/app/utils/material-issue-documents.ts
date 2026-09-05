@@ -19,6 +19,7 @@ export type MaterialIssueDocumentDetailLike = {
   producto_descripcion?: string | null;
   producto_label?: string | null;
   bodega_label?: string | null;
+  fecha?: string | Date | null;
   condicion_material?: string | null;
   cantidad?: string | number | null;
   costo_unitario?: string | number | null;
@@ -170,7 +171,9 @@ function buildIssueLines(documents: MaterialIssueDocumentLike[]) {
     return details.map((detail) => ({
       detail,
       documentNumber: text(issue?.numero_documento, "SIN CÓDIGO"),
-      documentDate: issue?.fecha_movimiento ?? null,
+      // El egreso se reutiliza mientras la OT sigue sacando material, asi que
+      // su fecha es la de apertura; la de la salida real la trae la linea.
+      documentDate: detail?.fecha ?? issue?.fecha_movimiento ?? null,
     }));
   });
 }
@@ -227,9 +230,15 @@ export async function buildMaterialIssuePdfBlob(
   const headerNumber =
     documentNumbers.length === 1 ? `No. ${documentNumbers[0]}` : `Orden ${orderCode}`;
 
-  const issueDates = issues
-    .map((issue) => issue?.fecha_movimiento)
-    .filter((value): value is string | Date => Boolean(value));
+  const issueDates = [
+    ...lines.map((line) => line.documentDate),
+    ...issues.map((issue) => issue?.fecha_movimiento),
+  ]
+    .filter((value): value is string | Date => Boolean(value))
+    .sort(
+      (left, right) =>
+        new Date(left).getTime() - new Date(right).getTime(),
+    );
   const firstDate = issueDates.length ? issueDates[0] : null;
   const lastDate = issueDates.length ? issueDates[issueDates.length - 1] : null;
   const dateLabel =
