@@ -1098,7 +1098,22 @@
                 </div>
               </template>
             </v-data-table>
-            <div class="text-subtitle-2 mb-2">Salidas reales registradas</div>
+            <div
+              class="d-flex align-center justify-space-between mb-2"
+              style="gap: 8px; flex-wrap: wrap;"
+            >
+              <div class="text-subtitle-2">Salidas reales registradas</div>
+              <v-btn
+                size="small"
+                variant="tonal"
+                prepend-icon="mdi-printer-outline"
+                :disabled="!issueRows.length"
+                :loading="isPrintingIssueDocuments(currentWorkOrderRecord)"
+                @click="printWorkOrderIssueDocuments(currentWorkOrderRecord)"
+              >
+                Imprimir Egreso
+              </v-btn>
+            </div>
             <v-data-table
               :headers="issueHeaders"
               :items="issueRows"
@@ -1855,6 +1870,12 @@ import {
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import {
+  buildMaterialIssuePdfBlob,
+  materialIssuePdfFileName,
+  type MaterialIssueDocumentLike,
+  type MaterialIssueWorkOrderLike,
+} from "@/app/utils/material-issue-documents";
 import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
@@ -2063,7 +2084,7 @@ const canAccessWorkOrderReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "ordenes_trabajo"),
 );
 
-type WorkOrderActionKey = "excel" | "pdf" | "edit" | "annul";
+type WorkOrderActionKey = "excel" | "pdf" | "issue-pdf" | "edit" | "annul";
 type WorkOrderRowAction = {
   key: WorkOrderActionKey;
   label: string;
@@ -2074,6 +2095,14 @@ type WorkOrderRowAction = {
 
 function workOrderActions(item: any): WorkOrderRowAction[] {
   const actions: WorkOrderRowAction[] = [];
+  // La constancia del egreso la firma bodega, no gerencia: no se esconde
+  // detras del permiso de reportes de la OT.
+  actions.push({
+    key: "issue-pdf",
+    label: "Imprimir Egreso",
+    icon: "mdi-printer-outline",
+    variant: "text",
+  });
   if (canAccessWorkOrderReports.value) {
     actions.push(
       { key: "excel", label: "Exportar Excel", icon: "mdi-file-excel", variant: "text" },
@@ -2093,6 +2122,9 @@ function isWorkOrderActionLoading(action: WorkOrderRowAction | undefined, item: 
   if (action?.key === "excel" || action?.key === "pdf") {
     return isExportingWorkOrderRow(item, action.key);
   }
+  if (action?.key === "issue-pdf") {
+    return isPrintingIssueDocuments(item);
+  }
   return false;
 }
 
@@ -2100,6 +2132,10 @@ function executeWorkOrderAction(action: WorkOrderRowAction | undefined, item: an
   if (!action) return;
   if (action.key === "excel" || action.key === "pdf") {
     void exportWorkOrderRow(item, action.key);
+    return;
+  }
+  if (action.key === "issue-pdf") {
+    void printWorkOrderIssueDocuments(item);
     return;
   }
   if (action.key === "edit") {
@@ -2169,6 +2205,15 @@ function exportWorkOrderRowKey(item: any, format: "excel" | "pdf") {
 
 function isExportingWorkOrderRow(item: any, format: "excel" | "pdf") {
   return Boolean(exportState[exportWorkOrderRowKey(item, format)]);
+}
+
+function workOrderIssueDocumentsKey(item: any) {
+  const id = String(item?.id || item?._raw?.id || item?.code || "unknown").trim();
+  return `work-order-issue-pdf:${id}`;
+}
+
+function isPrintingIssueDocuments(item: any) {
+  return Boolean(exportState[workOrderIssueDocumentsKey(item)]);
 }
 
 function normalizeMaintenanceKindValue(value: unknown) {
@@ -5636,6 +5681,91 @@ function buildSingleWorkOrderReportFromBundle(bundle: WorkOrdersListingOrder) {
     scraps: bundle.scraps,
     history: bundle.history,
   });
+}
+
+/**
+ * Cabecera de la OT tal como la necesita la constancia de bodega.
+ *
+ * Las etiquetas de equipo, compartimiento y tipo de mantenimiento se resuelven
+ * en la pantalla, no en el backend: el PDF las toma de aqui para no contar algo
+ * distinto de lo que muestra la tabla.
+ */
+function buildIssueDocumentsWorkOrderContext(item: any): MaterialIssueWorkOrderLike {
+  const raw = item?._raw ?? item ?? {};
+  return {
+    code: raw?.code || raw?.codigo || "",
+    title: raw?.title || "",
+    status_label: isAnnulledWorkOrder(raw)
+      ? "Anulada"
+      : workflowLabel(raw?.status_workflow),
+    equipment_label: getEquipmentLabel(raw),
+    equipment_component_label: getEquipmentComponentLabel(raw),
+    maintenance_kind_label: getMaintenanceKindLabel(raw?.maintenance_kind),
+    created_by_label: raw?.created_by_label || raw?.created_by || "",
+    created_at: raw?.created_at || "",
+    processed_by_label: raw?.processed_by_label || raw?.updated_by || "",
+    processed_at: raw?.processed_at || raw?.updated_at || "",
+    approved_by_label: raw?.approved_by_label || "",
+    approved_at: raw?.approved_at || "",
+  };
+}
+
+/**
+ * Constancia del egreso de bodega (EB) generado por las salidas de material.
+ *
+ * El EB es un documento del inventario y no viaja dentro del informe de la OT,
+ * asi que se pide aparte. Cuando la orden acumula varias salidas, todas van en
+ * el mismo PDF con una hoja por egreso: bodega imprime una sola vez y firma
+ * cada documento por separado.
+ */
+async function printWorkOrderIssueDocuments(item: any) {
+  const workOrderId = String(item?.id || item?._raw?.id || "").trim();
+  if (!workOrderId) {
+    ui.error("No se pudo identificar la orden de trabajo del egreso.");
+    return;
+  }
+  const key = workOrderIssueDocumentsKey(item);
+  if (exportState[key]) return;
+  exportState[key] = true;
+  try {
+    await ensureCatalogsLoaded();
+    const { data } = await api.get(
+      `/kpi_maintenance/work-orders/${workOrderId}/issue-documents`,
+    );
+    const documents = asArray(data) as MaterialIssueDocumentLike[];
+    if (!documents.length) {
+      // Tambien cae aqui la OT anulada: al anularla sus egresos dejan de estar
+      // vigentes y no hay constancia que firmar.
+      ui.error("No hay egresos de bodega vigentes para esta orden de trabajo.");
+      return;
+    }
+    const workOrder = buildIssueDocumentsWorkOrderContext(item);
+    const singleDocument = documents.length === 1 ? documents[0] : null;
+    await workOrderPdfPreview.open({
+      title: singleDocument
+        ? `Egreso de bodega ${singleDocument.numero_documento || ""}`.trim()
+        : `Egreso de bodega · Orden ${workOrder.code || "-"}`,
+      subtitle: [`Orden ${workOrder.code || "-"}`, workOrder.equipment_label]
+        .filter(Boolean)
+        .join(" · "),
+      fileName: materialIssuePdfFileName(workOrder, documents),
+      build: () =>
+        buildMaterialIssuePdfBlob(
+          workOrder,
+          documents,
+          auth.user?.nameSurname || auth.user?.nameUser || "Sistema",
+          canViewCosts.value,
+        ),
+    });
+  } catch (e: any) {
+    ui.error(
+      e?.response?.data?.message ||
+        e?.message ||
+        "No se pudo generar el egreso de bodega.",
+    );
+  } finally {
+    exportState[key] = false;
+  }
 }
 
 async function exportWorkOrderRow(item: any, format: "excel" | "pdf") {
