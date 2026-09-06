@@ -543,18 +543,21 @@ const purchaseProducts = computed(() =>
 );
 
 /**
- * La orden de compra nombra el material como `nombre (descripcion)`.
+ * El selector lleva el codigo; el documento impreso no.
  *
- * El codigo interno no le dice nada al proveedor, que es quien lee el
- * documento; el nombre comercial mas la descripcion es lo que identifica la
- * pieza al cotizar.
+ * Son dos cosas distintas: la orden nombra el material como `nombre
+ * (descripcion)` porque el codigo interno no le dice nada al proveedor, y eso
+ * lo arma el PDF por su cuenta. Aqui elige quien compra, entre miles de
+ * materiales que comparten nombre —hay cientos llamados solo "SUMINISTRO"—, y
+ * sin el codigo no puede distinguirlos ni encontrar el que acaba de crear: el
+ * buscador solo mira este texto.
  */
 const catalogProductOptions = computed<CatalogOption[]>(() =>
   purchaseProducts.value.map((item) => ({
     value: String(item.id),
     title: canViewCosts.value
-      ? `${buildProductDisplayTitle(item, { includeCode: false })} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`
-      : buildProductDisplayTitle(item, { includeCode: false }),
+      ? `${buildProductDisplayTitle(item)} - costo ${formatCurrency(item.costo_promedio || item.ultimo_costo || 0)}`
+      : buildProductDisplayTitle(item),
   })),
 );
 
