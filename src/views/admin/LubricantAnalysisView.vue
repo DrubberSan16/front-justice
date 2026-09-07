@@ -742,7 +742,10 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
-import { canPurgeLubricantAnalyses } from "@/app/utils/role-access";
+import {
+  canManageLubricantAnalyses,
+  canPurgeLubricantAnalyses,
+} from "@/app/utils/role-access";
 import { hasReportAccess } from "@/app/config/report-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -805,9 +808,10 @@ const groupDetailDialog = ref(false);
 const perms = computed(() =>
   getPermissionsForAnyComponent(menuStore.tree, ["Analisis de lubricante", "Análisis de lubricante"]),
 );
-const canCreate = computed(() => perms.value.isCreated);
-const canEdit = computed(() => perms.value.isEdited);
-const canDelete = computed(() => perms.value.permitDeleted);
+const hasAdministrativeAccess = computed(() => canManageLubricantAnalyses(auth.user));
+const canCreate = computed(() => perms.value.isCreated || hasAdministrativeAccess.value);
+const canEdit = computed(() => perms.value.isEdited || hasAdministrativeAccess.value);
+const canDelete = computed(() => perms.value.permitDeleted || hasAdministrativeAccess.value);
 const canPersistForm = computed(() => (editingId.value ? canEdit.value : canCreate.value));
 const canAccessLubricantReports = computed(() =>
   hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "analisis_lubricante"),
@@ -1820,7 +1824,6 @@ async function confirmPurge() {
     const { data } = await api.post("/kpi_maintenance/inteligencia/analisis-lubricante/purge", {
       confirmation: purgeConfirmation.value.trim(),
       requested_by: currentUserName(),
-      requested_role: auth.user?.role?.nombre || null,
       purge_import_jobs: true,
     });
     const summary = unwrap<AnyRow>(data, {});

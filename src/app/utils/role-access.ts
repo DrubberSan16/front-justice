@@ -69,6 +69,11 @@ export function canManageAdministrativeOperations(user: AuthUser): boolean {
   );
 }
 
+/** Administradores y Super Administradores pueden operar análisis de lubricantes. */
+export function canManageLubricantAnalyses(user: AuthUser): boolean {
+  return isAdministrator(user) || isSuperAdministrator(user);
+}
+
 export function canAccessDigitalTwins(user: AuthUser): boolean {
   if (isSuperAdministrator(user)) return true;
   if (isAdministrator(user)) return false;
