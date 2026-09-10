@@ -66,6 +66,9 @@
                 <th class="stock-col">Disponible</th>
                 <th class="qty-col">Cantidad</th>
                 <th v-if="showUnitCost" class="price-col">Precio unitario</th>
+                <th v-if="showUnitCost" class="discount-col">Desc.</th>
+                <th v-if="showUnitCost" class="discount-col">% Desc.</th>
+                <th v-if="showUnitCost" class="line-total-col">Total</th>
                 <th class="obs-col">{{ isIncome ? "Observación" : "Responsable" }}</th>
                 <th class="action-col"></th>
               </tr>
@@ -109,6 +112,24 @@
                     Precio para esta bodega. Vacío usa el que ya tiene aquí o, si no tiene, el del material.
                   </div>
                 </td>
+                <td v-if="showUnitCost" class="discount-col">
+                  <v-text-field v-model="detail.descuento" type="number" min="0" step="0.0001" label="Descuento"
+                    prefix="$" variant="outlined" density="comfortable" :disabled="saving"
+                    @update:model-value="clearDetailDiscountPercentage(detail)" />
+                </td>
+                <td v-if="showUnitCost" class="discount-col">
+                  <v-text-field v-model="detail.porcentajeDescuento" type="number" min="0" max="100" step="0.01"
+                    label="% descuento" suffix="%" variant="outlined" density="comfortable"
+                    :disabled="saving || parsePositive(detail.descuento) > 0"
+                    :hint="parsePositive(detail.descuento) > 0 ? 'Manda el importe' : undefined"
+                    :persistent-hint="parsePositive(detail.descuento) > 0" />
+                </td>
+                <td v-if="showUnitCost" class="line-total-col text-right font-weight-bold">
+                  {{ formatCurrency(lineAmounts(detail).total) }}
+                  <div v-if="lineAmounts(detail).descuento > 0" class="text-caption text-medium-emphasis">
+                    antes {{ formatCurrency(lineAmounts(detail).bruto) }}
+                  </div>
+                </td>
                 <td class="obs-col">
                   <v-text-field v-model="detail.observacion" :label="isIncome ? 'Observación' : 'Responsable'"
                     variant="outlined" density="comfortable" :disabled="saving" />
@@ -121,14 +142,21 @@
             </tbody>
           </table>
         </div>
-        <div class="summary-chip-list mt-4">
-          <v-chip color="primary" variant="tonal">{{ details.length }} materiales</v-chip>
-          <v-chip color="secondary" variant="tonal">
-            {{ formatNumberForDisplay(totalQuantity) }} unidades
-          </v-chip>
-          <v-chip :color="isIncome ? 'info' : 'warning'" variant="tonal">
-            {{ isIncome ? "Suma stock" : "Descuenta stock" }}
-          </v-chip>
+        <div class="d-flex align-center justify-space-between flex-wrap mt-4" style="gap:12px">
+          <div class="summary-chip-list">
+            <v-chip color="primary" variant="tonal">{{ details.length }} materiales</v-chip>
+            <v-chip color="secondary" variant="tonal">
+              {{ formatNumberForDisplay(totalQuantity) }} unidades
+            </v-chip>
+            <v-chip :color="isIncome ? 'info' : 'warning'" variant="tonal">
+              {{ isIncome ? "Suma stock" : "Descuenta stock" }}
+            </v-chip>
+          </div>
+          <div v-if="showUnitCost" class="summary-chip-list justify-end">
+            <v-chip color="info" variant="tonal">Subtotal: {{ formatCurrency(documentTotals.bruto) }}</v-chip>
+            <v-chip color="warning" variant="tonal">Descuento: {{ formatCurrency(documentTotals.descuento) }}</v-chip>
+            <v-chip color="success" variant="tonal">Total: {{ formatCurrency(documentTotals.total) }}</v-chip>
+          </div>
         </div>
       </v-card-text>
       <v-divider />
@@ -183,6 +211,8 @@ type DetailForm = {
   condicionMaterial: StockCondition;
   cantidad: string;
   costoUnitario: string;
+  descuento: string;
+  porcentajeDescuento: string;
   observacion: string;
 };
 
@@ -264,6 +294,53 @@ const totalQuantity = computed(() =>
   details.value.reduce((sum, detail) => sum + parsePositive(detail.cantidad), 0),
 );
 
+/**
+ * Economia de una linea, con el mismo desglose que una orden de compra.
+ *
+ * Se repite aqui el calculo que hace el backend para que quien teclea vea el
+ * total mientras lo escribe; el importe que se guarda lo vuelve a calcular el
+ * servicio, que es el que manda.
+ */
+function lineAmounts(detail: DetailForm) {
+  const cantidad = parsePositive(detail.cantidad);
+  const precio = parsePositive(detail.costoUnitario);
+  const bruto = cantidad * precio;
+  const importe = parsePositive(detail.descuento);
+  const porcentaje = Math.min(parsePositive(detail.porcentajeDescuento), 100);
+  const solicitado = importe > 0 ? importe : (bruto * porcentaje) / 100;
+  const descuento = Math.min(Math.max(solicitado, 0), bruto);
+  return { bruto, descuento, total: Math.max(bruto - descuento, 0) };
+}
+
+const documentTotals = computed(() =>
+  details.value.reduce(
+    (acc, detail) => {
+      const linea = lineAmounts(detail);
+      acc.bruto += linea.bruto;
+      acc.descuento += linea.descuento;
+      acc.total += linea.total;
+      return acc;
+    },
+    { bruto: 0, descuento: 0, total: 0 },
+  ),
+);
+
+/**
+ * El importe y el porcentaje son dos formas de decir lo mismo, asi que solo
+ * puede haber una viva: al teclear un importe se limpia el porcentaje para que
+ * nadie tenga que adivinar cual gano.
+ */
+function clearDetailDiscountPercentage(detail: DetailForm) {
+  if (parsePositive(detail.descuento) > 0) detail.porcentajeDescuento = "";
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("es-EC", {
+    style: "currency",
+    currency: "USD",
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
 function createDetail(): DetailForm {
   return {
     localId: `detail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -271,6 +348,8 @@ function createDetail(): DetailForm {
     condicionMaterial: "NUEVO",
     cantidad: "",
     costoUnitario: "",
+    descuento: "",
+    porcentajeDescuento: "",
     observacion: "",
   };
 }
@@ -497,6 +576,8 @@ async function save() {
     cantidad: number;
     condicion_material: StockCondition;
     costo_unitario?: number;
+    descuento?: number;
+    porcentaje_descuento?: number;
     observacion?: string;
   }> = [];
 
@@ -524,12 +605,28 @@ async function save() {
         `El precio unitario de la fila ${index + 1} debe ser mayor a cero.`,
       );
     }
+    const descuento = showUnitCost.value ? parsePositive(detail.descuento) : 0;
+    const porcentajeDescuento = showUnitCost.value
+      ? parsePositive(detail.porcentajeDescuento)
+      : 0;
+    if (porcentajeDescuento > 100) {
+      return ui.error(
+        `El descuento de la fila ${index + 1} no puede pasar del 100 %.`,
+      );
+    }
+    if (descuento > 0 && descuento > lineAmounts(detail).bruto) {
+      return ui.error(
+        `El descuento de la fila ${index + 1} supera el total de la línea.`,
+      );
+    }
     payloadDetails.push({
       producto_id: detail.productoId,
       cantidad,
       condicion_material: detail.condicionMaterial,
       // Sin precio el backend sigue valorizando con la regla de siempre.
       costo_unitario: precio || undefined,
+      descuento: descuento || undefined,
+      porcentaje_descuento: porcentajeDescuento || undefined,
       observacion: detail.observacion || undefined,
     });
   }
@@ -582,7 +679,9 @@ watch(
 
 .document-editor-grid {
   width: 100%;
-  min-width: 980px;
+  /* Con precio, descuento y total el documento pide mas ancho; el contenedor
+     ya desplaza en horizontal. */
+  min-width: 1180px;
   border-collapse: collapse;
 }
 
@@ -615,6 +714,15 @@ watch(
 .qty-col,
 .price-col {
   min-width: 150px;
+}
+
+.discount-col {
+  min-width: 128px;
+}
+
+.line-total-col {
+  min-width: 120px;
+  white-space: nowrap;
 }
 
 .obs-col {

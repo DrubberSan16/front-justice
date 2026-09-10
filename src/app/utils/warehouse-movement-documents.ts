@@ -32,8 +32,18 @@ export function buildWarehouseMovementReport(
       ...(includeCosts
         ? [
             {
-              label: `Costo total (${currency})`,
-              value: Number(document?.total_costos || 0),
+              label: `Subtotal (${currency})`,
+              value: Number(document?.subtotal_bruto || 0),
+            },
+            {
+              label: `Descuento (${currency})`,
+              value: Number(document?.descuento_total || 0),
+            },
+            {
+              label: `Total (${currency})`,
+              value: Number(
+                document?.total_neto ?? document?.total_costos ?? 0,
+              ),
             },
           ]
         : []),
@@ -56,6 +66,7 @@ export function buildWarehouseMovementReport(
           ...(includeCosts
             ? {
                 costo_unitario: Number(detail.costo_unitario || 0),
+                descuento: Number(detail.descuento || 0),
                 subtotal: Number(detail.subtotal_costo || 0),
               }
             : {}),
@@ -72,13 +83,19 @@ export function buildWarehouseMovementReport(
             ? [
                 {
                   key: "costo_unitario",
-                  header: `Costo unit. (${currency})`,
+                  header: `P. unit. (${currency})`,
                   width: 14,
                   format: "currency" as const,
                 },
                 {
+                  key: "descuento",
+                  header: `Desc. (${currency})`,
+                  width: 13,
+                  format: "currency" as const,
+                },
+                {
                   key: "subtotal",
-                  header: `Subtotal (${currency})`,
+                  header: `Total (${currency})`,
                   width: 14,
                   format: "currency" as const,
                 },

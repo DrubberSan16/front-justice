@@ -138,6 +138,17 @@
                 Ref. {{ detailDialog.document.referencia }}
               </v-chip>
             </div>
+            <div v-if="canViewCosts" class="summary-chip-list justify-end mb-4">
+              <v-chip color="info" variant="tonal">
+                Subtotal: {{ formatMoney(detailDialog.document.subtotal_bruto) }}
+              </v-chip>
+              <v-chip color="warning" variant="tonal">
+                Descuento: {{ formatMoney(detailDialog.document.descuento_total) }}
+              </v-chip>
+              <v-chip color="success" variant="tonal">
+                Total: {{ formatMoney(detailDialog.document.total_neto) }}
+              </v-chip>
+            </div>
             <v-table density="comfortable">
               <thead>
                 <tr>
@@ -146,7 +157,9 @@
                   <th>Material</th>
                   <th>Condición</th>
                   <th class="text-right">Cantidad</th>
-                  <th v-if="canViewCosts" class="text-right">Costo unitario</th>
+                  <th v-if="canViewCosts" class="text-right">Precio unitario</th>
+                  <th v-if="canViewCosts" class="text-right">Desc.</th>
+                  <th v-if="canViewCosts" class="text-right">Total</th>
                   <th>Observación</th>
                 </tr>
               </thead>
@@ -159,6 +172,12 @@
                   <td class="text-right">{{ formatNumberForDisplay(detail.cantidad) }}</td>
                   <td v-if="canViewCosts" class="text-right">
                     {{ formatMoney(detail.costo_unitario) }}
+                  </td>
+                  <td v-if="canViewCosts" class="text-right">
+                    {{ Number(detail.descuento) > 0 ? formatMoney(detail.descuento) : "-" }}
+                  </td>
+                  <td v-if="canViewCosts" class="text-right font-weight-bold">
+                    {{ formatMoney(detail.subtotal_costo) }}
                   </td>
                   <td>{{ detail.observacion || "-" }}</td>
                 </tr>
