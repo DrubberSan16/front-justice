@@ -160,6 +160,22 @@
       class="elevation-0 enterprise-table inventory-table"
       @update:options="handleServerOptionsUpdate"
     >
+      <!-- Las dos celdas solo aparecen en stock por bodega: ningun otro modulo
+           lista `producto_id` ni `es_usado` como columna. -->
+      <template #item.producto_id="{ item }">
+        <span class="stock-material-cell">{{ item.producto_id }}</span>
+      </template>
+      <template #item.es_usado="{ item }">
+        <v-icon
+          :icon="hasUsedStock(item) ? 'mdi-check-circle' : 'mdi-close-circle'"
+          :color="hasUsedStock(item) ? 'success' : 'error'"
+          size="20"
+          :aria-label="hasUsedStock(item) ? 'Tiene material usado' : 'Sin material usado'"
+        />
+        <span class="sr-only">
+          {{ hasUsedStock(item) ? "Tiene material usado" : "Sin material usado" }}
+        </span>
+      </template>
       <template #item.actions="{ item }">
         <RowActionsMenu
           :actions="rowActions(item)"
@@ -1018,6 +1034,32 @@ function workflowStatusColor(value: string) {
   return "secondary";
 }
 
+/**
+ * Si la fila tiene material usado. Se mira tanto la marca de la bodega como el
+ * saldo real: una fila puede quedar marcada y haberse consumido todo el usado,
+ * y ahi la marca mentiria.
+ */
+function hasUsedStock(item: any) {
+  const row = item?._raw ?? item;
+  const saldoUsado = Number(row?.stock_usado ?? 0);
+  if (Number.isFinite(saldoUsado) && saldoUsado > 0) return true;
+  return row?.es_usado === true;
+}
+
+/**
+ * Titulos de la tabla de stock por bodega.
+ *
+ * Se sobrescriben solo aqui: en el formulario los nombres largos si aportan
+ * ("Stock min. bodega" se distingue de "Stock min. global"), pero en la tabla
+ * el contexto ya es la bodega y el nombre largo solo roba ancho a las cifras.
+ */
+const STOCK_TABLE_HEADER_TITLES: Record<string, string> = {
+  stock_actual: "Stock actual",
+  es_usado: "Material usado",
+  stock_min_bodega: "Stock mínimo",
+  stock_max_bodega: "Stock máximo",
+};
+
 function isAutoManagedWarehouse(item: any) {
   const row = item?._raw ?? item;
   return isWarehouseModule.value && Boolean(row?.es_chatarra);
@@ -1068,16 +1110,19 @@ function runRowAction(key: string, item: any) {
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
+  // Orden de lectura de bodega: primero de quien es y que es, despues cuanto
+  // hay y de que condicion, y al final los limites que solo se miran cuando
+  // algo se sale de rango.
   const stockTableFieldKeys = [
     "bodega_id",
     "producto_id",
+    "stock_actual",
+    "stock_nuevo",
+    "stock_usado",
+    "es_usado",
     "stock_min_bodega",
     "stock_max_bodega",
     "stock_critico",
-    "stock_nuevo",
-    "stock_usado",
-    "stock_actual",
-    "es_usado",
   ];
   const tableFields = (isStockBodegaModule.value
     ? stockTableFieldKeys
@@ -1086,7 +1131,7 @@ const headers = computed(() => {
     : cfg.fields.slice(0, 6)
   ).filter((field) => canViewCosts.value || !isMaterialCostKey(field.key));
   const base = tableFields.map((field) => ({
-    title: field.label,
+    title: STOCK_TABLE_HEADER_TITLES[field.key] ?? field.label,
     key: field.key,
   }));
   if (!hasRowActions()) return base;
@@ -1116,10 +1161,10 @@ const rows = computed(() => {
         }
 
       if (field.type === "boolean") {
-          out[field.key] =
-            cfg.key === "stock-bodega" && field.key === "es_usado"
-              ? (r[field.key] ? "Con usado" : "Solo nuevo")
-              : (r[field.key] ? "Si" : "No");
+          // En stock por bodega la condicion se pinta como marca en la celda,
+          // asi que el valor crudo tiene que llegar intacto.
+          if (cfg.key === "stock-bodega" && field.key === "es_usado") continue;
+          out[field.key] = r[field.key] ? "Si" : "No";
         }
       }
       if (cfg.key === "productos") {
@@ -1832,6 +1877,37 @@ onMounted(async () => {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+/* El nombre del material es largo -- codigo, nombre y descripcion -- y en una
+ * sola linea empujaba las columnas de saldo fuera de la pantalla. Se deja
+ * envolver hasta tres lineas: mas que eso engorda la fila y hace perder la
+ * cuadricula de cifras. */
+.stock-material-cell {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 320px;
+  min-width: 220px;
+  white-space: normal;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+/* Texto solo para lectores de pantalla: la marca de material usado es un
+ * icono, y un icono sin nombre no dice nada a quien no lo ve. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 960px) {
