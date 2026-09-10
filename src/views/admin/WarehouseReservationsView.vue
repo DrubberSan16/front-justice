@@ -160,6 +160,8 @@
       </v-col>
     </template>
   </v-row>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -171,13 +173,14 @@ import { getPermissionsForComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { formatDateForInput } from "@/app/utils/date-time";
-import {
-  buildWarehouseReservationsReport,
-  downloadReportExcel,
-  downloadReportPdf,
-} from "@/app/utils/maintenance-intelligence-reports";
+import { buildWarehouseReservationsReport } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 
 const ui = useUiStore();
+const reportPreview = useReportPreview({
+  title: "Previsualización del reporte de reservas",
+});
 const menuStore = useMenuStore();
 
 const perms = computed(() => getPermissionsForComponent(menuStore.tree, "reservas-bodega"));
@@ -335,8 +338,7 @@ async function exportReservations(format: "excel" | "pdf") {
         { label: "Liberadas", value: resumen.value.total_liberados ?? 0 },
       ],
     });
-    if (format === "excel") await downloadReportExcel(report);
-    else await downloadReportPdf(report);
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", report);
   } catch (e: any) {
     ui.error(e?.message || "No se pudo generar el reporte de reservas de bodega.");
   } finally {

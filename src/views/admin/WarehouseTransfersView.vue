@@ -196,7 +196,7 @@
             <v-list-item
               v-if="item.id"
               prepend-icon="mdi-file-pdf-box"
-              title="Descargar transferencia PDF"
+              title="Previsualizar transferencia PDF"
               :disabled="transferPdfDownloadingId === item.id"
               @click="downloadTransferPdf(item)"
             />
@@ -1389,7 +1389,10 @@ import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
 import { hasReportAccess } from "@/app/config/report-access";
-import { downloadPurchaseOrderPdf } from "@/app/utils/purchase-order-documents";
+import {
+  buildPurchaseOrderPdfBlob,
+  purchaseOrderPdfFileName,
+} from "@/app/utils/purchase-order-documents";
 import {
   buildWarehouseTransferPdfBlob,
   warehouseTransferPdfFileName,
@@ -4194,11 +4197,15 @@ async function downloadLinkedPurchaseOrderPdf() {
 
   linkedOrderPdfDownloading.value = true;
   try {
-    await downloadPurchaseOrderPdf(linkedOrder.value, getUserName());
-    ui.success("PDF de la orden de compra descargado correctamente.");
+    await transferPdfPreview.open({
+      title: `Orden de compra ${linkedOrder.value?.codigo || ""}`.trim(),
+      subtitle: linkedOrder.value?.proveedor_nombre || "",
+      fileName: purchaseOrderPdfFileName(linkedOrder.value as any),
+      build: () => buildPurchaseOrderPdfBlob(linkedOrder.value as any, getUserName()),
+    });
   } catch (error: any) {
     ui.error(
-      error?.message || "No se pudo descargar el PDF de la orden de compra.",
+      error?.message || "No se pudo generar el PDF de la orden de compra.",
     );
   } finally {
     linkedOrderPdfDownloading.value = false;

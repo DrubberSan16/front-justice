@@ -1285,6 +1285,8 @@
     :rows="oilRowDetailRows"
   />
   </EnterprisePageMotion>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -1313,10 +1315,14 @@ import {
   buildOilConsumptionReport,
   buildProceduresReport,
   buildWeeklyScheduleReport,
-  downloadReportExcel,
-  downloadReportPdf,
   type ReportChart,
 } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+
+const reportPreview = useReportPreview({
+  title: "Previsualización del reporte de inteligencia",
+});
 
 type AnyRow = Record<string, any>;
 type IntelligenceCard = {
@@ -2047,12 +2053,7 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
   error.value = null;
 
   try {
-    const report = moduleReport(moduleKey);
-    if (format === "excel") {
-      await downloadReportExcel(report);
-    } else {
-      await downloadReportPdf(report);
-    }
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", moduleReport(moduleKey));
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte solicitado.";
   } finally {
@@ -2165,11 +2166,7 @@ async function exportOilReport(format: "excel" | "pdf") {
       charts: reportCharts,
       showCosts: canViewCosts.value,
     });
-    if (format === "excel") {
-      await downloadReportExcel(report);
-    } else {
-      await downloadReportPdf(report);
-    }
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", report);
   } catch (e: any) {
     oilKpiError.value = e?.message || "No se pudo generar el reporte de consumo de aceite.";
   } finally {

@@ -274,6 +274,8 @@
       </v-card>
     </template>
   </EnterprisePageMotion>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -289,11 +291,9 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import DashboardBarChartCard from "@/components/dashboard/DashboardBarChartCard.vue";
 import { currentDateInputValue, formatDateTime } from "@/app/utils/date-time";
-import {
-  downloadReportExcel,
-  downloadReportPdf,
-  type ReportDefinition,
-} from "@/app/utils/maintenance-intelligence-reports";
+import { type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 
 type AnyRow = Record<string, any>;
 type DashboardChartItem = {
@@ -307,6 +307,9 @@ type DashboardChartItem = {
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 const ui = useUiStore();
+const reportPreview = useReportPreview({
+  title: "Previsualización del reporte diario",
+});
 const loading = ref(false);
 const exportingPdf = ref(false);
 const exportingExcel = ref(false);
@@ -565,10 +568,9 @@ async function downloadDailyReportPdf() {
   if (!reportPayload.value) return;
   exportingPdf.value = true;
   try {
-    await downloadReportPdf(buildDailyOperationsPdfReport());
-    ui.success("Reporte diario descargado en PDF.");
+    await reportPreview.open("pdf", buildDailyOperationsPdfReport());
   } catch (e: any) {
-    ui.error(e?.message || "No se pudo descargar el reporte diario en PDF.");
+    ui.error(e?.message || "No se pudo generar el reporte diario en PDF.");
   } finally {
     exportingPdf.value = false;
   }
@@ -581,10 +583,9 @@ async function downloadDailyReportExcel() {
   if (!reportPayload.value) return;
   exportingExcel.value = true;
   try {
-    await downloadReportExcel(buildDailyOperationsPdfReport());
-    ui.success("Reporte diario descargado en Excel.");
+    await reportPreview.open("excel", buildDailyOperationsPdfReport());
   } catch (e: any) {
-    ui.error(e?.message || "No se pudo descargar el reporte diario en Excel.");
+    ui.error(e?.message || "No se pudo generar el reporte diario en Excel.");
   } finally {
     exportingExcel.value = false;
   }

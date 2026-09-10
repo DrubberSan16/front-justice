@@ -461,7 +461,7 @@
             <v-btn variant="tonal" prepend-icon="mdi-file-excel" :loading="movementDocumentDialog.excelLoading"
               :disabled="!movementDocumentDialog.document || movementDocumentDialog.loading"
               @click="downloadMovementDocumentExcel">
-              Descargar Excel
+              Previsualizar Excel
             </v-btn>
             <v-btn color="primary" prepend-icon="mdi-file-pdf-box" :loading="movementDocumentDialog.pdfLoading"
               :disabled="!movementDocumentDialog.document || movementDocumentDialog.loading"
@@ -519,6 +519,14 @@
         @download="inventoryPdfPreview.download"
         @print="inventoryPdfPreview.openInNewTab"
         @update:visible="inventoryPdfPreview.handleVisibility"
+      />
+
+      <ExcelPreviewDialog
+        :state="inventoryExcelPreview.state"
+        @close="inventoryExcelPreview.close"
+        @download="inventoryExcelPreview.download"
+        @select-sheet="inventoryExcelPreview.selectSheet"
+        @update:visible="inventoryExcelPreview.handleVisibility"
       />
 
       <v-dialog v-model="movementDialog.open" max-width="1480" scrollable>
@@ -668,8 +676,8 @@ import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import {
   buildInventoryStockReport,
+  buildReportExcelBlob,
   buildReportPdfBlob,
-  downloadReportExcel,
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -685,6 +693,8 @@ import {
   canViewMaterialCosts,
 } from "@/app/utils/role-access";
 import { usePdfPreview } from "@/app/utils/pdf-preview";
+import { useExcelPreview } from "@/app/utils/excel-preview";
+import ExcelPreviewDialog from "@/components/ui/ExcelPreviewDialog.vue";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
@@ -731,6 +741,9 @@ const kardexPdfPreview = reactive({
 let kardexPdfPreviewRequestId = 0;
 const inventoryPdfPreview = usePdfPreview({
   title: "Previsualización del reporte de Kardex",
+});
+const inventoryExcelPreview = useExcelPreview({
+  title: "Previsualización del Excel de Kardex",
 });
 const movementDocumentPdfUrl = ref("");
 const movementDocumentDialog = reactive({
@@ -1433,9 +1446,11 @@ async function downloadMovementDocumentExcel() {
   if (!movementDocumentDialog.document || movementDocumentDialog.excelLoading) return;
   movementDocumentDialog.excelLoading = true;
   try {
-    await downloadReportExcel(buildMovementDocumentReport(movementDocumentDialog.document));
+    await openInventoryExcelPreview(
+      buildMovementDocumentReport(movementDocumentDialog.document),
+    );
   } catch (error: any) {
-    ui.error(error?.message || "No se pudo descargar el documento en Excel.");
+    ui.error(error?.message || "No se pudo generar el documento en Excel.");
   } finally {
     movementDocumentDialog.excelLoading = false;
   }
@@ -1588,6 +1603,14 @@ function openKardexPdfPreviewForPrint() {
   if (!kardexPdfPreviewUrl.value) return;
   window.open(kardexPdfPreviewUrl.value, "_blank", "noopener,noreferrer");
 }
+async function openInventoryExcelPreview(report: ReportDefinition) {
+  await inventoryExcelPreview.open({
+    title: report.title,
+    subtitle: report.subtitle,
+    fileName: report.fileName,
+    build: () => buildReportExcelBlob(report),
+  });
+}
 async function openInventoryPdfPreview(report: ReportDefinition) {
   await inventoryPdfPreview.open({
     title: report.title,
@@ -1649,7 +1672,7 @@ async function exportInventoryReport(format: "excel" | "pdf") {
       // retira junto con linea, categoria, concepto y estado de registro.
       groupBy: isPdf ? [] : undefined,
     });
-    if (format === "excel") await downloadReportExcel(report);
+    if (format === "excel") await openInventoryExcelPreview(report);
     else await openInventoryPdfPreview(report);
   } catch (error: any) {
     ui.error(error?.message || "No se pudo generar el reporte de Kardex.");

@@ -129,33 +129,10 @@
       </template>
 
       <template #item.actions="{ item }">
-        <div class="responsive-actions">
-          <v-btn
-            v-if="canViewCosts"
-            icon="mdi-file-pdf-box"
-            variant="text"
-            color="error"
-            :disabled="!canDownloadPdf"
-            @click="downloadPdf(item)"
-          />
-          <v-btn
-            v-if="canEdit"
-            icon="mdi-pencil"
-            variant="text"
-            :disabled="isAnnulled(item)"
-            @click="openEdit(item)"
-          />
-          <v-btn
-            v-if="canAnnulDocuments && !isAnnulled(item)"
-            size="small"
-            prepend-icon="mdi-cancel"
-            variant="tonal"
-            color="error"
-            @click="openDelete(item)"
-          >
-            Anular
-          </v-btn>
-        </div>
+        <RowActionsMenu
+          :actions="rowActions(item)"
+          @select="(key) => runRowAction(key, item)"
+        />
       </template>
     </v-data-table-server>
   </v-card>
@@ -419,6 +396,15 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <PdfPreviewDialog
+    :state="orderPdfPreview.state"
+    :url="orderPdfPreview.url.value"
+    @close="orderPdfPreview.close"
+    @download="downloadOrderPdfFromPreview"
+    @print="orderPdfPreview.openInNewTab"
+    @update:visible="orderPdfPreview.handleVisibility"
+  />
 </template>
 
 <script setup lang="ts">
@@ -432,7 +418,11 @@ import { hasReportAccess } from "@/app/config/report-access";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
-import { downloadServiceOrderPdf } from "@/app/utils/service-order-documents";
+import { buildServiceOrderPdfBlob } from "@/app/utils/service-order-documents";
+import { usePdfPreview } from "@/app/utils/pdf-preview";
+import type { RowAction } from "@/app/utils/row-actions";
+import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
+import RowActionsMenu from "@/components/ui/RowActionsMenu.vue";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -477,6 +467,9 @@ type ServiceOrderRow = {
 };
 
 const ui = useUiStore();
+const orderPdfPreview = usePdfPreview({
+  title: "Previsualización de la orden de servicio",
+});
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
@@ -1157,21 +1150,64 @@ async function confirmDelete() {
   }
 }
 
-async function downloadPdf(item: ServiceOrderRow) {
+async function previewPdf(item: ServiceOrderRow) {
   if (!canDownloadPdf.value) {
     ui.error("No tienes permisos para descargar este reporte.");
     return;
   }
-  try {
-    const { data } = await api.get(`/kpi_inventory/ordenes-servicio/${item.id}`);
-    await downloadServiceOrderPdf(data?.data ?? data, getUserName());
-  } catch (error: any) {
-    ui.error(
-      error?.response?.data?.message ||
-        error?.message ||
-        "No se pudo generar el PDF de la orden de servicio.",
-    );
-  }
+  await orderPdfPreview.open({
+    title: `Orden de servicio ${item.codigo || ""}`.trim(),
+    subtitle: item.proveedor_nombre || "",
+    fileName: `${item.codigo || "orden_servicio"}`,
+    build: async () => {
+      const { data } = await api.get(`/kpi_inventory/ordenes-servicio/${item.id}`);
+      return buildServiceOrderPdfBlob(data?.data ?? data, getUserName());
+    },
+  });
+}
+
+function downloadOrderPdfFromPreview() {
+  orderPdfPreview.download();
+  ui.success("PDF de la orden de servicio descargado correctamente.");
+}
+
+/**
+ * Acciones disponibles para una fila. Solo se arman las que el rol puede
+ * ejecutar; lo que depende del estado del documento viaja deshabilitado con
+ * su motivo, para que la fila explique por que no responde.
+ */
+function rowActions(item: ServiceOrderRow): RowAction[] {
+  const annulled = isAnnulled(item);
+  return [
+    {
+      key: "pdf",
+      label: "Previsualizar PDF",
+      icon: "mdi-file-pdf-box",
+      hidden: !canViewCosts.value || !canDownloadPdf.value,
+    },
+    {
+      key: "edit",
+      label: "Editar",
+      icon: "mdi-pencil",
+      hidden: !canEdit.value,
+      disabled: annulled,
+      hint: annulled ? "La orden está anulada" : undefined,
+    },
+    {
+      key: "annul",
+      label: "Anular",
+      icon: "mdi-cancel",
+      color: "error",
+      divider: true,
+      hidden: !canAnnulDocuments.value || annulled,
+    },
+  ];
+}
+
+function runRowAction(key: string, item: ServiceOrderRow) {
+  if (key === "pdf") return void previewPdf(item);
+  if (key === "edit") return openEdit(item);
+  if (key === "annul") return openDelete(item);
 }
 
 onMounted(async () => {

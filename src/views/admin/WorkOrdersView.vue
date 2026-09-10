@@ -1842,6 +1842,14 @@
     @print="workOrderPdfPreview.openInNewTab"
     @update:visible="workOrderPdfPreview.handleVisibility"
   />
+
+  <ExcelPreviewDialog
+    :state="workOrderExcelPreview.state"
+    @close="workOrderExcelPreview.close"
+    @download="workOrderExcelPreview.download"
+    @select-sheet="workOrderExcelPreview.selectSheet"
+    @update:visible="workOrderExcelPreview.handleVisibility"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1861,7 +1869,7 @@ import {
   type WorkOrdersListingOrder,
   type ReportDefinition,
   buildReportPdfBlob,
-  downloadReportExcel,
+  buildReportExcelBlob,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { canManageAdministrativeOperations, canViewMaterialCosts, isSuperAdministrator } from "@/app/utils/role-access";
@@ -1879,10 +1887,15 @@ import {
 import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
+import { useExcelPreview } from "@/app/utils/excel-preview";
+import ExcelPreviewDialog from "@/components/ui/ExcelPreviewDialog.vue";
 
 const ui = useUiStore();
 const workOrderPdfPreview = usePdfPreview({
   title: "Previsualización del informe de la orden",
+});
+const workOrderExcelPreview = useExcelPreview({
+  title: "Previsualización del Excel de la orden",
 });
 const { smAndDown } = useDisplay();
 const auth = useAuthStore();
@@ -3118,6 +3131,15 @@ const workOrderReportDefinition = computed(() =>
   }
 );
 
+async function openWorkOrderExcelPreview(report: ReportDefinition) {
+  await workOrderExcelPreview.open({
+    title: report.title,
+    subtitle: report.subtitle,
+    fileName: report.fileName,
+    build: () => buildReportExcelBlob(report),
+  });
+}
+
 async function openWorkOrderPdfPreview(report: ReportDefinition) {
   await workOrderPdfPreview.open({
     title: report.title,
@@ -3137,7 +3159,7 @@ async function exportWorkOrder(format: "excel" | "pdf") {
   error.value = null;
   try {
     if (format === "excel") {
-      await downloadReportExcel(workOrderReportDefinition.value);
+      await openWorkOrderExcelPreview(workOrderReportDefinition.value);
     } else {
       await openWorkOrderPdfPreview(workOrderReportDefinition.value);
     }
@@ -5781,7 +5803,7 @@ async function exportWorkOrderRow(item: any, format: "excel" | "pdf") {
     const bundle = await fetchWorkOrderExportBundle(item);
     const report = buildSingleWorkOrderReportFromBundle(bundle);
     if (format === "excel") {
-      await downloadReportExcel(report);
+      await openWorkOrderExcelPreview(report);
     } else {
       await openWorkOrderPdfPreview(report);
     }
@@ -5847,7 +5869,7 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
     });
 
     if (format === "excel") {
-      await downloadReportExcel(report);
+      await openWorkOrderExcelPreview(report);
     } else {
       await openWorkOrderPdfPreview(report);
     }

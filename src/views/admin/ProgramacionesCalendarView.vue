@@ -1334,6 +1334,8 @@
     </v-dialog>
     </div>
   </div>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -1356,11 +1358,14 @@ import {
   buildAgendaProgrammingReport,
   buildMonthlyProgrammingReport,
   buildWeeklyProgrammingReport,
-  downloadReportExcel,
-  downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 
 const ui = useUiStore();
+const reportPreview = useReportPreview({
+  title: "Previsualización del reporte de programaciones",
+});
 const auth = useAuthStore();
 const branchScope = useBranchScopeStore();
 const menuStore = useMenuStore();
@@ -4780,11 +4785,7 @@ async function runProgramacionExport(
   const key = exportKey(section, format);
   exportState[key] = true;
   try {
-    if (format === "excel") {
-      await downloadReportExcel(report);
-    } else {
-      await downloadReportPdf(report);
-    }
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", report);
   } catch (e: any) {
     ui.error(e?.message || "No se pudo generar el reporte de programaciones.");
   } finally {

@@ -26,7 +26,7 @@
               :disabled="!accessibleManuals.length"
               @click="downloadManualPdf"
             >
-              Descargar PDF
+              Previsualizar PDF
             </v-btn>
             <v-btn
               color="success"
@@ -36,7 +36,7 @@
               :disabled="!accessibleManuals.length"
               @click="downloadManualExcel"
             >
-              Descargar Excel
+              Previsualizar Excel
             </v-btn>
           </div>
         </div>
@@ -397,6 +397,8 @@
       </v-col>
     </template>
   </v-row>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -414,10 +416,9 @@ import {
 import type { MenuNode } from "@/app/types/menu.types";
 import { findMenuRouteByValue } from "@/app/utils/menu-route-catalog";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
-import {
-  downloadReportExcel,
-  type ReportDefinition,
-} from "@/app/utils/maintenance-intelligence-reports";
+import { type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import {
   buildUserManualExcelReport,
   buildUserManualPdfBlob,
@@ -428,6 +429,9 @@ const router = useRouter();
 const auth = useAuthStore();
 const menu = useMenuStore();
 const ui = useUiStore();
+const reportPreview = useReportPreview({
+  title: "Previsualización del manual de usuario",
+});
 
 const search = ref("");
 const selectedCategory = ref("Todas");
@@ -729,10 +733,9 @@ async function downloadManualExcelLegacy() {
 
   exportingExcel.value = true;
   try {
-    await downloadReportExcel(buildManualExcelReportLegacy(manuals));
-    ui.success("Manual descargado en Excel.");
+    await reportPreview.open("excel", buildManualExcelReportLegacy(manuals));
   } catch (error: any) {
-    ui.error(error?.message || "No se pudo descargar el manual en Excel.");
+    ui.error(error?.message || "No se pudo generar el manual en Excel.");
   } finally {
     exportingExcel.value = false;
   }
@@ -1034,10 +1037,9 @@ async function downloadManualExcel() {
   }
   exportingExcel.value = true;
   try {
-    await downloadReportExcel(buildUserManualExcelReport(context));
-    ui.success("Manual descargado en Excel.");
+    await reportPreview.open("excel", buildUserManualExcelReport(context));
   } catch (error: any) {
-    ui.error(error?.message || "No se pudo descargar el manual en Excel.");
+    ui.error(error?.message || "No se pudo generar el manual en Excel.");
   } finally {
     exportingExcel.value = false;
   }
@@ -1051,16 +1053,14 @@ async function downloadManualPdf() {
   }
   exportingPdf.value = true;
   try {
-    const blob = await buildUserManualPdfBlob(context);
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${userManualFileName(context.roleLabel, context.generatedAt)}.pdf`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    ui.success("Manual completo descargado en PDF.");
+    await reportPreview.pdf.open({
+      title: "Manual de usuario",
+      subtitle: context.roleLabel || "",
+      fileName: userManualFileName(context.roleLabel, context.generatedAt),
+      build: () => buildUserManualPdfBlob(context),
+    });
   } catch (error: any) {
-    ui.error(error?.message || "No se pudo descargar el manual en PDF.");
+    ui.error(error?.message || "No se pudo generar el manual en PDF.");
   } finally {
     exportingPdf.value = false;
   }

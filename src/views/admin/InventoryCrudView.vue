@@ -38,7 +38,7 @@
           :loading="exportingProducts.pdf"
           @click="exportProducts('pdf')"
         >
-          Descargar PDF
+          Previsualizar PDF
         </v-btn>
         <v-btn
           v-if="isProductModule"
@@ -161,28 +161,10 @@
       @update:options="handleServerOptionsUpdate"
     >
       <template #item.actions="{ item }">
-        <div class="responsive-actions">
-          <v-btn
-            v-if="isStockBodegaModule"
-            icon="mdi-eye"
-            variant="text"
-            color="info"
-            @click="openReservationDetail(item)"
-          />
-          <v-btn
-            v-if="canEdit && !isAutoManagedWarehouse(item)"
-            icon="mdi-pencil"
-            variant="text"
-            @click="openEdit(item._raw ?? item)"
-          />
-          <v-btn
-            v-if="canDelete && !isAutoManagedWarehouse(item)"
-            icon="mdi-delete"
-            variant="text"
-            color="error"
-            @click="openDelete(item._raw ?? item)"
-          />
-        </div>
+        <RowActionsMenu
+          :actions="rowActions(item)"
+          @select="(key) => runRowAction(key, item)"
+        />
       </template>
       <template #no-data>
         <div
@@ -420,6 +402,8 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -438,14 +422,15 @@ import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
-import {
-  downloadReportExcel,
-  downloadReportPdf,
-  type ReportDefinition,
-} from "@/app/utils/maintenance-intelligence-reports";
+import type { RowAction } from "@/app/utils/row-actions";
+import RowActionsMenu from "@/components/ui/RowActionsMenu.vue";
+import { type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 
 const props = defineProps<{ moduleKey: string }>();
 const ui = useUiStore();
+const reportPreview = useReportPreview();
 const auth = useAuthStore();
 const menu = useMenuStore();
 const route = useRoute();
@@ -1038,6 +1023,48 @@ function isAutoManagedWarehouse(item: any) {
   return isWarehouseModule.value && Boolean(row?.es_chatarra);
 }
 
+/**
+ * Acciones de la fila. Se arman solo las que el rol tiene concedidas; la
+ * bodega de chatarra la administra el sistema, asi que no se ofrece editarla
+ * ni borrarla aunque el permiso exista.
+ */
+function rowActions(item: any): RowAction[] {
+  const managed = isAutoManagedWarehouse(item);
+  return [
+    {
+      key: "detail",
+      label: "Ver detalle",
+      icon: "mdi-eye",
+      color: "info",
+      hidden: !isStockBodegaModule.value,
+    },
+    {
+      key: "edit",
+      label: "Editar",
+      icon: "mdi-pencil",
+      hidden: !canEdit.value || managed,
+    },
+    {
+      key: "delete",
+      label: "Eliminar",
+      icon: "mdi-delete",
+      color: "error",
+      divider: true,
+      hidden: !canDelete.value || managed,
+    },
+  ];
+}
+
+function hasRowActions() {
+  return isStockBodegaModule.value || canEdit.value || canDelete.value;
+}
+
+function runRowAction(key: string, item: any) {
+  if (key === "detail") return void openReservationDetail(item);
+  if (key === "edit") return void openEdit(item?._raw ?? item);
+  if (key === "delete") return openDelete(item?._raw ?? item);
+}
+
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
@@ -1062,7 +1089,7 @@ const headers = computed(() => {
     title: field.label,
     key: field.key,
   }));
-  if (!canEdit.value && !canDelete.value) return base;
+  if (!hasRowActions()) return base;
   return [...base, { title: "Acciones", key: "actions", sortable: false }];
 });
 
@@ -1228,10 +1255,9 @@ async function exportStockWarehouseXlsx() {
   try {
     await ensureFormRelationsLoaded();
     const exportRows = await fetchAllStockWarehouseRows();
-    await downloadReportExcel(buildStockWarehouseReport(exportRows));
-    ui.success("Stock por bodega descargado en XLSX.");
+    await reportPreview.open("excel", buildStockWarehouseReport(exportRows));
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || e?.message || "No se pudo descargar el stock por bodega.");
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo generar el stock por bodega.");
   } finally {
     exportingStock.value = false;
   }
@@ -1362,15 +1388,9 @@ async function exportProducts(format: "pdf" | "excel") {
   try {
     await loadRelations("table");
     const exportRows = await fetchAllProductRows();
-    const report = buildProductsReport(exportRows);
-    if (format === "pdf") {
-      await downloadReportPdf(report);
-    } else {
-      await downloadReportExcel(report);
-    }
-    ui.success(`Materiales descargados en ${format === "pdf" ? "PDF" : "XLSX"}.`);
+    await reportPreview.open(format, buildProductsReport(exportRows));
   } catch (e: any) {
-    ui.error(e?.response?.data?.message || e?.message || "No se pudo descargar el reporte de materiales.");
+    ui.error(e?.response?.data?.message || e?.message || "No se pudo generar el reporte de materiales.");
   } finally {
     exportingProducts[format] = false;
   }

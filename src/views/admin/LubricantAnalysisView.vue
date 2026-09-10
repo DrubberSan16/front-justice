@@ -731,6 +731,8 @@
       </v-card>
     </v-dialog>
   </div>
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -751,11 +753,13 @@ import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import LubricantDashboardPanel from "@/components/maintenance/LubricantDashboardPanel.vue";
-import {
-  buildLubricantReport,
-  downloadReportExcel,
-  downloadReportPdf,
-} from "@/app/utils/maintenance-intelligence-reports";
+import { buildLubricantReport } from "@/app/utils/maintenance-intelligence-reports";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+
+const reportPreview = useReportPreview({
+  title: "Previsualización del análisis de lubricante",
+});
 import {
   groupLubricantDetails,
   humidityOptions,
@@ -1174,11 +1178,7 @@ async function exportAnalyses(format: "excel" | "pdf") {
         ? ` del ${reportFrom.value || "..."} al ${reportTo.value || "..."}`
         : " sin restricción de fechas"
     }.`;
-    if (format === "excel") {
-      await downloadReportExcel(report);
-    } else {
-      await downloadReportPdf(report);
-    }
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", report);
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte de análisis de lubricante.";
   } finally {

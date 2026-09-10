@@ -125,21 +125,10 @@
       </template>
 
       <template #item.actions="{ item }">
-        <div class="responsive-actions">
-          <v-btn
-            v-if="canEdit"
-            icon="mdi-pencil"
-            variant="text"
-            @click="openEdit(item._raw ?? item)"
-          />
-          <v-btn
-            v-if="canDelete"
-            icon="mdi-delete"
-            variant="text"
-            color="error"
-            @click="openDelete(item._raw ?? item)"
-          />
-        </div>
+        <RowActionsMenu
+          :actions="rowActions()"
+          @select="(key) => runRowAction(key, item)"
+        />
       </template>
     </v-data-table-server>
   </v-card>
@@ -396,6 +385,8 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import type { RowAction } from "@/app/utils/row-actions";
+import RowActionsMenu from "@/components/ui/RowActionsMenu.vue";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
@@ -1858,6 +1849,26 @@ async function openEdit(item: any) {
 function openDelete(item: any) {
   deletingId.value = item.id;
   deleteDialog.value = true;
+}
+
+/** Solo se ofrecen las acciones que el rol tiene concedidas sobre el modulo. */
+function rowActions(): RowAction[] {
+  return [
+    { key: "edit", label: "Editar", icon: "mdi-pencil", hidden: !canEdit.value },
+    {
+      key: "delete",
+      label: "Eliminar",
+      icon: "mdi-delete",
+      color: "error",
+      divider: true,
+      hidden: !canDelete.value,
+    },
+  ];
+}
+
+function runRowAction(key: string, item: any) {
+  if (key === "edit") return void openEdit(item?._raw ?? item);
+  if (key === "delete") return openDelete(item?._raw ?? item);
 }
 
 async function save() {
