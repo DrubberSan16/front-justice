@@ -193,6 +193,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -231,6 +232,7 @@ const props = defineProps<{ movementType: "INGRESO" | "SALIDA" }>();
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
+const route = useRoute();
 const reportPreview = useReportPreview();
 
 const isIncome = computed(() => props.movementType === "INGRESO");
@@ -490,7 +492,7 @@ function changeLimit(limit: number) {
   void loadDocuments(1);
 }
 
-async function openDetail(item: any) {
+async function openDetail(item: any, forceAnnulled = false) {
   const documentId = String(item?.id || "").trim();
   if (!documentId) return;
   Object.assign(detailDialog, {
@@ -506,7 +508,9 @@ async function openDetail(item: any) {
       {
         params: {
           include_annulled:
-            item?.anulado || filters.includeAnnulled ? true : undefined,
+            forceAnnulled || item?.anulado || filters.includeAnnulled
+              ? true
+              : undefined,
         },
       },
     );
@@ -588,6 +592,12 @@ watch(
 onMounted(async () => {
   if (!canRead.value) return;
   await Promise.all([loadCatalogs(), loadDocuments(1)]);
+  // El detalle de stock enlaza aqui con `?documento=`: se abre directo el
+  // documento pedido en vez de dejar al usuario buscandolo en la lista.
+  const documentoId = String(route.query.documento || "").trim();
+  // Se pide incluyendo anulados: un enlace puede apuntar a un documento que
+  // se anulo despues, y ahi interesa ver el documento, no un error.
+  if (documentoId) await openDetail({ id: documentoId }, true);
 });
 </script>
 

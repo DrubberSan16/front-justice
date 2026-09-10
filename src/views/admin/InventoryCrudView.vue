@@ -278,6 +278,68 @@
             </div>
           </template>
         </v-data-table>
+
+        <div class="text-subtitle-1 font-weight-bold mt-6 mb-2">
+          Movimientos realizados
+        </div>
+        <div class="text-body-2 text-medium-emphasis mb-3">
+          Todo lo que entró y salió de este material en esta bodega, del más
+          reciente al más antiguo.
+        </div>
+
+        <v-alert
+          v-if="movementsError"
+          type="error"
+          variant="tonal"
+          class="mb-3"
+        >
+          {{ movementsError }}
+        </v-alert>
+
+        <v-data-table
+          :headers="stockMovementHeaders"
+          :items="movementRows"
+          :loading="movementsLoading"
+          loading-text="Obteniendo ingresos y egresos del material..."
+          :items-per-page="10"
+          class="elevation-0 enterprise-table inventory-table"
+        >
+          <template #item.documento="{ item }">
+            <a
+              v-if="item.documento_id"
+              class="movement-document-link"
+              :href="movementDocumentHref(item)"
+              @click.prevent="goToMovementDocument(item)"
+            >
+              {{ item.documento || "Sin código" }}
+            </a>
+            <span v-else>{{ item.documento || "Sin código" }}</span>
+            <div v-if="item.anulado" class="text-caption text-error">Anulado</div>
+          </template>
+          <template #item.origen="{ item }">
+            <v-chip size="small" variant="tonal">{{ item.origen }}</v-chip>
+          </template>
+          <template #item.entrada="{ item }">
+            <span v-if="item.entrada > 0" class="text-success font-weight-medium">
+              +{{ formatNumberForDisplay(item.entrada) }}
+            </span>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
+          <template #item.salida="{ item }">
+            <span v-if="item.salida > 0" class="text-error font-weight-medium">
+              -{{ formatNumberForDisplay(item.salida) }}
+            </span>
+            <span v-else class="text-medium-emphasis">—</span>
+          </template>
+          <template #bottom>
+            <div
+              v-if="!movementsLoading && !movementRows.length && !movementsError"
+              class="pa-4 text-medium-emphasis"
+            >
+              No hay movimientos registrados para este material en esta bodega.
+            </div>
+          </template>
+        </v-data-table>
       </v-card-text>
       <v-divider />
       <v-card-actions class="pa-4">
@@ -424,7 +486,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { getInventoryModule, type MaintenanceField } from "@/app/config/maintenance-modules";
@@ -450,6 +512,7 @@ const reportPreview = useReportPreview();
 const auth = useAuthStore();
 const menu = useMenuStore();
 const route = useRoute();
+const router = useRouter();
 const { mdAndDown, smAndDown } = useDisplay();
 
 const moduleConfig = computed(() => getInventoryModule(props.moduleKey));
@@ -1053,6 +1116,18 @@ function hasUsedStock(item: any) {
  * ("Stock min. bodega" se distingue de "Stock min. global"), pero en la tabla
  * el contexto ya es la bodega y el nombre largo solo roba ancho a las cifras.
  */
+const movementsLoading = ref(false);
+const movementsError = ref<string | null>(null);
+const movementRows = ref<any[]>([]);
+const stockMovementHeaders = [
+  { title: "Documento", key: "documento" },
+  { title: "Fecha", key: "fecha_emision" },
+  { title: "Origen", key: "origen" },
+  { title: "Ingresó", key: "entrada", align: "end" as const },
+  { title: "Salió", key: "salida", align: "end" as const },
+  { title: "Responsable", key: "usuario_responsable" },
+];
+
 const STOCK_TABLE_HEADER_TITLES: Record<string, string> = {
   stock_actual: "Stock actual",
   es_usado: "Material usado",
@@ -1550,6 +1625,81 @@ function openDelete(item: any) {
   deleteDialog.value = true;
 }
 
+/**
+ * De donde salio el movimiento, leido del concepto que arma el kardex.
+ *
+ * El concepto es un codigo interno ("EG-ORDEN TRABAJO", "IN-ORDEN_COMPRA");
+ * quien mira el stock quiere saber que modulo movio el material, no el codigo.
+ */
+function resolveMovementOrigin(concepto: unknown, tipo: unknown) {
+  const raw = String(concepto || "").toUpperCase();
+  if (raw.includes("ORDEN TRABAJO") || raw.includes("ORDEN_TRABAJO")) {
+    return "Orden de trabajo";
+  }
+  if (raw.includes("ORDEN_COMPRA") || raw.includes("ORDEN COMPRA")) {
+    return "Orden de compra";
+  }
+  if (raw.includes("TRANSFERENCIA")) return "Transferencia de bodega";
+  if (raw.includes("MANUAL")) return "Ajuste manual";
+  if (raw.startsWith("IN-")) return "Ingreso de bodega";
+  if (raw.startsWith("EG-")) return "Egreso de bodega";
+  return String(tipo || "").toUpperCase() === "INGRESO"
+    ? "Ingreso de bodega"
+    : "Egreso de bodega";
+}
+
+/** El documento vive en la pantalla de ingresos o en la de egresos. */
+function movementDocumentRoute(item: any) {
+  const esIngreso =
+    String(item?.tipo_movimiento || "").toUpperCase() === "INGRESO";
+  return {
+    name: esIngreso ? "ingresos-bodega" : "egresos-bodega",
+    query: { documento: String(item?.documento_id || "") },
+  };
+}
+
+function movementDocumentHref(item: any) {
+  return router.resolve(movementDocumentRoute(item)).href;
+}
+
+function goToMovementDocument(item: any) {
+  if (!item?.documento_id) return;
+  void router.push(movementDocumentRoute(item));
+}
+
+async function loadStockMovements(productoId: string, bodegaId: string) {
+  movementsLoading.value = true;
+  movementsError.value = null;
+  movementRows.value = [];
+  try {
+    const { data } = await api.get(
+      `/kpi_inventory/kardex/resumen-material/${productoId}/detalle`,
+      {
+        params: {
+          bodega_id: bodegaId,
+          // El detalle acota al mes en curso si no se le da rango, y aqui
+          // interesa la historia completa del material en esa bodega.
+          desde: "2000-01-01",
+          hasta: new Date().toISOString().slice(0, 10),
+        },
+      },
+    );
+    const payload = data?.data ?? data ?? {};
+    movementRows.value = asArray(payload?.movements).map((row: any) => ({
+      ...row,
+      entrada: Number(row?.entrada || 0),
+      salida: Number(row?.salida || 0),
+      origen: resolveMovementOrigin(row?.concepto, row?.tipo_movimiento),
+    }));
+  } catch (e: any) {
+    movementsError.value =
+      e?.response?.data?.message ||
+      "No se pudieron obtener los movimientos del material.";
+  } finally {
+    movementsLoading.value = false;
+  }
+}
+
 async function openReservationDetail(item: any) {
   const raw = item?._raw ?? item;
   const productoId = String(raw?.producto_id || "").trim();
@@ -1560,6 +1710,7 @@ async function openReservationDetail(item: any) {
     return;
   }
 
+  void loadStockMovements(productoId, bodegaId);
   reservationDialog.value = true;
   reservationLoading.value = true;
   reservationError.value = null;
@@ -1894,6 +2045,16 @@ onMounted(async () => {
   white-space: normal;
   line-height: 1.32;
   overflow-wrap: anywhere;
+}
+
+.movement-document-link {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.movement-document-link:hover {
+  text-decoration: underline;
 }
 
 /* Texto solo para lectores de pantalla: la marca de material usado es un
