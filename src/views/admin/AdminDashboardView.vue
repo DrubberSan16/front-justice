@@ -110,6 +110,16 @@
           title="1 · Disponibilidad por equipo"
           subtitle="Horas disponibles, fuera de servicio y porcentaje sobre el período."
         >
+          <template #actions>
+            <SectionExportButtons
+              :preview="reportPreview"
+              title="Disponibilidad por equipo"
+              :subtitle="periodoLabel"
+              :file-name="`disponibilidad_${desde}_${hasta}`"
+              :columns="headersDisponibilidad"
+              :rows="data.disponibilidad"
+            />
+          </template>
           <v-data-table
             :headers="headersDisponibilidad"
             :items="data.disponibilidad"
@@ -149,6 +159,16 @@
           title="2 · Correctivos y reincidencia de fallas"
           subtitle="Intervenciones por equipo y fallas repetidas sobre el mismo compartimiento."
         >
+          <template #actions>
+            <SectionExportButtons
+              :preview="reportPreview"
+              title="Correctivos por equipo"
+              :subtitle="periodoLabel"
+              :file-name="`correctivos_${desde}_${hasta}`"
+              :columns="headersCorrectivos"
+              :rows="data.correctivos"
+            />
+          </template>
           <div class="split-grid">
             <div>
               <h3 class="split-grid__title">Correctivos por equipo</h3>
@@ -193,6 +213,16 @@
           title="3 · Control de cebado y consumo de aceite"
           subtitle="Galones por máquina con semaforización, acumulado semanal y mensual, y tendencia."
         >
+          <template #actions>
+            <SectionExportButtons
+              :preview="reportPreview"
+              title="Control de cebado y consumo de aceite"
+              :subtitle="periodoLabel"
+              :file-name="`cebado_${desde}_${hasta}`"
+              :columns="headersCebado"
+              :rows="data.cebado"
+            />
+          </template>
           <div class="legend">
             <span><i class="legend__dot legend__dot--verde" /> Por orden: 0 a 5 gal · normal</span>
             <span><i class="legend__dot legend__dot--amarillo" /> &gt;5 y &lt;10 gal · seguimiento</span>
@@ -243,6 +273,16 @@
           title="4 · Consumo de repuestos"
           subtitle="Cantidad y costo por equipo en el período, con las OT implicadas."
         >
+          <template #actions>
+            <SectionExportButtons
+              :preview="reportPreview"
+              title="Consumo de repuestos"
+              :subtitle="periodoLabel"
+              :file-name="`consumo_repuestos_${desde}_${hasta}`"
+              :columns="headersRepuestos"
+              :rows="data.repuestos"
+            />
+          </template>
           <v-data-table
             :headers="headersRepuestos"
             :items="data.repuestos"
@@ -269,6 +309,16 @@
           title="5-7 · Frecuencia por horómetro y proyección"
           subtitle="Objetivo del próximo mantenimiento, horas restantes y semáforo con los márgenes de cada equipo."
         >
+          <template #actions>
+            <SectionExportButtons
+              :preview="reportPreview"
+              title="Frecuencia por horómetro y proyección"
+              :subtitle="periodoLabel"
+              :file-name="`proyeccion_horometro_${desde}_${hasta}`"
+              :columns="headersProyeccion"
+              :rows="proyeccionAplicable"
+            />
+          </template>
           <v-data-table
             :headers="headersProyeccion"
             :items="proyeccionAplicable"
@@ -332,6 +382,16 @@
           title="8 · Confiabilidad: MTBF y MTTR"
           subtitle="Tiempo medio entre fallas y tiempo medio de reparación, sobre intervenciones correctivas."
         >
+          <template #actions>
+            <SectionExportButtons
+              :preview="reportPreview"
+              title="Confiabilidad: MTBF y MTTR"
+              :subtitle="periodoLabel"
+              :file-name="`confiabilidad_${desde}_${hasta}`"
+              :columns="headersConfiabilidad"
+              :rows="data.confiabilidad"
+            />
+          </template>
           <v-data-table
             :headers="headersConfiabilidad"
             :items="data.confiabilidad"
@@ -386,6 +446,17 @@
                 class="enterprise-table"
                 no-data-text="Sin registros que sustenten esta cifra en el período"
               >
+                <template #item.orden="{ item }">
+                  <a
+                    v-if="row(item).work_order_id"
+                    class="work-order-link"
+                    href="#"
+                    :aria-label="`Ver detalle de la orden ${row(item).orden}`"
+                    @click.prevent="abrirOrden(row(item).work_order_id)"
+                    >{{ row(item).orden }}</a
+                  >
+                  <span v-else>{{ row(item).orden }}</span>
+                </template>
                 <template #item.fecha="{ item }">{{ fechaCorta(row(item).fecha) }}</template>
                 <template #item.semaforo="{ item }">
                   <StatusChip
@@ -416,6 +487,12 @@
       </v-dialog>
     </div>
   </EnterprisePageMotion>
+  <WorkOrderDetailDialog
+    v-model="ordenDetalleDialog"
+    :work-order-id="ordenDetalleId"
+  />
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -432,6 +509,10 @@ import { useAuthStore } from "@/app/stores/auth.store";
 import { useDataChanged } from "@/app/utils/use-data-changed";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
+import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
+import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import { useReportPreview } from "@/app/utils/report-preview";
 
 const menuStore = useMenuStore();
 const auth = useAuthStore();
@@ -461,10 +542,12 @@ const SectionCard = (props: any, { slots }: any) =>
           // scoped y el glifo salia como caja.
           h(VIcon, { icon: props.icon, size: 20 }),
         ]),
-        h("div", {}, [
+        h("div", { class: "section-card__copy" }, [
           h("h2", { class: "section-card__title" }, props.title),
           h("p", { class: "section-card__subtitle" }, props.subtitle),
         ]),
+        // Ranura para exportar lo que muestra la seccion; vacia no ocupa nada.
+        h("div", { class: "section-card__actions" }, slots.actions?.()),
       ]),
       h("div", { class: "section-card__body" }, slots.default?.()),
     ],
@@ -931,6 +1014,29 @@ function horometro(value: unknown) {
   return `${n.toLocaleString("es-EC", { maximumFractionDigits: 2 })} h`;
 }
 
+/**
+ * Un unico visor para todas las exportaciones del tablero: cada seccion arma
+ * su reporte con lo que ya esta en pantalla y lo muestra antes de descargar.
+ */
+const reportPreview = useReportPreview({
+  title: "Previsualización del tablero de administración",
+});
+const periodoLabel = computed(() => `Del ${desde.value} al ${hasta.value}`);
+
+/**
+ * Detalle de la orden en una modal. El tablero listaba codigos de OT que no
+ * llevaban a ninguna parte: para ver que se hizo habia que salir del tablero.
+ */
+const ordenDetalleDialog = ref(false);
+const ordenDetalleId = ref<string | null>(null);
+
+function abrirOrden(workOrderId: unknown) {
+  const id = String(workOrderId || "").trim();
+  if (!id) return;
+  ordenDetalleId.value = id;
+  ordenDetalleDialog.value = true;
+}
+
 /** "FUNCIONAMIENTO" -> "Funcionando"; cualquier otra cosa es una parada. */
 function estadoOperativoLabel(value: unknown) {
   const normalizado = String(value ?? "").trim().toUpperCase();
@@ -1130,6 +1236,17 @@ function setMotionRoot(el: unknown) {
   margin-bottom: var(--space-xl);
 }
 
+/* El titulo se queda con el ancho sobrante y las acciones se van al borde. */
+.section-card__copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.section-card__actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .section-card__icon {
   display: grid;
   width: 38px;
@@ -1312,5 +1429,15 @@ function setMotionRoot(el: unknown) {
     max-width: none;
     flex: 1 1 140px;
   }
+}
+
+.work-order-link {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.work-order-link:hover {
+  text-decoration: underline;
 }
 </style>

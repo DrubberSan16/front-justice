@@ -209,7 +209,17 @@
               orden.
             </p>
           </div>
-          <v-icon icon="mdi-oil" size="34" color="primary" aria-hidden="true" />
+          <div class="d-flex align-center" style="gap:8px">
+            <SectionExportButtons
+              :preview="sectionPreview"
+              title="Control de cebado y consumo de aceite"
+              :subtitle="rangeLabel"
+              file-name="gerencia_cebado"
+              :columns="primingExportColumns"
+              :rows="primingRows"
+            />
+            <v-icon icon="mdi-oil" size="34" color="primary" aria-hidden="true" />
+          </div>
         </div>
         <div class="priming-legend" aria-label="Niveles de consumo por orden">
           <span
@@ -289,6 +299,14 @@
           <div>
             <h2 id="inventory-title">Inventario del período</h2>
             <p>{{ rangeLabel }} · Resumen compacto basado en el Kardex.</p>
+            <SectionExportButtons
+              :preview="sectionPreview"
+              title="Inventario del período"
+              :subtitle="rangeLabel"
+              file-name="gerencia_inventario"
+              :columns="inventoryExportColumns"
+              :rows="inventoryRows"
+            />
           </div>
           <div class="inventory-searches">
             <v-text-field
@@ -1367,6 +1385,8 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <ReportPreviewDialogs :preview="sectionPreview" />
   </div>
 </template>
 
@@ -1375,6 +1395,9 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import EChart from "@/components/charts/EChart.vue";
+import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import { useReportPreview } from "@/app/utils/report-preview";
 import { chartBase, seriesColor } from "@/app/config/chart-theme";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -1496,6 +1519,26 @@ const inventoryHeaders = computed(() => [
     ? [{ title: "Costo por ítem", key: "costo_unitario", align: "end" as const }]
     : []),
 ]);
+
+/**
+ * Visor aparte del PDF del informe: cada seccion exporta lo que muestra, con
+ * las mismas columnas y filas que estan en pantalla.
+ */
+const sectionPreview = useReportPreview({
+  title: "Previsualización de la sección",
+});
+const primingExportColumns = computed(() =>
+  primingHeaders.map((header: any) => ({
+    key: String(header.key),
+    title: String(header.title || header.key),
+  })),
+);
+const inventoryExportColumns = computed(() =>
+  inventoryHeaders.value.map((header: any) => ({
+    key: String(header.key),
+    title: String(header.title || header.key),
+  })),
+);
 
 const primingHeaders = [
   { title: "Equipo", key: "equipo_nombre" },

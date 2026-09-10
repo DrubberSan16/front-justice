@@ -419,7 +419,15 @@
                       >
                         <td>{{ item.fecha_referencia_label }}</td>
                         <td>
-                          <div class="font-weight-medium">{{ item.work_order_code }}</div>
+                          <a
+                            v-if="item.work_order_id"
+                            class="work-order-link"
+                            href="#"
+                            :aria-label="`Ver detalle de la orden ${item.work_order_code}`"
+                            @click.stop.prevent="abrirOrdenTrabajo(item.work_order_id)"
+                            >{{ item.work_order_code }}</a
+                          >
+                          <span v-else class="font-weight-medium">{{ item.work_order_code }}</span>
                           <div class="text-caption text-medium-emphasis">{{ item.work_order_title }}</div>
                         </td>
                         <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
@@ -1154,7 +1162,15 @@
                     <tr v-for="item in oilWorkOrderRows" :key="`${item.work_order_id}-${item.producto_id}`">
                       <td>{{ item.fecha_referencia_label }}</td>
                       <td>
-                        <div class="font-weight-medium">{{ item.work_order_code }}</div>
+                        <a
+                          v-if="item.work_order_id"
+                          class="work-order-link"
+                          href="#"
+                          :aria-label="`Ver detalle de la orden ${item.work_order_code}`"
+                          @click.stop.prevent="abrirOrdenTrabajo(item.work_order_id)"
+                          >{{ item.work_order_code }}</a
+                        >
+                        <span v-else class="font-weight-medium">{{ item.work_order_code }}</span>
                         <div class="text-caption text-medium-emphasis">{{ item.work_order_title }}</div>
                       </td>
                       <td>{{ item.maintenance_kind_label || maintenanceKindLabel(item.maintenance_kind) }}</td>
@@ -1287,6 +1303,11 @@
   </EnterprisePageMotion>
 
   <ReportPreviewDialogs :preview="reportPreview" />
+
+  <WorkOrderDetailDialog
+    v-model="ordenDetalleDialog"
+    :work-order-id="ordenDetalleId"
+  />
 </template>
 
 <script setup lang="ts">
@@ -1319,10 +1340,25 @@ import {
 } from "@/app/utils/maintenance-intelligence-reports";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
 
 const reportPreview = useReportPreview({
   title: "Previsualización del reporte de inteligencia",
 });
+
+/**
+ * Detalle de la orden en una modal. Las tablas listaban el codigo de la OT sin
+ * llevar a ninguna parte: para ver que se hizo habia que salir del tablero.
+ */
+const ordenDetalleDialog = ref(false);
+const ordenDetalleId = ref<string | null>(null);
+
+function abrirOrdenTrabajo(workOrderId: unknown) {
+  const id = String(workOrderId || "").trim();
+  if (!id) return;
+  ordenDetalleId.value = id;
+  ordenDetalleDialog.value = true;
+}
 
 type AnyRow = Record<string, any>;
 type IntelligenceCard = {
@@ -3338,5 +3374,15 @@ function setMotionRoot(el: unknown) {
   .intelligence-filter-toolbar__select--month {
     min-width: 100%;
   }
+}
+
+.work-order-link {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.work-order-link:hover {
+  text-decoration: underline;
 }
 </style>

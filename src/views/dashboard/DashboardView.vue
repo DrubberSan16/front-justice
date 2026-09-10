@@ -307,7 +307,17 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="text-subtitle-1 font-weight-bold">Alertas recientes</div>
-            <v-chip label color="warning" variant="tonal">{{ openAlertsCount }} abiertas</v-chip>
+            <div class="d-flex align-center" style="gap:6px">
+              <SectionExportButtons
+                :preview="reportPreview"
+                title="Alertas recientes"
+                :subtitle="selectedPeriodLabel"
+                file-name="dashboard_alertas_recientes"
+                :columns="ALERT_EXPORT_COLUMNS"
+                :rows="recentAlertsTableRows"
+              />
+              <v-chip label color="warning" variant="tonal">{{ openAlertsCount }} abiertas</v-chip>
+            </div>
           </div>
 
           <LoadingTableState v-if="loading" message="Cargando alertas recientes..." :rows="5" :columns="4" />
@@ -355,7 +365,17 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="text-subtitle-1 font-weight-bold">Órdenes de trabajo recientes</div>
-            <v-chip label color="primary" variant="tonal">{{ filteredWorkOrders.length }} totales</v-chip>
+            <div class="d-flex align-center" style="gap:6px">
+              <SectionExportButtons
+                :preview="reportPreview"
+                title="Órdenes de trabajo recientes"
+                :subtitle="selectedPeriodLabel"
+                file-name="dashboard_ordenes_recientes"
+                :columns="WORK_ORDER_EXPORT_COLUMNS"
+                :rows="recentWorkOrdersTableRows"
+              />
+              <v-chip label color="primary" variant="tonal">{{ filteredWorkOrders.length }} totales</v-chip>
+            </div>
           </div>
 
           <LoadingTableState v-if="loading" message="Cargando órdenes de trabajo..." :rows="5" :columns="4" />
@@ -381,7 +401,15 @@
                   @keydown.enter="openWorkOrderRowDetail(order)"
                   @keydown.space.prevent="openWorkOrderRowDetail(order)"
                 >
-                  <td class="font-weight-medium">{{ order.codigo }}</td>
+                  <td class="font-weight-medium">
+                    <a
+                      class="work-order-link"
+                      href="#"
+                      :aria-label="`Ver detalle de la orden ${order.codigo}`"
+                      @click.stop.prevent="openWorkOrderDetailDialog(order.id)"
+                      >{{ order.codigo }}</a
+                    >
+                  </td>
                   <td>{{ order.titulo }}</td>
                   <td>{{ order.equipo }}</td>
                   <td>
@@ -403,7 +431,17 @@
         <v-card rounded="xl" class="pa-5 enterprise-surface h-100">
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="text-subtitle-1 font-weight-bold">Inventario crítico</div>
-            <v-chip label color="error" variant="tonal">{{ lowStockItems.length }} bajo mínimo</v-chip>
+            <div class="d-flex align-center" style="gap:6px">
+              <SectionExportButtons
+                :preview="reportPreview"
+                title="Inventario crítico"
+                :subtitle="selectedPeriodLabel"
+                file-name="dashboard_inventario_critico"
+                :columns="INVENTORY_EXPORT_COLUMNS"
+                :rows="criticalInventoryRows"
+              />
+              <v-chip label color="error" variant="tonal">{{ lowStockItems.length }} bajo mínimo</v-chip>
+            </div>
           </div>
 
           <LoadingTableState v-if="loading" message="Cargando inventario crítico..." :rows="6" :columns="3" />
@@ -695,6 +733,12 @@
       :empty-text="detailDialogEmptyText"
     />
   </EnterprisePageMotion>
+  <WorkOrderDetailDialog
+    v-model="workOrderDetailDialog"
+    :work-order-id="workOrderDetailId"
+  />
+
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
@@ -715,6 +759,10 @@ import EquipmentOperatingControl, {
 } from "@/components/dashboard/EquipmentOperatingControl.vue";
 import LoadingTableState from "@/components/ui/LoadingTableState.vue";
 import ReadonlyDetailDialog from "@/components/ui/ReadonlyDetailDialog.vue";
+import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
+import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import { useReportPreview } from "@/app/utils/report-preview";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -1680,6 +1728,50 @@ function openWorkOrderStatusDetail(statusKey: string) {
     rows,
     emptyText: "No hay órdenes de trabajo en este estado para el período seleccionado.",
   });
+}
+
+/**
+ * Un unico visor para exportar lo que muestra cada tarjeta. Se pasan las
+ * mismas columnas y filas que pinta la tabla, no una consulta nueva.
+ */
+const reportPreview = useReportPreview({
+  title: "Previsualización del tablero",
+});
+
+const ALERT_EXPORT_COLUMNS = [
+  { key: "tipo", title: "Tipo" },
+  { key: "equipo", title: "Equipo" },
+  { key: "estado", title: "Estado" },
+  { key: "detalle", title: "Detalle" },
+];
+
+const WORK_ORDER_EXPORT_COLUMNS = [
+  { key: "codigo", title: "Código" },
+  { key: "titulo", title: "Título" },
+  { key: "equipo", title: "Equipo" },
+  { key: "estado", title: "Estado" },
+];
+
+const INVENTORY_EXPORT_COLUMNS = [
+  { key: "producto", title: "Material" },
+  { key: "bodega", title: "Bodega" },
+  { key: "stock", title: "Stock", format: "number" as const },
+  { key: "min", title: "Mínimo", format: "number" as const },
+  { key: "deficit", title: "Déficit", format: "number" as const },
+];
+
+/**
+ * Detalle de la orden en una modal, sin salir del tablero. Antes habia que ir
+ * a Ordenes de trabajo y buscar el codigo a mano.
+ */
+const workOrderDetailDialog = ref(false);
+const workOrderDetailId = ref<string | null>(null);
+
+function openWorkOrderDetailDialog(workOrderId: unknown) {
+  const id = String(workOrderId || "").trim();
+  if (!id) return;
+  workOrderDetailId.value = id;
+  workOrderDetailDialog.value = true;
 }
 
 function openWorkOrderRowDetail(order: AnyRow) {
@@ -2749,5 +2841,15 @@ function setMotionRoot(el: unknown) {
   .dashboard-table-shell {
     border-radius: 14px;
   }
+}
+
+.work-order-link {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.work-order-link:hover {
+  text-decoration: underline;
 }
 </style>
