@@ -52,9 +52,6 @@ export function buildWarehouseMovementReport(
           material: detail.producto_nombre || "",
           unidad: detail.unidad_label || "",
           condicion: detail.condicion_material || "",
-          lote: detail.lote || "",
-          serie: detail.serie || "",
-          vencimiento: detail.fecha_vencimiento || "",
           cantidad: Number(detail.cantidad || 0),
           ...(includeCosts
             ? {
@@ -70,9 +67,6 @@ export function buildWarehouseMovementReport(
           { key: "material", header: "Material", width: 30 },
           { key: "unidad", header: "Unidad", width: 12 },
           { key: "condicion", header: "Condición", width: 12 },
-          { key: "lote", header: "Lote", width: 14 },
-          { key: "serie", header: "Serie", width: 14 },
-          { key: "vencimiento", header: "Vencimiento", width: 13, format: "date" },
           { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
           ...(includeCosts
             ? [

@@ -399,7 +399,6 @@
                             <th>Material</th>
                             <th>Unidad</th>
                             <th>Condición</th>
-                            <th>Lote / serie</th>
                             <th class="text-right">Cantidad</th>
                             <th v-if="canViewCosts" class="text-right">Costo unitario</th>
                             <th v-if="canViewCosts" class="text-right">Subtotal</th>
@@ -414,7 +413,6 @@
                             </td>
                             <td>{{ detail.unidad_label || '-' }}</td>
                             <td>{{ detail.condicion_material || '-' }}</td>
-                            <td>{{ [detail.lote, detail.serie].filter(Boolean).join(' / ') || '-' }}</td>
                             <td class="text-right">{{ formatNumberForDisplay(detail.cantidad || 0) }}</td>
                             <td v-if="canViewCosts" class="text-right">{{ formatDocumentCurrency(detail.costo_unitario) }}</td>
                             <td v-if="canViewCosts" class="text-right font-weight-medium">{{ formatDocumentCurrency(detail.subtotal_costo) }}</td>
@@ -548,6 +546,7 @@ import {
   type ReportDefinition,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { buildWarehouseMovementReport } from "@/app/utils/warehouse-movement-documents";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { DEFAULT_CONTEXT_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
@@ -1013,65 +1012,14 @@ function revokeMovementDocumentPdfUrl() {
   window.URL.revokeObjectURL(movementDocumentPdfUrl.value);
   movementDocumentPdfUrl.value = "";
 }
+/**
+ * El documento de bodega se imprime igual desde el Kardex y desde las
+ * pantallas de ingresos y egresos, asi que el armado vive en un solo sitio.
+ */
 function buildMovementDocumentReport(document: any): ReportDefinition {
-  const documentNumber = String(document?.numero_documento || "DOCUMENTO").trim();
-  const details = Array.isArray(document?.detalles) ? document.detalles : [];
-  const currency = String(document?.moneda || "USD").trim().toUpperCase() || "USD";
-  return {
-    fileName: `documento_kardex_${sanitizeKardexPdfFileName(documentNumber)}_${formatDateForInput()}`,
-    title: document?.tipo_documento_label || "Documento de inventario",
-    subtitle: `${documentNumber} | ${document?.bodega_label || "Bodega no especificada"}`,
-    orientation: "landscape",
-    summary: [
-      { label: "Fecha", value: formatDateTime(document?.fecha_movimiento, "-") },
-      { label: "Tipo", value: document?.tipo_movimiento || "-" },
-      { label: "Estado", value: document?.estado || document?.status || "-" },
-      { label: "Referencia", value: document?.referencia || "-" },
-      { label: "Ítems", value: document?.total_items || details.length },
-      { label: "Cantidad", value: Number(document?.total_cantidad || 0) },
-      ...(canViewCosts.value ? [{ label: `Costo total (${currency})`, value: Number(document?.total_costos || 0) }] : []),
-      { label: "Responsable", value: document?.created_by || "SYSTEM" },
-    ],
-    sheets: [
-      {
-        name: "Detalle del documento",
-        fitColumnsToPage: true,
-        note: document?.observacion ? `Observación: ${document.observacion}` : undefined,
-        rows: details.map((detail: any, index: number) => ({
-          linea: index + 1,
-          codigo: detail.producto_codigo || "",
-          material: detail.producto_nombre || "",
-          unidad: detail.unidad_label || "",
-          condicion: detail.condicion_material || "",
-          lote: detail.lote || "",
-          serie: detail.serie || "",
-          vencimiento: detail.fecha_vencimiento || "",
-          cantidad: Number(detail.cantidad || 0),
-          ...(canViewCosts.value ? {
-            costo_unitario: Number(detail.costo_unitario || 0),
-            subtotal: Number(detail.subtotal_costo || 0),
-          } : {}),
-          observacion: detail.observacion || "",
-        })),
-        columns: [
-          { key: "linea", header: "#", width: 6, format: "number" },
-          { key: "codigo", header: "Código", width: 14 },
-          { key: "material", header: "Material", width: 30 },
-          { key: "unidad", header: "Unidad", width: 12 },
-          { key: "condicion", header: "Condición", width: 12 },
-          { key: "lote", header: "Lote", width: 14 },
-          { key: "serie", header: "Serie", width: 14 },
-          { key: "vencimiento", header: "Vencimiento", width: 13, format: "date" },
-          { key: "cantidad", header: "Cantidad", width: 12, format: "number" },
-          ...(canViewCosts.value ? [
-            { key: "costo_unitario", header: `Costo unit. (${currency})`, width: 14, format: "currency" as const },
-            { key: "subtotal", header: `Subtotal (${currency})`, width: 14, format: "currency" as const },
-          ] : []),
-          { key: "observacion", header: "Observación", width: 24 },
-        ],
-      },
-    ],
-  };
+  return buildWarehouseMovementReport(document, {
+    includeCosts: canViewCosts.value,
+  });
 }
 async function openMovementDocumentDetail(movement: KardexMovementRow) {
   const documentId = String(movement?.documento_id || "").trim();
