@@ -140,29 +140,60 @@
         </div>
         <div class="equipment-heading">
           <h3>Consumo por equipo</h3>
-          <span>{{ equipmentRows.length }} equipos con consumo</span>
-        </div>
-        <div v-if="equipmentRows.length" class="equipment-grid">
-          <button
-            v-for="equipment in equipmentRows"
-            :key="equipmentKey(equipment)"
-            type="button"
-            class="equipment-card"
-            @click="openEquipmentDetail(equipment)"
-          >
-            <v-icon icon="mdi-engine-outline" size="26" aria-hidden="true" />
+          <div class="equipment-heading__tools">
             <span
-              ><strong>{{ equipmentLabel(equipment) }}</strong
-              ><small
-                >{{ formatNumber(equipment.total_cantidad) }} gal<template
-                  v-if="muestraCostos"
-                >
-                  · {{ formatCurrency(equipment.total_costo) }}</template
-                ></small
-              ></span
+              >{{ equipmentWithUsageCount }} de
+              {{ equipmentRows.length }} con consumo</span
             >
-            <v-icon icon="mdi-chevron-right" aria-hidden="true" />
-          </button>
+            <v-btn-toggle
+              v-model="equipmentListFilter"
+              density="comfortable"
+              variant="outlined"
+              divided
+              mandatory
+              class="equipment-filter"
+            >
+              <v-btn value="todos" size="small">Todos</v-btn>
+              <v-btn value="con-consumo" size="small">Con consumo</v-btn>
+            </v-btn-toggle>
+          </div>
+        </div>
+        <div v-if="visibleEquipmentRows.length" class="equipment-report">
+          <div class="equipment-report__head" aria-hidden="true">
+            <span>Equipo</span>
+            <span>Galones</span>
+            <span v-if="muestraCostos">Costo</span>
+            <span>Órdenes</span>
+            <span></span>
+          </div>
+          <div class="equipment-report__scroll">
+            <button
+              v-for="equipment in visibleEquipmentRows"
+              :key="equipmentKey(equipment)"
+              type="button"
+              class="equipment-report__row"
+              :class="{
+                'equipment-report__row--idle':
+                  Number(equipment.total_cantidad || 0) <= 0,
+              }"
+              @click="openEquipmentDetail(equipment)"
+            >
+              <span class="equipment-report__name">
+                <v-icon icon="mdi-engine-outline" size="20" aria-hidden="true" />
+                <strong>{{ equipmentLabel(equipment) }}</strong>
+              </span>
+              <span class="equipment-report__value"
+                >{{ formatNumber(equipment.total_cantidad) }} gal</span
+              >
+              <span v-if="muestraCostos" class="equipment-report__value">{{
+                formatCurrency(equipment.total_costo)
+              }}</span>
+              <span class="equipment-report__value">{{
+                formatNumber(equipment.total_ordenes)
+              }}</span>
+              <v-icon icon="mdi-chevron-right" size="20" aria-hidden="true" />
+            </button>
+          </div>
         </div>
         <div v-else class="compact-empty">
           No hay consumo de aceite en este rango.
@@ -752,6 +783,12 @@
               <template #item.fecha="{ item }">{{
                 formatShortDate(item.fecha)
               }}</template>
+              <template #item.horometro_anterior="{ item }">{{
+                formatHorometro(item.horometro_anterior)
+              }}</template>
+              <template #item.horometro_actual="{ item }">{{
+                formatHorometro(item.horometro_actual)
+              }}</template>
               <template #item.galones="{ item }"
                 >{{ formatNumber(item.galones) }} gal</template
               >
@@ -1064,8 +1101,11 @@
                 >
                   <strong>{{ row.label }}</strong
                   ><span
-                    >Nuevo entregado:
+                    >Entregado:
                     <b>{{ formatNumber(row.delivered) }}</b></span
+                  ><span class="material-condition"
+                    >Condición:
+                    <b>{{ materialConditionSummary(row) }}</b></span
                   ><span
                     >Viejo a chatarra:
                     <b>{{ formatNumber(row.scrapped) }}</b></span
@@ -1441,14 +1481,14 @@ const detailHistory = ref<AnyRow[]>([]);
 const inventoryHeaders = computed(() => [
   { title: "Material", key: "material_label" },
   {
-    title: "Inicio del rango",
+    title: "Stock Inicial",
     key: "stock_inicial",
     align: "end" as const,
   },
   { title: "Ingresó", key: "entradas", align: "end" as const },
   { title: "Salió", key: "salidas", align: "end" as const },
   {
-    title: "Finalizó",
+    title: "Stock Final",
     key: "stock_final",
     align: "end" as const,
   },
@@ -1473,6 +1513,17 @@ const primingDetailHeaders = computed(() => {
     { title: "Orden", key: "orden" },
     { title: "Fecha", key: "fecha" },
     { title: "Producto", key: "producto" },
+    // El horometro con el que llego la maquina y el que se anoto en el cebado.
+    {
+      title: "Horómetro anterior",
+      key: "horometro_anterior",
+      align: "end" as const,
+    },
+    {
+      title: "Horómetro del cebado",
+      key: "horometro_actual",
+      align: "end" as const,
+    },
     { title: "Galones", key: "galones", align: "end" as const },
     { title: "Tendencia", key: "tendencia" },
     { title: "Nivel", key: "semaforo" },
@@ -1648,6 +1699,26 @@ const oilWorkOrders = computed<AnyRow[]>(() =>
     ? oilReport.value.work_orders
     : [],
 );
+/**
+ * La lista trae ahora TODOS los equipos, tambien los que no consumieron: un
+ * equipo en cero es informacion (esta parado, recien entregado o consumiendo
+ * por otro lado) y desaparecer de la tabla lo deja fuera del radar. Como eso
+ * alarga mucho la seccion, se presenta como informe -- una fila por equipo,
+ * con la altura acotada -- y con un filtro para volver a ver solo los que
+ * gastaron.
+ */
+const equipmentListFilter = ref<"todos" | "con-consumo">("todos");
+const equipmentWithUsageCount = computed(
+  () =>
+    equipmentRows.value.filter((row) => Number(row.total_cantidad || 0) > 0)
+      .length,
+);
+const visibleEquipmentRows = computed<AnyRow[]>(() =>
+  equipmentListFilter.value === "con-consumo"
+    ? equipmentRows.value.filter((row) => Number(row.total_cantidad || 0) > 0)
+    : equipmentRows.value,
+);
+
 const topOilEquipment = computed<AnyRow | null>(
   () => equipmentRows.value[0] ?? null,
 );
@@ -2119,30 +2190,52 @@ const oilDelivered = computed(() => {
       ids.has(String(row?.producto_id || "")) && Number(row?.cantidad || 0) > 0,
   );
 });
+/**
+ * Un repuesto puede salir de bodega nuevo o usado, y no es lo mismo para
+ * quien lee el informe: el usado se reacondiciono y vuelve a la maquina, el
+ * nuevo se compro. El detalle guardaba la condicion y no la mostraba.
+ */
+function issueConditionLabel(value: unknown) {
+  return String(value || "").trim().toUpperCase() === "USADO"
+    ? "Usado"
+    : "Nuevo";
+}
+
 const materialRows = computed(() => {
   const rows = new Map<
     string,
-    { key: string; label: string; delivered: number; scrapped: number }
+    {
+      key: string;
+      label: string;
+      delivered: number;
+      deliveredNuevo: number;
+      deliveredUsado: number;
+      scrapped: number;
+    }
   >();
+  const emptyRow = (key: string, label: string) => ({
+    key,
+    label,
+    delivered: 0,
+    deliveredNuevo: 0,
+    deliveredUsado: 0,
+    scrapped: 0,
+  });
   for (const item of detailLines(detailIssues.value)) {
     const key = String(item?.producto_id || materialLabel(item));
-    const current = rows.get(key) ?? {
-      key,
-      label: materialLabel(item),
-      delivered: 0,
-      scrapped: 0,
-    };
-    current.delivered += Number(item?.cantidad || 0);
+    const current = rows.get(key) ?? emptyRow(key, materialLabel(item));
+    const cantidad = Number(item?.cantidad || 0);
+    current.delivered += cantidad;
+    if (issueConditionLabel(item?.condicion_material) === "Usado") {
+      current.deliveredUsado += cantidad;
+    } else {
+      current.deliveredNuevo += cantidad;
+    }
     rows.set(key, current);
   }
   for (const item of detailLines(detailScraps.value)) {
     const key = String(item?.producto_id || materialLabel(item));
-    const current = rows.get(key) ?? {
-      key,
-      label: materialLabel(item),
-      delivered: 0,
-      scrapped: 0,
-    };
+    const current = rows.get(key) ?? emptyRow(key, materialLabel(item));
     current.scrapped += Number(item?.cantidad || 0);
     rows.set(key, current);
   }
@@ -2150,6 +2243,31 @@ const materialRows = computed(() => {
     a.label.localeCompare(b.label, "es"),
   );
 });
+/**
+ * "Nuevo", "Usado" o el desglose cuando la misma linea llevo de los dos.
+ */
+function materialConditionSummary(row: {
+  deliveredNuevo: number;
+  deliveredUsado: number;
+}) {
+  const nuevo = Number(row.deliveredNuevo || 0);
+  const usado = Number(row.deliveredUsado || 0);
+  if (nuevo > 0 && usado > 0) {
+    return `${formatNumber(nuevo)} nuevo · ${formatNumber(usado)} usado`;
+  }
+  if (usado > 0) return "Usado";
+  if (nuevo > 0) return "Nuevo";
+  return "Sin salida";
+}
+
+/** Horometro: entero con separador de miles, o un guion si nunca se anoto. */
+function formatHorometro(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return "—";
+  return `${parsed.toLocaleString("es-EC", { maximumFractionDigits: 2 })} h`;
+}
+
 const firstHistoryActor = computed(
   () => detailHistory.value[0]?.changed_by || null,
 );
@@ -2288,11 +2406,12 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
   total_responsables: "Cantidad responsables",
   total_ordenes: "OT",
   total_items: "Registros",
-  total_materiales: "Materiales",
+  total_materiales: "Total ítems",
   materiales: "Materiales",
   total_cantidad: "Cantidad",
   total_costo: "Costo total",
-  total_stock: "Stock actual",
+  total_stock: "Total materiales",
+  stock_actual: "Total materiales",
   costo_unitario: "Costo unitario",
   costo_unitario_promedio: "Costo unitario promedio",
   total_costo_inventario: "Costo inventario",
@@ -2343,6 +2462,23 @@ const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "material_label",
       "total_cantidad",
       "total_costo",
+    ],
+  },
+  // Primero cuantos materiales distintos hay y despues cuanto material hay:
+  // se lee "12 items, 340 unidades" en ese orden, no al reves.
+  costo_inventario: {
+    BODEGA: [
+      "bodega_label",
+      "total_materiales",
+      "total_stock",
+      "total_costo_inventario",
+    ],
+    MATERIAL: [
+      "bodega_label",
+      "material_label",
+      "stock_actual",
+      "costo_unitario",
+      "total_costo_inventario",
     ],
   },
 };
@@ -3027,6 +3163,7 @@ function buildWorkOrderReportData(): WorkOrderReportData {
     materiales: materialRows.value.map((row) => ({
       label: row.label,
       delivered: row.delivered,
+      condicion: materialConditionSummary(row),
       scrapped: row.scrapped,
     })),
     oilQuantity: orderOilQuantity.value,
@@ -3357,8 +3494,7 @@ onMounted(() => {
 .report-heading,
 .simple-section,
 .order-card,
-.empty-panel,
-.equipment-card {
+.empty-panel {
   border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
   background: rgb(var(--v-theme-surface));
 }
@@ -3451,7 +3587,6 @@ onMounted(() => {
   box-shadow: 0 12px 30px rgba(var(--status-color), 0.12);
 }
 .status-button:focus-visible,
-.equipment-card:focus-visible,
 .metric-card--button:focus-visible,
 .order-card:focus-visible,
 .equipment-order-list button:focus-visible {
@@ -3552,39 +3687,100 @@ onMounted(() => {
   color: rgba(var(--v-theme-on-surface), 0.65);
   font-size: 0.88rem;
 }
-.equipment-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+/* Informe de equipos: una fila por maquina, columnas alineadas y altura
+   acotada. Con la flota completa en pantalla, la cuadricula de tarjetas
+   ocupaba media pagina y obligaba a barrer en zigzag para comparar dos
+   cifras. */
+.equipment-report {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+  overflow: hidden;
 }
-.equipment-card {
+.equipment-report__head,
+.equipment-report__row {
   display: grid;
-  min-height: 76px;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) 120px 120px 96px 28px;
   align-items: center;
-  gap: 13px;
-  padding: 14px 16px;
-  border-radius: 15px;
-  color: inherit;
+  gap: 12px;
+  padding: 10px 18px;
   text-align: left;
-  cursor: pointer;
 }
-.equipment-card:hover {
-  border-color: rgba(var(--manager-blue), 0.48);
-  background: rgba(var(--manager-blue), 0.045);
-}
-.equipment-card > span {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-.equipment-card strong {
-  overflow-wrap: anywhere;
-  font-size: 0.94rem;
-}
-.equipment-card small {
-  color: rgba(var(--v-theme-on-surface), 0.65);
+.equipment-report__head {
+  background: rgba(var(--v-theme-on-surface), 0.045);
+  color: rgba(var(--v-theme-on-surface), 0.7);
   font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.equipment-report__head span:not(:first-child),
+.equipment-report__value {
+  text-align: right;
+}
+/* Altura acotada: la seccion no puede crecer con la flota. */
+.equipment-report__scroll {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.equipment-report__row {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  background: transparent;
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+  transition:
+    background-color 200ms ease,
+    color 200ms ease;
+}
+.equipment-report__scroll > .equipment-report__row:first-child {
+  border-top: 0;
+}
+.equipment-report__row:nth-child(even) {
+  background: rgba(var(--v-theme-on-surface), 0.022);
+}
+.equipment-report__row:hover {
+  background: rgba(var(--manager-blue), 0.075);
+}
+.equipment-report__row:focus-visible {
+  outline: 4px solid rgba(var(--manager-blue), 0.28);
+  outline-offset: -4px;
+}
+.equipment-report__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.equipment-report__name strong {
+  font-size: 1rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.equipment-report__value {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.98rem;
+}
+/* El equipo sin consumo se atenua, pero sigue legible: es informacion, no
+   ruido. Se mantiene por encima del minimo de contraste. */
+.equipment-report__row--idle .equipment-report__value,
+.equipment-report__row--idle .equipment-report__name strong {
+  color: rgba(var(--v-theme-on-surface), 0.62);
+  font-weight: 500;
+}
+.equipment-heading__tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.equipment-filter {
+  border-radius: 10px;
 }
 .compact-empty {
   padding: 22px;
@@ -3957,7 +4153,6 @@ onMounted(() => {
   }
   .status-grid,
   .metric-grid,
-  .equipment-grid,
   .inventory-searches,
   .inventory-totals,
   .detail-summary,

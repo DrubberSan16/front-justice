@@ -16,6 +16,8 @@ export type WorkOrderReportResponsible = {
 export type WorkOrderReportMaterial = {
   label: string;
   delivered: number;
+  /** "Nuevo", "Usado" o el desglose cuando la salida llevo de los dos. */
+  condicion?: string;
   scrapped: number;
 };
 
@@ -170,19 +172,23 @@ export async function buildWorkOrderReportPdfBlob(
     theme: "striped",
     styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
-    head: [["Material", "Nuevo entregado", "Viejo a chatarra", "Estado"]],
+    head: [
+      ["Material", "Entregado", "Condición", "Viejo a chatarra", "Estado"],
+    ],
     body: data.materiales.length
       ? data.materiales.map((row) => [
           safeText(row.label),
           formatNumber(row.delivered),
+          safeText(row.condicion || "-"),
           formatNumber(row.scrapped),
           row.delivered > 0 && row.scrapped > 0 ? "Flujo completo" : "Revisar",
         ])
-      : [["No hay materiales registrados.", "-", "-", "-"]],
+      : [["No hay materiales registrados.", "-", "-", "-", "-"]],
     columnStyles: {
-      1: { halign: "right", cellWidth: 84 },
-      2: { halign: "right", cellWidth: 84 },
-      3: { cellWidth: 78 },
+      1: { halign: "right", cellWidth: 66 },
+      2: { cellWidth: 72 },
+      3: { halign: "right", cellWidth: 74 },
+      4: { cellWidth: 70 },
     },
   });
   cursorY = (doc as any).lastAutoTable.finalY + 18;

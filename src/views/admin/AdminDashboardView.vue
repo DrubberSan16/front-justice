@@ -368,6 +368,8 @@
                   </span>
                   <span v-else class="text-medium-emphasis">Primera orden</span>
                 </template>
+                <template #item.horometro_anterior="{ item }">{{ horometro(row(item).horometro_anterior) }}</template>
+                <template #item.horometro_actual="{ item }">{{ horometro(row(item).horometro_actual) }}</template>
                 <template #item.desde="{ item }">{{ fechaHora(row(item).desde) }}</template>
                 <template #item.hasta="{ item }">{{ fechaHora(row(item).hasta) }}</template>
               </v-data-table>
@@ -732,6 +734,19 @@ const HEADERS_DETALLE: Record<string, any[]> = {
     { title: "Orden", key: "orden" },
     { title: "Fecha", key: "fecha" },
     { title: "Producto", key: "producto" },
+    // El horometro con el que llego la maquina y el que se anoto en el cebado:
+    // sin los dos no se sabe cuantas horas corrio entre uno y otro, que es lo
+    // que explica si el consumo fue alto o normal.
+    {
+      title: "Horómetro anterior",
+      key: "horometro_anterior",
+      align: "end" as const,
+    },
+    {
+      title: "Horómetro del cebado",
+      key: "horometro_actual",
+      align: "end" as const,
+    },
     { title: "Galones", key: "galones", align: "end" as const },
     { title: "Tendencia", key: "tendencia" },
     { title: "Nivel", key: "semaforo" },
@@ -854,6 +869,14 @@ function fechaHora(value: unknown) {
   const d = new Date(String(value ?? ""));
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString("es-EC", { dateStyle: "short", timeStyle: "short" });
+}
+
+/** Horometro: entero con separador de miles, o un guion si nunca se anoto. */
+function horometro(value: unknown) {
+  if (value === null || value === undefined || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `${n.toLocaleString("es-EC", { maximumFractionDigits: 2 })} h`;
 }
 
 function money(value: unknown) {
