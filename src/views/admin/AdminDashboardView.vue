@@ -126,6 +126,12 @@
                 @click="abrirDetalle('disponibilidad', row(item))"
               />
             </template>
+            <template #item.estado_funcionamiento="{ item }">
+              <StatusChip
+                :nivel="estadoOperativoNivel(row(item).estado_funcionamiento)"
+                :texto="estadoOperativoLabel(row(item).estado_funcionamiento)"
+              />
+            </template>
             <template #item.porcentaje_disponibilidad="{ item }">
               <StatusChip
                 v-if="row(item).porcentaje_disponibilidad != null"
@@ -269,6 +275,30 @@
             :items-per-page="15"
             class="enterprise-table"
           >
+            <template #item.equipo_nombre="{ item }">
+              {{ row(item).equipo_nombre }}
+              <v-tooltip
+                v-if="row(item).referencia_estimada"
+                :text="row(item).motivo_referencia_estimada || 'Base estimada'"
+                location="top"
+              >
+                <template #activator="{ props: tipProps }">
+                  <v-icon
+                    v-bind="tipProps"
+                    icon="mdi-alert-circle-outline"
+                    size="16"
+                    color="warning"
+                    class="ms-1"
+                  />
+                </template>
+              </v-tooltip>
+            </template>
+            <template #item.horometro_ultimo_mantenimiento="{ item }">
+              {{ row(item).horometro_ultimo_mantenimiento }}
+              <span v-if="row(item).referencia_estimada" class="text-caption text-warning">
+                (estimado)
+              </span>
+            </template>
             <template #item.semaforo="{ item }">
               <StatusChip :nivel="row(item).semaforo.nivel" :texto="row(item).semaforo.etiqueta" />
             </template>
@@ -280,6 +310,13 @@
               </span>
             </template>
           </v-data-table>
+          <v-alert
+            v-if="proyeccionEstimada.length"
+            type="warning"
+            variant="tonal"
+            class="mt-3"
+            :text="`${proyeccionEstimada.length} equipo(s) se proyectan sobre una base estimada porque su último mantenimiento no dejó un horómetro utilizable: ${proyeccionEstimada.map((e: any) => e.equipo_nombre).join(', ')}. Corrige el horómetro de esa OT para que la proyección sea exacta.`"
+          />
           <v-alert
             v-if="proyeccionSinFrecuencia.length"
             type="info"
@@ -464,6 +501,10 @@ const data = ref<any>({
 const headersDisponibilidad = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Descripción", key: "equipo_descripcion" },
+  // Como está AHORA la máquina. El detalle cuenta la historia de paradas y
+  // arranques, pero antes de abrirlo hay que poder ver de un vistazo cuál está
+  // caída: es la pregunta que se hace primero quien mira este tablero.
+  { title: "Estado", key: "estado_funcionamiento" },
   { title: "Horas disponibles", key: "horas_disponibles", align: "end" as const },
   { title: "Horas fuera de servicio", key: "horas_fuera_servicio", align: "end" as const },
   { title: "Disponibilidad", key: "porcentaje_disponibilidad", align: "end" as const },
@@ -525,6 +566,17 @@ const proyeccionAplicable = computed(() =>
 );
 const proyeccionSinFrecuencia = computed(() =>
   (data.value.proyeccion ?? []).filter((row: any) => !row.aplica),
+);
+/**
+ * Equipos que si se proyectan pero sobre una base supuesta, porque su ultima
+ * OT quedo con horometro cero o mayor al actual. Antes desaparecian de la
+ * tabla sin dejar rastro -- fue lo que paso con UG24 y UG25 -- asi que ahora
+ * se listan igual, marcados, y el aviso dice como arreglarlo de raiz.
+ */
+const proyeccionEstimada = computed(() =>
+  (data.value.proyeccion ?? []).filter(
+    (row: any) => row.aplica && row.referencia_estimada,
+  ),
 );
 
 const resumenCards = computed(() => {
@@ -879,6 +931,21 @@ function horometro(value: unknown) {
   return `${n.toLocaleString("es-EC", { maximumFractionDigits: 2 })} h`;
 }
 
+/** "FUNCIONAMIENTO" -> "Funcionando"; cualquier otra cosa es una parada. */
+function estadoOperativoLabel(value: unknown) {
+  const normalizado = String(value ?? "").trim().toUpperCase();
+  if (normalizado === "FUNCIONAMIENTO") return "Funcionando";
+  if (normalizado === "PARADO") return "Parado";
+  return "Sin registro";
+}
+
+function estadoOperativoNivel(value: unknown) {
+  const normalizado = String(value ?? "").trim().toUpperCase();
+  if (normalizado === "FUNCIONAMIENTO") return "VERDE";
+  if (normalizado === "PARADO") return "ROJO";
+  return "GRIS";
+}
+
 function money(value: unknown) {
   const n = Number(value ?? 0);
   return n.toLocaleString("es-EC", { style: "currency", currency: "USD" });
@@ -1125,6 +1192,12 @@ function setMotionRoot(el: unknown) {
 .status-chip--rojo {
   color: rgb(198, 40, 40);
   background: rgba(198, 40, 40, 0.14);
+}
+
+/* Estado desconocido: se ve, pero no compite con verde ni rojo. */
+.status-chip--gris {
+  color: rgba(var(--v-theme-on-surface), 0.68);
+  background: rgba(var(--v-theme-on-surface), 0.08);
 }
 
 .niveles {
