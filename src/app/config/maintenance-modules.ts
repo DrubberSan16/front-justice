@@ -551,6 +551,24 @@ export function getInventoryModule(key: string): MaintenanceModuleConfig | null 
   return inventoryModules.find((m) => m.key === key) ?? null;
 }
 
+/**
+ * Unidades de generacion: los mismos campos que "Equipos", otra pantalla.
+ *
+ * La flota de generacion es el 60% del parque y se administra aparte del
+ * resto (motores, filtros, plantas). Mezclarlas en una sola lista obligaba a
+ * filtrar cada vez para llegar a lo que se estaba buscando. Comparten
+ * definicion a proposito: son el mismo tipo de registro, solo que separado en
+ * dos entradas del menu -- lo que las distingue es el parametro `grupo` que
+ * manda la pantalla.
+ */
+const GENERATION_UNITS_MODULE_KEY = "unidades-generacion";
+
 export function getMaintenanceModule(key: string): MaintenanceModuleConfig | null {
+  if (key === GENERATION_UNITS_MODULE_KEY) {
+    const equipos = maintenanceModules.find((m) => m.key === "equipos");
+    return equipos
+      ? { ...equipos, key: GENERATION_UNITS_MODULE_KEY, title: "Unidades de generación" }
+      : null;
+  }
   return maintenanceModules.find((m) => m.key === key) ?? null;
 }

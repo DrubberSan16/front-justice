@@ -246,7 +246,7 @@
           </v-col>
         </v-row>
 
-        <div v-if="props.moduleKey === 'equipos'" class="mt-4">
+        <div v-if="isEquipmentModule" class="mt-4">
           <div class="d-flex align-center justify-space-between mb-2" style="gap: 12px; flex-wrap: wrap;">
             <div class="text-subtitle-2 font-weight-bold">Compartimientos oficiales del equipo</div>
             <v-btn color="secondary" variant="tonal" prepend-icon="mdi-plus" @click="addEquipmentComponentDraft">
@@ -404,7 +404,7 @@ const router = useRouter();
  * puede compartir, el boton de atras funciona y recargar no pierde el filtro.
  */
 const equipmentTypeFilterId = computed(() =>
-  props.moduleKey === "equipos"
+  isEquipmentModule.value
     ? String(route.query.tipo || "").trim()
     : "",
 );
@@ -421,12 +421,29 @@ const equipmentTypeFilterLabel = computed(() => {
 function clearEquipmentTypeFilter() {
   const query = { ...route.query };
   delete query.tipo;
-  void router.replace({ name: "equipos", query });
+  // Se vuelve a la MISMA pantalla: unidades de generacion y equipos comparten
+  // vista, y mandar siempre a "equipos" sacaba al usuario de donde estaba.
+  void router.replace({ name: String(route.name || "equipos"), query });
 }
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 const { mdAndDown, smAndDown } = useDisplay();
+
+/**
+ * "Equipos" y "Unidades de generación" son la misma pantalla partida en dos
+ * entradas del menu: mismos campos, mismo endpoint, y solo cambia el grupo que
+ * se pide. Todo lo especifico de equipo (horometro, partes, ancho del dialogo)
+ * aplica a las dos.
+ */
+const isEquipmentModule = computed(
+  () =>
+    props.moduleKey === "equipos" ||
+    props.moduleKey === "unidades-generacion",
+);
+const isGenerationUnitsModule = computed(
+  () => props.moduleKey === "unidades-generacion",
+);
 
 const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
 const modulePermissionAliases = computed(() => {
@@ -664,7 +681,7 @@ function buildAuditPayload(isEditing: boolean) {
 const displayModuleTitle = computed(() => repairText(moduleConfig.value?.title ?? ""));
 const isDialogFullscreen = computed(() => mdAndDown.value);
 const isDeleteDialogFullscreen = computed(() => smAndDown.value);
-const dialogMaxWidth = computed(() => (props.moduleKey === "equipos" ? 1280 : 900));
+const dialogMaxWidth = computed(() => (isEquipmentModule.value ? 1280 : 900));
 
 function defaultJsonValue(field: EnhancedMaintenanceField) {
   return field.jsonMode === "array" ? [] : {};
@@ -807,7 +824,7 @@ function calculateEquipmentNextServiceDate(baseDate: unknown, unitValue: unknown
 }
 
 function syncEquipmentNextServiceDate() {
-  if (props.moduleKey !== "equipos") return;
+  if (!isEquipmentModule.value) return;
   if (!form.es_servicio) {
     form.proximo_servicio_fecha = "";
     return;
@@ -829,16 +846,16 @@ function getFieldHint(field: EnhancedMaintenanceField) {
   if (isProcedureFrequencyHoursField(field)) {
     return "Formato H,M. Ej.: 1,3 = 1 h 30 min y 1,5 = 1 h 50 min.";
   }
-  if (props.moduleKey === "equipos" && field.key === "ultimo_servicio_fecha") {
+  if (isEquipmentModule.value && field.key === "ultimo_servicio_fecha") {
     return "Fecha base para calcular el proximo mantenimiento.";
   }
-  if (props.moduleKey === "equipos" && field.key === "horometro_actual") {
+  if (isEquipmentModule.value && field.key === "horometro_actual") {
     return "Actualización manual diaria. Es la única lectura utilizada por órdenes de trabajo y programaciones.";
   }
-  if (props.moduleKey === "equipos" && field.key === "fecha_ultima_lectura") {
+  if (isEquipmentModule.value && field.key === "fecha_ultima_lectura") {
     return "Fecha y hora del último cambio manual registrado.";
   }
-  if (props.moduleKey === "equipos" && field.key === "proximo_servicio_fecha") {
+  if (isEquipmentModule.value && field.key === "proximo_servicio_fecha") {
     return "Se calcula automaticamente al guardar segun el intervalo.";
   }
   return field.required ? "Obligatorio" : "";
@@ -1353,6 +1370,13 @@ async function fetchRecords(skipLoading = false) {
       {
         search: search.value.trim() || undefined,
         equipo_tipo_id: equipmentTypeFilterId.value || undefined,
+        // La flota de generacion vive en su propia entrada del menu; "Equipos"
+        // lista todo lo demas para que no aparezcan dos veces.
+        grupo: isEquipmentModule.value
+          ? isGenerationUnitsModule.value
+            ? "GENERACION"
+            : "RESTO"
+          : undefined,
       },
       {
         page: serverPage.value,
@@ -1403,7 +1427,7 @@ function resetForm() {
     else if (field.type === "number") form[field.key] = isProcedureFrequencyHoursField(field) ? "" : "0";
     else form[field.key] = "";
   }
-  if (props.moduleKey === "equipos") {
+  if (isEquipmentModule.value) {
     resetEquipmentComponentDrafts();
   }
 }
@@ -1482,7 +1506,7 @@ function pruneWarehouseDependentSelections() {
 const visibleFields = computed(() =>
   (moduleConfig.value?.fields ?? []).filter((field) => {
     if (field.hidden) return false;
-    if (props.moduleKey !== "equipos") return true;
+    if (!isEquipmentModule.value) return true;
     if (
       [
         "intervalo_mantenimiento_valor",
@@ -1683,7 +1707,7 @@ function sanitizePayload() {
     };
   }
 
-  if (props.moduleKey === "equipos") {
+  if (isEquipmentModule.value) {
     payload.created_by = editingId.value ? undefined : auth.user?.nameUser || auth.user?.nameSurname || null;
     payload.updated_by = auth.user?.nameUser || auth.user?.nameSurname || null;
     if (!payload.es_servicio) {
@@ -1756,7 +1780,7 @@ function validateForm() {
     }
   }
 
-  if (props.moduleKey === "equipos") {
+  if (isEquipmentModule.value) {
     if (form.es_servicio) {
       const intervalValue = Number(form.intervalo_mantenimiento_valor || 0);
       if (!(intervalValue > 0)) {
@@ -1839,7 +1863,7 @@ async function openEdit(item: any) {
       ? serializeJsonValue(item[field.key], field)
       : item[field.key] ?? form[field.key];
   }
-  if (props.moduleKey === "equipos") {
+  if (isEquipmentModule.value) {
     await loadSelectedEquipmentComponents(item.id);
     syncEquipmentNextServiceDate();
   }
@@ -2032,7 +2056,7 @@ watch(
 // Cambiar de tipo desde el menu no remonta la vista (es la misma ruta), asi que
 // el refresco lo dispara la query.
 watch(equipmentTypeFilterId, () => {
-  if (props.moduleKey !== "equipos") return;
+  if (!isEquipmentModule.value) return;
   serverPage.value = 1;
   void fetchRecords();
 });
