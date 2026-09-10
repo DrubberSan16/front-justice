@@ -83,6 +83,26 @@ export const router = createRouter({
           meta: { title: "Kardex", viewFile: "views/admin/KardexView.vue" },
         },
         {
+          path: "ingresos-bodega",
+          name: "ingresos-bodega",
+          component: () => import("@/views/admin/WarehouseMovementsView.vue"),
+          props: { movementType: "INGRESO" },
+          meta: {
+            title: "Ingresos de bodega",
+            viewFile: "views/admin/WarehouseMovementsView.vue",
+          },
+        },
+        {
+          path: "egresos-bodega",
+          name: "egresos-bodega",
+          component: () => import("@/views/admin/WarehouseMovementsView.vue"),
+          props: { movementType: "SALIDA" },
+          meta: {
+            title: "Egresos de bodega",
+            viewFile: "views/admin/WarehouseMovementsView.vue",
+          },
+        },
+        {
           path: "ordenes-compra",
           name: "ordenes-compra",
           component: () => import("@/views/admin/PurchaseOrdersView.vue"),

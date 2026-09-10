@@ -27,10 +27,6 @@
             <div class="kardex-hero__actions">
               <MassPurgeButton endpoint="/kpi_inventory/kardex/purge-all"
                 module-title="Kardex y movimientos de inventario" @purged="handleKardexPurged" />
-              <v-btn v-if="canCreate" color="success" prepend-icon="mdi-tray-arrow-down"
-                @click="openMovementDialog('INGRESO')">Ingreso de bodega</v-btn>
-              <v-btn v-if="canCreate" color="warning" variant="tonal" prepend-icon="mdi-tray-arrow-up"
-                @click="openMovementDialog('SALIDA')">Egreso de bodega</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-excel"
                 :loading="isExporting('excel')" @click="exportInventoryReport('excel')">Excel</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-pdf-box"
@@ -529,135 +525,6 @@
         @update:visible="inventoryExcelPreview.handleVisibility"
       />
 
-      <v-dialog v-model="movementDialog.open" max-width="1480" scrollable>
-        <v-card rounded="xl" class="enterprise-surface">
-          <v-card-title class="d-flex align-center justify-space-between flex-wrap" style="gap:12px">
-            <div>
-              <div class="text-h6 font-weight-bold">{{ movementDialogTitle }}</div>
-              <div class="text-body-2 text-medium-emphasis">Registra la cabecera y el detalle del documento. El sistema
-                genera
-                el codigo IB o EB automaticamente.</div>
-            </div>
-            <v-btn icon="mdi-close" variant="text" density="comfortable" @click="closeMovementDialog" />
-          </v-card-title>
-          <v-divider />
-          <v-card-text class="pa-5">
-            <v-progress-linear v-if="movementCatalogLoading" indeterminate color="primary" rounded class="mb-4" />
-            <v-row dense>
-              <v-col cols="12" md="3"><v-select v-model="documentForm.tipo" :items="movementTypes" item-title="title"
-                  item-value="value" label="Tipo de documento" variant="outlined"
-                  :disabled="movementCatalogLoading || savingDocument" /></v-col>
-              <v-col cols="12" md="3"><v-text-field v-model="documentForm.fecha" type="date" label="Fecha"
-                  variant="outlined" :disabled="savingDocument" /></v-col>
-              <v-col cols="12" md="3"><v-select v-model="documentForm.bodegaId" :items="warehouseOptions"
-                  item-title="title" item-value="value" label="Bodega" variant="outlined"
-                  :disabled="movementCatalogLoading || savingDocument" /></v-col>
-              <v-col cols="12" md="3"><v-text-field
-                  :model-value="documentForm.tipo === 'INGRESO' ? 'IB-########' : 'EB-########'" label="Codigo generado"
-                  variant="outlined" readonly /></v-col>
-              <v-col cols="12" md="4"><v-text-field v-model="documentForm.referencia" label="Referencia"
-                  variant="outlined" placeholder="Opcional" :disabled="savingDocument" /></v-col>
-              <v-col cols="12" md="8"><v-textarea v-model="documentForm.observacion" label="Observacion general"
-                  variant="outlined" rows="2" auto-grow :disabled="savingDocument" /></v-col>
-            </v-row>
-            <v-alert v-if="!documentForm.bodegaId" type="info" variant="tonal" class="mb-4">Selecciona una bodega para
-              habilitar el detalle de materiales.</v-alert>
-            <div class="d-flex align-center justify-space-between flex-wrap mb-3" style="gap:12px">
-              <div>
-                <div class="text-subtitle-1 font-weight-bold">Detalle de materiales</div>
-                <div class="text-body-2 text-medium-emphasis">
-                  {{ documentForm.tipo === 'INGRESO'
-                    ? 'Puedes seleccionar cualquier material registrado que no sea un servicio.'
-                    : 'Solo se muestran materiales con stock disponible en la bodega seleccionada.' }}
-                </div>
-              </div>
-              <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-                <v-btn v-if="canCreate" variant="text" prepend-icon="mdi-refresh" :loading="movementCatalogLoading"
-                  :disabled="savingDocument" @click="refreshMovementCatalogs">
-                  Actualizar materiales
-                </v-btn>
-                <v-btn v-if="canCreate" color="primary" variant="tonal" prepend-icon="mdi-plus"
-                  :disabled="movementCatalogLoading || savingDocument" @click="addMovementDetail">Agregar
-                  material</v-btn>
-              </div>
-            </div>
-            <div class="document-editor-table">
-              <table class="document-editor-grid">
-                <thead>
-                  <tr>
-                    <th class="line-col">#</th>
-                    <th class="material-col">Material</th>
-                    <th class="condition-col">Condición</th>
-                    <th class="stock-col">Disponible</th>
-                    <th class="qty-col">Cantidad</th>
-                    <th v-if="showIncomeUnitCost" class="price-col">Precio unitario</th>
-                    <th class="obs-col">{{ documentForm.tipo === 'SALIDA' ? 'Responsable' : 'Observacion' }}</th>
-                    <th class="action-col"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(detail, index) in movementDetails" :key="detail.localId">
-                    <td class="line-col font-weight-bold">{{ index + 1 }}</td>
-                    <td class="material-col"><v-autocomplete v-model="detail.productoId" :items="getProductOptions()"
-                        item-title="title" item-value="value" label="Material" variant="outlined" density="comfortable"
-                        clearable :loading="movementCatalogLoading"
-                        :disabled="movementCatalogLoading || !documentForm.bodegaId || savingDocument"
-                        :menu-props="{ maxHeight: 320 }"
-                        :no-data-text="documentForm.tipo === 'INGRESO' ? 'No hay materiales registrados' : 'No hay materiales con stock disponible en esta bodega'"
-                        @update:model-value="handleMovementProductChange(detail)" /></td>
-                    <td class="condition-col"><v-select v-model="detail.condicionMaterial"
-                        :items="getMovementConditionOptions(detail)" item-title="title" item-value="value"
-                        label="Condición" variant="outlined" density="comfortable"
-                        :disabled="savingDocument || !detail.productoId || getMovementConditionOptions(detail).length <= 1"
-                        @update:model-value="syncMovementDetailCondition(detail)" /></td>
-                    <td class="stock-col"><v-text-field :model-value="getDetailStockLabel(detail)"
-                        :label="documentForm.tipo === 'SALIDA' ? 'Transferible' : 'Stock condición'" variant="outlined"
-                        density="comfortable" readonly />
-                      <div v-if="detail.productoId && getDetailStockRow(detail)"
-                        class="text-caption text-medium-emphasis mt-1">{{ getDetailStockCaption(detail) }}</div>
-                    </td>
-                    <td class="qty-col"><v-text-field v-model="detail.cantidad" type="number" min="0" label="Cantidad"
-                        variant="outlined" density="comfortable" :disabled="savingDocument" />
-                      <div v-if="detailExceedsStock(detail)" class="text-caption text-error mt-1">Supera el disponible
-                        de {{
-                          formatNumberForDisplay(getDetailAvailableStock(detail)) }}.</div>
-                    </td>
-                    <td v-if="showIncomeUnitCost" class="price-col">
-                      <v-text-field v-model="detail.costoUnitario" type="number" min="0" step="0.0001"
-                        label="Precio unitario" prefix="$" variant="outlined" density="comfortable"
-                        :disabled="savingDocument" />
-                      <div class="text-caption text-medium-emphasis mt-1">
-                        Precio para esta bodega. Vacío usa el que ya tiene aquí
-                        o, si no tiene, el del material.
-                      </div>
-                    </td>
-                    <td class="obs-col"><v-text-field v-model="detail.observacion"
-                        :label="documentForm.tipo === 'SALIDA' ? 'Responsable' : 'Observacion'" variant="outlined"
-                        density="comfortable" :disabled="savingDocument" /></td>
-                    <td class="action-col"><v-btn icon="mdi-delete-outline" variant="text" color="error"
-                        density="comfortable" :disabled="movementDetails.length === 1 || savingDocument"
-                        @click="removeMovementDetail(detail.localId)" /></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="summary-chip-list mt-4">
-              <v-chip color="primary" variant="tonal">{{ movementDetails.length }} materiales</v-chip>
-              <v-chip color="secondary" variant="tonal">{{ formatNumberForDisplay(documentTotalQuantity) }}
-                unidades</v-chip>
-              <v-chip :color="documentForm.tipo === 'SALIDA' ? 'warning' : 'info'" variant="tonal">{{ documentForm.tipo
-                ===
-                'SALIDA' ? 'Descuenta stock' : 'Suma stock' }}</v-chip>
-            </div>
-          </v-card-text>
-          <v-divider />
-          <v-card-actions class="px-5 py-4 d-flex justify-end flex-wrap" style="gap:12px">
-            <v-btn variant="text" :disabled="savingDocument" @click="closeMovementDialog">Cancelar</v-btn>
-            <v-btn v-if="canCreate" color="primary" :loading="savingDocument" @click="saveMovementDocument">Guardar {{
-              documentForm.tipo === 'INGRESO' ? 'Ingreso' : 'Egreso' }}</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
     </template>
   </v-row>
   </EnterprisePageMotion>
@@ -688,7 +555,6 @@ import {
   resolveEquipmentModel,
 } from "@/app/utils/equipment-display";
 import {
-  canSetIncomeUnitCost,
   canViewAnnulledRecords,
   canViewMaterialCosts,
 } from "@/app/utils/role-access";
@@ -699,11 +565,8 @@ import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 
-type MovementType = "INGRESO" | "SALIDA";
-type StockCondition = "NUEVO" | "USADO" | "CRITICO";
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_nuevo?: string | number; stock_usado?: string | number; stock_disponible?: string | number; stock_critico?: string | number; cantidad_reservada_activa?: string | number; es_usado?: boolean; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
 type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; anulado?: boolean; anulado_por?: string | null; anulado_at?: string | null; };
-type MovementDetailForm = { localId: string; productoId: string; condicionMaterial: StockCondition; cantidad: string; costoUnitario: string; observacion: string; };
 type KardexFilterState = {
   desde: string;
   hasta: string;
@@ -720,7 +583,6 @@ type KardexFilterState = {
 const ui = useUiStore();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
-const savingDocument = ref(false);
 const uploading = ref(false);
 const downloadingTemplate = ref(false);
 const loadingKardex = ref(false);
@@ -777,7 +639,6 @@ const materialMovements = reactive<Record<string, KardexMovementRow[]>>({});
 const materialDetailLoading = reactive<Record<string, boolean>>({});
 const materialDetailLoaded = reactive<Record<string, boolean>>({});
 const materialDetailErrors = reactive<Record<string, string>>({});
-const movementDialog = reactive({ open: false });
 const perms = computed(() => getPermissionsForAnyComponent(menuStore.tree, ["Kardex", "Movimientos de kardex", "Movimiento de kardex"]));
 const canRead = computed(() => perms.value.isReaded);
 const canCreate = computed(() => perms.value.isCreated);
@@ -788,10 +649,6 @@ const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
  * El precio de entrada solo se pide donde tiene sentido: bodega registrando
  * un ingreso. En un egreso el costo lo pone el inventario.
  */
-const canPriceIncome = computed(() => canSetIncomeUnitCost(auth.user));
-const showIncomeUnitCost = computed(
-  () => canPriceIncome.value && documentForm.tipo === "INGRESO",
-);
 const isAnnulledMovementDocument = computed(
   () => movementDocumentDialog.document?.anulado === true,
 );
@@ -806,8 +663,6 @@ const canAnnulMovementDocument = computed(() =>
 );
 const canAccessInventoryReports = computed(() => hasReportAccess(auth.user?.effectiveReportes ?? auth.user?.reportes, "inventario"));
 const KARDEX_IMPORT_JOB_STORAGE_KEY = "kpi_inventory_kardex_import_job_id";
-const documentForm = reactive({ tipo: "INGRESO" as MovementType, fecha: formatDateForInput(), bodegaId: "", referencia: "", observacion: "" });
-const movementDetails = ref<MovementDetailForm[]>([{ localId: `detail-${Date.now()}`, productoId: "", condicionMaterial: "NUEVO", cantidad: "", costoUnitario: "", observacion: "" }]);
 const defaultKardexDateFrom = formatDateForInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 const defaultKardexDateTo = formatDateForInput();
 const kardexFilters = reactive<KardexFilterState>({
@@ -824,7 +679,6 @@ const kardexFilters = reactive<KardexFilterState>({
 });
 const appliedKardexFilters = reactive<KardexFilterState>({ ...kardexFilters });
 const kardexTotals = reactive({ materiales: 0, movimientos: 0, entradas: 0, salidas: 0 });
-const movementTypes = [{ value: "INGRESO", title: "Ingreso de Bodega" }, { value: "SALIDA", title: "Egreso de Bodega" }];
 const kardexMovementTypeOptions = [
   { value: "", title: "Todos" },
   { value: "INGRESO", title: "Ingreso de bodega" },
@@ -896,7 +750,6 @@ const activeKardexFilterCount = computed(() => [
   kardexFilters.hasta !== defaultKardexDateTo,
 ].filter(Boolean).length);
 const productMap = computed(() => new Map(products.value.map((item) => [String(item.id), item])));
-const stockByWarehouseProduct = computed(() => { const map = new Map<string, StockRow>(); for (const row of stocks.value) map.set(`${row.bodega_id}:${row.producto_id}`, row); return map; });
 const activeImportJob = computed(() => { if (!importJob.value) return null; const status = String(importJob.value.status || "").toUpperCase(); return status === "QUEUED" || status === "PROCESSING" ? importJob.value : null; });
 const activeImportProgress = computed(() => { const progress = Number(importJob.value?.progress || 0); return Number.isFinite(progress) ? Math.min(100, Math.max(0, Math.round(progress))) : 0; });
 const activeImportTotalRows = computed(() => { const total = Number(importJob.value?.total_rows || 0); return Number.isFinite(total) && total > 0 ? total : 0; });
@@ -905,10 +758,6 @@ const activeImportPendingRows = computed(() => Math.max(0, activeImportTotalRows
 const kardexRangeLabel = computed(() => { const from = String(appliedKardexFilters.desde || "").trim(); const to = String(appliedKardexFilters.hasta || "").trim(); if (!from && !to) return "Rango abierto"; if (!from) return `Hasta ${to}`; if (!to) return `Desde ${from}`; return `${from} -> ${to}`; });
 const kardexPageFrom = computed(() => kardexPagination.total > 0 ? (kardexPagination.page - 1) * kardexPagination.limit + 1 : 0);
 const kardexPageTo = computed(() => kardexPagination.total > 0 ? Math.min(kardexPagination.total, kardexPagination.page * kardexPagination.limit) : 0);
-const documentTotalQuantity = computed(() => movementDetails.value.reduce((sum, detail) => sum + parsePositiveNumber(detail.cantidad), 0));
-const movementDialogTitle = computed(() => documentForm.tipo === "INGRESO" ? "Ingreso de bodega" : "Egreso de bodega");
-function createMovementDetail(): MovementDetailForm { return { localId: `detail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, productoId: "", condicionMaterial: "NUEVO", cantidad: "", costoUnitario: "", observacion: "" }; }
-function parsePositiveNumber(value: string | number) { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : 0; }
 function getUserName() { return auth.user?.nameUser || auth.user?.nameSurname || "SYSTEM"; }
 function formatKardexProductName(productId: unknown, fallbackName?: unknown) {
   const product = productMap.value.get(String(productId || ""));
@@ -918,11 +767,6 @@ function formatKardexProductName(productId: unknown, fallbackName?: unknown) {
 function getSelectedImportFile() { return Array.isArray(xlsxFile.value) ? xlsxFile.value[0] ?? null : xlsxFile.value ?? null; }
 function clearRecord(record: Record<string, unknown>) { Object.keys(record).forEach((key) => delete record[key]); }
 function resetMaterialDetailCache() { expandedMaterials.value = []; clearRecord(materialMovements); clearRecord(materialDetailLoading); clearRecord(materialDetailLoaded); clearRecord(materialDetailErrors); }
-function addMovementDetail() { movementDetails.value.push(createMovementDetail()); }
-function removeMovementDetail(localId: string) { movementDetails.value = movementDetails.value.length === 1 ? [createMovementDetail()] : movementDetails.value.filter((detail) => detail.localId !== localId); }
-function resetMovementDocumentForm() { documentForm.tipo = "INGRESO"; documentForm.fecha = formatDateForInput(); documentForm.bodegaId = ""; documentForm.referencia = ""; documentForm.observacion = ""; movementDetails.value = [createMovementDetail()]; }
-function openMovementDialog(type: MovementType) { if (!canCreate.value) { ui.error("No tienes permisos para registrar ingresos o egresos."); return; } documentForm.tipo = type; movementDialog.open = true; }
-function closeMovementDialog() { if (!savingDocument.value) movementDialog.open = false; }
 /**
  * Identidad del equipo tal como la muestran el resto de tableros:
  * `marca | nombre - modelo (nombre real)`. El codigo no se ensena nunca porque
@@ -1024,149 +868,6 @@ async function ensureMovementCatalogsLoaded(force = false) {
   }
 }
 
-async function refreshMovementCatalogs() {
-  await ensureMovementCatalogsLoaded(true);
-  if (inventoryCatalogLoaded.value) {
-    ui.success("Listado de materiales actualizado.");
-  }
-}
-function toStockNumber(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(parsed, 0) : 0;
-}
-function getProductOptions() {
-  if (!documentForm.bodegaId) return [];
-  return products.value
-    .filter((product) => {
-      if (documentForm.tipo !== "SALIDA") return true;
-      const stock = stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`);
-      return toStockNumber(stock?.stock_disponible ?? stock?.stock_actual) > 0;
-    })
-    .map((product) => {
-      const stock = stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${product.id}`);
-      const available = stock?.stock_disponible ?? stock?.stock_actual;
-      const stockLabel = stock
-        ? ` · transferible ${formatNumberForDisplay(available)}`
-        : "";
-      return {
-        value: product.id,
-        title: `${buildProductDisplayTitle(product)}${stockLabel}`,
-      };
-    });
-}
-function getDetailStockRow(detail: MovementDetailForm) {
-  return !documentForm.bodegaId || !detail.productoId
-    ? null
-    : stockByWarehouseProduct.value.get(`${documentForm.bodegaId}:${detail.productoId}`) ?? null;
-}
-function normalizeMovementCondition(value: unknown): StockCondition {
-  const normalized = String(value || "").trim().toUpperCase();
-  if (normalized === "USADO") return "USADO";
-  if (normalized === "CRITICO") return "CRITICO";
-  return "NUEVO";
-}
-function usesCriticalMovementFallback(stock?: StockRow | null) {
-  if (!stock) return false;
-  return (
-    toStockNumber(stock.stock_nuevo) <= 0 &&
-    toStockNumber(stock.stock_usado) <= 0 &&
-    toStockNumber(stock.stock_critico) > 0
-  );
-}
-function getMovementConditionOptions(detail: MovementDetailForm) {
-  const stock = getDetailStockRow(detail);
-  if (documentForm.tipo === "SALIDA" && usesCriticalMovementFallback(stock)) {
-    return [{ title: "Crítico (automático)", value: "CRITICO" as StockCondition }];
-  }
-  if (documentForm.tipo === "INGRESO") {
-    return [
-      { title: "Nuevo", value: "NUEVO" as StockCondition },
-      { title: "Usado", value: "USADO" as StockCondition },
-    ];
-  }
-  const options: Array<{ title: string; value: StockCondition }> = [
-    { title: "Nuevo", value: "NUEVO" },
-  ];
-  if (Boolean(stock?.es_usado)) {
-    options.push({ title: "Usado", value: "USADO" });
-  }
-  return options;
-}
-function syncMovementDetailCondition(detail: MovementDetailForm) {
-  const options = getMovementConditionOptions(detail);
-  const current = normalizeMovementCondition(detail.condicionMaterial);
-  detail.condicionMaterial = options.some((item) => item.value === current)
-    ? current
-    : options[0]?.value ?? "NUEVO";
-}
-function handleMovementProductChange(detail: MovementDetailForm) {
-  syncMovementDetailCondition(detail);
-}
-function getMovementConditionStock(stock: StockRow | null, condition: StockCondition) {
-  if (!stock) return 0;
-  if (condition === "USADO") return toStockNumber(stock.stock_usado);
-  if (condition === "CRITICO") return toStockNumber(stock.stock_critico);
-  if (stock.stock_nuevo !== null && stock.stock_nuevo !== undefined) {
-    return toStockNumber(stock.stock_nuevo);
-  }
-  return Math.max(
-    toStockNumber(stock.stock_actual) -
-    toStockNumber(stock.stock_usado) -
-    toStockNumber(stock.stock_critico),
-    0,
-  );
-}
-function getDetailAvailableStock(detail: MovementDetailForm) {
-  const stock = getDetailStockRow(detail);
-  if (!stock) return 0;
-  const condition = normalizeMovementCondition(detail.condicionMaterial);
-  const conditionStock = getMovementConditionStock(stock, condition);
-  if (documentForm.tipo === "INGRESO") return conditionStock;
-  const totalTransferable = toStockNumber(stock.stock_disponible ?? stock.stock_actual);
-  return Math.max(Math.min(conditionStock, totalTransferable), 0);
-}
-function getDetailStockLabel(detail: MovementDetailForm) {
-  return detail.productoId
-    ? formatNumberForDisplay(getDetailAvailableStock(detail))
-    : "Selecciona un material";
-}
-function getDetailStockCaption(detail: MovementDetailForm) {
-  const stock = getDetailStockRow(detail);
-  if (!stock) return "Sin stock registrado en esta bodega";
-  const total = toStockNumber(stock.stock_actual);
-  const nuevo = getMovementConditionStock(stock, "NUEVO");
-  const usado = toStockNumber(stock.stock_usado);
-  const critico = toStockNumber(stock.stock_critico);
-  const reservado = toStockNumber(stock.cantidad_reservada_activa);
-  return `Total ${formatNumberForDisplay(total)} · Nuevo ${formatNumberForDisplay(nuevo)} · Usado ${formatNumberForDisplay(usado)} · Crítico ${formatNumberForDisplay(critico)} · Reservado OT ${formatNumberForDisplay(reservado)}`;
-}
-function getRequestedMovementQuantity(detail: MovementDetailForm) {
-  const condition = normalizeMovementCondition(detail.condicionMaterial);
-  return movementDetails.value
-    .filter(
-      (row) =>
-        row.productoId === detail.productoId &&
-        normalizeMovementCondition(row.condicionMaterial) === condition,
-    )
-    .reduce((sum, row) => sum + parsePositiveNumber(row.cantidad), 0);
-}
-function getRequestedMovementProductQuantity(detail: MovementDetailForm) {
-  return movementDetails.value
-    .filter((row) => row.productoId === detail.productoId)
-    .reduce((sum, row) => sum + parsePositiveNumber(row.cantidad), 0);
-}
-function getDetailTotalTransferableStock(detail: MovementDetailForm) {
-  const stock = getDetailStockRow(detail);
-  return stock ? toStockNumber(stock.stock_disponible ?? stock.stock_actual) : 0;
-}
-function detailExceedsStock(detail: MovementDetailForm) {
-  if (documentForm.tipo !== "SALIDA" || !detail.productoId) return false;
-  return (
-    getRequestedMovementQuantity(detail) > getDetailAvailableStock(detail) ||
-    getRequestedMovementProductQuantity(detail) >
-    getDetailTotalTransferableStock(detail)
-  );
-}
 function getMaterialMovements(productoId: string) { return materialMovements[productoId] ?? []; }
 function isMaterialDetailLoading(productoId: string) { return Boolean(materialDetailLoading[productoId]); }
 function getMaterialDetailError(productoId: string) { return materialDetailErrors[productoId] ?? ""; }
@@ -1749,90 +1450,6 @@ function updateKardexPageSize(limit: number) {
   void loadKardex(1);
 }
 async function refreshCatalogsIfLoaded() { if (inventoryCatalogLoaded.value) await ensureMovementCatalogsLoaded(true); }
-async function saveMovementDocument() {
-  if (!canCreate.value) {
-    return ui.error("No tienes permisos para registrar documentos de bodega.");
-  }
-  if (!documentForm.bodegaId) return ui.error("La bodega es obligatoria.");
-  const candidateDetails = movementDetails.value.filter(
-    (detail) =>
-      detail.productoId ||
-      String(detail.cantidad || "").trim() ||
-      String(detail.observacion || "").trim(),
-  );
-  if (!candidateDetails.length) {
-    return ui.error("Debes agregar al menos un material al detalle.");
-  }
-  const payloadDetails: Array<{
-    producto_id: string;
-    cantidad: number;
-    condicion_material: StockCondition;
-    costo_unitario?: number;
-    observacion?: string;
-  }> = [];
-  for (const [index, detail] of candidateDetails.entries()) {
-    if (!detail.productoId) {
-      return ui.error(`Selecciona el material en la fila ${index + 1}.`);
-    }
-    syncMovementDetailCondition(detail);
-    const cantidad = parsePositiveNumber(detail.cantidad);
-    if (!cantidad) {
-      return ui.error(`La cantidad de la fila ${index + 1} debe ser mayor a cero.`);
-    }
-    if (detailExceedsStock(detail)) {
-      return ui.error(
-        `La fila ${index + 1} supera el stock transferible de la condición seleccionada.`,
-      );
-    }
-    const precioUnitario = showIncomeUnitCost.value
-      ? parsePositiveNumber(detail.costoUnitario)
-      : 0;
-    if (
-      showIncomeUnitCost.value &&
-      String(detail.costoUnitario || "").trim() &&
-      !precioUnitario
-    ) {
-      return ui.error(
-        `El precio unitario de la fila ${index + 1} debe ser mayor a cero.`,
-      );
-    }
-    payloadDetails.push({
-      producto_id: detail.productoId,
-      cantidad,
-      condicion_material: detail.condicionMaterial,
-      // Sin precio el backend sigue valorizando con el costo del material.
-      costo_unitario: precioUnitario || undefined,
-      observacion: detail.observacion || undefined,
-    });
-  }
-  savingDocument.value = true;
-  try {
-    await api.post("/kpi_inventory/kardex/documentos", {
-      tipo_movimiento: documentForm.tipo,
-      fecha_movimiento: documentForm.fecha || undefined,
-      bodega_id: documentForm.bodegaId,
-      referencia: documentForm.referencia || undefined,
-      observacion: documentForm.observacion || undefined,
-      created_by: getUserName(),
-      updated_by: getUserName(),
-      detalles: payloadDetails,
-    });
-    ui.success(
-      `${documentForm.tipo === "INGRESO" ? "Ingreso" : "Egreso"} de bodega registrado correctamente.`,
-    );
-    movementDialog.open = false;
-    resetMovementDocumentForm();
-    await Promise.allSettled([loadKardex(), refreshCatalogsIfLoaded()]);
-  } catch (error: any) {
-    ui.error(
-      error?.response?.data?.message ||
-      error?.message ||
-      "No se pudo registrar el documento de bodega.",
-    );
-  } finally {
-    savingDocument.value = false;
-  }
-}
 function requestBrowserNotificationPermission() { if (typeof window !== "undefined" && "Notification" in window && window.Notification.permission === "default") void window.Notification.requestPermission().catch(() => undefined); }
 function emitBrowserNotification(title: string, body: string, tag: string) { if (typeof window === "undefined" || !("Notification" in window) || window.Notification.permission !== "granted") return; try { new window.Notification(title, { body, tag }); } catch { } }
 function notifyImportLifecycle(options: { title: string; message: string; variant?: "success" | "error" | "info" | "warning"; requestPermission?: boolean; tag: string; }) { if (options.requestPermission) requestBrowserNotificationPermission(); ui.open(options.message, options.variant ?? "info", 5000); emitBrowserNotification(options.title, options.message, options.tag); }
@@ -1846,34 +1463,6 @@ function startImportPolling(jobId: string) { stopImportPolling(); importPollHand
 async function restoreImportJob() { const jobId = getPersistedImportJobId(); if (!jobId) return; try { await fetchImportJobStatus(jobId); if (importJob.value) startImportPolling(jobId); } catch { persistImportJobId(null); importJob.value = null; } }
 async function processXlsx() { if (!canCreate.value || !canViewCosts.value) return ui.error("Solo gerencia general y administradores pueden procesar cargas valorizadas."); const file = getSelectedImportFile(); if (!file) return ui.error("Debes seleccionar un archivo CSV o XLSX."); uploading.value = true; try { const formData = new FormData(); formData.append("file", file); formData.append("requested_by", getUserName()); const { data } = await api.post("/kpi_inventory/kardex/import/upload", formData, { headers: { "Content-Type": "multipart/form-data" } }); const job = data?.data ?? data; importJob.value = job; lastBulkSummary.value = null; xlsxFile.value = null; if (job?.id) { persistImportJobId(job.id); notifyImportLifecycle({ title: "Carga de inventario iniciada", message: "Archivo recibido. El sistema lo esta procesando en segundo plano.", variant: "info", requestPermission: true, tag: "inventory-import-started" }); startImportPolling(job.id); await fetchImportJobStatus(job.id); } else { ui.open("La carga fue recibida, pero no se pudo identificar el job.", "warning"); } } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo procesar la carga masiva."); } finally { uploading.value = false; } }
 async function downloadTemplate() { if (!canViewCosts.value) return ui.error("Solo gerencia general y administradores pueden descargar el formato valorizado."); downloadingTemplate.value = true; try { const response = await api.post("/kpi_inventory/kardex/import/template", null, { responseType: "blob" }); const blob = new Blob([response.data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }); const url = window.URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "FORMATO_CARGA_MASIVA_INVENTARIO.xlsx"; link.click(); window.URL.revokeObjectURL(url); } catch (error: any) { ui.error(error?.response?.data?.message || error?.message || "No se pudo descargar el formato."); } finally { downloadingTemplate.value = false; } }
-watch(() => movementDialog.open, async (open) => { if (open) await ensureMovementCatalogsLoaded(true); else if (!savingDocument.value) resetMovementDocumentForm(); });
-watch(
-  () => documentForm.tipo,
-  () => {
-    movementDetails.value.forEach((detail) => syncMovementDetailCondition(detail));
-    if (documentForm.tipo !== "SALIDA") return;
-    movementDetails.value = movementDetails.value.map((detail) =>
-      !detail.productoId || getDetailAvailableStock(detail) > 0
-        ? detail
-        : { ...detail, productoId: "", condicionMaterial: "NUEVO", cantidad: "" },
-    );
-  },
-);
-watch(
-  () => documentForm.bodegaId,
-  () => {
-    if (!documentForm.bodegaId) {
-      movementDetails.value = movementDetails.value.map((detail) => ({
-        ...detail,
-        productoId: "",
-        condicionMaterial: "NUEVO",
-        cantidad: "",
-      }));
-      return;
-    }
-    movementDetails.value.forEach((detail) => syncMovementDetailCondition(detail));
-  },
-);
 watch(expandedMaterials, (current, previous) => { const previousSet = new Set((previous ?? []).map((item) => String(item))); current.map((item) => String(item)).filter((item) => !previousSet.has(item)).forEach((productoId) => void loadMaterialDetail(productoId)); }, { deep: true });
 onMounted(async () => { if (!canRead.value) return; await Promise.allSettled([loadKardex(), ensureMovementCatalogsLoaded(), ensureGenerationEquipmentsLoaded(), restoreImportJob()]); });
 onBeforeUnmount(() => {
