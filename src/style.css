@@ -399,3 +399,50 @@ img {
     min-height: 44px;
   }
 }
+
+/* Primera columna fija.
+ *
+ * Las tablas de operacion son anchas: al desplazarse a la derecha para leer
+ * una fecha o un importe se perdia de vista a que registro pertenecia la
+ * celda, y habia que volver al inicio para comprobarlo. La primera columna
+ * -- que es siempre la que identifica la fila: codigo, documento, equipo o
+ * material -- se queda anclada y el resto se mueve por debajo.
+ *
+ * El fondo tiene que ser opaco o las columnas se ven a traves al desplazar.
+ * El realce de la fila bajo el cursor se pinta ENCIMA de ese fondo con un
+ * degradado plano, en vez de sustituirlo, para que la columna anclada siga
+ * respondiendo al hover como el resto de la fila.
+ *
+ * Se excluyen las celdas con `colspan` (fila vacia, totales al pie): anclar
+ * una celda que ocupa toda la tabla no significa nada y descoloca el texto. */
+.v-table > .v-table__wrapper > table > thead > tr > th:first-child:not([colspan]),
+.v-table > .v-table__wrapper > table > tbody > tr > td:first-child:not([colspan]) {
+  position: sticky;
+  left: 0;
+  background-color: rgb(var(--v-theme-surface));
+  box-shadow: 1px 0 0 rgba(var(--v-border-color, 100, 116, 139), 0.18);
+}
+
+.v-table > .v-table__wrapper > table > tbody > tr > td:first-child:not([colspan]) {
+  z-index: 1;
+}
+
+/* Por encima del cuerpo y de la columna anclada al desplazar en los dos ejes. */
+.v-table > .v-table__wrapper > table > thead > tr > th:first-child:not([colspan]) {
+  z-index: 3;
+}
+
+.v-table > .v-table__wrapper > table > tbody > tr:hover > td:first-child:not([colspan]) {
+  background-image: linear-gradient(
+    rgba(var(--v-theme-primary), 0.05),
+    rgba(var(--v-theme-primary), 0.05)
+  );
+}
+
+/* Opt-out para una tabla que no lo quiera (por ejemplo, una de una sola
+ * columna o un editor de lineas con controles anchos). */
+.no-sticky-first > .v-table__wrapper > table > thead > tr > th:first-child,
+.no-sticky-first > .v-table__wrapper > table > tbody > tr > td:first-child {
+  position: static;
+  box-shadow: none;
+}

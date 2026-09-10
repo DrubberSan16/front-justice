@@ -75,7 +75,7 @@
         <v-card rounded="xl" class="enterprise-surface">
           <v-data-table-server :headers="headers" :items="documents" :items-length="pagination.total"
             :loading="loading" :page="pagination.page" :items-per-page="pagination.limit"
-            :items-per-page-options="[10, 25, 50, 100]" class="sticky-first-column"
+            :items-per-page-options="[10, 25, 50, 100]"
             @update:page="changePage" @update:items-per-page="changeLimit">
             <template #item.numero_documento="{ item }">
               <a class="document-link" href="#" @click.prevent="openDetail(item)">
