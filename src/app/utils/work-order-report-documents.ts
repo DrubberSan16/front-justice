@@ -1,4 +1,5 @@
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 /**
  * Informe de una orden de trabajo en PDF.
@@ -49,10 +50,7 @@ function safeText(value: unknown, fallback = "-") {
 }
 
 function formatNumber(value: unknown, digits = 2) {
-  const numeric = Number(value ?? 0);
-  return new Intl.NumberFormat("es-EC", {
-    maximumFractionDigits: digits,
-  }).format(Number.isFinite(numeric) ? numeric : 0);
+  return formatNumberForDisplay(Number(value ?? 0), digits);
 }
 
 export function workOrderReportFileName(data: WorkOrderReportData) {

@@ -6,6 +6,7 @@ import {
   looksLikeDateValue,
 } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import { formatNumberForDisplay, roundForDisplay } from "@/app/utils/number-format";
 import { useAuthStore } from "@/app/stores/auth.store";
 
 type AnyRow = Record<string, any>;
@@ -79,9 +80,84 @@ export type ReportDefinition = {
   summary?: ReportSummaryItem[];
   charts?: ReportChart[];
   sheets: ReportSheet[];
+  /**
+   * Orientación forzada. Si se omite la decide `resolveReportOrientation`
+   * según lo ancha que sea de verdad la tabla, que es lo que casi siempre se
+   * quiere: solo conviene fijarla cuando el documento tiene una forma propia
+   * que el recuento de columnas no captura.
+   */
   orientation?: "portrait" | "landscape";
   continuousSections?: boolean;
 };
+
+/**
+ * Cuántas columnas caben de pie.
+ *
+ * Un A4 vertical deja unos 515 pt útiles y uno horizontal unos 762. Con la
+ * tipografía del reporte una columna corriente pide del orden de 80 pt, así
+ * que hasta seis columnas se leen bien en vertical y a partir de ahí el texto
+ * empieza a partirse en cada celda.
+ */
+const PORTRAIT_MAX_COLUMNS = 6;
+
+/**
+ * Lo mismo medido en anchos de columna declarados, que van en caracteres
+ * (los que usa Excel). Una hoja de pocas columnas pero muy anchas — un
+ * material y su observación — tampoco entra de pie.
+ */
+const PORTRAIT_MAX_WIDTH_UNITS = 92;
+const DEFAULT_COLUMN_WIDTH_UNITS = 16;
+
+function measureSheetWidth(sheet: ReportSheet) {
+  const declared = sheet.columns ?? [];
+  if (declared.length) {
+    return {
+      columns: declared.length,
+      widthUnits: declared.reduce(
+        (sum, column) => sum + (column.width ?? DEFAULT_COLUMN_WIDTH_UNITS),
+        0,
+      ),
+    };
+  }
+  // Sin columnas declaradas el reporte las deduce de las claves de las filas.
+  const keys = new Set<string>();
+  for (const row of sheet.rows ?? []) {
+    for (const key of Object.keys(row ?? {})) keys.add(key);
+  }
+  return {
+    columns: keys.size,
+    widthUnits: keys.size * DEFAULT_COLUMN_WIDTH_UNITS,
+  };
+}
+
+/**
+ * Orientación del documento: vertical cuando la tabla cabe de pie.
+ *
+ * Antes todo salía apaisado, y un reporte de cuatro columnas ocupaba una hoja
+ * ancha con dos tercios en blanco, que es más incómodo de leer y de imprimir.
+ * Se mide la hoja más ancha del reporte y solo esa decide.
+ */
+export function resolveReportOrientation(
+  report: ReportDefinition,
+): "portrait" | "landscape" {
+  if (report.orientation) return report.orientation;
+
+  const sheets = report.sheets ?? [];
+  if (!sheets.length) return "portrait";
+
+  let maxColumns = 0;
+  let maxWidthUnits = 0;
+  for (const sheet of sheets) {
+    const measured = measureSheetWidth(sheet);
+    maxColumns = Math.max(maxColumns, measured.columns);
+    maxWidthUnits = Math.max(maxWidthUnits, measured.widthUnits);
+  }
+
+  return maxColumns <= PORTRAIT_MAX_COLUMNS &&
+    maxWidthUnits <= PORTRAIT_MAX_WIDTH_UNITS
+    ? "portrait"
+    : "landscape";
+}
 
 const REPORT_THEME = {
   brand: "1F4E78",
@@ -211,7 +287,12 @@ function prettifyLabel(value: string) {
 
 function formatValue(value: unknown): string | number {
   if (value === null || value === undefined) return "";
-  if (typeof value === "number") return Number.isFinite(value) ? value : "";
+  // Se devuelve numero, no texto: en Excel la celda tiene que seguir siendo
+  // numerica para que el formato `#,##0.00` y las sumas funcionen. Redondeado
+  // ya, porque quien lo pinta en el PDF solo le hace `String(...)`.
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? roundForDisplay(value) : "";
+  }
   if (typeof value === "boolean") return value ? "Si" : "No";
   if (value instanceof Date) return formatDateTime(value, "");
   if (Array.isArray(value)) return value.map((item) => formatValue(item)).filter(Boolean).join(" | ");
@@ -223,6 +304,25 @@ function formatValue(value: unknown): string | number {
       : formatDateOnly(repaired, repaired);
   }
   return repaired;
+}
+
+/**
+ * Celda del PDF. Una columna declarada como importe, cantidad u horas se
+ * imprime con dos decimales y separador de miles; el resto sale como texto.
+ */
+function formatColumnValueForPdf(
+  value: unknown,
+  format?: ReportColumn["format"],
+): string {
+  const formatted = formatValue(value);
+  if (
+    typeof formatted === "number" &&
+    (format === "currency" || format === "number" || format === "hours")
+  ) {
+    const text = formatNumberForDisplay(formatted);
+    return format === "hours" ? `${text} h` : text;
+  }
+  return String(formatted);
 }
 
 function formatCompartimientoSummary(value: unknown): string {
@@ -376,10 +476,15 @@ function inferImageExtension(dataUrl: string, fallbackUrl = "") {
 
 function formatSheetValue(value: unknown) {
   if (value === null || value === undefined) return "";
-  if (typeof value === "number") return value;
+  // La celda de Excel guarda el numero ya redondeado a dos decimales: el
+  // formato `#,##0.00` solo cambia como se ve, y sin redondear el dato la
+  // barra de formulas seguiria mostrando los quince decimales.
+  if (typeof value === "number") return roundForDisplay(value);
   const raw = repairText(String(value)).trim();
   if (!raw) return "";
-  if (/^-?\d+([.,]\d+)?$/.test(raw)) return Number(raw.replace(",", "."));
+  if (/^-?\d+([.,]\d+)?$/.test(raw)) {
+    return roundForDisplay(Number(raw.replace(",", ".")));
+  }
   return raw;
 }
 
@@ -540,7 +645,7 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
     );
     const worksheet = workbook.addWorksheet(worksheetName, {
       pageSetup: {
-        orientation: report.orientation ?? "landscape",
+        orientation: resolveReportOrientation(report),
         paperSize: 9,
         fitToPage: true,
         fitToWidth: 1,
@@ -914,7 +1019,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
 
   const autoTable = autoTableModule.default;
   const doc = new jsPDF({
-    orientation: report.orientation ?? "landscape",
+    orientation: resolveReportOrientation(report),
     unit: "pt",
     format: "a4",
   });
@@ -963,7 +1068,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
   // mucho menos alto vertical y deja espacio para la tabla de cabeceras.
   if (report.summary?.length) {
     const items = report.summary;
-    const maxColumns = Math.min(items.length, (report.orientation ?? "landscape") === "landscape" ? 7 : 4);
+    const maxColumns = Math.min(items.length, (resolveReportOrientation(report)) === "landscape" ? 7 : 4);
     const chunks: ReportSummaryItem[][] = [];
     for (let index = 0; index < items.length; index += maxColumns) {
       chunks.push(items.slice(index, index + maxColumns));
@@ -1014,7 +1119,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     const slotsPerPage = 4;
     chartAssets.forEach((asset, index) => {
       if (index % slotsPerPage === 0) {
-        doc.addPage(report.orientation ?? "landscape");
+        doc.addPage(resolveReportOrientation(report));
         drawPageHeader(report.title, report.subtitle, "Análisis gráfico");
       }
       const slot = index % slotsPerPage;
@@ -1024,7 +1129,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       const y = 118 + row * (chartHeight + 18);
       doc.addImage(asset.imageDataUrl, "PNG", x, y, chartWidth, chartHeight, undefined, "FAST");
     });
-    doc.addPage(report.orientation ?? "landscape");
+    doc.addPage(resolveReportOrientation(report));
     drawPageHeader(report.title, report.subtitle, "Detalle de consumo");
     cursorY = 118;
   }
@@ -1093,7 +1198,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       (!belongsToOpenSection && index > 0 && !report.continuousSections) ||
       (needsNewPage && (index > 0 || cursorY > 118))
     ) {
-      doc.addPage(report.orientation ?? "landscape");
+      doc.addPage(resolveReportOrientation(report));
       drawPageHeader(
         report.title,
         report.subtitle,
@@ -1128,7 +1233,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
 
       const info = sheet.section.info ?? [];
       if (info.length) {
-        const pairsPerRow = (report.orientation ?? "landscape") === "portrait" ? 2 : 3;
+        const pairsPerRow = (resolveReportOrientation(report)) === "portrait" ? 2 : 3;
         const infoBody: string[][] = [];
         for (let start = 0; start < info.length; start += pairsPerRow) {
           const slice = info.slice(start, start + pairsPerRow);
@@ -1236,7 +1341,9 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       columnStyles,
       head: [columns.map((column) => repairText(column.header))],
       body: safeRows.map((row) =>
-        columns.map((column) => repairText(String(formatValue(resolveColumnValue(row, column))))),
+        columns.map((column) =>
+          repairText(formatColumnValueForPdf(resolveColumnValue(row, column), column.format)),
+        ),
       ),
       didParseCell: (hookData: any) => {
         if (!sheet.media || hookData.section !== "body") return;
@@ -1639,7 +1746,6 @@ export function buildOilConsumptionReport(payload: {
       { label: "Promedio por OT", value: `${formatValue(totals.promedio_por_orden ?? 0)} ${unitLabel}` },
     ],
     charts: payload.charts,
-    orientation: "landscape",
     sheets: [
       {
         name: "Detalle por orden de trabajo",

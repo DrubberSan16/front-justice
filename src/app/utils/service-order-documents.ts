@@ -1,5 +1,6 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 type ServiceOrderDetailLike = {
   codigo_producto?: string | null;
@@ -52,10 +53,7 @@ function toNumber(value: unknown) {
 }
 
 function formatMoney(value: unknown) {
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(toNumber(value));
+  return formatNumberForDisplay(toNumber(value));
 }
 
 function formatDate(value: unknown) {

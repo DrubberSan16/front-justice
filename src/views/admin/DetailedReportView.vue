@@ -189,7 +189,7 @@
                 formatCurrency(equipment.total_costo)
               }}</span>
               <span class="equipment-report__value">{{
-                formatNumber(equipment.total_ordenes)
+                formatCount(equipment.total_ordenes)
               }}</span>
               <v-icon icon="mdi-chevron-right" size="20" aria-hidden="true" />
             </button>
@@ -1418,6 +1418,7 @@ import {
   downloadWorkOrderReportPdf,
   type WorkOrderReportData,
 } from "@/app/utils/work-order-report-documents";
+import { formatCountForDisplay, formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
 import {
   canViewMaterialCosts,
   isGeneralManager,
@@ -1890,10 +1891,11 @@ function equipmentKey(equipment: AnyRow) {
   );
 }
 function formatNumber(value: unknown, digits = 2) {
-  const numeric = Number(value ?? 0);
-  return new Intl.NumberFormat("es-EC", {
-    maximumFractionDigits: digits,
-  }).format(Number.isFinite(numeric) ? numeric : 0);
+  return formatNumberForDisplay(Number(value ?? 0), digits);
+}
+/** Conteos: ordenes, equipos, movimientos. Sin decimales. */
+function formatCount(value: unknown) {
+  return formatCountForDisplay(value);
 }
 function formatShortDate(value: unknown) {
   const date = new Date(String(value || ""));
@@ -1933,12 +1935,7 @@ const muestraCostos = computed(() => {
 });
 
 function formatCurrency(value: unknown) {
-  const numeric = Number(value ?? 0);
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(numeric) ? numeric : 0);
+  return formatCurrencyForDisplay(value);
 }
 function formatHours(value: unknown) {
   return value === null || value === undefined || value === ""
@@ -2308,7 +2305,7 @@ function formatHorometro(value: unknown) {
   if (value === null || value === undefined || value === "") return "—";
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return "—";
-  return `${parsed.toLocaleString("es-EC", { maximumFractionDigits: 2 })} h`;
+  return `${formatNumberForDisplay(parsed)} h`;
 }
 
 const firstHistoryActor = computed(

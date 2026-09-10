@@ -720,7 +720,6 @@ function buildManualExcelReportLegacy(manuals: UserManualDefinition[]): ReportDe
         ),
       },
     ],
-    orientation: "landscape",
   };
 }
 

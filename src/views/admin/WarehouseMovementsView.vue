@@ -245,6 +245,7 @@ import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import RowActionsMenu from "@/components/ui/RowActionsMenu.vue";
 import WarehouseMovementFormDialog from "@/components/inventory/WarehouseMovementFormDialog.vue";
+import { formatCurrencyForDisplay } from "@/app/utils/number-format";
 
 /**
  * Ingresos y egresos de bodega como pantalla propia.
@@ -409,14 +410,9 @@ const hasActiveFilters = computed(() =>
 );
 
 function formatMoney(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed)
-    ? parsed.toLocaleString("es-EC", {
-        style: "currency",
-        currency: "USD",
-        minimumFractionDigits: 2,
-      })
-    : "-";
+  // Un valor que no es numero se deja como guion: un "$0,00" inventado
+  // desinforma mas que un hueco.
+  return Number.isFinite(Number(value)) ? formatCurrencyForDisplay(value) : "-";
 }
 
 function buildRequestParams() {

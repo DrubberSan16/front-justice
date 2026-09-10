@@ -1,4 +1,5 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 import {
   drawPdfCompanyLogo,
   getCompanyLogoAsset,
@@ -108,10 +109,7 @@ function toNumber(value: unknown) {
 }
 
 function formatNumber(value: unknown, decimals = 2) {
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(toNumber(value));
+  return formatNumberForDisplay(toNumber(value), decimals);
 }
 
 function formatDate(value: unknown) {

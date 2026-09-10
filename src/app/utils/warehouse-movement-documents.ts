@@ -27,7 +27,6 @@ export function buildWarehouseMovementReport(
     fileName: `documento_kardex_${sanitizeFileName(documentNumber)}_${formatDateForInput()}`,
     title: document?.tipo_documento_label || "Documento de inventario",
     subtitle: `${documentNumber} | ${document?.bodega_label || "Bodega no especificada"}`,
-    orientation: "landscape",
     summary: [
       { label: "Fecha", value: formatDateTime(document?.fecha_movimiento, "-") },
       { label: "Tipo", value: document?.tipo_movimiento || "-" },
@@ -101,7 +100,8 @@ export function buildWarehouseMovementReport(
           observacion: detail.observacion || "",
         })),
         columns: [
-          { key: "linea", header: "#", width: 6, format: "number" },
+          // El numero de linea es un indice, no una medida: va entero.
+          { key: "linea", header: "#", width: 6 },
           { key: "codigo", header: "Código", width: 14 },
           { key: "material", header: "Material", width: 30 },
           { key: "unidad", header: "Unidad", width: 12 },

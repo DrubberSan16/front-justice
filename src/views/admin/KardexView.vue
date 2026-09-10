@@ -530,6 +530,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { formatCurrencyForDisplay } from "@/app/utils/number-format";
 import { api } from "@/app/http/api";
 import { fetchProductsWithStock } from "@/app/services/products-inventory.service";
 import { hasReportAccess } from "@/app/config/report-access";
@@ -998,14 +999,8 @@ function buildKardexFilterDescription(filters: KardexFilterState) {
   return labels.join(" | ");
 }
 function formatDocumentCurrency(value: unknown) {
-  const amount = Number(value || 0);
   const currency = String(movementDocumentDialog.document?.moneda || "USD").trim().toUpperCase() || "USD";
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(Number.isFinite(amount) ? amount : 0);
+  return formatCurrencyForDisplay(value, { currency });
 }
 function revokeMovementDocumentPdfUrl() {
   if (!movementDocumentPdfUrl.value) return;
@@ -1153,7 +1148,6 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
     fileName,
     title: "Kardex por material",
     subtitle: `${materialLabel} | ${buildKardexFilterDescription(filters)}`,
-    orientation: "landscape",
     summary: [
       { label: "Movimientos", value: movementRows.length },
       { label: "Stock inicial", value: Number(group.stock_inicial || 0) },

@@ -107,6 +107,7 @@ import {
   workOrderReportFileName,
 } from "@/app/utils/work-order-report-documents";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
+import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
 
 /**
  * Detalle de una orden de trabajo, para abrirlo desde cualquier tablero.
@@ -216,18 +217,11 @@ function conditionLabel(row: { deliveredNuevo: number; deliveredUsado: number })
 }
 
 function formatNumber(value: unknown) {
-  const parsed = Number(value ?? 0);
-  return new Intl.NumberFormat("es-EC", { maximumFractionDigits: 2 }).format(
-    Number.isFinite(parsed) ? parsed : 0,
-  );
+  return formatNumberForDisplay(Number(value ?? 0));
 }
 
 function formatCurrency(value: unknown) {
-  const parsed = Number(value ?? 0);
-  return (Number.isFinite(parsed) ? parsed : 0).toLocaleString("es-EC", {
-    style: "currency",
-    currency: "USD",
-  });
+  return formatCurrencyForDisplay(value);
 }
 
 function formatDate(value: unknown) {

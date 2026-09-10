@@ -1,9 +1,122 @@
-export function formatNumberForDisplay(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "";
+/**
+ * Redondeo y presentación de cifras.
+ *
+ * Toda cifra que ve el usuario se muestra con DOS decimales, ni uno más. La
+ * base de datos guarda más precisión a propósito — las cantidades con seis
+ * decimales y los costos con cuatro — y algunas cifras nacen de una división
+ * (un costo unitario es un subtotal entre una cantidad), así que sin redondear
+ * la pantalla acaba enseñando "5.6463114019361775".
+ *
+ * ## La regla
+ *
+ * Redondeo comercial: se mira el tercer decimal y, si la parte que sobra es
+ * media unidad o más, se sube; el empate exacto se ALEJA del cero. Así 2,675
+ * sube a 2,68 y −2,675 baja a −2,68: los dos lados se tratan igual y el
+ * redondeo no favorece de forma sistemática a quien cobra ni a quien paga.
+ *
+ * ## Por qué no basta con `toFixed(2)`
+ *
+ * Un `number` es un binario de doble precisión y casi ningún decimal cabe
+ * exacto: 1,005 en realidad se guarda como 1,00499999999999989, así que
+ * `(1.005).toFixed(2)` devuelve "1.00" y `Math.round(1.005 * 100) / 100` da
+ * 1. El error está en la representación, no en el redondeo.
+ *
+ * La corrección es reescribir el número escalado con las quince cifras
+ * significativas que el doble sí garantiza antes de redondear: eso devuelve
+ * 100.5 en vez de 100.49999999999999, y ahí el redondeo ya decide bien.
+ *
+ * ## Dónde se aplica
+ *
+ * Al presentar, no al guardar. Los importes siguen almacenándose con su
+ * precisión: redondear el dato de origen perdería centavos en cada suma y los
+ * totales dejarían de cuadrar contra la base. Se redondea la cifra que se
+ * pinta, y los totales se calculan sobre los valores completos y se redondean
+ * al final, que es lo que hace que la suma de la columna coincida con el total
+ * del pie.
+ */
 
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return String(value);
+/** Decimales que ve el usuario en toda la aplicación. */
+export const DISPLAY_DECIMALS = 2;
 
-  return parsed.toString();
+const DISPLAY_LOCALE = "es-EC";
+
+function toFiniteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * Redondeo comercial a `decimals` decimales, con el empate alejándose del cero.
+ *
+ * Devuelve un número, no un texto: sirve tanto para pintar como para llevar la
+ * cifra a una celda de Excel, donde tiene que seguir siendo numérica.
+ */
+export function roundForDisplay(
+  value: unknown,
+  decimals = DISPLAY_DECIMALS,
+): number {
+  const parsed = toFiniteNumber(value);
+  if (parsed === null) return 0;
+
+  const factor = 10 ** decimals;
+  // `toPrecision(15)` deshace el error de la representación binaria antes de
+  // redondear; sin esto 1,005 * 100 es 100.49999999999999 y bajaría a 1,00.
+  const scaled = Number((parsed * factor).toPrecision(15));
+  const rounded = (Math.sign(scaled) * Math.round(Math.abs(scaled))) / factor;
+  // `Math.sign` de un negativo pequeño produce -0, que se imprime "-0,00".
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
+ * Cifra lista para pintar: dos decimales siempre, con separador de miles.
+ *
+ * Un valor vacío se devuelve vacío en vez de "0,00": un hueco dice "no hay
+ * dato" y un cero inventado desinforma.
+ */
+export function formatNumberForDisplay(
+  value: unknown,
+  decimals = DISPLAY_DECIMALS,
+): string {
+  if (value === null || value === undefined || value === "") return "";
+
+  const parsed = toFiniteNumber(value);
+  if (parsed === null) return String(value);
+
+  return new Intl.NumberFormat(DISPLAY_LOCALE, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(roundForDisplay(parsed, decimals));
+}
+
+/**
+ * Un CONTEO, no una medida: órdenes, movimientos, ítems.
+ *
+ * Va sin decimales porque no los tiene. "3,00 órdenes" no es más preciso que
+ * "3 órdenes", solo más ruidoso, y es el mismo ruido del que se queja quien lee
+ * una tabla llena de ceros que no dicen nada.
+ */
+export function formatCountForDisplay(value: unknown): string {
+  const parsed = toFiniteNumber(value);
+  if (parsed === null) return "";
+  return new Intl.NumberFormat(DISPLAY_LOCALE, {
+    maximumFractionDigits: 0,
+  }).format(Math.round(parsed));
+}
+
+/**
+ * Importe con dos decimales. La moneda se puede cambiar porque la orden de
+ * compra la elige por documento; el resto del sistema trabaja en dólares.
+ */
+export function formatCurrencyForDisplay(
+  value: unknown,
+  options?: { currency?: string; decimals?: number },
+): string {
+  const decimals = options?.decimals ?? DISPLAY_DECIMALS;
+  return new Intl.NumberFormat(DISPLAY_LOCALE, {
+    style: "currency",
+    currency: options?.currency || "USD",
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(roundForDisplay(value, decimals));
+}

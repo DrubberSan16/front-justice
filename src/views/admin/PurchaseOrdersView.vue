@@ -344,6 +344,7 @@ import {
 import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import { formatCurrencyForDisplay } from "@/app/utils/number-format";
 
 type CatalogOption = { value: string; title: string };
 
@@ -625,12 +626,7 @@ function repairText(value: unknown) {
 }
 
 function formatCurrency(value: unknown) {
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency: form.moneda || "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(toNumber(value));
+  return formatCurrencyForDisplay(value, { currency: form.moneda || "USD" });
 }
 
 function formatDate(value: unknown) {

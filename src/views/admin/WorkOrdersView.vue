@@ -1031,8 +1031,8 @@
               :items-per-page="5"
             >
               <template #bottom />
-              <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
-              <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #item.costo_unitario="{ item }">{{ formatDecimalValue((item.raw ?? item).costo_unitario || 0) }}</template>
+              <template #item.subtotal="{ item }">{{ formatDecimalValue((item.raw ?? item).subtotal || 0) }}</template>
               <template #item.actions="{ item }">
                 <v-btn
                   v-if="canAnnulDocuments && consumoActionMode(asAny(item)?._raw ?? asAny(item)?.raw ?? asAny(item))"
@@ -1124,8 +1124,8 @@
               :items-per-page="5"
             >
               <template #bottom />
-              <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
-              <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #item.costo_unitario="{ item }">{{ formatDecimalValue((item.raw ?? item).costo_unitario || 0) }}</template>
+              <template #item.subtotal="{ item }">{{ formatDecimalValue((item.raw ?? item).subtotal || 0) }}</template>
               <template #no-data>
                 <div class="pa-4 text-medium-emphasis">No hay emisiones disponibles para esta orden de trabajo.</div>
               </template>
@@ -1265,8 +1265,8 @@
               :items-per-page="5"
             >
               <template #bottom />
-              <template #item.costo_unitario="{ item }">{{ Number((item.raw ?? item).costo_unitario || 0).toFixed(2) }}</template>
-              <template #item.subtotal="{ item }">{{ Number((item.raw ?? item).subtotal || 0).toFixed(2) }}</template>
+              <template #item.costo_unitario="{ item }">{{ formatDecimalValue((item.raw ?? item).costo_unitario || 0) }}</template>
+              <template #item.subtotal="{ item }">{{ formatDecimalValue((item.raw ?? item).subtotal || 0) }}</template>
               <template #no-data>
                 <div class="pa-4 text-medium-emphasis">No hay materiales desechados registrados para esta orden de trabajo.</div>
               </template>
@@ -1854,6 +1854,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -2724,10 +2725,7 @@ function toEditableDateOnly(value: unknown) {
 function formatDecimalValue(value: unknown) {
   const numeric = parseNullableNumber(value);
   if (numeric == null) return "";
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(numeric);
+  return formatNumberForDisplay(numeric);
 }
 
 function formatHoursDurationLabel(value: unknown) {

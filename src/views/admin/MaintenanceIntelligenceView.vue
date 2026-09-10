@@ -1312,6 +1312,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
@@ -1672,13 +1673,10 @@ function formatCompactNumber(value: unknown) {
   }).format(numeric);
 }
 
-function formatDetailedNumber(value: unknown, digits = 4) {
+function formatDetailedNumber(value: unknown, digits = 2) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return "0";
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  }).format(numeric);
+  return formatNumberForDisplay(numeric, digits);
 }
 
 function dayOrder(value: unknown) {

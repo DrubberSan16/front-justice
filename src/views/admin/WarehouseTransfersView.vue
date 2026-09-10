@@ -1410,6 +1410,7 @@ import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
+import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
 
 type CatalogOption = { value: string; title: string };
 
@@ -2161,10 +2162,7 @@ function toNumber(value: unknown) {
 }
 
 function formatNumber(value: unknown) {
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(toNumber(value));
+  return formatNumberForDisplay(toNumber(value));
 }
 
 function summarizeGuideSriMessages(guide?: GuideResponse | null) {
@@ -2221,12 +2219,7 @@ function notifyGuideSriResult(
 }
 
 function formatCurrency(value: unknown) {
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(toNumber(value));
+  return formatCurrencyForDisplay(value);
 }
 
 function formatTransferProductLabel(productId: unknown, fallbackLabel?: unknown) {

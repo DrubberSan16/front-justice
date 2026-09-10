@@ -497,6 +497,7 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
+import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
 import { VIcon } from "vuetify/components";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { resolveMotionElement, useRevealMotion } from "@/app/motion";
@@ -1011,7 +1012,7 @@ function horometro(value: unknown) {
   if (value === null || value === undefined || value === "") return "—";
   const n = Number(value);
   if (!Number.isFinite(n)) return "—";
-  return `${n.toLocaleString("es-EC", { maximumFractionDigits: 2 })} h`;
+  return `${formatNumberForDisplay(n)} h`;
 }
 
 /**
@@ -1053,8 +1054,7 @@ function estadoOperativoNivel(value: unknown) {
 }
 
 function money(value: unknown) {
-  const n = Number(value ?? 0);
-  return n.toLocaleString("es-EC", { style: "currency", currency: "USD" });
+  return formatCurrencyForDisplay(value);
 }
 
 async function load() {

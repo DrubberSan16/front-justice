@@ -706,10 +706,18 @@ function toSafeNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+/**
+ * Valor para un `<input type="number">`, no para pintar.
+ *
+ * Aqui NO se usa el formato de pantalla: ese pone separador de miles y coma
+ * decimal ("1.234,56"), que un campo numerico no sabe leer y que al guardar
+ * viajaria roto. Lo que se edita conserva ademas su precision — una cantidad
+ * lleva seis decimales y un costo cuatro —, asi que solo se limpia el valor.
+ */
 function formatNumberFieldForForm(value: unknown) {
   if (value === null || value === undefined || value === "") return "0";
-  const formatted = formatNumberForDisplay(value);
-  return formatted || "0";
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? String(numeric) : "0";
 }
 
 function findGallonsUnitOption() {
@@ -1374,7 +1382,6 @@ function buildStockWarehouseReport(sourceRows: any[]): ReportDefinition {
     fileName: `stock_bodega_${exportDateStamp()}`,
     title: "Stock por bodega",
     subtitle: `Exportacion segun filtros aplicados. Bodega: ${warehouseFilterLabel}.`,
-    orientation: "landscape",
     summary: [
       { label: "Bodega", value: warehouseFilterLabel },
       { label: "Busqueda", value: search.value.trim() || "Sin busqueda" },
@@ -1494,7 +1501,6 @@ function buildProductsReport(sourceRows: any[]): ReportDefinition {
     fileName: `materiales_${exportDateStamp()}`,
     title: "Listado de materiales",
     subtitle: "Exportación según los filtros aplicados en la consulta.",
-    orientation: "landscape",
     summary: [
       { label: "Búsqueda", value: search.value.trim() || "Sin búsqueda" },
       { label: "Estado", value: productFilterValueLabel(productStatusFilter.value, undefined, recordStatusOptions) },

@@ -1,5 +1,6 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 /**
  * Constancia imprimible del egreso de bodega (EB) de una orden de trabajo.
@@ -91,10 +92,7 @@ function numberValue(value: unknown) {
 }
 
 function formatNumber(value: unknown, decimals = 2) {
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(numberValue(value));
+  return formatNumberForDisplay(numberValue(value), decimals);
 }
 
 function formatMoney(value: unknown) {

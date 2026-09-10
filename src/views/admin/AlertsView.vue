@@ -541,6 +541,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { useRevealMotion } from "@/app/motion";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -795,9 +796,7 @@ function formatRelativeDate(value: unknown) {
 
 function formatInventoryNumber(value: unknown) {
   const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed)
-    ? new Intl.NumberFormat("es-EC", { maximumFractionDigits: 2 }).format(parsed)
-    : "0";
+  return Number.isFinite(parsed) ? formatNumberForDisplay(parsed) : "0";
 }
 
 async function loadData() {

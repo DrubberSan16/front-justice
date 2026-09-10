@@ -178,6 +178,7 @@ import { formatDateForInput } from "@/app/utils/date-time";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { canSetIncomeUnitCost } from "@/app/utils/role-access";
+import { formatCurrencyForDisplay } from "@/app/utils/number-format";
 
 /**
  * Alta de un ingreso o un egreso de bodega.
@@ -346,10 +347,7 @@ function clearDetailDiscountPercentage(detail: DetailForm) {
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency: "USD",
-  }).format(Number.isFinite(value) ? value : 0);
+  return formatCurrencyForDisplay(value);
 }
 
 function createDetail(): DetailForm {

@@ -63,7 +63,8 @@ export function buildSectionReport(
     fileName: options.fileName,
     title: options.title,
     subtitle: options.subtitle,
-    orientation: options.orientation ?? "landscape",
+    // Sin orientacion pedida la decide el ancho real de la tabla.
+    orientation: options.orientation,
     summary: options.summary,
     sheets: [
       {

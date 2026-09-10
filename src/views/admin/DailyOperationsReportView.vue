@@ -294,6 +294,7 @@ import { currentDateInputValue, formatDateTime } from "@/app/utils/date-time";
 import { type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 type AnyRow = Record<string, any>;
 type DashboardChartItem = {
@@ -486,10 +487,7 @@ const summaryCards = computed(() => {
 function formatNumber(value: unknown, digits = 2) {
   const numeric = Number(value ?? 0);
   if (!Number.isFinite(numeric)) return "0";
-  return new Intl.NumberFormat("es-EC", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: digits,
-  }).format(numeric);
+  return formatNumberForDisplay(numeric, digits);
 }
 
 function formatMovementDate(value: unknown) {
@@ -511,7 +509,6 @@ function buildDailyOperationsPdfReport(): ReportDefinition {
     fileName: `reporte_diario_${String(filters.fecha || "hoy").replace(/\W+/g, "_")}`,
     title: "Reporte diario",
     subtitle: `Consolidado operativo del ${label}. Bodega: ${selectedWarehouseLabel.value}.`,
-    orientation: "landscape",
     summary: [
       { label: "Bodega", value: selectedWarehouseLabel.value },
       { label: "Entradas", value: formatNumber(detailMovementTotals.value.entradas) },
