@@ -809,8 +809,19 @@ const dialog = ref(false);
 const deleteDialog = ref(false);
 const groupDetailDialog = ref(false);
 
+/**
+ * Los permisos se buscan por `url_component`, NUNCA por el nombre visible del
+ * menu. Esta lista traia solo los nombres ("Analisis de lubricante"), que no
+ * coinciden con nada y caian en silencio a "sin permiso": por eso un
+ * supervisor con crear y editar concedidos no veia ni el boton de nuevo
+ * analisis ni la carga masiva ni el formato de carga. Solo funcionaba para
+ * administradores, porque a ellos los habilita el rol.
+ */
 const perms = computed(() =>
-  getPermissionsForAnyComponent(menuStore.tree, ["Analisis de lubricante", "Análisis de lubricante"]),
+  getPermissionsForAnyComponent(menuStore.tree, [
+    "inteligencia-analisis-lubricante",
+    "analisis-lubricante",
+  ]),
 );
 const hasAdministrativeAccess = computed(() => canManageLubricantAnalyses(auth.user));
 const canCreate = computed(() => perms.value.isCreated || hasAdministrativeAccess.value);
