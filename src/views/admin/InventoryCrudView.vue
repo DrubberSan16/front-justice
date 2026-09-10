@@ -1098,15 +1098,15 @@ function workflowStatusColor(value: string) {
 }
 
 /**
- * Si la fila tiene material usado. Se mira tanto la marca de la bodega como el
- * saldo real: una fila puede quedar marcada y haberse consumido todo el usado,
- * y ahi la marca mentiria.
+ * Si la fila tiene material usado AHORA. Manda el saldo, no la marca de la
+ * bodega: la marca dice que ese material admite condicion usada y se queda
+ * puesta aunque se consuma hasta el ultimo, y un visto verde junto a un
+ * "Stock usado 0" es justo lo que hace desconfiar de la tabla.
  */
 function hasUsedStock(item: any) {
   const row = item?._raw ?? item;
   const saldoUsado = Number(row?.stock_usado ?? 0);
-  if (Number.isFinite(saldoUsado) && saldoUsado > 0) return true;
-  return row?.es_usado === true;
+  return Number.isFinite(saldoUsado) && saldoUsado > 0;
 }
 
 /**
@@ -1182,6 +1182,42 @@ function runRowAction(key: string, item: any) {
   if (key === "delete") return openDelete(item?._raw ?? item);
 }
 
+/**
+ * Campos que sirven para reconocer una fila, del mas preciso al menos.
+ */
+const IDENTIFIER_FIELD_KEYS = [
+  "codigo",
+  "identificacion",
+  "numero_documento",
+  "nombre",
+  "razon_social",
+];
+
+/**
+ * Deja al frente el campo que identifica el registro.
+ *
+ * La primera columna es la que queda anclada al desplazar la tabla, asi que
+ * tiene que decir de que fila se trata. Varios modulos declaran de primero un
+ * campo que no lo dice: "Estado" (Materiales, Bodegas, Terceros, Unidades de
+ * medida), porque en el FORMULARIO va arriba, o el padre al que pertenece la
+ * fila (Ubicaciones, Componentes de equipo). Anclar un "ACTIVE" o una sucursal
+ * repetida no resuelve nada; el codigo si.
+ *
+ * Solo se mueve cuando hace falta: si la tabla ya empieza por un identificador
+ * se deja como esta, y el campo desplazado no se pierde, pasa a segunda
+ * columna.
+ */
+function withIdentifierFirst(fields: MaintenanceField[]) {
+  const current = fields[0];
+  if (!current || IDENTIFIER_FIELD_KEYS.includes(current.key)) return fields;
+  const identifier = IDENTIFIER_FIELD_KEYS.reduce<MaintenanceField | null>(
+    (found, key) => found ?? fields.find((field) => field.key === key) ?? null,
+    null,
+  );
+  if (!identifier) return fields;
+  return [identifier, ...fields.filter((field) => field !== identifier)];
+}
+
 const headers = computed(() => {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
@@ -1203,7 +1239,7 @@ const headers = computed(() => {
     ? stockTableFieldKeys
         .map((key) => cfg.fields.find((field) => field.key === key))
         .filter((field): field is MaintenanceField => Boolean(field))
-    : cfg.fields.slice(0, 6)
+    : withIdentifierFirst(cfg.fields).slice(0, 6)
   ).filter((field) => canViewCosts.value || !isMaterialCostKey(field.key));
   const base = tableFields.map((field) => ({
     title: STOCK_TABLE_HEADER_TITLES[field.key] ?? field.label,

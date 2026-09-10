@@ -769,8 +769,6 @@ import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
   buildExecutiveDashboardReport,
-  downloadReportExcel,
-  downloadReportPdf,
 } from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
@@ -2063,11 +2061,10 @@ async function exportDashboard(format: "excel" | "pdf") {
   exportState.value = { ...exportState.value, [key]: true };
   error.value = null;
   try {
-    if (format === "excel") {
-      await downloadReportExcel(dashboardReportDefinition.value);
-    } else {
-      await downloadReportPdf(dashboardReportDefinition.value);
-    }
+    // Se muestra antes de bajarlo, igual que en las tarjetas: el tablero
+    // completo son varias hojas y descargarlo a ciegas obligaba a abrir el
+    // archivo para descubrir si el periodo elegido era el que se queria.
+    await reportPreview.open(format, dashboardReportDefinition.value);
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte del dashboard.";
   } finally {

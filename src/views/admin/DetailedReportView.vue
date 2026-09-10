@@ -2443,6 +2443,7 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
   ordenes_trabajo: "Ordenes trabajo",
   equipos: "Equipos",
   bodegas: "Bodegas",
+  bodega_label: "Bodega",
   material_label: "Material",
   detalle_ordenes: "Detalle",
   total_horas: "Horas - hombre",

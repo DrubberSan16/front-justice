@@ -340,7 +340,6 @@ export async function buildServiceOrderPdfBlob(
   const lastTable = (doc as any).lastAutoTable;
   cursorY = (lastTable?.finalY ?? 320) + 16;
 
-  const totalsXLabel = pageWidth - 210;
   const totalsXCurrency = pageWidth - 95;
   const totalsXValue = pageWidth - 38;
   const totals = [
@@ -350,6 +349,30 @@ export async function buildServiceOrderPdfBlob(
     ["IVA 15%", order.iva_total],
     ["TOTAL", order.total],
   ] as const;
+
+  /**
+   * Ancho del bloque de totales.
+   *
+   * Con la posicion fija anterior el rotulo mas largo ("SUB-TOTAL CON DESCTO")
+   * llegaba hasta donde se imprime "US$" y las dos palabras se pisaban en un
+   * documento que ve el cliente. Se mide el rotulo mas ancho con la misma
+   * tipografia con la que se dibuja y el bloque se estira hacia la izquierda lo
+   * que haga falta; el ancho de siempre queda como minimo.
+   */
+  const totalsXLabel = (() => {
+    const previousFont = doc.getFont();
+    const previousFontSize = doc.getFontSize();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    const widest = Math.max(...totals.map(([label]) => doc.getTextWidth(label)));
+    // `totalsXCurrency` es el borde DERECHO de "US$", que se imprime alineado a
+    // la derecha: hay que descontar tambien su ancho o el rotulo se le mete
+    // debajo igual.
+    const currencyWidth = doc.getTextWidth("US$");
+    doc.setFont(previousFont.fontName, previousFont.fontStyle);
+    doc.setFontSize(previousFontSize);
+    return Math.min(pageWidth - 210, totalsXCurrency - currencyWidth - widest - 8);
+  })();
 
   const amountLines = doc.splitTextToSize(amountToWords(totalAmount), usableWidth - 76);
   const deliveryLines = doc.splitTextToSize(safeText(order.lugar_entrega, "-"), usableWidth - 142);

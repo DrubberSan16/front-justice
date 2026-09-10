@@ -591,13 +591,20 @@ watch(
 
 onMounted(async () => {
   if (!canRead.value) return;
-  await Promise.all([loadCatalogs(), loadDocuments(1)]);
   // El detalle de stock enlaza aqui con `?documento=`: se abre directo el
   // documento pedido en vez de dejar al usuario buscandolo en la lista.
   const documentoId = String(route.query.documento || "").trim();
   // Se pide incluyendo anulados: un enlace puede apuntar a un documento que
   // se anulo despues, y ahi interesa ver el documento, no un error.
-  if (documentoId) await openDetail({ id: documentoId }, true);
+  //
+  // Va EN PARALELO con la lista, no detras: encolarlo dejaba la pantalla
+  // muerta unos diez segundos hasta que terminaba de cargar la primera pagina
+  // de egresos, y lo que se vino a ver es la modal, no la lista de atras.
+  await Promise.all([
+    loadCatalogs(),
+    loadDocuments(1),
+    documentoId ? openDetail({ id: documentoId }, true) : Promise.resolve(),
+  ]);
 });
 </script>
 

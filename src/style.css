@@ -413,26 +413,30 @@ img {
  * degradado plano, en vez de sustituirlo, para que la columna anclada siga
  * respondiendo al hover como el resto de la fila.
  *
- * Se excluyen las celdas con `colspan` (fila vacia, totales al pie): anclar
- * una celda que ocupa toda la tabla no significa nada y descoloca el texto. */
-.v-table > .v-table__wrapper > table > thead > tr > th:first-child:not([colspan]),
-.v-table > .v-table__wrapper > table > tbody > tr > td:first-child:not([colspan]) {
+ * Se excluyen las celdas que abarcan varias columnas (fila vacia, totales al
+ * pie): anclar una celda que ocupa toda la tabla no significa nada y descoloca
+ * el texto. `v-data-table` marca sus cabeceras con `colspan="1"`, que es una
+ * sola columna, asi que esas SI se anclan: sin admitirlas el cuerpo quedaba
+ * anclado y la cabecera se iba, y los titulos dejaban de corresponder con sus
+ * columnas al desplazar. */
+.v-table > .v-table__wrapper > table > thead > tr > th:first-child:is(:not([colspan]), [colspan="1"]),
+.v-table > .v-table__wrapper > table > tbody > tr > td:first-child:is(:not([colspan]), [colspan="1"]) {
   position: sticky;
   left: 0;
   background-color: rgb(var(--v-theme-surface));
   box-shadow: 1px 0 0 rgba(var(--v-border-color, 100, 116, 139), 0.18);
 }
 
-.v-table > .v-table__wrapper > table > tbody > tr > td:first-child:not([colspan]) {
+.v-table > .v-table__wrapper > table > tbody > tr > td:first-child:is(:not([colspan]), [colspan="1"]) {
   z-index: 1;
 }
 
 /* Por encima del cuerpo y de la columna anclada al desplazar en los dos ejes. */
-.v-table > .v-table__wrapper > table > thead > tr > th:first-child:not([colspan]) {
+.v-table > .v-table__wrapper > table > thead > tr > th:first-child:is(:not([colspan]), [colspan="1"]) {
   z-index: 3;
 }
 
-.v-table > .v-table__wrapper > table > tbody > tr:hover > td:first-child:not([colspan]) {
+.v-table > .v-table__wrapper > table > tbody > tr:hover > td:first-child:is(:not([colspan]), [colspan="1"]) {
   background-image: linear-gradient(
     rgba(var(--v-theme-primary), 0.05),
     rgba(var(--v-theme-primary), 0.05)
