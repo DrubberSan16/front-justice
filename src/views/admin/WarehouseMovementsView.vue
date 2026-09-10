@@ -139,14 +139,19 @@
               </v-chip>
             </div>
             <div v-if="canViewCosts" class="summary-chip-list justify-end mb-4">
-              <v-chip color="info" variant="tonal">
-                Subtotal: {{ formatMoney(detailDialog.document.subtotal_bruto) }}
-              </v-chip>
-              <v-chip color="warning" variant="tonal">
-                Descuento: {{ formatMoney(detailDialog.document.descuento_total) }}
+              <template v-if="documentHasDiscount">
+                <v-chip color="info" variant="tonal">
+                  Subtotal: {{ formatMoney(detailDialog.document.subtotal_bruto) }}
+                </v-chip>
+                <v-chip color="warning" variant="tonal">
+                  Descuento: {{ formatMoney(detailDialog.document.descuento_total) }}
+                </v-chip>
+              </template>
+              <v-chip v-if="documentHasTax" color="secondary" variant="tonal">
+                IVA: {{ formatMoney(detailDialog.document.iva_total) }}
               </v-chip>
               <v-chip color="success" variant="tonal">
-                Total: {{ formatMoney(detailDialog.document.total_neto) }}
+                Total: {{ formatMoney(detailDialog.document.total_documento ?? detailDialog.document.subtotal_neto) }}
               </v-chip>
             </div>
             <v-table density="comfortable">
@@ -158,7 +163,8 @@
                   <th>Condición</th>
                   <th class="text-right">Cantidad</th>
                   <th v-if="canViewCosts" class="text-right">Precio unitario</th>
-                  <th v-if="canViewCosts" class="text-right">Desc.</th>
+                  <th v-if="canViewCosts && documentHasDiscount" class="text-right">Desc.</th>
+                  <th v-if="canViewCosts && documentHasTax" class="text-right">IVA</th>
                   <th v-if="canViewCosts" class="text-right">Total</th>
                   <th>Observación</th>
                 </tr>
@@ -173,11 +179,14 @@
                   <td v-if="canViewCosts" class="text-right">
                     {{ formatMoney(detail.costo_unitario) }}
                   </td>
-                  <td v-if="canViewCosts" class="text-right">
+                  <td v-if="canViewCosts && documentHasDiscount" class="text-right">
                     {{ Number(detail.descuento) > 0 ? formatMoney(detail.descuento) : "-" }}
                   </td>
+                  <td v-if="canViewCosts && documentHasTax" class="text-right">
+                    {{ Number(detail.iva_total) > 0 ? formatMoney(detail.iva_total) : "-" }}
+                  </td>
                   <td v-if="canViewCosts" class="text-right font-weight-bold">
-                    {{ formatMoney(detail.subtotal_costo) }}
+                    {{ formatMoney(detail.total_linea ?? detail.subtotal_costo) }}
                   </td>
                   <td>{{ detail.observacion || "-" }}</td>
                 </tr>
@@ -368,6 +377,21 @@ const documentDetails = computed<any[]>(() =>
   Array.isArray(detailDialog.document?.detalles)
     ? detailDialog.document.detalles
     : [],
+);
+
+/**
+ * El desglose de descuento solo aparece cuando el documento lo tiene.
+ *
+ * Los egresos y las transferencias nunca llevan descuento, y una columna vacia
+ * en todas las filas es ruido; el total, en cambio, siempre dice algo.
+ */
+const documentHasDiscount = computed(() =>
+  documentDetails.value.some((detail) => Number(detail?.descuento || 0) > 0),
+);
+
+/** El IVA solo aparece cuando el documento lo tiene. */
+const documentHasTax = computed(() =>
+  documentDetails.value.some((detail) => Number(detail?.iva_total || 0) > 0),
 );
 
 const hasActiveFilters = computed(() =>

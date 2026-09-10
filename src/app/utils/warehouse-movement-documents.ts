@@ -14,6 +14,12 @@ export function buildWarehouseMovementReport(
   const includeCosts = options?.includeCosts === true;
   const documentNumber = String(document?.numero_documento || "DOCUMENTO").trim();
   const details = Array.isArray(document?.detalles) ? document.detalles : [];
+  // El desglose de descuento solo se imprime cuando el documento lo tiene: en
+  // un egreso o una transferencia seria una columna de guiones.
+  const hasDiscount = details.some(
+    (detail: any) => Number(detail?.descuento || 0) > 0,
+  );
+  const hasTax = details.some((detail: any) => Number(detail?.iva_total || 0) > 0);
   const currency =
     String(document?.moneda || "USD").trim().toUpperCase() || "USD";
 
@@ -29,7 +35,7 @@ export function buildWarehouseMovementReport(
       { label: "Referencia", value: document?.referencia || "-" },
       { label: "Ítems", value: document?.total_items || details.length },
       { label: "Cantidad", value: Number(document?.total_cantidad || 0) },
-      ...(includeCosts
+      ...(includeCosts && hasDiscount
         ? [
             {
               label: `Subtotal (${currency})`,
@@ -39,10 +45,25 @@ export function buildWarehouseMovementReport(
               label: `Descuento (${currency})`,
               value: Number(document?.descuento_total || 0),
             },
+          ]
+        : []),
+      ...(includeCosts && hasTax
+        ? [
+            {
+              label: `IVA (${currency})`,
+              value: Number(document?.iva_total || 0),
+            },
+          ]
+        : []),
+      ...(includeCosts
+        ? [
             {
               label: `Total (${currency})`,
               value: Number(
-                document?.total_neto ?? document?.total_costos ?? 0,
+                document?.total_documento ??
+                  document?.subtotal_neto ??
+                  document?.total_costos ??
+                  0,
               ),
             },
           ]
@@ -66,9 +87,16 @@ export function buildWarehouseMovementReport(
           ...(includeCosts
             ? {
                 costo_unitario: Number(detail.costo_unitario || 0),
-                descuento: Number(detail.descuento || 0),
-                subtotal: Number(detail.subtotal_costo || 0),
+                subtotal: Number(
+                  detail.total_linea ?? detail.subtotal_costo ?? 0,
+                ),
               }
+            : {}),
+          ...(includeCosts && hasDiscount
+            ? { descuento: Number(detail.descuento || 0) }
+            : {}),
+          ...(includeCosts && hasTax
+            ? { iva: Number(detail.iva_total || 0) }
             : {}),
           observacion: detail.observacion || "",
         })),
@@ -87,12 +115,26 @@ export function buildWarehouseMovementReport(
                   width: 14,
                   format: "currency" as const,
                 },
-                {
-                  key: "descuento",
-                  header: `Desc. (${currency})`,
-                  width: 13,
-                  format: "currency" as const,
-                },
+                ...(hasDiscount
+                  ? [
+                      {
+                        key: "descuento",
+                        header: `Desc. (${currency})`,
+                        width: 13,
+                        format: "currency" as const,
+                      },
+                    ]
+                  : []),
+                ...(hasTax
+                  ? [
+                      {
+                        key: "iva",
+                        header: `IVA (${currency})`,
+                        width: 13,
+                        format: "currency" as const,
+                      },
+                    ]
+                  : []),
                 {
                   key: "subtotal",
                   header: `Total (${currency})`,

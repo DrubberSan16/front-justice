@@ -68,6 +68,7 @@
                 <th v-if="showUnitCost" class="price-col">Precio unitario</th>
                 <th v-if="showUnitCost" class="discount-col">Desc.</th>
                 <th v-if="showUnitCost" class="discount-col">% Desc.</th>
+                <th v-if="showUnitCost" class="discount-col">IVA %</th>
                 <th v-if="showUnitCost" class="line-total-col">Total</th>
                 <th class="obs-col">{{ isIncome ? "Observación" : "Responsable" }}</th>
                 <th class="action-col"></th>
@@ -108,9 +109,6 @@
                 <td v-if="showUnitCost" class="price-col">
                   <v-text-field v-model="detail.costoUnitario" type="number" min="0" step="0.0001"
                     label="Precio unitario" prefix="$" variant="outlined" density="comfortable" :disabled="saving" />
-                  <div class="text-caption text-medium-emphasis mt-1">
-                    Precio para esta bodega. Vacío usa el que ya tiene aquí o, si no tiene, el del material.
-                  </div>
                 </td>
                 <td v-if="showUnitCost" class="discount-col">
                   <v-text-field v-model="detail.descuento" type="number" min="0" step="0.0001" label="Descuento"
@@ -120,15 +118,14 @@
                 <td v-if="showUnitCost" class="discount-col">
                   <v-text-field v-model="detail.porcentajeDescuento" type="number" min="0" max="100" step="0.01"
                     label="% descuento" suffix="%" variant="outlined" density="comfortable"
-                    :disabled="saving || parsePositive(detail.descuento) > 0"
-                    :hint="parsePositive(detail.descuento) > 0 ? 'Manda el importe' : undefined"
-                    :persistent-hint="parsePositive(detail.descuento) > 0" />
+                    :disabled="saving || parsePositive(detail.descuento) > 0" />
+                </td>
+                <td v-if="showUnitCost" class="discount-col">
+                  <v-text-field v-model="detail.ivaPorcentaje" type="number" min="0" max="100" step="0.01"
+                    label="IVA" suffix="%" variant="outlined" density="comfortable" :disabled="saving" />
                 </td>
                 <td v-if="showUnitCost" class="line-total-col text-right font-weight-bold">
                   {{ formatCurrency(lineAmounts(detail).total) }}
-                  <div v-if="lineAmounts(detail).descuento > 0" class="text-caption text-medium-emphasis">
-                    antes {{ formatCurrency(lineAmounts(detail).bruto) }}
-                  </div>
                 </td>
                 <td class="obs-col">
                   <v-text-field v-model="detail.observacion" :label="isIncome ? 'Observación' : 'Responsable'"
@@ -155,6 +152,7 @@
           <div v-if="showUnitCost" class="summary-chip-list justify-end">
             <v-chip color="info" variant="tonal">Subtotal: {{ formatCurrency(documentTotals.bruto) }}</v-chip>
             <v-chip color="warning" variant="tonal">Descuento: {{ formatCurrency(documentTotals.descuento) }}</v-chip>
+            <v-chip color="secondary" variant="tonal">IVA: {{ formatCurrency(documentTotals.iva) }}</v-chip>
             <v-chip color="success" variant="tonal">Total: {{ formatCurrency(documentTotals.total) }}</v-chip>
           </div>
         </div>
@@ -213,8 +211,16 @@ type DetailForm = {
   costoUnitario: string;
   descuento: string;
   porcentajeDescuento: string;
+  ivaPorcentaje: string;
   observacion: string;
 };
+
+/**
+ * El IVA que propone el formulario, el mismo de la orden de compra. Se puede
+ * cambiar linea por linea; en la base el valor por defecto es cero, para no
+ * inventarle impuesto a los documentos que se registraron sin el.
+ */
+const DEFAULT_IVA_PERCENTAGE = 15;
 
 const props = defineProps<{ modelValue: boolean; movementType: MovementType }>();
 const emit = defineEmits<{
@@ -309,7 +315,10 @@ function lineAmounts(detail: DetailForm) {
   const porcentaje = Math.min(parsePositive(detail.porcentajeDescuento), 100);
   const solicitado = importe > 0 ? importe : (bruto * porcentaje) / 100;
   const descuento = Math.min(Math.max(solicitado, 0), bruto);
-  return { bruto, descuento, total: Math.max(bruto - descuento, 0) };
+  const subtotal = Math.max(bruto - descuento, 0);
+  const ivaPorcentaje = Math.min(parsePositive(detail.ivaPorcentaje), 100);
+  const iva = (subtotal * ivaPorcentaje) / 100;
+  return { bruto, descuento, subtotal, iva, total: subtotal + iva };
 }
 
 const documentTotals = computed(() =>
@@ -318,10 +327,12 @@ const documentTotals = computed(() =>
       const linea = lineAmounts(detail);
       acc.bruto += linea.bruto;
       acc.descuento += linea.descuento;
+      acc.subtotal += linea.subtotal;
+      acc.iva += linea.iva;
       acc.total += linea.total;
       return acc;
     },
-    { bruto: 0, descuento: 0, total: 0 },
+    { bruto: 0, descuento: 0, subtotal: 0, iva: 0, total: 0 },
   ),
 );
 
@@ -350,6 +361,7 @@ function createDetail(): DetailForm {
     costoUnitario: "",
     descuento: "",
     porcentajeDescuento: "",
+    ivaPorcentaje: String(DEFAULT_IVA_PERCENTAGE),
     observacion: "",
   };
 }
@@ -578,6 +590,7 @@ async function save() {
     costo_unitario?: number;
     descuento?: number;
     porcentaje_descuento?: number;
+    iva_porcentaje?: number;
     observacion?: string;
   }> = [];
 
@@ -619,6 +632,14 @@ async function save() {
         `El descuento de la fila ${index + 1} supera el total de la línea.`,
       );
     }
+    const ivaPorcentaje = showUnitCost.value
+      ? parsePositive(detail.ivaPorcentaje)
+      : 0;
+    if (ivaPorcentaje > 100) {
+      return ui.error(
+        `El IVA de la fila ${index + 1} no puede pasar del 100 %.`,
+      );
+    }
     payloadDetails.push({
       producto_id: detail.productoId,
       cantidad,
@@ -627,6 +648,7 @@ async function save() {
       costo_unitario: precio || undefined,
       descuento: descuento || undefined,
       porcentaje_descuento: porcentajeDescuento || undefined,
+      iva_porcentaje: ivaPorcentaje || undefined,
       observacion: detail.observacion || undefined,
     });
   }
@@ -679,9 +701,9 @@ watch(
 
 .document-editor-grid {
   width: 100%;
-  /* Con precio, descuento y total el documento pide mas ancho; el contenedor
-     ya desplaza en horizontal. */
-  min-width: 1180px;
+  /* Con precio, descuento, IVA y total el documento pide mas ancho; el
+     contenedor ya desplaza en horizontal. */
+  min-width: 1320px;
   border-collapse: collapse;
 }
 
