@@ -216,7 +216,8 @@
               :subtitle="rangeLabel"
               file-name="gerencia_cebado"
               :columns="primingExportColumns"
-              :rows="primingRows"
+              :rows="primingReportRows"
+              orientation="portrait"
             />
             <v-icon icon="mdi-oil" size="34" color="primary" aria-hidden="true" />
           </div>
@@ -262,6 +263,15 @@
           <template #item.galones_max_orden="{ item }"
             >{{ formatNumber(item.galones_max_orden) }} gal</template
           >
+          <!-- Con que horometro llego la maquina al primer cebado del periodo y
+               con cual quedo tras el ultimo: el consumo se lee contra el
+               recorrido, no solo. -->
+          <template #item.horometro_inicial="{ item }">{{
+            formatHorometro(item.horometro_inicial)
+          }}</template>
+          <template #item.horometro_final="{ item }">{{
+            formatHorometro(item.horometro_final)
+          }}</template>
           <template #item.niveles="{ item }">
             <div class="priming-levels">
               <span
@@ -305,7 +315,7 @@
               :subtitle="rangeLabel"
               file-name="gerencia_inventario"
               :columns="inventoryExportColumns"
-              :rows="inventoryRows"
+              :rows="inventoryReportRows"
             />
           </div>
           <div class="inventory-searches">
@@ -768,12 +778,22 @@
             <strong>{{ equipmentLabel(primingDetailEquipment || {}) }}</strong>
             <small>{{ primingDetailEquipment?.equipo_descripcion }}</small>
           </div>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            aria-label="Cerrar detalle de cebado"
-            @click="primingDetailDialog = false"
-          />
+          <div class="d-flex align-center" style="gap:8px">
+            <SectionExportButtons
+              :preview="sectionPreview"
+              :title="`Cebado y aceite · ${equipmentLabel(primingDetailEquipment || {})}`"
+              :subtitle="rangeLabel"
+              file-name="gerencia_cebado_detalle"
+              :columns="primingDetailExportColumns"
+              :rows="primingDetailExportRows"
+            />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar detalle de cebado"
+              @click="primingDetailDialog = false"
+            />
+          </div>
         </v-card-title>
         <v-card-text class="detail-dialog__body">
           <v-alert type="info" variant="tonal" density="comfortable">
@@ -798,6 +818,18 @@
               class="manager-table"
               no-data-text="Sin órdenes de cebado en este período"
             >
+              <template #item.orden="{ item }">
+                <button
+                  v-if="item.work_order_id"
+                  type="button"
+                  class="order-link"
+                  :aria-label="`Ver detalle de la orden ${item.orden}`"
+                  @click="openOrderDetail({ ...item, id: item.work_order_id, code: item.orden })"
+                >
+                  {{ item.orden }}
+                </button>
+                <span v-else>{{ item.orden }}</span>
+              </template>
               <template #item.fecha="{ item }">{{
                 formatShortDate(item.fecha)
               }}</template>
@@ -1419,6 +1451,7 @@ import {
   type WorkOrderReportData,
 } from "@/app/utils/work-order-report-documents";
 import { formatCountForDisplay, formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
+import type { SectionReportColumn } from "@/app/utils/section-report";
 import {
   canViewMaterialCosts,
   isGeneralManager,
@@ -1529,11 +1562,44 @@ const sectionPreview = useReportPreview({
   title: "Previsualización de la sección",
 });
 const primingExportColumns = computed(() =>
-  primingHeaders.map((header: any) => ({
-    key: String(header.key),
-    title: String(header.title || header.key),
-  })),
+  primingHeaders
+    .filter((header: any) => PRIMING_REPORT_KEYS.includes(String(header.key)))
+    .map((header: any) => ({
+      key: String(header.key),
+      title: String(header.title || header.key),
+    })),
 );
+
+/**
+ * Filas del reporte de cebado, con la sumatoria al pie.
+ *
+ * Quien lee el consolidado quiere saber cuanto aceite se gasto en total, y esa
+ * cifra no estaba en ninguna parte: habia que sumar la columna a mano. Los
+ * horometros NO se suman: son lecturas de un contador, no cantidades.
+ */
+const primingReportRows = computed(() => {
+  const filas = primingRows.value.map((row: AnyRow) => ({
+    ...row,
+    equipo_nombre: equipmentLabel(row),
+  }));
+  if (!filas.length) return filas;
+
+  const suma = (key: string) =>
+    filas.reduce((acc: number, row: AnyRow) => acc + Number(row?.[key] || 0), 0);
+
+  return [
+    ...filas,
+    {
+      equipo_nombre: "TOTAL",
+      ots_cebado: suma("ots_cebado"),
+      galones_periodo: suma("galones_periodo"),
+      galones_semana: suma("galones_semana"),
+      galones_mes: suma("galones_mes"),
+      horometro_inicial: "",
+      horometro_final: "",
+    },
+  ];
+});
 const inventoryExportColumns = computed(() =>
   inventoryHeaders.value.map((header: any) => ({
     key: String(header.key),
@@ -1541,15 +1607,59 @@ const inventoryExportColumns = computed(() =>
   })),
 );
 
+/**
+ * Filas del reporte de inventario.
+ *
+ * La columna del material se llama `material_label`, pero eso no es un campo
+ * de la fila: la pantalla lo compone con `materialLabel()` a partir del codigo,
+ * el nombre y la descripcion. El reporte leia la clave tal cual y salia en
+ * blanco -- numeros correctos y la primera columna vacia. Aqui se materializa
+ * antes de exportar.
+ */
+const inventoryReportRows = computed(() =>
+  inventoryRows.value.map((row: AnyRow) => ({
+    ...row,
+    material_label: materialLabel(row),
+  })),
+);
+
+/**
+ * Cabeceras del control de cebado.
+ *
+ * "Galones periodo", "Semana" y "Mes" no decian de que hablaban: se leia una
+ * columna de numeros sin unidad. Ahora cada una dice que mide y en que unidad.
+ * Se agregan el horometro con el que la maquina llego al primer cebado del
+ * periodo y con el que quedo tras el ultimo, que es lo que permite leer el
+ * consumo contra el recorrido.
+ */
 const primingHeaders = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Cebados", key: "ots_cebado", align: "end" as const },
-  { title: "Galones período", key: "galones_periodo", align: "end" as const },
-  { title: "Semana", key: "galones_semana", align: "end" as const },
-  { title: "Mes", key: "galones_mes", align: "end" as const },
+  { title: "Total galones", key: "galones_periodo", align: "end" as const },
+  { title: "Gal x Semana", key: "galones_semana", align: "end" as const },
+  { title: "Gal x Mes", key: "galones_mes", align: "end" as const },
+  { title: "Horóm. inicial", key: "horometro_inicial", align: "end" as const },
+  { title: "Horóm. final", key: "horometro_final", align: "end" as const },
   { title: "Mayor orden", key: "galones_max_orden", align: "end" as const },
   { title: "Órdenes por nivel", key: "niveles", sortable: false },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
+];
+
+/**
+ * Columnas del reporte del control de cebado.
+ *
+ * No son las de la pantalla: "Mayor orden" mide otra cosa que el consolidado,
+ * y "Ordenes por nivel" y la de acciones salian en blanco porque una es un
+ * distintivo pintado y la otra un boton. En papel sobran las tres.
+ */
+const PRIMING_REPORT_KEYS = [
+  "equipo_nombre",
+  "ots_cebado",
+  "galones_periodo",
+  "galones_semana",
+  "galones_mes",
+  "horometro_inicial",
+  "horometro_final",
 ];
 
 const primingDetailHeaders = computed(() => {
@@ -1576,6 +1686,61 @@ const primingDetailHeaders = computed(() => {
     headers.push({ title: "Costo", key: "costo", align: "end" as const });
   }
   return headers;
+});
+
+/**
+ * Columnas del consolidado que se exporta desde la modal del equipo.
+ *
+ * Se aplanan tendencia y semaforo: en pantalla son un icono y un distintivo de
+ * color, y en papel tienen que ser texto o salen en blanco.
+ */
+const primingDetailExportColumns = computed(() => {
+  const columnas: SectionReportColumn[] = [
+    { key: "orden", title: "Orden" },
+    { key: "fecha", title: "Fecha" },
+    { key: "producto", title: "Producto" },
+    { key: "horometro_anterior", title: "Horóm. anterior" },
+    { key: "horometro_actual", title: "Horóm. del cebado" },
+    { key: "galones", title: "Galones", format: "number" },
+    { key: "tendencia", title: "Tendencia" },
+    { key: "nivel", title: "Nivel" },
+  ];
+  if (canViewCosts.value && primingDetailRows.value.some((item) => "costo" in item)) {
+    columnas.push({ key: "costo", title: "Costo", format: "currency" });
+  }
+  return columnas;
+});
+
+const primingDetailExportRows = computed(() => {
+  const filas = primingDetailRows.value.map((row: AnyRow) => ({
+    orden: row?.orden || "",
+    fecha: formatShortDate(row?.fecha),
+    producto: row?.producto || "",
+    horometro_anterior: formatHorometro(row?.horometro_anterior),
+    horometro_actual: formatHorometro(row?.horometro_actual),
+    galones: Number(row?.galones || 0),
+    tendencia:
+      row?.tendencia && row.tendencia !== "SIN_REFERENCIA"
+        ? primingTrendLabel(row.tendencia)
+        : "Primera orden",
+    nivel: row?.semaforo?.etiqueta || "",
+    ...(canViewCosts.value ? { costo: Number(row?.costo || 0) } : {}),
+  }));
+  if (!filas.length) return filas;
+  return [
+    ...filas,
+    {
+      orden: "TOTAL",
+      fecha: "",
+      producto: "",
+      horometro_anterior: "",
+      horometro_actual: "",
+      galones: primingDetailTotals.value.galones,
+      tendencia: "",
+      nivel: "",
+      ...(canViewCosts.value ? { costo: primingDetailTotals.value.costo } : {}),
+    },
+  ];
 });
 
 /**

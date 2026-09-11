@@ -47,6 +47,8 @@ const props = defineProps<{
   rows: Record<string, any>[];
   summary?: ReportSummaryItem[];
   note?: string;
+  /** Orientacion forzada; si se omite la decide el ancho real de la tabla. */
+  orientation?: "portrait" | "landscape";
 }>();
 
 async function run(format: "pdf" | "excel") {
@@ -60,6 +62,7 @@ async function run(format: "pdf" | "excel") {
       rows: props.rows,
       summary: props.summary,
       note: props.note,
+      orientation: props.orientation,
     }),
   );
 }
