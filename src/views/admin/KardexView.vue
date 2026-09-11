@@ -169,7 +169,8 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="movement in getMaterialMovements(group.producto_id)" :key="movement.id">
+                      <tr v-for="movement in getMaterialMovements(group.producto_id)" :key="movement.id"
+                        :class="{ 'kardex-row--annulled': movement.anulado }">
                         <td>{{ formatDateTime(movement.fecha_creacion, '-') }}</td>
                         <td class="font-weight-bold">
                           <v-btn v-if="movement.documento_id" variant="text" color="primary" density="compact"
@@ -1812,6 +1813,42 @@ onBeforeUnmount(() => {
 .kardex-table tbody tr:hover,
 .document-editor-grid tbody tr:hover {
   background: rgba(var(--v-theme-primary), 0.05);
+}
+
+/* Movimiento anulado.
+ *
+ * No movio existencias, asi que tiene que distinguirse de un vistazo entre las
+ * demas filas. Se usa el color de estado de error del tema, que se resuelve
+ * solo en claro y en oscuro, con un tinte bajo para no comerse el contraste
+ * del texto. La banda lateral va por `box-shadow: inset` y no por `border`
+ * para no descuadrar las celdas.
+ *
+ * Va despues de la franja alterna y del hover a proposito: comparten
+ * especificidad y aqui manda el orden. El distintivo "Anulado" del documento
+ * se conserva: el color por si solo no puede ser el unico portador del dato. */
+/* Intensidad del tinte de anulado.
+ *
+ * El mismo porcentaje se nota mucho menos sobre un fondo oscuro que sobre uno
+ * claro, asi que sube en el tema oscuro. Va en variables para que el valor
+ * este en un solo sitio y las reglas de abajo no se dupliquen. */
+.kardex-table tbody tr.kardex-row--annulled {
+  --kpi-annulled-tint: 0.1;
+  --kpi-annulled-tint-hover: 0.16;
+}
+
+.v-theme--corporateDark .kardex-table tbody tr.kardex-row--annulled {
+  --kpi-annulled-tint: 0.2;
+  --kpi-annulled-tint-hover: 0.28;
+}
+
+.kardex-table tbody tr.kardex-row--annulled,
+.kardex-table tbody tr.kardex-row--annulled:nth-child(even) {
+  background: rgba(var(--v-theme-error), var(--kpi-annulled-tint));
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-error));
+}
+
+.kardex-table tbody tr.kardex-row--annulled:hover {
+  background: rgba(var(--v-theme-error), var(--kpi-annulled-tint-hover));
 }
 
 .line-col {

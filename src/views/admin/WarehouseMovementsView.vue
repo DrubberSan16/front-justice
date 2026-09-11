@@ -75,7 +75,7 @@
         <v-card rounded="xl" class="enterprise-surface">
           <v-data-table-server :headers="headers" :items="documents" :items-length="pagination.total"
             :loading="loading" :page="pagination.page" :items-per-page="pagination.limit"
-            :items-per-page-options="[10, 25, 50, 100]"
+            :items-per-page-options="[10, 25, 50, 100]" :row-props="annulledRowProps"
             @update:page="changePage" @update:items-per-page="changeLimit">
             <template #item.numero_documento="{ item }">
               <a class="document-link" href="#" @click.prevent="openDetail(item)">
@@ -390,6 +390,14 @@ const documentHasDiscount = computed(() =>
   documentDetails.value.some((detail) => Number(detail?.descuento || 0) > 0),
 );
 
+/**
+ * Marca la fila de un documento anulado, con el mismo criterio del Kardex: no
+ * movio existencias, asi que no puede leerse igual que las demas.
+ */
+function annulledRowProps({ item }: { item: any }) {
+  return item?.anulado ? { class: "movement-row--annulled" } : {};
+}
+
 /** El IVA solo aparece cuando el documento lo tiene. */
 const documentHasTax = computed(() =>
   documentDetails.value.some((detail) => Number(detail?.iva_total || 0) > 0),
@@ -648,6 +656,50 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Documento anulado: mismo tratamiento que en el Kardex. El tinte sale del
+ * color de estado de error del tema, asi que se resuelve solo en claro y en
+ * oscuro. El rotulo "Anulado" se conserva: el color no puede ser el unico
+ * portador del dato.
+ *
+ * Se pinta como `background-image` y no como `background-color` a proposito.
+ * La primera celda va anclada al desplazar y necesita un fondo OPACO, o las
+ * columnas se transparentan por debajo; el degradado plano se superpone a ese
+ * fondo sin quitarselo, que es el mismo recurso que usa el realce de fila. */
+/* Va con `:deep()` porque la fila la pinta `v-data-table`, que es otro
+ * componente: un estilo con alcance no entra ahi y la regla no aplicaba. */
+/* Intensidad del tinte de anulado.
+ *
+ * El mismo porcentaje se nota mucho menos sobre un fondo oscuro que sobre uno
+ * claro, asi que sube en el tema oscuro. Va en variables para que el valor
+ * este en un solo sitio y las reglas de abajo no se dupliquen. */
+:deep(.movement-row--annulled) {
+  --kpi-annulled-tint: 0.1;
+  --kpi-annulled-tint-hover: 0.16;
+}
+
+:deep(.v-theme--corporateDark .movement-row--annulled) {
+  --kpi-annulled-tint: 0.2;
+  --kpi-annulled-tint-hover: 0.28;
+}
+
+:deep(.movement-row--annulled > td) {
+  background-image: linear-gradient(
+    rgba(var(--v-theme-error), var(--kpi-annulled-tint)),
+    rgba(var(--v-theme-error), var(--kpi-annulled-tint))
+  );
+}
+
+:deep(.movement-row--annulled > td:first-child) {
+  box-shadow: inset 3px 0 0 rgb(var(--v-theme-error));
+}
+
+:deep(.movement-row--annulled:hover > td) {
+  background-image: linear-gradient(
+    rgba(var(--v-theme-error), var(--kpi-annulled-tint-hover)),
+    rgba(var(--v-theme-error), var(--kpi-annulled-tint-hover))
+  );
+}
+
 .document-link {
   color: rgb(var(--v-theme-primary));
   font-weight: 600;
