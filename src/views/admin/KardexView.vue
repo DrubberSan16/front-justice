@@ -154,8 +154,7 @@
                   <table class="kardex-table">
                     <thead>
                       <tr>
-                        <th>Fecha emisión</th>
-                        <th>F. creación</th>
+                        <th>Fecha creación</th>
                         <th>Documento</th>
                         <th>Referencia</th>
                         <th>Concepto</th>
@@ -163,15 +162,14 @@
                         <th>Bodega</th>
                         <th>Tipo</th>
                         <th>Usuario</th>
-                        <th>Estado</th>
-                        <th class="text-right">Entrada</th>
-                        <th class="text-right">Salida</th>
-                        <th class="text-right">Stock</th>
+                        <th class="text-right">Stock inicial</th>
+                        <th class="text-right">Ingresó</th>
+                        <th class="text-right">Salió</th>
+                        <th class="text-right">Stock final</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="movement in getMaterialMovements(group.producto_id)" :key="movement.id">
-                        <td>{{ formatDateTime(movement.fecha_emision, '-') }}</td>
                         <td>{{ formatDateTime(movement.fecha_creacion, '-') }}</td>
                         <td class="font-weight-bold">
                           <v-btn v-if="movement.documento_id" variant="text" color="primary" density="compact"
@@ -181,28 +179,24 @@
                             {{ movement.documento || 'Ver documento' }}
                           </v-btn>
                           <span v-else>{{ movement.documento || '-' }}</span>
+                          <!-- La anulacion ya no tiene columna propia, pero no puede perderse:
+                               un movimiento anulado no movio existencias. -->
+                          <div v-if="movement.anulado" class="mt-1">
+                            <v-chip size="x-small" variant="tonal" color="error">Anulado</v-chip>
+                          </div>
                         </td>
                         <td>{{ movement.referencia || '-' }}</td>
                         <td>{{ movement.concepto || '-' }}</td>
                         <td>{{ movement.descripcion || '-' }}</td>
-                        <td>{{ movement.bodega || '-' }}</td>
+                        <td class="font-weight-bold">{{ movement.bodega || '-' }}</td>
                         <td>{{ movement.tipo_movimiento || '-' }}</td>
                         <td>{{ movement.usuario_responsable || 'SYSTEM' }}</td>
-                        <td>
-                          <template v-if="movement.anulado">
-                            <v-chip size="x-small" variant="tonal" color="error">Anulado</v-chip>
-                            <div class="text-caption text-medium-emphasis">
-                              {{ movement.anulado_por || 'SYSTEM' }} ·
-                              {{ formatDateTime(movement.anulado_at, '-') }}
-                            </div>
-                          </template>
-                          <span v-else class="text-medium-emphasis">Vigente</span>
-                        </td>
+                        <td class="text-right">{{ formatNumberForDisplay(movement.stock_inicial) }}</td>
                         <td class="text-right text-success font-weight-medium">{{ movement.entrada ?
                           formatNumberForDisplay(movement.entrada) : '' }}</td>
                         <td class="text-right text-error font-weight-medium">{{ movement.salida ?
                           formatNumberForDisplay(movement.salida) : '' }}</td>
-                        <td class="text-right font-weight-bold">{{ formatNumberForDisplay(movement.stock) }}</td>
+                        <td class="text-right font-weight-bold">{{ formatNumberForDisplay(movement.stock_final) }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -566,7 +560,7 @@ import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_nuevo?: string | number; stock_usado?: string | number; stock_disponible?: string | number; stock_critico?: string | number; cantidad_reservada_activa?: string | number; es_usado?: boolean; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
-type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock: number | string; anulado?: boolean; anulado_por?: string | null; anulado_at?: string | null; };
+type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock_inicial: number | string; stock_final: number | string; stock: number | string; anulado?: boolean; anulado_por?: string | null; anulado_at?: string | null; };
 type KardexFilterState = {
   desde: string;
   hasta: string;
@@ -930,10 +924,10 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
           linea: group.linea_label || "",
           categoria: group.categoria_label || "",
           unidad: group.unidad_label || "",
-          // Solo se exporta la fecha del movimiento. Las fechas de creacion
-          // y actualizacion, y el usuario que actualizo, son metadatos de
-          // auditoria que abultaban el reporte sin aportar al kardex.
-          fecha_emision: movement.fecha_emision,
+          // El reporte lleva las mismas columnas que la pantalla: la fecha de
+          // creacion es la que ordena el kardex, y el saldo se muestra antes y
+          // despues de cada movimiento para que la cadena se pueda seguir.
+          fecha_creacion: movement.fecha_creacion,
           documento: movement.documento || "",
           referencia: movement.referencia || "",
           concepto: movement.concepto || "",
@@ -944,9 +938,10 @@ async function fetchFilteredKardexMovements(groups: any[], filters: KardexFilter
           estado_registro: movement.anulado
             ? `ANULADO por ${movement.anulado_por || "SYSTEM"}`
             : "VIGENTE",
+          stock_inicial: Number(movement.stock_inicial || 0),
           entrada: Number(movement.entrada || 0),
           salida: Number(movement.salida || 0),
-          stock: Number(movement.stock || 0),
+          stock_final: Number(movement.stock_final ?? movement.stock ?? 0),
         }));
       }),
     );
@@ -1162,25 +1157,27 @@ function buildKardexGroupReport(group: any, movementRows: any[], filters: Kardex
         fitColumnsToPage: true,
         note: "Auditoría: Usuario responsable corresponde al creador del movimiento.",
         rows: movementRows.map((movement) => ({
-          fecha_emision: movement.fecha_emision || "",
+          fecha_creacion: movement.fecha_creacion || "",
           documento: movement.documento || "",
           tipo_movimiento: movement.tipo_movimiento || "",
           referencia: movement.referencia || "",
           bodega: movement.bodega || "",
+          stock_inicial: Number(movement.stock_inicial || 0),
           entrada: Number(movement.entrada || 0),
           salida: Number(movement.salida || 0),
-          stock: Number(movement.stock || 0),
+          stock_final: Number(movement.stock_final ?? movement.stock ?? 0),
           usuario_responsable: movement.usuario_responsable || "SYSTEM",
         })),
         columns: [
-          { key: "fecha_emision", header: "Fecha emisión", width: 15, format: "datetime" },
+          { key: "fecha_creacion", header: "Fecha creación", width: 15, format: "datetime" },
           { key: "documento", header: "Documento", width: 14 },
           { key: "tipo_movimiento", header: "Tipo", width: 10 },
           { key: "referencia", header: "Referencia", width: 14 },
           { key: "bodega", header: "Bodega", width: 18 },
-          { key: "entrada", header: "Entrada", width: 10, format: "number" },
-          { key: "salida", header: "Salida", width: 10, format: "number" },
-          { key: "stock", header: "Stock", width: 10, format: "number" },
+          { key: "stock_inicial", header: "Stock inicial", width: 12, format: "number" },
+          { key: "entrada", header: "Ingresó", width: 10, format: "number" },
+          { key: "salida", header: "Salió", width: 10, format: "number" },
+          { key: "stock_final", header: "Stock final", width: 12, format: "number" },
           { key: "usuario_responsable", header: "Usuario responsable", width: 16 },
         ],
       },
