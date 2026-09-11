@@ -556,14 +556,16 @@
           <div>
             <div class="text-subtitle-1 font-weight-bold">Materiales de la transferencia</div>
             <div class="text-body-2 text-medium-emphasis">
-              {{ selectedOrder ? 'Puedes ajustar cantidades o retirar materiales precargados.' : 'Agrega los materiales que se moverán entre bodegas.' }}
+              {{ selectedOrder
+                ? 'Ajusta las cantidades a lo que realmente llegó, y retira o vuelve a agregar materiales de la orden.'
+                : 'Agrega los materiales que se moverán entre bodegas.' }}
             </div>
           </div>
           <v-btn
-            v-if="!selectedOrder"
             color="primary"
             variant="tonal"
             prepend-icon="mdi-plus"
+            :disabled="Boolean(selectedOrder) && !availableOrderLineOptions.length"
             @click="addDetail"
           >
             Agregar material
@@ -590,7 +592,24 @@
               <tr v-for="detail in form.detalles" :key="detail.local_id">
                 <td>{{ detail.codigo_producto || "-" }}</td>
                 <td>
+                  <!-- Con una orden precargada solo se pueden elegir sus propias
+                       lineas: el stock que se mueve es el que la orden
+                       preaprobo, y un material que no se compro no tiene nada
+                       que mover. -->
                   <v-autocomplete
+                    v-if="selectedOrder"
+                    v-model="detail.orden_compra_det_id"
+                    :items="orderLineOptionsFor(detail)"
+                    item-title="title"
+                    item-value="value"
+                    label="Material de la orden"
+                    variant="outlined"
+                    hide-details
+                    :disabled="orderLoading"
+                    @update:model-value="handleOrderLineChange(detail)"
+                  />
+                  <v-autocomplete
+                    v-else
                     v-model="detail.producto_id"
                     :items="productOptions"
                     item-title="title"
@@ -598,11 +617,13 @@
                     label="Material"
                     variant="outlined"
                     hide-details
-                    :disabled="Boolean(selectedOrder)"
                     @update:model-value="handleDetailProductChange(detail)"
                   />
                 </td>
                 <td>
+                  <!-- Editable: muchas veces no llega todo lo que se pidio y la
+                       transferencia se hace solo con lo recibido. El tope sigue
+                       siendo el saldo preaprobado de la orden. -->
                   <v-text-field
                     v-if="selectedOrder"
                     v-model="detail.cantidad"
@@ -611,8 +632,7 @@
                     step="0.0001"
                     label="Nuevo"
                     variant="outlined"
-                    readonly
-                    :disabled="orderLoading"
+                    :disabled="orderLoading || !detail.orden_compra_det_id"
                     :error="detailExceedsStock(detail)"
                     hide-details
                   />
@@ -667,15 +687,35 @@
                   <span v-else class="text-caption text-medium-emphasis">Selecciona un material</span>
                 </td>
                 <td>
+                  <!-- Con una orden precargada este es el total que se mueve, y
+                       en una transferencia de compra todo entra como NUEVO: es
+                       la misma cifra que "Cant. nuevo", enlazada al mismo dato
+                       para que se pueda teclear en cualquiera de las dos. El
+                       tope preaprobado queda debajo, como referencia. -->
                   <v-text-field
+                    v-if="selectedOrder"
+                    v-model="detail.cantidad"
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    label="Total a transferir"
+                    variant="outlined"
+                    :disabled="orderLoading || !detail.orden_compra_det_id"
+                    :error="detailExceedsStock(detail)"
+                    hide-details
+                  />
+                  <v-text-field
+                    v-else
                     :model-value="formatNumber(getTotalTransferableStock(detail))"
-                    :label="selectedOrder ? 'Saldo preaprobado' : 'Disponible real'"
+                    label="Disponible real"
                     variant="outlined"
                     readonly
                     hide-details
                   />
                   <div v-if="detail.producto_id" class="text-caption mt-1" :class="detailExceedsStock(detail) ? 'text-error' : 'text-medium-emphasis'">
-                    Solicitado: {{ formatNumber(getDetailRequestedTotal(detail)) }}
+                    {{ selectedOrder
+                      ? `Saldo preaprobado: ${formatNumber(getTotalTransferableStock(detail))}`
+                      : `Solicitado: ${formatNumber(getDetailRequestedTotal(detail))}` }}
                   </div>
                   <div v-if="detailExceedsStock(detail)" class="text-caption text-error mt-1">
                     Revisa el reparto Nuevo/Usado: supera el stock de una condición o el total transferible.
@@ -3286,6 +3326,68 @@ function openGuidePreviewInNewTab() {
   window.open(guidePreviewUrl.value, "_blank", "noopener,noreferrer");
 }
 
+/**
+ * Lineas de la orden precargada que todavia tienen saldo por transferir.
+ *
+ * Con una orden de por medio el material no se elige del catalogo: lo que se
+ * mueve es el stock que esa orden preaprobo, asi que solo tienen sentido sus
+ * propias lineas. Un material que no se compro no tiene nada que mover; para
+ * eso esta la transferencia manual.
+ */
+const availableOrderLineOptions = computed<CatalogOption[]>(() => {
+  const enUso = new Set(
+    form.detalles
+      .map((detail) => String(detail.orden_compra_det_id || "").trim())
+      .filter(Boolean),
+  );
+  return (selectedOrder.value?.detalles ?? [])
+    .filter((line: any) => {
+      const lineId = String(line?.id || "").trim();
+      if (!lineId || enUso.has(lineId)) return false;
+      return (orderDetailAvailabilityMap.value.get(lineId) ?? 0) > 0;
+    })
+    .map((line: any) => ({
+      value: String(line.id),
+      title: `${line.codigo_producto || ""} - ${line.nombre_producto || ""}`.trim(),
+    }));
+});
+
+/** Las de arriba mas la que ya tiene la fila, para que no se vacie su propio valor. */
+function orderLineOptionsFor(detail: TransferDetailForm): CatalogOption[] {
+  const propia = String(detail.orden_compra_det_id || "").trim();
+  if (!propia) return availableOrderLineOptions.value;
+  const linea = (selectedOrder.value?.detalles ?? []).find(
+    (item: any) => String(item?.id || "") === propia,
+  );
+  if (!linea) return availableOrderLineOptions.value;
+  return [
+    {
+      value: propia,
+      title: `${linea.codigo_producto || ""} - ${linea.nombre_producto || ""}`.trim(),
+    },
+    ...availableOrderLineOptions.value,
+  ];
+}
+
+/**
+ * Al elegir una linea de la orden se copian sus datos y se propone como
+ * cantidad todo el saldo disponible, que es el caso corriente; si llego menos,
+ * se corrige a mano.
+ */
+function handleOrderLineChange(detail: TransferDetailForm) {
+  const lineId = String(detail.orden_compra_det_id || "").trim();
+  const linea = (selectedOrder.value?.detalles ?? []).find(
+    (item: any) => String(item?.id || "") === lineId,
+  );
+  if (!linea) return;
+  detail.producto_id = String(linea.producto_id || "");
+  detail.codigo_producto = String(linea.codigo_producto || "");
+  detail.nombre_producto = String(linea.nombre_producto || "");
+  detail.costo_unitario = String(linea.costo_unitario ?? 0);
+  detail.condicion_material = "NUEVO";
+  detail.cantidad = String(orderDetailAvailabilityMap.value.get(lineId) ?? 0);
+}
+
 function addDetail() {
   form.detalles.push(createEmptyDetail());
 }
@@ -4424,7 +4526,25 @@ function validateForm() {
     ui.error("Debes agregar al menos un material para transferir.");
     return false;
   }
-  for (const detail of form.detalles) {
+  // Con una orden precargada, una linea en cero significa "ese material no
+  // llego": se deja fuera de la transferencia en vez de bloquear el guardado.
+  // Lo mismo una fila recien agregada a la que todavia no se le eligio nada.
+  const detallesATransferir = selectedOrder.value
+    ? form.detalles.filter(
+        (detail) =>
+          String(detail.orden_compra_det_id || "").trim() &&
+          getDetailRequestedTotal(detail) > 0,
+      )
+    : form.detalles;
+
+  if (selectedOrder.value && !detallesATransferir.length) {
+    ui.error(
+      "Indica la cantidad recibida de al menos un material de la orden para registrar la transferencia.",
+    );
+    return false;
+  }
+
+  for (const detail of detallesATransferir) {
     syncTransferDetailCondition(detail);
     if (!detail.producto_id) {
       ui.error("Todos los materiales de la transferencia deben estar seleccionados.");
@@ -4465,13 +4585,22 @@ async function saveTransfer() {
   saving.value = true;
   try {
     const transferDetails = selectedOrder.value
-      ? form.detalles.map((detail) => ({
-          orden_compra_det_id: detail.orden_compra_det_id || undefined,
-          producto_id: detail.producto_id,
-          condicion_material: "NUEVO" as StockCondition,
-          cantidad: toNumber(detail.cantidad),
-          observacion: detail.observacion || undefined,
-        }))
+      ? // Se envian solo las lineas con material elegido y cantidad: desde que
+        // las cantidades se pueden ajustar, una fila puede quedar en cero
+        // porque ese material no llego, y una recien agregada sin elegir.
+        form.detalles
+          .filter(
+            (detail) =>
+              String(detail.orden_compra_det_id || "").trim() &&
+              toNumber(detail.cantidad) > 0,
+          )
+          .map((detail) => ({
+            orden_compra_det_id: detail.orden_compra_det_id || undefined,
+            producto_id: detail.producto_id,
+            condicion_material: "NUEVO" as StockCondition,
+            cantidad: toNumber(detail.cantidad),
+            observacion: detail.observacion || undefined,
+          }))
       : form.detalles.flatMap((detail) => {
           const rows: Array<Record<string, unknown>> = [];
           const newQuantity = getDetailNewQuantity(detail);
