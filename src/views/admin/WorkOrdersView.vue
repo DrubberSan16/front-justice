@@ -1616,10 +1616,11 @@
       </v-card-title>
       <v-card-text>
         <p class="mb-3">
-          La salida real de algunos materiales fue menor a lo reservado. Antes de finalizar la
-          OT, indica el motivo; el remanente de la reserva quedará disponible para otros módulos.
+          La salida real de algunos materiales fue menor a lo reservado. Escribe aquí el motivo
+          para poder finalizar la OT; el remanente de la reserva quedará disponible para otros
+          módulos.
         </p>
-        <v-table density="compact" class="mb-3">
+        <v-table v-if="shortfallDialogRows.length" density="compact" class="mb-3">
           <thead>
             <tr>
               <th>Bodega</th>
@@ -1630,13 +1631,13 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in workOrderMaterialShortfallRows" :key="row.id">
+            <tr v-for="row in shortfallDialogRows" :key="row.id">
               <td>{{ row.bodega_label }}</td>
               <td>{{ row.producto_label }}</td>
-              <td class="text-right">{{ row.cantidad_reservada }}</td>
-              <td class="text-right">{{ row.cantidad_emitida }}</td>
-              <td class="text-right">
-                {{ (row.cantidad_reservada - row.cantidad_emitida).toFixed(2) }}
+              <td class="text-right">{{ formatDecimalValue(row.cantidad_reservada) }}</td>
+              <td class="text-right">{{ formatDecimalValue(row.cantidad_emitida) }}</td>
+              <td class="text-right font-weight-bold">
+                {{ formatDecimalValue(row.cantidad_reservada - row.cantidad_emitida) }}
               </td>
             </tr>
           </tbody>
@@ -1644,17 +1645,33 @@
         <v-textarea
           v-model="headerForm.close_shortfall_reason"
           label="Motivo del menor uso de material reservado"
+          placeholder="Ej.: el equipo necesitó menos aceite del previsto"
           variant="outlined"
           rows="3"
           auto-grow
+          autofocus
           counter="500"
           maxlength="500"
+          :error="shortfallReasonTouched && !trimmedShortfallReason"
+          :error-messages="
+            shortfallReasonTouched && !trimmedShortfallReason
+              ? 'El motivo es obligatorio para finalizar la orden.'
+              : []
+          "
+          @blur="shortfallReasonTouched = true"
         />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn variant="text" @click="closeShortfallDialog = false">Cancelar</v-btn>
-        <v-btn color="primary" @click="confirmCloseShortfallReason">Confirmar y finalizar</v-btn>
+        <v-btn variant="text" @click="cancelCloseShortfallReason">Cancelar</v-btn>
+        <v-btn
+          color="primary"
+          :disabled="!trimmedShortfallReason"
+          :loading="savingHeader"
+          @click="confirmCloseShortfallReason"
+        >
+          Confirmar y finalizar
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -1924,6 +1941,19 @@ const tableItemsPerPage = ref(20);
 const dialog = ref(false);
 const deleteDialog = ref(false);
 const closeShortfallDialog = ref(false);
+/**
+ * Codigo que devuelve kpi-maintenance cuando la OT gasto menos material del
+ * reservado y nadie dijo por que. El mismo literal esta en
+ * `kpi-maintenance.service.ts`; se compara el CODIGO y no el mensaje, que
+ * cambia en cuanto alguien corrige una tilde.
+ */
+const MATERIAL_SHORTFALL_REASON_REQUIRED = "MATERIAL_SHORTFALL_REASON_REQUIRED";
+/** Detalle de lo que falto, tal como lo calculo el servidor. */
+const serverShortfallRows = ref<any[]>([]);
+/** Guardado que quedo a medias esperando el motivo. */
+const pendingShortfallRetry = ref<(() => Promise<void> | void) | null>(null);
+/** El aviso de campo obligatorio no aparece antes de tocarlo. */
+const shortfallReasonTouched = ref(false);
 const reportPreviewDialog = ref(false);
 const taskResponsiblesDialog = ref(false);
 const componentDetailDialog = ref(false);
@@ -3726,6 +3756,31 @@ const workOrderMaterialShortfallRows = computed(() =>
       toPositiveNumber(row?.cantidad_emitida) + 0.0001,
   ),
 );
+
+/**
+ * Lo que se lista en el cuadro del motivo.
+ *
+ * Manda el detalle del servidor cuando existe: es el que decide si falta
+ * material, y la pantalla no siempre tiene las reservas cargadas para llegar a
+ * la misma conclusion por su cuenta -- que es justo como este aviso terminaba
+ * saliendo sin ningun sitio donde escribir.
+ */
+const trimmedShortfallReason = computed(() =>
+  String(headerForm.close_shortfall_reason || "").trim(),
+);
+
+const shortfallDialogRows = computed(() => {
+  if (serverShortfallRows.value.length) {
+    return serverShortfallRows.value.map((row: any, index: number) => ({
+      id: `${row?.producto_id || index}-${row?.bodega_id || index}`,
+      bodega_label: row?.bodega_label || "-",
+      producto_label: row?.producto_label || "-",
+      cantidad_reservada: toPositiveNumber(row?.cantidad_reservada),
+      cantidad_emitida: toPositiveNumber(row?.cantidad_emitida),
+    }));
+  }
+  return workOrderMaterialShortfallRows.value;
+});
 
 const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
   const rawItems = Array.isArray(issue?.items) ? issue.items : [];
@@ -6303,10 +6358,8 @@ async function prepareClose() {
     ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return;
   }
-  if (
-    workOrderMaterialShortfallRows.value.length &&
-    !String(headerForm.close_shortfall_reason || "").trim()
-  ) {
+  if (workOrderMaterialShortfallRows.value.length && !trimmedShortfallReason.value) {
+    shortfallReasonTouched.value = false;
     closeShortfallDialog.value = true;
     return;
   }
@@ -6315,7 +6368,41 @@ async function prepareClose() {
   tab.value = showMaterialsTab.value ? "materiales" : "consumos";
 }
 
-function confirmCloseShortfallReason() {
+/**
+ * Convierte el rechazo del servidor en el cuadro que pide el motivo.
+ *
+ * Antes solo se veia la alerta con el texto del error y sin ningun sitio donde
+ * escribir, asi que habia que adivinar que el motivo se teclea en otra parte.
+ * Devuelve `true` cuando se hace cargo del error, para que quien llama no
+ * muestre ademas el mensaje suelto.
+ */
+function handleMaterialShortfallError(
+  error: any,
+  retry: () => Promise<void> | void,
+) {
+  const body = error?.response?.data;
+  if (body?.code !== MATERIAL_SHORTFALL_REASON_REQUIRED) return false;
+  // Con un motivo ya escrito el rechazo es por otra cosa -- pasarse de 500
+  // caracteres, por ejemplo -- y ahi lo que hay que mostrar es el mensaje.
+  if (String(headerForm.close_shortfall_reason || "").trim()) return false;
+
+  serverShortfallRows.value = Array.isArray(body?.shortfalls)
+    ? body.shortfalls
+    : [];
+  pendingShortfallRetry.value = retry;
+  shortfallReasonTouched.value = false;
+  closeShortfallDialog.value = true;
+  return true;
+}
+
+function cancelCloseShortfallReason() {
+  closeShortfallDialog.value = false;
+  pendingShortfallRetry.value = null;
+  serverShortfallRows.value = [];
+  shortfallReasonTouched.value = false;
+}
+
+async function confirmCloseShortfallReason() {
   const trimmedReason = String(headerForm.close_shortfall_reason || "").trim();
   if (!trimmedReason) {
     ui.error("Debes indicar el motivo del menor uso de material reservado.");
@@ -6323,6 +6410,16 @@ function confirmCloseShortfallReason() {
   }
   headerForm.close_shortfall_reason = trimmedReason;
   closeShortfallDialog.value = false;
+  serverShortfallRows.value = [];
+
+  const retry = pendingShortfallRetry.value;
+  pendingShortfallRetry.value = null;
+  if (retry) {
+    // El guardado ya habia arrancado y lo paro el servidor: se reintenta con
+    // el motivo puesto, para que el usuario no tenga que volver a pulsar nada.
+    await retry();
+    return;
+  }
   closingFlow.value = true;
   headerForm.status_workflow = "CLOSED";
   tab.value = showMaterialsTab.value ? "materiales" : "consumos";
@@ -6468,6 +6565,13 @@ async function saveHeader(
     }
     return true;
   } catch (e: any) {
+    if (
+      handleMaterialShortfallError(e, () =>
+        saveHeader(manageLoading, refreshAfterSave, showToast).then(() => undefined),
+      )
+    ) {
+      return false;
+    }
     ui.error(e?.response?.data?.message || "No se pudo guardar la cabecera de OT.");
     return false;
   } finally {
@@ -6662,6 +6766,9 @@ async function saveAll() {
     ensureTabVisible();
     ui.success(`Orden de trabajo ${headerForm.code || ""} guardada con exito.`.trim());
   } catch (e: any) {
+    if (handleMaterialShortfallError(e, () => saveAll())) {
+      return;
+    }
     ui.error(resolveWorkOrderSaveErrorMessage(e));
   } finally {
     savingHeader.value = false;
