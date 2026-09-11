@@ -1411,7 +1411,22 @@
     @download="downloadTransferPdfFromPreview"
     @print="transferPdfPreview.openInNewTab"
     @update:visible="transferPdfPreview.handleVisibility"
-  />
+  >
+    <!-- Solo aparece para quien puede ver importes: a los demas el documento
+         ya les sale sin precios y no habria nada que decidir. -->
+    <template v-if="canViewCosts" #opciones>
+      <v-checkbox
+        v-model="transferPdfWithPrices"
+        label="Con precio"
+        color="primary"
+        density="compact"
+        hide-details
+        :disabled="transferPdfPreview.state.loading"
+        class="pdf-price-toggle"
+        @update:model-value="renderTransferPdfPreview()"
+      />
+    </template>
+  </PdfPreviewDialog>
 </template>
 
 <script setup lang="ts">
@@ -1819,6 +1834,10 @@ const guideProviderLookupTimer = ref<number | null>(null);
 const guideProviderLookupHydrating = ref(false);
 const consultingGuideId = ref("");
 const transferPdfDownloadingId = ref("");
+/** La transferencia que se esta previsualizando y su detalle ya descargado. */
+const transferPdfSource = ref<TransferRow | null>(null);
+const transferPdfDetail = ref<TransferRow | null>(null);
+const transferPdfWithPrices = ref(true);
 const serverPage = ref(1);
 const serverItemsPerPage = ref(15);
 const serverTotalItems = ref(0);
@@ -4234,27 +4253,53 @@ async function confirmReverseAnnulment() {
   }
 }
 
+/**
+ * Arma la previsualizacion de la transferencia con o sin importes.
+ *
+ * El documento se usa para dos cosas distintas: como respaldo interno, donde
+ * el costo importa, y como guia que acompana la mercaderia, donde no tiene por
+ * que ir. Se separa la generacion del disparador para poder rehacerla cuando
+ * se cambia la casilla sin volver a pedir la transferencia al servidor.
+ */
+async function renderTransferPdfPreview() {
+  const item = transferPdfSource.value;
+  if (!item) return;
+  await transferPdfPreview.open({
+    title: `Transferencia ${item.codigo || ""}`.trim(),
+    subtitle: [item.bodega_origen_label, item.bodega_destino_label]
+      .filter(Boolean)
+      .join(" → "),
+    fileName: warehouseTransferPdfFileName(item as any),
+    build: async () => {
+      if (!transferPdfDetail.value) {
+        const { data } = await api.get(
+          `/kpi_inventory/transferencias-bodega/${String(item.id || "")}`,
+          { meta: { skipGlobalLoading: true } } as any,
+        );
+        transferPdfDetail.value = (data?.data ?? data) as TransferRow;
+      }
+      // El permiso manda sobre la casilla: quien no ve importes nunca los
+      // imprime, marque lo que marque.
+      return buildWarehouseTransferPdfBlob(
+        transferPdfDetail.value as any,
+        getUserName(),
+        canViewCosts.value && transferPdfWithPrices.value,
+      );
+    },
+  });
+}
+
 async function downloadTransferPdf(item: TransferRow) {
   const transferId = String(item?.id || "").trim();
   if (!transferId || transferPdfDownloadingId.value) return;
 
   transferPdfDownloadingId.value = transferId;
+  transferPdfSource.value = item;
+  transferPdfDetail.value = null;
+  // Cada documento abre con precios, que es el caso corriente.
+  transferPdfWithPrices.value = true;
   try {
-    await transferPdfPreview.open({
-      title: `Transferencia ${item.codigo || ""}`.trim(),
-      subtitle: [item.bodega_origen_label, item.bodega_destino_label]
-        .filter(Boolean)
-        .join(" → "),
-      fileName: warehouseTransferPdfFileName(item as any),
-      build: async () => {
-        const { data } = await api.get(
-          `/kpi_inventory/transferencias-bodega/${transferId}`,
-          { meta: { skipGlobalLoading: true } } as any,
-        );
-        const transfer = (data?.data ?? data) as TransferRow;
-        return buildWarehouseTransferPdfBlob(transfer as any, getUserName(), canViewCosts.value);
-      },
-    });
+    await renderTransferPdfPreview();
   } finally {
     transferPdfDownloadingId.value = "";
   }

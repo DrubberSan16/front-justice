@@ -295,16 +295,28 @@ export async function buildWarehouseTransferPdfBlob(
       textColor: COLORS.text,
       fontStyle: "bold",
     },
-    columnStyles: {
-      0: { cellWidth: 20, halign: "center" },
-      1: { cellWidth: 54 },
-      2: { cellWidth: 95 },
-      3: { cellWidth: 105 },
-      4: { cellWidth: 44, halign: "right" },
-      5: { cellWidth: 54, halign: "right" },
-      6: { cellWidth: 58, halign: "right" },
-      7: { cellWidth: "auto" },
-    },
+    // Los anchos dependen de si el documento lleva importes: sin las dos
+    // columnas de costo, las que quedan se reparten ese espacio en vez de
+    // dejar media hoja en blanco a la derecha.
+    columnStyles: showCosts
+      ? {
+          0: { cellWidth: 20, halign: "center" },
+          1: { cellWidth: 54 },
+          2: { cellWidth: 95 },
+          3: { cellWidth: 105 },
+          4: { cellWidth: 44, halign: "right" },
+          5: { cellWidth: 54, halign: "right" },
+          6: { cellWidth: 58, halign: "right" },
+          7: { cellWidth: "auto" },
+        }
+      : {
+          0: { cellWidth: 20, halign: "center" },
+          1: { cellWidth: 70 },
+          2: { cellWidth: 125 },
+          3: { cellWidth: 135 },
+          4: { cellWidth: 55, halign: "right" },
+          5: { cellWidth: "auto" },
+        },
     head: [[
       "#",
       "CÓDIGO",

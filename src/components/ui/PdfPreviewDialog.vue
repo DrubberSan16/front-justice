@@ -13,6 +13,10 @@
           <small>Revisa el documento antes de descargarlo.</small>
         </div>
         <div class="pdf-preview__actions">
+          <!-- Controles propios de quien abre el visor: por ejemplo decidir si
+               el documento sale con importes. Van antes de las acciones para
+               que se vean como parte del documento y no como otro boton mas. -->
+          <slot name="opciones" />
           <v-btn
             variant="text"
             prepend-icon="mdi-open-in-new"
