@@ -3680,8 +3680,12 @@ async function ensureProductsLoaded(force = false) {
   productsLoaded.value = true;
 }
 
+// Tambien con una orden precargada. Antes se saltaba, porque una orden recibia
+// en la bodega de compras justo lo que iba a sacar y su existencia previa daba
+// igual. Con las transferencias parciales ya no: lo que no se movio quedo ahi,
+// y la siguiente tanda de esa misma linea sale de esa existencia. Sin cargarla,
+// la columna de stock miente un cero.
 async function ensureStockRowsLoaded(force = false) {
-  if (selectedOrder.value) return;
   if (stockRowsLoaded.value && !force) return;
   if (stockRowsLoading.value) return;
   stockRowsLoading.value = true;
@@ -4517,9 +4521,7 @@ async function loadSelectedOrder(orderId: string) {
     form.detalles = [createEmptyDetail()];
     if (dialog.value) {
       void ensureProductsLoaded();
-      if (form.bodega_origen_id) {
-        void ensureStockRowsLoaded();
-      }
+      void ensureStockRowsLoaded();
     }
     return;
   }
@@ -4540,6 +4542,9 @@ async function loadSelectedOrder(orderId: string) {
     selectedOrder.value = order;
     form.bodega_origen_id = String(order?.bodega_destino_id || "");
     form.detalles = mapOrderDetails(order?.detalles);
+    // La bodega de compras puede venir con el remanente de una tanda anterior
+    // de esta misma orden, y eso es lo que se va a mover esta vez.
+    void ensureStockRowsLoaded();
   } catch (error: any) {
     selectedOrder.value = null;
     form.bodega_origen_id = "";
@@ -4711,7 +4716,7 @@ watch(
 watch(
   () => effectiveSourceWarehouseId.value,
   () => {
-    if (dialog.value && !selectedOrder.value && effectiveSourceWarehouseId.value) {
+    if (dialog.value && effectiveSourceWarehouseId.value) {
       void ensureStockRowsLoaded();
     }
     const valid = destinationWarehouseOptions.value.some(
