@@ -105,6 +105,27 @@ export function formatCountForDisplay(value: unknown): string {
 }
 
 /**
+ * Cifra para el `value` de un `<input type="number">`.
+ *
+ * Aquí NO sirve `formatNumberForDisplay`: el separador de miles y la coma
+ * decimal que necesita una tabla dejan el campo en blanco al guardar, porque
+ * un input numérico solo entiende el punto y ningún agrupador.
+ *
+ * Dos decimales como máximo y sin rellenar con ceros. La base guarda las
+ * cantidades con seis decimales, así que un saldo entero llega como
+ * "12.000000" y se pinta tal cual dentro de la caja: cuatro ceros que no
+ * dicen nada y tapan la cifra que sí importa.
+ */
+export function formatNumberForInput(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  const parsed = toFiniteNumber(value);
+  if (parsed === null) return "";
+  // `String` de un número ya redondeado da "12", "12.5" o "0.33": punto
+  // decimal, sin agrupador y sin ceros de relleno.
+  return String(roundForDisplay(parsed));
+}
+
+/**
  * Importe con dos decimales. La moneda se puede cambiar porque la orden de
  * compra la elige por documento; el resto del sistema trabaja en dólares.
  */

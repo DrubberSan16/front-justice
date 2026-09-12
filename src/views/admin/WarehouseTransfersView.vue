@@ -1465,7 +1465,11 @@ import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
-import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
+import {
+  formatCurrencyForDisplay,
+  formatNumberForDisplay,
+  formatNumberForInput,
+} from "@/app/utils/number-format";
 
 type CatalogOption = { value: string; title: string };
 
@@ -3404,7 +3408,8 @@ function handleOrderLineChange(detail: TransferDetailForm) {
   detail.nombre_producto = String(linea.nombre_producto || "");
   detail.costo_unitario = String(linea.costo_unitario ?? 0);
   detail.condicion_material = "NUEVO";
-  detail.cantidad = String(orderDetailAvailabilityMap.value.get(lineId) ?? 0);
+  detail.cantidad =
+    formatNumberForInput(orderDetailAvailabilityMap.value.get(lineId)) || "0";
 }
 
 function addDetail() {
@@ -3448,18 +3453,21 @@ function mapOrderDetails(details: PurchaseOrderDetailRow[] | undefined) {
         codigo_producto: String(detail.codigo_producto || ""),
         nombre_producto: String(detail.nombre_producto || ""),
         condicion_material: "NUEVO" as StockCondition,
-        cantidad: String(
-          detail.cantidad_preaprobada_disponible ??
-            detail.cantidad_preaprobada ??
-            detail.cantidad ??
-            "0",
-        ),
-        cantidad_nuevo: String(
-          detail.cantidad_preaprobada_disponible ??
-            detail.cantidad_preaprobada ??
-            detail.cantidad ??
-            "0",
-        ),
+        // El saldo llega de la base con seis decimales ("12.000000"); en la
+        // caja de texto se teclea, asi que entra recortado a dos y sin ceros
+        // de relleno.
+        cantidad:
+          formatNumberForInput(
+            detail.cantidad_preaprobada_disponible ??
+              detail.cantidad_preaprobada ??
+              detail.cantidad,
+          ) || "0",
+        cantidad_nuevo:
+          formatNumberForInput(
+            detail.cantidad_preaprobada_disponible ??
+              detail.cantidad_preaprobada ??
+              detail.cantidad,
+          ) || "0",
         cantidad_usado: "0",
         cantidad_critico: "0",
         costo_unitario: String(detail.costo_unitario || "0"),

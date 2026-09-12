@@ -344,7 +344,10 @@ import {
 import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
-import { formatCurrencyForDisplay } from "@/app/utils/number-format";
+import {
+  formatCurrencyForDisplay,
+  formatNumberForInput,
+} from "@/app/utils/number-format";
 
 type CatalogOption = { value: string; title: string };
 
@@ -919,18 +922,22 @@ async function openEdit(item: PurchaseOrderRow) {
     form.referencia = String(order.referencia || "");
     form.observacion = String(order.observacion || "");
     form.moneda = String(order.moneda || "USD");
-    form.tipo_cambio = String(order.tipo_cambio || "1");
+    form.tipo_cambio = formatNumberForInput(order.tipo_cambio) || "1";
     form.detalles = Array.isArray(order.detalles) && order.detalles.length
       ? order.detalles.map((detail: any) => ({
         local_id: createLocalId(),
         producto_id: String(detail.producto_id || ""),
-        cantidad: String(detail.cantidad || "1"),
-        costo_unitario: String(detail.costo_unitario || "0"),
-        descuento: String(detail.descuento || "0"),
-        porcentaje_descuento: String(detail.porcentaje_descuento || "0"),
-        iva_porcentaje: String(
-          detail.iva_porcentaje || String(PURCHASE_ORDER_DEFAULT_IVA),
-        ),
+        // Las cifras llegan con la precision de la base (cantidades con seis
+        // decimales, costos con cuatro) y aqui van dentro de campos que se
+        // teclean: entran recortadas a dos y sin ceros de relleno.
+        cantidad: formatNumberForInput(detail.cantidad) || "1",
+        costo_unitario: formatNumberForInput(detail.costo_unitario) || "0",
+        descuento: formatNumberForInput(detail.descuento) || "0",
+        porcentaje_descuento:
+          formatNumberForInput(detail.porcentaje_descuento) || "0",
+        iva_porcentaje:
+          formatNumberForInput(detail.iva_porcentaje) ||
+          String(PURCHASE_ORDER_DEFAULT_IVA),
         observacion: String(detail.observacion || ""),
       }))
       : [createEmptyDetail()];
