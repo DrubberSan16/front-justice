@@ -5,7 +5,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts/core";
-import { BarChart, LineChart } from "echarts/charts";
+import { BarChart, LineChart, PieChart } from "echarts/charts";
 import {
   DataZoomComponent,
   GridComponent,
@@ -31,6 +31,9 @@ import { prefersReducedMotion } from "@/app/motion";
 echarts.use([
   BarChart,
   LineChart,
+  // Dona: reparto de un total en pocas partes. Va siempre acompanada de una
+  // leyenda de texto, porque el color solo no comunica.
+  PieChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,

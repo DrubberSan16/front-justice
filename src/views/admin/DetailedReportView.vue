@@ -1,11 +1,14 @@
 <template>
-  <div class="detailed-report">
+  <div :ref="setMotionRoot" class="detailed-report">
     <v-alert v-if="!canAccess" type="warning" variant="tonal" rounded="xl">
       Este reporte está disponible para Gerencia General y Super Administración.
     </v-alert>
 
     <template v-else>
-      <section class="report-heading" aria-labelledby="detailed-report-title">
+      <section
+        class="report-heading js-hero-reveal"
+        aria-labelledby="detailed-report-title"
+      >
         <div>
           <div class="report-heading__eyebrow">Vista gerencial</div>
           <h1 id="detailed-report-title">Dashboard Gerencia</h1>
@@ -15,31 +18,49 @@
           </p>
         </div>
         <div class="report-heading__actions" aria-label="Rango del reporte">
-          <v-text-field
-            v-model="startDate"
-            type="date"
-            label="Fecha de inicio"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-          />
-          <v-text-field
-            v-model="endDate"
-            type="date"
-            label="Fecha de fin"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-          />
-          <v-btn
-            color="primary"
-            size="large"
-            prepend-icon="mdi-filter-check-outline"
-            :loading="loading"
-            :disabled="invalidDateRange"
-            @click="loadReport"
-            >Mostrar</v-btn
-          >
+          <div class="report-heading__dates">
+            <v-text-field
+              v-model="startDate"
+              type="date"
+              label="Fecha de inicio"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            />
+            <v-text-field
+              v-model="endDate"
+              type="date"
+              label="Fecha de fin"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+            />
+            <v-btn
+              color="primary"
+              size="large"
+              prepend-icon="mdi-filter-check-outline"
+              :loading="loading || systemLoading"
+              :disabled="invalidDateRange"
+              @click="refreshRange"
+              >Mostrar</v-btn
+            >
+          </div>
+
+          <!-- Rangos de uso diario. Escribir dos fechas para preguntar "como
+               vamos este mes" es mas trabajo del que la pregunta merece. -->
+          <div class="range-presets" role="group" aria-label="Rangos rapidos">
+            <v-btn
+              v-for="preset in rangePresets"
+              :key="preset.key"
+              class="range-presets__btn"
+              :variant="preset.active ? 'flat' : 'tonal'"
+              :color="preset.active ? 'primary' : undefined"
+              :aria-pressed="preset.active"
+              size="large"
+              @click="applyRangePreset(preset)"
+              >{{ preset.label }}</v-btn
+            >
+          </div>
         </div>
       </section>
 
@@ -58,33 +79,149 @@
         :text="error"
       />
 
-      <section aria-labelledby="orders-title">
+      <!-- Resumen visual: todo el tablero cabe aqui sin bajar la pagina. Cada
+           tarjeta resume una seccion y su boton lleva al detalle. -->
+      <section
+        v-if="!invalidDateRange"
+        class="simple-section summary-deck"
+        aria-label="Resumen visual del período"
+      >
+        <KpiCardRail
+          title="Resumen del período"
+          :subtitle="`${rangeLabel} · Deslice de izquierda a derecha para ver todas las tarjetas.`"
+          aria-label="Resumen del período"
+        >
+          <KpiInsightCard
+            title="Órdenes de trabajo"
+            subtitle="Reparto por estado"
+            icon="mdi-clipboard-list-outline"
+            :accent="orderStatusColors.planned"
+            :value="formatCount(totalOrders)"
+            value-caption="órdenes"
+            :helper="rangeLabel"
+            variant="donut"
+            :points="orderStatusPoints"
+            :loading="loading"
+            empty-text="No hay órdenes de trabajo en este rango."
+            action-label="Ver órdenes de trabajo"
+            @action="scrollToSection('orders-title')"
+          />
+
+          <KpiInsightCard
+            title="Consumo de aceite"
+            subtitle="Equipos con mayor consumo"
+            icon="mdi-oil"
+            :accent="seriesColor(1, isDark)"
+            :value="formatNumber(oilTotals.total_cantidad)"
+            value-caption="galones"
+            :helper="
+              topOilEquipment
+                ? `Encabeza ${equipmentLabel(topOilEquipment)}`
+                : 'Sin consumo registrado en el rango.'
+            "
+            variant="bars"
+            :points="topOilEquipmentPoints"
+            :loading="loading"
+            empty-text="No hay consumo de aceite en este rango."
+            action-label="Ver consumo de aceite"
+            @action="scrollToSection('oil-title')"
+          />
+
+          <KpiInsightCard
+            title="Control de cebado"
+            subtitle="Órdenes por nivel de consumo"
+            icon="mdi-water-pump"
+            :accent="chartStatus(isDark).warning"
+            :value="formatNumber(primingTotals.gallons)"
+            value-caption="galones"
+            :helper="`${formatCount(primingTotals.orders)} cebados registrados`"
+            variant="bars"
+            :points="primingLevelPoints"
+            :loading="loading || primingLoading"
+            empty-text="Sin consumo de aceite registrado en cebado."
+            action-label="Ver control de cebado"
+            @action="scrollToSection('priming-title')"
+          />
+
+          <KpiInsightCard
+            title="Inventario del período"
+            subtitle="Entradas y salidas del Kardex"
+            icon="mdi-package-variant-closed"
+            :accent="chartStatus(isDark).good"
+            :value="formatCount(inventoryTotals.movimientos)"
+            value-caption="movimientos"
+            :helper="inventorySummaryHelper"
+            variant="bars"
+            :points="inventoryFlowPoints"
+            :loading="loading || inventoryLoading"
+            empty-text="No hay movimientos de inventario en este rango."
+            action-label="Ver inventario"
+            @action="scrollToSection('inventory-title')"
+          />
+
+          <KpiInsightCard
+            title="Reportes del sistema"
+            subtitle="Filas disponibles por reporte"
+            icon="mdi-file-chart-outline"
+            :accent="seriesColor(4, isDark)"
+            :value="formatCount(systemTotalRows)"
+            value-caption="filas"
+            helper="Horas, responsables, materiales e inventario."
+            variant="bars"
+            :points="systemVolumePoints"
+            :loading="systemLoading"
+            empty-text="No hay datos para estos reportes con los filtros actuales."
+            action-label="Ver reportes del sistema"
+            @action="scrollToSection('system-reports-title')"
+          />
+
+          <KpiInsightCard
+            v-if="canViewCosts"
+            title="Costo de mantenimiento"
+            subtitle="Por tipo de equipo"
+            icon="mdi-cash-multiple"
+            :accent="seriesColor(3, isDark)"
+            :value="formatCurrency(maintenanceCostTotal)"
+            :helper="maintenanceCostRangeLabel"
+            variant="bars"
+            :points="maintenanceCostPoints"
+            :loading="maintenanceCostLoading"
+            empty-text="No hay costos de mantenimiento con los filtros actuales."
+            action-label="Ver costo de mantenimiento"
+            @action="scrollToSection('maintenance-cost-title')"
+          />
+        </KpiCardRail>
+      </section>
+
+      <section class="simple-section" aria-labelledby="orders-title">
         <div class="section-title-row">
           <div>
             <h2 id="orders-title">Órdenes de trabajo</h2>
-            <p>{{ rangeLabel }} · Presione una tarjeta para ver las órdenes.</p>
+            <p>
+              {{ rangeLabel }} · Cada tarjeta muestra cómo evolucionó el estado
+              dentro del rango.
+            </p>
           </div>
         </div>
-        <div class="status-grid" aria-label="Estados de órdenes de trabajo">
-          <button
-            v-for="status in statusCards"
+        <KpiCardRail aria-label="Estados de órdenes de trabajo">
+          <KpiInsightCard
+            v-for="status in statusRailCards"
             :key="status.key"
-            type="button"
-            :class="['status-button', `status-button--${status.tone}`]"
-            :aria-label="`${status.label}: ${status.count}. Abrir listado`"
-            @click="openOrdersModal(status.key)"
-          >
-            <v-icon :icon="status.icon" size="34" aria-hidden="true" />
-            <span class="status-button__copy"
-              ><strong>{{ status.label }}</strong
-              ><span>{{ status.helper }}</span></span
-            >
-            <span class="status-button__count">{{ status.count }}</span>
-            <span class="status-button__action"
-              >Ver órdenes <v-icon icon="mdi-arrow-right" size="18"
-            /></span>
-          </button>
-        </div>
+            :title="status.label"
+            :subtitle="status.helper"
+            :icon="status.icon"
+            :accent="status.accent"
+            :value="formatCount(status.count)"
+            value-caption="órdenes"
+            helper="Evolución dentro del rango."
+            variant="line"
+            :points="status.points"
+            :loading="loading"
+            empty-text="Sin órdenes en este estado dentro del rango."
+            action-label="Ver órdenes"
+            @action="openOrdersModal(status.key)"
+          />
+        </KpiCardRail>
       </section>
 
       <section class="simple-section" aria-labelledby="oil-title">
@@ -106,38 +243,72 @@
             @update:model-value="loadOilReport"
           />
         </div>
-        <div class="metric-grid">
-          <article class="metric-card">
-            <span>Total usado</span
-            ><strong>{{ formatNumber(oilTotals.total_cantidad) }} gal</strong>
-          </article>
-          <button
-            type="button"
-            class="metric-card metric-card--button"
-            :disabled="!topOilEquipment"
-            @click="topOilEquipment && openEquipmentDetail(topOilEquipment)"
-          >
-            <span>Mayor consumo por equipo</span
-            ><strong>{{
-              topOilEquipment ? equipmentLabel(topOilEquipment) : "Sin consumo"
-            }}</strong
-            ><small v-if="topOilEquipment"
-              >{{ formatNumber(topOilEquipment.total_cantidad) }} gal · Ver
-              detalle</small
-            >
-          </button>
-          <article class="metric-card">
-            <span>Mayor consumo por orden</span
-            ><strong>{{ topOilOrder?.work_order_code || "Sin consumo" }}</strong
-            ><small v-if="topOilOrder"
-              >{{ formatNumber(topOilOrder.cantidad) }} gal</small
-            >
-          </article>
-          <article v-if="muestraCostos" class="metric-card">
-            <span>Costo de aceite</span
-            ><strong>{{ formatCurrency(oilTotals.total_costo) }}</strong>
-          </article>
-        </div>
+        <KpiCardRail aria-label="Indicadores de consumo de aceite">
+          <KpiInsightCard
+            title="Total usado"
+            subtitle="Reparto por equipo"
+            icon="mdi-oil-level"
+            :accent="seriesColor(0, isDark)"
+            :value="formatNumber(oilTotals.total_cantidad)"
+            value-caption="gal"
+            :helper="`${equipmentWithUsageCount} equipos con consumo`"
+            variant="donut"
+            :points="oilSharePoints"
+            :loading="loading"
+            empty-text="No hay consumo de aceite en este rango."
+          />
+          <KpiInsightCard
+            title="Mayor consumo por equipo"
+            :subtitle="
+              topOilEquipment ? equipmentLabel(topOilEquipment) : 'Sin consumo'
+            "
+            icon="mdi-engine-outline"
+            :accent="seriesColor(1, isDark)"
+            :value="
+              topOilEquipment
+                ? formatNumber(topOilEquipment.total_cantidad)
+                : formatNumber(0)
+            "
+            value-caption="gal"
+            helper="Presione una barra para abrir el detalle de ese equipo."
+            variant="bars"
+            interactive
+            :points="topOilEquipmentPoints"
+            :loading="loading"
+            empty-text="No hay consumo de aceite en este rango."
+            :action-label="topOilEquipment ? 'Ver detalle del equipo' : ''"
+            @action="topOilEquipment && openEquipmentDetail(topOilEquipment)"
+            @point="openEquipmentFromChart"
+          />
+          <KpiInsightCard
+            title="Mayor consumo por orden"
+            :subtitle="topOilOrder?.work_order_code || 'Sin consumo'"
+            icon="mdi-clipboard-text-outline"
+            :accent="seriesColor(2, isDark)"
+            :value="
+              topOilOrder ? formatNumber(topOilOrder.cantidad) : formatNumber(0)
+            "
+            value-caption="gal"
+            helper="Órdenes con mayor consumo del rango."
+            variant="bars"
+            :points="topOilOrderPoints"
+            :loading="loading"
+            empty-text="Ninguna orden registró consumo en este rango."
+          />
+          <KpiInsightCard
+            v-if="muestraCostos"
+            title="Costo de aceite"
+            subtitle="Por equipo"
+            icon="mdi-cash"
+            :accent="seriesColor(3, isDark)"
+            :value="formatCurrency(oilTotals.total_costo)"
+            :helper="rangeLabel"
+            variant="bars"
+            :points="oilCostPoints"
+            :loading="loading"
+            empty-text="No hay costo de aceite en este rango."
+          />
+        </KpiCardRail>
         <div class="equipment-heading">
           <h3>Consumo por equipo</h3>
           <div class="equipment-heading__tools">
@@ -1427,10 +1598,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import EChart from "@/components/charts/EChart.vue";
+import KpiCardRail from "@/components/dashboard/KpiCardRail.vue";
+import KpiInsightCard from "@/components/dashboard/KpiInsightCard.vue";
 import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { useReportPreview } from "@/app/utils/report-preview";
-import { chartBase, seriesColor } from "@/app/config/chart-theme";
+import { chartBase, chartStatus, seriesColor } from "@/app/config/chart-theme";
+import {
+  prefersReducedMotion,
+  resolveMotionElement,
+  useRevealMotion,
+} from "@/app/motion";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import {
@@ -1861,7 +2039,6 @@ const statusCards = computed(() => [
     label: "Órdenes planificadas",
     helper: "Trabajo por iniciar",
     icon: "mdi-calendar-clock",
-    tone: "planned",
     count: groupedOrders.value.planned.length,
   },
   {
@@ -1869,7 +2046,6 @@ const statusCards = computed(() => [
     label: "Órdenes abiertas",
     helper: "Trabajo en proceso",
     icon: "mdi-progress-wrench",
-    tone: "open",
     count: groupedOrders.value.open.length,
   },
   {
@@ -1877,7 +2053,6 @@ const statusCards = computed(() => [
     label: "Órdenes cerradas",
     helper: "Trabajo finalizado",
     icon: "mdi-clipboard-check-outline",
-    tone: "closed",
     count: groupedOrders.value.closed.length,
   },
 ]);
@@ -3428,6 +3603,468 @@ async function downloadOrderReport() {
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * Resumen visual del periodo
+ *
+ * Quien lee este tablero a diario es Gerencia, y pidio expresamente no tener
+ * que desplazar la pantalla hacia abajo. La respuesta es un riel horizontal de
+ * tarjetas arriba del todo: cada seccion larga deja aqui su cifra, un grafico
+ * de apoyo y un boton que lleva a la seccion solo cuando hace falta el detalle.
+ *
+ * Ninguna tarjeta pide datos nuevos al servidor: todas se derivan de lo que las
+ * secciones ya cargaron. Anadir llamadas para el resumen habria duplicado el
+ * trafico de una pantalla que ya dispara cuatro peticiones al abrirse.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+const isDark = computed(() => theme.global.current.value.dark);
+
+/**
+ * Raiz del motor de revelado del design system. La clave de reinicio vuelve a
+ * enganchar la cascada cuando llegan datos nuevos: sin ella, las tarjetas que se
+ * montan despues de la primera carga se quedarian con la opacidad en cero que
+ * les puso el motor.
+ */
+const motionRoot = useRevealMotion<HTMLElement>(() =>
+  [
+    orders.value.length,
+    equipmentRows.value.length,
+    primingRows.value.length,
+    systemSections.value.length,
+    maintenanceCostTabs.value.length,
+  ].join("|"),
+);
+
+/* --- Rango del reporte --------------------------------------------------- */
+
+/** `Date` local -> `YYYY-MM-DD`, que es lo que espera un `input[type=date]`. */
+function toInputDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Hoy como `Date`, construido al mediodia.
+ *
+ * Partir de `currentDateInputValue()` y no de `new Date()` mantiene el tablero
+ * pegado a la misma nocion de "hoy" que ya usa el resto de la vista; el mediodia
+ * evita que sumar o restar dias cruce de fecha por el cambio de horario.
+ */
+function todayAtNoon(): Date {
+  return new Date(`${currentDateInputValue()}T12:00:00`);
+}
+
+/**
+ * Rangos de uso diario.
+ *
+ * "Mes anterior" existe porque es la comparacion que se pide en cada cierre, y
+ * calcularla a mano es justo donde se cuela un dia de mas o de menos.
+ */
+const rangePresets = computed(() => {
+  const today = todayAtNoon();
+  const hoy = toInputDate(today);
+
+  const haceSieteDias = new Date(today);
+  haceSieteDias.setDate(haceSieteDias.getDate() - 6);
+
+  const inicioDeMes = new Date(today.getFullYear(), today.getMonth(), 1, 12);
+  // Dia 0 del mes actual es el ultimo del anterior: asi no hay que saber si el
+  // mes tenia 28, 30 o 31 dias.
+  const finMesAnterior = new Date(today.getFullYear(), today.getMonth(), 0, 12);
+  const inicioMesAnterior = new Date(
+    finMesAnterior.getFullYear(),
+    finMesAnterior.getMonth(),
+    1,
+    12,
+  );
+
+  return [
+    { key: "hoy", label: "Hoy", from: hoy, to: hoy },
+    {
+      key: "semana",
+      label: "Últimos 7 días",
+      from: toInputDate(haceSieteDias),
+      to: hoy,
+    },
+    {
+      key: "mes",
+      label: "Este mes",
+      from: toInputDate(inicioDeMes),
+      to: hoy,
+    },
+    {
+      key: "mes-anterior",
+      label: "Mes anterior",
+      from: toInputDate(inicioMesAnterior),
+      to: toInputDate(finMesAnterior),
+    },
+  ].map((preset) => ({
+    ...preset,
+    active: preset.from === startDate.value && preset.to === endDate.value,
+  }));
+});
+
+function applyRangePreset(preset: { from: string; to: string }) {
+  startDate.value = preset.from;
+  endDate.value = preset.to;
+  void refreshRange();
+}
+
+/**
+ * Recarga TODO lo que cuelga del rango principal.
+ *
+ * "Reportes del sistema" tambien se alimenta de `startDate`/`endDate`, pero
+ * hasta ahora solo se refrescaba con su propio boton "Actualizar": cambiar el
+ * rango arriba dejaba esa seccion mostrando el rango viejo sin avisar. Con el
+ * resumen en tarjetas eso pasaba a ser visible — dos tarjetas lado a lado
+ * hablando de periodos distintos — asi que el boton "Mostrar" recarga las dos.
+ *
+ * El costo de mantenimiento queda fuera a proposito: tiene sus propias fechas y
+ * su tarjeta rotula el rango que le corresponde.
+ */
+async function refreshRange() {
+  await Promise.all([loadReport(), loadSystemReports()]);
+}
+
+/**
+ * El `ref` de plantilla se resuelve por funcion, no por cadena: en este repo la
+ * raiz puede ser un componente y ahi `ref="x"` devolveria la instancia, no el
+ * elemento, dejando al motor sin raiz y en silencio.
+ */
+function setMotionRoot(el: unknown) {
+  motionRoot.value = resolveMotionElement(el);
+}
+
+/**
+ * Lleva a la seccion correspondiente y deja el foco en su encabezado, para que
+ * el lector de pantalla anuncie a donde se llego. Sin `tabindex` un `h2` no es
+ * enfocable.
+ */
+function scrollToSection(headingId: string) {
+  const heading = document.getElementById(headingId);
+  if (!heading) return;
+  const section = heading.closest("section") ?? heading;
+  section.scrollIntoView({
+    behavior: prefersReducedMotion() ? "auto" : "smooth",
+    block: "start",
+  });
+  heading.setAttribute("tabindex", "-1");
+  heading.focus({ preventScroll: true });
+}
+
+/**
+ * Azul / ambar / verde, el mismo semaforo que ya usaban las tarjetas de estado.
+ * Se toma de `chart-theme.ts` en vez de escribir los hex a mano porque esos
+ * tonos ya estan verificados contra las dos superficies y en modo oscuro.
+ */
+const orderStatusColors = computed<Record<StatusKey, string>>(() => {
+  const estado = chartStatus(isDark.value);
+  return {
+    planned: seriesColor(0, isDark.value),
+    open: estado.warning,
+    closed: estado.good,
+  };
+});
+
+const totalOrders = computed(() => orders.value.length);
+
+const orderStatusPoints = computed(() =>
+  statusCards.value.map((status) => ({
+    label: status.label.replace(/^Órdenes\s+/i, ""),
+    value: status.count,
+    valueLabel: `${formatCount(status.count)} OT`,
+    color: orderStatusColors.value[status.key],
+  })),
+);
+
+/* --- Tendencia de ordenes ------------------------------------------------ */
+
+/** Cuantos puntos dibuja la linea. Mas de ocho en 116px de alto no se leen. */
+const TREND_BUCKETS = 8;
+const TREND_LABEL_FORMAT = new Intl.DateTimeFormat("es-EC", {
+  day: "2-digit",
+  month: "short",
+});
+const DAY_MS = 86_400_000;
+
+/**
+ * Tramos del rango. Con rangos cortos cada tramo es un dia; con rangos largos se
+ * agrupan para que la linea siga teniendo como mucho ocho puntos.
+ */
+const trendBuckets = computed<{ start: number; label: string }[]>(() => {
+  const from = Date.parse(`${startDate.value}T12:00:00`);
+  const to = Date.parse(`${endDate.value}T12:00:00`);
+  if (Number.isNaN(from) || Number.isNaN(to) || to < from) return [];
+
+  const totalDays = Math.round((to - from) / DAY_MS) + 1;
+  const size = Math.max(1, Math.ceil(totalDays / TREND_BUCKETS));
+  const buckets: { start: number; label: string }[] = [];
+  for (let day = 0; day < totalDays; day += size) {
+    const at = from + day * DAY_MS;
+    buckets.push({ start: at, label: TREND_LABEL_FORMAT.format(new Date(at)) });
+  }
+  return buckets;
+});
+
+/**
+ * La fecha se recorta a `YYYY-MM-DD` y se reconstruye al mediodia. Interpretar
+ * `2026-09-01` con `new Date()` da medianoche UTC, que en UTC-5 cae en el dia
+ * anterior: la orden saltaria de tramo.
+ */
+function orderBucketIndex(order: AnyRow): number {
+  const buckets = trendBuckets.value;
+  if (!buckets.length) return -1;
+
+  const iso = String(
+    order?.fecha || order?.created_at || order?.started_at || "",
+  ).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return -1;
+
+  const at = Date.parse(`${iso}T12:00:00`);
+  if (Number.isNaN(at)) return -1;
+
+  let index = -1;
+  buckets.forEach((bucket, position) => {
+    if (at >= bucket.start) index = position;
+  });
+  return index;
+}
+
+function orderTrendPoints(status: StatusKey) {
+  const buckets = trendBuckets.value;
+  if (!buckets.length) return [];
+
+  const counts = new Array<number>(buckets.length).fill(0);
+  for (const order of groupedOrders.value[status]) {
+    const index = orderBucketIndex(order);
+    if (index >= 0) counts[index] = (counts[index] ?? 0) + 1;
+  }
+  return buckets.map((bucket, index) => {
+    const total = counts[index] ?? 0;
+    return {
+      label: bucket.label,
+      value: total,
+      valueLabel: `${formatCount(total)} órdenes`,
+    };
+  });
+}
+
+const statusRailCards = computed(() =>
+  statusCards.value.map((status) => ({
+    ...status,
+    accent: orderStatusColors.value[status.key],
+    points: orderTrendPoints(status.key),
+  })),
+);
+
+/* --- Aceite -------------------------------------------------------------- */
+
+/** Tope de barras por tarjeta: mas de cinco etiquetas no caben sin truncar. */
+const CHART_TOP = 5;
+
+const sortedOilEquipment = computed(() =>
+  [...equipmentRows.value]
+    .map((row) => ({
+      row,
+      label: equipmentLabel(row),
+      cantidad: Number(row.total_cantidad || 0),
+      costo: Number(row.total_costo || 0),
+    }))
+    .filter((entry) => entry.cantidad > 0)
+    .sort((left, right) => right.cantidad - left.cantidad),
+);
+
+const topOilEquipmentPoints = computed(() =>
+  sortedOilEquipment.value.slice(0, CHART_TOP).map((entry, index) => ({
+    label: entry.label,
+    value: entry.cantidad,
+    valueLabel: `${formatNumber(entry.cantidad)} gal`,
+    color: seriesColor(index, isDark.value),
+  })),
+);
+
+/**
+ * Reparto del consumo. A partir del quinto equipo se pliega en "Otros equipos":
+ * es la regla de `chart-theme.ts` — la paleta validada tiene cinco tonos y no se
+ * cicla para no repetir color entre equipos distintos.
+ */
+const oilSharePoints = computed(() => {
+  const rows = sortedOilEquipment.value;
+  const points = rows.slice(0, 4).map((entry, index) => ({
+    label: entry.label,
+    value: entry.cantidad,
+    valueLabel: `${formatNumber(entry.cantidad)} gal`,
+    color: seriesColor(index, isDark.value),
+  }));
+
+  const resto = rows
+    .slice(4)
+    .reduce((acc, entry) => acc + entry.cantidad, 0);
+  if (resto > 0) {
+    points.push({
+      label: `Otros equipos (${rows.length - 4})`,
+      value: resto,
+      valueLabel: `${formatNumber(resto)} gal`,
+      color: seriesColor(4, isDark.value),
+    });
+  }
+  return points;
+});
+
+/**
+ * La barra del grafico solo conoce la etiqueta del equipo, no su fila. Se
+ * resuelve contra el mismo `equipmentLabel` con el que se dibujo, que es lo que
+ * garantiza que coincidan.
+ */
+function openEquipmentFromChart(point: { label: string }) {
+  const match = equipmentRows.value.find(
+    (row) => equipmentLabel(row) === point.label,
+  );
+  if (match) openEquipmentDetail(match);
+}
+
+const topOilOrderPoints = computed(() =>
+  [...oilWorkOrders.value]
+    .map((row) => ({
+      label: String(row.work_order_code || "Sin código"),
+      value: Number(row.cantidad || 0),
+    }))
+    .filter((row) => row.value > 0)
+    .sort((left, right) => right.value - left.value)
+    .slice(0, CHART_TOP)
+    .map((row, index) => ({
+      ...row,
+      valueLabel: `${formatNumber(row.value)} gal`,
+      color: seriesColor(index, isDark.value),
+    })),
+);
+
+const oilCostPoints = computed(() =>
+  [...sortedOilEquipment.value]
+    .filter((entry) => entry.costo > 0)
+    .sort((left, right) => right.costo - left.costo)
+    .slice(0, CHART_TOP)
+    .map((entry, index) => ({
+      label: entry.label,
+      value: entry.costo,
+      valueLabel: formatCurrency(entry.costo),
+      color: seriesColor(index, isDark.value),
+    })),
+);
+
+/* --- Cebado -------------------------------------------------------------- */
+
+const primingTotals = computed(() =>
+  primingRows.value.reduce(
+    (acc, row) => {
+      const criticas = Number(row?.ots_criticas || 0);
+      const seguimiento = Number(row?.ots_seguimiento || 0);
+      const cebados = Number(row?.ots_cebado || 0);
+      acc.critical += criticas;
+      acc.warning += seguimiento;
+      // Lo que no esta marcado como critico ni en seguimiento es normal. No
+      // viene como columna propia: se deduce del total de cebados.
+      acc.good += Math.max(0, cebados - criticas - seguimiento);
+      acc.orders += cebados;
+      acc.gallons += Number(row?.galones_periodo || 0);
+      return acc;
+    },
+    { good: 0, warning: 0, critical: 0, orders: 0, gallons: 0 },
+  ),
+);
+
+const primingLevelPoints = computed(() => {
+  const estado = chartStatus(isDark.value);
+  const totals = primingTotals.value;
+  return [
+    {
+      label: "Normal",
+      value: totals.good,
+      valueLabel: `${formatCount(totals.good)} OT`,
+      color: estado.good,
+    },
+    {
+      label: "Seguimiento",
+      value: totals.warning,
+      valueLabel: `${formatCount(totals.warning)} OT`,
+      color: estado.warning,
+    },
+    {
+      label: "Crítico",
+      value: totals.critical,
+      valueLabel: `${formatCount(totals.critical)} OT`,
+      color: estado.critical,
+    },
+  ];
+});
+
+/* --- Inventario ---------------------------------------------------------- */
+
+const inventoryFlowPoints = computed(() => {
+  const estado = chartStatus(isDark.value);
+  return [
+    {
+      label: "Ingresó",
+      value: Number(inventoryTotals.value.entradas || 0),
+      valueLabel: formatNumber(inventoryTotals.value.entradas),
+      color: estado.good,
+    },
+    {
+      label: "Salió",
+      value: Number(inventoryTotals.value.salidas || 0),
+      valueLabel: formatNumber(inventoryTotals.value.salidas),
+      color: seriesColor(1, isDark.value),
+    },
+  ];
+});
+
+const inventorySummaryHelper = computed(() => {
+  const materiales = `${formatNumber(inventoryTotals.value.materiales, 0)} materiales`;
+  return canViewCosts.value
+    ? `${materiales} · ${formatCurrency(inventoryTotals.value.costo_total)}`
+    : materiales;
+});
+
+/* --- Reportes del sistema y costo de mantenimiento ------------------------ */
+
+const systemVolumePoints = computed(() =>
+  systemSections.value.map((section, index) => ({
+    label: section.title,
+    value: section.count,
+    valueLabel: `${formatCount(section.count)} filas`,
+    color: seriesColor(index, isDark.value),
+  })),
+);
+
+const systemTotalRows = computed(() =>
+  systemSections.value.reduce((acc, section) => acc + section.count, 0),
+);
+
+/** Las pestanas por tipo de equipo, sin el "Totalizado", que es su suma. */
+const maintenanceCostTypeTabs = computed(() =>
+  maintenanceCostTabs.value.filter(
+    (tab) => tab.key !== MAINTENANCE_COST_TOTAL_TAB,
+  ),
+);
+
+const maintenanceCostPoints = computed(() =>
+  [...maintenanceCostTypeTabs.value]
+    .filter((tab) => tab.totalCosto > 0)
+    .sort((left, right) => right.totalCosto - left.totalCosto)
+    .slice(0, CHART_TOP)
+    .map((tab, index) => ({
+      label: tab.title,
+      value: tab.totalCosto,
+      valueLabel: formatCurrency(tab.totalCosto),
+      color: seriesColor(index, isDark.value),
+    })),
+);
+
+const maintenanceCostTotal = computed(() =>
+  maintenanceCostTypeTabs.value.reduce((acc, tab) => acc + tab.totalCosto, 0),
+);
+
 onBeforeUnmount(() => {
   releasePdfUrl();
   if (inventoryReloadTimer) clearTimeout(inventoryReloadTimer);
@@ -3740,9 +4377,27 @@ onMounted(() => {
 .report-heading__actions {
   display: grid;
   min-width: min(650px, 52vw);
+  gap: 12px;
+}
+.report-heading__dates {
+  display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr)) auto;
   align-items: center;
   gap: 12px;
+}
+.range-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* La altura (52px) la da la regla comun de la barra, unas lineas mas abajo.
+   Aqui solo el texto: en mayusculas y apretado, "Últimos 7 días" se lee peor
+   justo para quien mas lo necesita. */
+.range-presets__btn.v-btn {
+  border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
 }
 .report-heading__actions .v-btn {
   min-height: 52px;
@@ -3761,122 +4416,25 @@ onMounted(() => {
 .oil-select {
   max-width: 380px;
 }
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-.status-button {
-  --status-color: var(--manager-blue);
-  display: grid;
-  min-height: 150px;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 16px;
-  padding: 22px;
-  border: 2px solid rgba(var(--status-color), 0.2);
-  border-radius: 22px;
-  color: rgb(var(--v-theme-on-surface));
-  background:
-    linear-gradient(145deg, rgba(var(--status-color), 0.1), transparent 72%),
-    rgb(var(--v-theme-surface));
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
-}
-.status-button:hover {
-  transform: translateY(-2px);
-  border-color: rgba(var(--status-color), 0.58);
-  box-shadow: 0 12px 30px rgba(var(--status-color), 0.12);
-}
-.status-button:focus-visible,
-.metric-card--button:focus-visible,
 .order-card:focus-visible,
 .equipment-order-list button:focus-visible {
   outline: 4px solid rgba(var(--manager-blue), 0.28);
   outline-offset: 3px;
 }
-.status-button--planned {
-  --status-color: var(--manager-blue);
-}
-.status-button--open {
-  --status-color: var(--manager-amber);
-}
-.status-button--closed {
-  --status-color: var(--manager-green);
-}
-.status-button__copy {
-  display: grid;
-  gap: 5px;
-}
-.status-button__copy strong {
-  font-size: clamp(1rem, 2vw, 1.25rem);
-}
-.status-button__copy span {
-  color: rgba(var(--v-theme-on-surface), 0.66);
-  font-size: 0.92rem;
-}
-.status-button__count {
-  font-size: clamp(2rem, 4vw, 3rem);
-  font-weight: 850;
-  font-variant-numeric: tabular-nums;
-}
-.status-button__action {
-  grid-column: 2 / 4;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.85rem;
-  font-weight: 800;
-}
 .simple-section {
   padding: clamp(22px, 3vw, 32px);
   border-radius: 24px;
 }
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-.metric-card {
-  display: grid;
-  align-content: start;
-  min-height: 132px;
-  padding: 20px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.11);
-  border-radius: 18px;
-  color: inherit;
-  background: rgba(var(--manager-blue), 0.055);
-  text-align: left;
-}
-.metric-card span {
-  color: rgba(var(--v-theme-on-surface), 0.68);
-  font-weight: 650;
-}
-.metric-card strong {
-  margin-top: 10px;
-  font-size: 1.25rem;
-  line-height: 1.3;
-}
-.metric-card small {
-  margin-top: 7px;
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.9rem;
-  font-weight: 750;
-}
-.metric-card--button {
-  cursor: pointer;
-}
-.metric-card--button:not(:disabled):hover {
-  border-color: rgba(var(--manager-blue), 0.5);
-}
-.metric-card--button:disabled {
-  cursor: default;
+
+/* Riel de resumen: es la primera pantalla del tablero, asi que sus tarjetas van
+   algo mas anchas que las de los rieles de seccion — llevan grafico, leyenda y
+   boton de salto.
+
+   Sin degradado de fondo a proposito: el difuminado de los bordes del riel se
+   funde con el color de la superficie, y sobre un degradado se notaria el corte.
+   La jerarquia la lleva el titulo del riel, que es lo que toca en estilo Swiss. */
+.summary-deck {
+  --kpi-rail-card: clamp(280px, 32vw, 400px);
 }
 .equipment-heading {
   display: flex;
@@ -4324,11 +4882,6 @@ onMounted(() => {
   margin: 0;
   color: rgba(var(--v-theme-on-surface), 0.65);
 }
-@media (prefers-reduced-motion: reduce) {
-  .status-button {
-    transition: none;
-  }
-}
 @media (max-width: 1180px) {
   .report-heading {
     align-items: stretch;
@@ -4345,20 +4898,15 @@ onMounted(() => {
   .order-card__action {
     justify-self: end;
   }
-  .metric-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 @media (max-width: 760px) {
-  .report-heading__actions {
+  .report-heading__dates {
     grid-template-columns: 1fr;
   }
   .section-title-row {
     align-items: stretch;
     flex-direction: column;
   }
-  .status-grid,
-  .metric-grid,
   .inventory-searches,
   .inventory-totals,
   .detail-summary,
@@ -4366,9 +4914,6 @@ onMounted(() => {
   .audit-grid,
   .equipment-summary {
     grid-template-columns: 1fr;
-  }
-  .status-button {
-    min-height: 132px;
   }
   .order-search,
   .oil-select {
