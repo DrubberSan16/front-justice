@@ -829,7 +829,7 @@
                   <tbody>
                     <tr v-for="unit in latestDailyUnits" :key="unit.id">
                       <td>{{ unit.equipo_codigo }}</td>
-                      <td>{{ unit.horometro_actual ?? "N/A" }}</td>
+                      <td>{{ formatHorometerForDisplay(unit.horometro_actual, { empty: "N/A" }) }}</td>
                       <td>{{ unit.mpg_actual ?? "N/A" }}</td>
                       <td>{{ unit.proximo_mpg ?? "N/A" }}</td>
                     </tr>
@@ -1312,7 +1312,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { formatNumberForDisplay } from "@/app/utils/number-format";
+import {
+  formatHorometerForDisplay,
+  formatNumberForDisplay,
+} from "@/app/utils/number-format";
 import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { useRouter } from "vue-router";
 import { useDisplay } from "vuetify";

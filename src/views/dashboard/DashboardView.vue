@@ -643,7 +643,7 @@
                     @keydown.space.prevent="openDailyUnitDetail(unit)"
                   >
                     <td class="font-weight-medium">{{ resolveEquipmentLabel(unit) }}</td>
-                    <td>{{ unit.horometro_actual ?? "N/A" }}</td>
+                    <td>{{ formatHorometerForDisplay(unit.horometro_actual, { empty: "N/A" }) }}</td>
                     <td>{{ unit.mpg_actual ?? "N/A" }}</td>
                   </tr>
                   <tr v-if="!latestDailyUnits.length">
@@ -764,6 +764,7 @@ import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { useReportPreview } from "@/app/utils/report-preview";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { formatHorometerForDisplay } from "@/app/utils/number-format";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
@@ -1957,7 +1958,7 @@ function openDailyUnitDetail(unit: AnyRow) {
     { key: "mpg", label: "MPG" },
   ], {
     equipo: resolveEquipmentLabel(unit),
-    horometro: unit?.horometro_actual ?? "N/A",
+    horometro: formatHorometerForDisplay(unit?.horometro_actual, { empty: "N/A" }),
     mpg: unit?.mpg_actual ?? "N/A",
   });
 }

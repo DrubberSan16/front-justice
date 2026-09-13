@@ -157,7 +157,13 @@
         </v-btn>
       </template>
       <template #item.horometro_actual="{ item }">
-        {{ formatDecimalValue((item._raw ?? item)?.horometro_actual ?? (item._raw ?? item)?.valor_json?.horometro_actual) || "-" }}
+        {{
+          formatHorometerForDisplay(
+            (item._raw ?? item)?.horometro_actual ??
+              (item._raw ?? item)?.valor_json?.horometro_actual,
+            { empty: "-" },
+          )
+        }}
       </template>
       <template #item.actions="{ item }">
         <div class="work-order-actions">
@@ -498,7 +504,7 @@
               label="Horometro actual"
               type="number"
               min="0"
-              step="0.01"
+              step="1"
               variant="outlined"
               :disabled="isReadOnlyWorkflow"
               :hint="selectedEquipmentHorometroHint"
@@ -1871,7 +1877,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { formatNumberForDisplay } from "@/app/utils/number-format";
+import {
+  formatHorometerForDisplay,
+  formatHorometerForInput,
+  formatNumberForDisplay,
+} from "@/app/utils/number-format";
 import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -5024,7 +5034,7 @@ function applySavedWorkOrderState(savedHeader: any) {
   headerForm.emergency_reason = headerForm.is_emergency ? String(savedHeader?.emergency_reason || "") : "";
   headerForm.blocked_by_work_order_id = savedHeader?.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
   headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
-  headerForm.horometro_actual = toEditableNumber(
+  headerForm.horometro_actual = formatHorometerForInput(
     savedHeader?.horometro_actual ?? savedValorJson?.horometro_actual,
   );
   headerForm.horas_a_realizar = toEditableNumber(
@@ -5241,14 +5251,14 @@ const resolvedHorometroAnterior = computed(() => {
   const stored = parseNullableNumber(
     audit?.horometro_anterior ?? valorJson?.horometro_anterior,
   );
-  return stored != null ? Number(stored.toFixed(2)) : null;
+  return stored != null ? Math.round(stored) : null;
 });
 
 const resolvedHorometroActual = computed(() => {
   const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
-  if (persistedSnapshot != null) return Number(persistedSnapshot.toFixed(2));
+  if (persistedSnapshot != null) return Math.round(persistedSnapshot);
   const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
-  return fromEquipment != null ? Number(fromEquipment.toFixed(2)) : null;
+  return fromEquipment != null ? Math.round(fromEquipment) : null;
 });
 
 const resolvedHorasARealizarLabel = computed(() =>
@@ -5260,7 +5270,7 @@ const resolvedHorasARealizarLabel = computed(() =>
 const selectedEquipmentHorometroHint = computed(() => {
   const equipmentHorometro = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
   if (equipmentHorometro != null) {
-    return `Lectura vigente del equipo: ${formatDecimalValue(equipmentHorometro)}. El valor guardado en la OT actualizará también el equipo.`;
+    return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. El valor guardado en la OT actualizará también el equipo.`;
   }
   return "Ingresa el horometro de la OT; al guardar se actualizará también el equipo.";
 });
@@ -5280,7 +5290,7 @@ function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
   const equipmentHorometer = parseNullableNumber(
     selectedEquipmentRecord.value?.horometro_actual,
   );
-  headerForm.horometro_actual = toEditableNumber(
+  headerForm.horometro_actual = formatHorometerForInput(
     persistedHorometer ?? equipmentHorometer,
   );
   headerForm.horas_a_realizar = toEditableNumber(persistedHours ?? procedureHours);

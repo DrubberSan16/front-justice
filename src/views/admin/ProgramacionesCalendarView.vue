@@ -195,8 +195,8 @@
                   <tr v-for="row in monthlyMatrixRows" :key="row.key">
                     <td class="matrix-table__sticky font-weight-bold">{{ row.equipo_codigo }}</td>
                     <td class="matrix-table__sticky-2">{{ row.equipo_nombre || "Sin nombre" }}</td>
-                    <td>{{ row.horometro_ultimo ?? "N/D" }}</td>
-                    <td>{{ row.horometro_actual ?? "N/D" }}</td>
+                    <td>{{ formatHorometerForDisplay(row.horometro_ultimo, { empty: "N/D" }) }}</td>
+                    <td>{{ formatHorometerForDisplay(row.horometro_actual, { empty: "N/D" }) }}</td>
                     <td v-for="day in monthlyDays" :key="`${row.key}-${day.key}`" class="monthly-day-cell">
                       <div class="matrix-cell">
                         <button
@@ -258,7 +258,13 @@
                       Horas agendadas: {{ (item as any).payload_json?.total_horas_agendadas ?? "0.00" }} h
                     </template>
                     <template v-else>
-                      Hora objetivo: {{ (item as any).payload_json?.horometro_programado ?? "N/D" }}
+                      Hora objetivo:
+                      {{
+                        formatHorometerForDisplay(
+                          (item as any).payload_json?.horometro_programado,
+                          { empty: "N/D" },
+                        )
+                      }}
                     </template>
                   </span>
                 </div>
@@ -1353,6 +1359,11 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { currentDateTimeInputValue, formatDateTime } from "@/app/utils/date-time";
+import {
+  formatHorometerForDisplay,
+  formatHorometerForInput,
+  parseHorometerInput,
+} from "@/app/utils/number-format";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
   buildAgendaProgrammingReport,
@@ -2290,7 +2301,7 @@ function resolveTemplateFrequencyHours(workOrder?: any | null) {
 function syncProgramacionTargetHours(frequency = resolveTemplateFrequencyHours(selectedWorkOrder.value)) {
   const lastHours = numericOrNull(form.ultima_ejecucion_horas);
   if (lastHours === null || frequency <= 0) return;
-  form.proxima_horas = formatHourInput(Number((lastHours + frequency).toFixed(2)));
+  form.proxima_horas = formatHorometerForInput(lastHours + frequency);
 }
 
 async function resolvePreviousExecutionForSelection(
@@ -2371,13 +2382,14 @@ watch(
     if (programacionWorkOrderSelectionToken.value !== token) return;
 
     if (previous?.hours !== null && previous?.hours !== undefined) {
-      form.ultima_ejecucion_horas = formatHourInput(previous.hours);
+      form.ultima_ejecucion_horas = formatHorometerForInput(previous.hours);
     } else if (form.ultima_ejecucion_horas === "") {
       const equipment = equipmentCatalog.value.find(
         (item: any) => String(item?.id || "") === String(form.equipo_id || ""),
       );
       const currentHours = numericOrNull(equipment?.horometro_actual);
-      if (currentHours !== null) form.ultima_ejecucion_horas = formatHourInput(currentHours);
+      if (currentHours !== null)
+        form.ultima_ejecucion_horas = formatHorometerForInput(currentHours);
     }
     if (!form.ultima_ejecucion_fecha && previous?.date) {
       form.ultima_ejecucion_fecha = previous.date;
@@ -2420,7 +2432,7 @@ watch(
     );
     if (selected) {
       monthlyCell.equipo_codigo = selected.codigo || monthlyCell.equipo_codigo;
-      monthlyCell.horometro_actual = formatHourInput(selected.horometro_actual);
+      monthlyCell.horometro_actual = formatHorometerForInput(selected.horometro_actual);
     }
   },
 );
@@ -2439,7 +2451,9 @@ watch(
         monthlyCell.equipo_codigo;
       monthlyCell.procedimiento_id =
         resolveProcedureIdFromWorkOrder(selected) || monthlyCell.procedimiento_id;
-      monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(selected));
+      monthlyCell.horometro_actual = formatHorometerForInput(
+        resolveCurrentHorometerForMonthlyCell(selected),
+      );
     }
     if (!value) {
       monthlyCell.total_horas_ot = null;
@@ -2827,7 +2841,7 @@ const monthlyMatrixRows = computed(() => {
       equipo_codigo: equipment.codigo || "",
       equipo_nombre: equipment.nombre || "Sin nombre",
       horometro_ultimo: null,
-      horometro_actual: Number(equipment.horometro_actual || 0) || null,
+      horometro_actual: parseHorometerInput(equipment.horometro_actual),
       cells: {} as Record<string, any[]>,
     });
   }
@@ -3627,7 +3641,9 @@ function openMonthlyCellEdit(item: any) {
       item.payload_json?.total_horas_ot ??
       "",
   );
-  monthlyCell.horometro_actual = formatHourInput(resolveCurrentHorometerForMonthlyCell(item));
+  monthlyCell.horometro_actual = formatHorometerForInput(
+    resolveCurrentHorometerForMonthlyCell(item),
+  );
   monthlyCell.original_fecha_programada = item.fecha_programada || "";
   monthlyCell.fecha_programada = item.fecha_programada || "";
   monthlyCell.valor_crudo = item.valor_crudo || "";
@@ -3912,8 +3928,12 @@ function openCreateFromMonthlyDetail(item: any) {
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
   form.proxima_fecha = item.fecha_programada || "";
-  form.ultima_ejecucion_horas = formatHourInput(item.payload_json?.horometro_ultimo);
-  form.proxima_horas = formatHourInput(item.payload_json?.horometro_programado);
+  form.ultima_ejecucion_horas = formatHorometerForInput(
+    item.payload_json?.horometro_ultimo,
+  );
+  form.proxima_horas = formatHorometerForInput(
+    item.payload_json?.horometro_programado,
+  );
   programacionSourceMode.value = "CALENDARIO";
   programacionSourceOrigin.value = "MENSUAL_IMPORT";
   programacionSourceDocument.value = selectedMonthly.value?.documento_origen || null;
@@ -3949,9 +3969,9 @@ function openEdit(item: any) {
   form.procedimiento_id = item.procedimiento_id || "";
   form.plan_id = item.plan_id || "";
   form.ultima_ejecucion_fecha = item.ultima_ejecucion_fecha || "";
-  form.ultima_ejecucion_horas = formatHourInput(item.ultima_ejecucion_horas);
+  form.ultima_ejecucion_horas = formatHorometerForInput(item.ultima_ejecucion_horas);
   form.proxima_fecha = item.proxima_fecha || "";
-  form.proxima_horas = formatHourInput(item.proxima_horas);
+  form.proxima_horas = formatHorometerForInput(item.proxima_horas);
   form.activo = item.activo !== false;
   dialog.value = true;
   window.setTimeout(() => {

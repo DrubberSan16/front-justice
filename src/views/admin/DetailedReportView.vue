@@ -1127,10 +1127,10 @@
                   >{{ formatTime(order.closed_at) }}</span
                 ><span
                   ><small>Horómetro anterior</small
-                  >{{ formatHours(order.horometro_anterior) }}</span
+                  >{{ formatHorometro(order.horometro_anterior) }}</span
                 ><span
                   ><small>Horómetro actual</small
-                  >{{ formatHours(order.horometro_actual) }}</span
+                  >{{ formatHorometro(order.horometro_actual) }}</span
                 >
               </div>
               <div class="order-card__action">
@@ -1284,13 +1284,13 @@
               <article>
                 <span>Horómetro anterior</span
                 ><strong>{{
-                  formatHours(detailHeader.horometro_anterior)
+                  formatHorometro(detailHeader.horometro_anterior)
                 }}</strong>
               </article>
               <article>
                 <span>Horómetro actual</span
                 ><strong>{{
-                  formatHours(detailHeader.horometro_actual)
+                  formatHorometro(detailHeader.horometro_actual)
                 }}</strong>
               </article>
               <article>
@@ -1628,7 +1628,12 @@ import {
   downloadWorkOrderReportPdf,
   type WorkOrderReportData,
 } from "@/app/utils/work-order-report-documents";
-import { formatCountForDisplay, formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
+import {
+  formatCountForDisplay,
+  formatCurrencyForDisplay,
+  formatHorometerForDisplay,
+  formatNumberForDisplay,
+} from "@/app/utils/number-format";
 import type { SectionReportColumn } from "@/app/utils/section-report";
 import {
   canViewMaterialCosts,
@@ -2277,11 +2282,6 @@ const muestraCostos = computed(() => {
 function formatCurrency(value: unknown) {
   return formatCurrencyForDisplay(value);
 }
-function formatHours(value: unknown) {
-  return value === null || value === undefined || value === ""
-    ? "Sin registro"
-    : `${formatNumber(value)} h`;
-}
 function formatTime(value: unknown) {
   if (!value) return "Sin registro";
   const date = new Date(String(value));
@@ -2642,10 +2642,7 @@ function materialConditionSummary(row: {
 
 /** Horometro: entero con separador de miles, o un guion si nunca se anoto. */
 function formatHorometro(value: unknown) {
-  if (value === null || value === undefined || value === "") return "—";
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return "—";
-  return `${formatNumberForDisplay(parsed)} h`;
+  return formatHorometerForDisplay(value);
 }
 
 const firstHistoryActor = computed(
@@ -3533,8 +3530,8 @@ function buildWorkOrderReportData(): WorkOrderReportData {
       detailHeader.value?.started_at || detailHeader.value?.created_at,
     ),
     closedAt: formatDateTime(detailHeader.value?.closed_at),
-    horometroAnterior: formatHours(detailHeader.value?.horometro_anterior),
-    horometroActual: formatHours(detailHeader.value?.horometro_actual),
+    horometroAnterior: formatHorometro(detailHeader.value?.horometro_anterior),
+    horometroActual: formatHorometro(detailHeader.value?.horometro_actual),
     totalHours: totalResponsibleHours.value,
     totalCost: formatCurrency(totalWorkCost.value),
     responsables: responsibleRows.value.map((row) => ({

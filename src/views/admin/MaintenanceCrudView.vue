@@ -241,7 +241,7 @@
               variant="outlined"
               :readonly="Boolean(field.readonly)"
               :loading="isAutoCodeField(field) && autoCodeLoading"
-              :step="field.type === 'number' ? 'any' : undefined"
+              :step="field.type === 'number' ? (field.integer ? '1' : 'any') : undefined"
             />
           </v-col>
         </v-row>
@@ -391,6 +391,7 @@ import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import { isSuperAdministrator } from "@/app/utils/role-access";
+import { formatHorometerForInput } from "@/app/utils/number-format";
 
 const props = defineProps<{ moduleKey: string }>();
 const route = useRoute();
@@ -1666,7 +1667,9 @@ function sanitizePayload() {
     if (field.type === "number") {
       val = val === "" || val === null || val === undefined
         ? (isProcedureFrequencyHoursField(field) ? null : "0")
-        : String(val);
+        // Un campo entero se redondea al guardar: el navegador respeta `step`
+        // con las flechas, pero deja teclear "15286,5" sin rechistar.
+        : String(field.integer ? Math.round(Number(val) || 0) : val);
     }
     if (field.type === "text") {
       val = val === "" ? null : val;
@@ -1856,6 +1859,14 @@ async function openEdit(item: any) {
 
     if (field.type === "date") {
       form[field.key] = normalizeDateOnlyInput(item[field.key]) ?? "";
+      continue;
+    }
+
+    // La base guarda el horometro en `numeric(18,2)`, asi que un entero vuelve
+    // como "15286.00" y se pintaba tal cual dentro del campo: dos ceros que no
+    // dicen nada sobre un contador de horas.
+    if (field.type === "number" && field.integer) {
+      form[field.key] = formatHorometerForInput(item[field.key]);
       continue;
     }
 

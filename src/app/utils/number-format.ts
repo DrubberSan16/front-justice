@@ -105,6 +105,60 @@ export function formatCountForDisplay(value: unknown): string {
 }
 
 /**
+ * Lectura de HORÓMETRO: un contador de horas, no una medida continua.
+ *
+ * El instrumento cuenta horas enteras; los decimales que llegan no son
+ * precisión sino relleno de la columna `numeric(18,2)` en la que se guarda, y
+ * en pantalla solo ensucian ("15.286,00 h"). Se muestra redondeado a entero,
+ * con separador de miles y el sufijo de unidad.
+ *
+ * Un valor ausente devuelve una raya, no un cero: un equipo al que nunca se le
+ * anotó el horómetro no está en cero, es que no se sabe.
+ */
+export function formatHorometerForDisplay(
+  value: unknown,
+  options?: { suffix?: string; empty?: string },
+): string {
+  const empty = options?.empty ?? "—";
+  const parsed = toFiniteNumber(value);
+  if (parsed === null) return empty;
+
+  const suffix = options?.suffix ?? " h";
+  return `${new Intl.NumberFormat(DISPLAY_LOCALE, {
+    maximumFractionDigits: 0,
+  }).format(Math.round(parsed))}${suffix}`;
+}
+
+/**
+ * Lectura de horómetro para el `value` de un `<input type="number">`.
+ *
+ * Sin sufijo, sin agrupador y sin decimales: lo que el campo sabe leer y lo
+ * único que tiene sentido teclear en un contador de horas. El campo que lo use
+ * debe ir con `step="1"`, o el navegador seguirá ofreciendo medias horas con
+ * las flechas.
+ */
+export function formatHorometerForInput(value: unknown): string {
+  const parsed = toFiniteNumber(value);
+  return parsed === null ? "" : String(Math.round(parsed));
+}
+
+/**
+ * Lectura de horómetro lista para guardar: entero.
+ *
+ * Acepta coma o punto porque el usuario teclea con el separador que tiene a
+ * mano. NO recorta los negativos a cero a propósito: quien valida decide qué
+ * hacer con ellos, y convertir un "-50" mal tecleado en un cero silencioso
+ * sería peor que rechazarlo.
+ */
+export function parseHorometerInput(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+  const parsed = Number(String(value).trim().replace(",", "."));
+  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+/**
  * Cifra para el `value` de un `<input type="number">`.
  *
  * Aquí NO sirve `formatNumberForDisplay`: el separador de miles y la coma

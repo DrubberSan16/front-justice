@@ -1,4 +1,5 @@
 import { api } from "@/app/http/api";
+import { formatHorometerForDisplay } from "@/app/utils/number-format";
 import type { WorkOrderReportData } from "@/app/utils/work-order-report-documents";
 
 /**
@@ -229,8 +230,12 @@ export function buildWorkOrderReportPayload(
     maintenanceKindLabel: context.maintenanceKindLabel,
     openedAt: context.formatDate(header?.hora_inicio || header?.created_at),
     closedAt: context.formatDate(header?.hora_fin || header?.closed_at),
-    horometroAnterior: String(header?.horometro_anterior ?? "-"),
-    horometroActual: String(header?.horometro_actual ?? "-"),
+    horometroAnterior: formatHorometerForDisplay(header?.horometro_anterior, {
+      empty: "-",
+    }),
+    horometroActual: formatHorometerForDisplay(header?.horometro_actual, {
+      empty: "-",
+    }),
     totalHours: responsables.reduce((sum, row) => sum + row.hours, 0),
     totalCost: context.showCosts ? context.formatCurrency(totalCost) : "-",
     responsables,

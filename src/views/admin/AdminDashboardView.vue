@@ -344,7 +344,7 @@
               </v-tooltip>
             </template>
             <template #item.horometro_ultimo_mantenimiento="{ item }">
-              {{ row(item).horometro_ultimo_mantenimiento }}
+              {{ horometro(row(item).horometro_ultimo_mantenimiento) }}
               <span v-if="row(item).referencia_estimada" class="text-caption text-warning">
                 (estimado)
               </span>
@@ -497,7 +497,10 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref } from "vue";
-import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
+import {
+  formatCurrencyForDisplay,
+  formatHorometerForDisplay,
+} from "@/app/utils/number-format";
 import { VIcon } from "vuetify/components";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { resolveMotionElement, useRevealMotion } from "@/app/motion";
@@ -1009,10 +1012,7 @@ function fechaHora(value: unknown) {
 
 /** Horometro: entero con separador de miles, o un guion si nunca se anoto. */
 function horometro(value: unknown) {
-  if (value === null || value === undefined || value === "") return "—";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "—";
-  return `${formatNumberForDisplay(n)} h`;
+  return formatHorometerForDisplay(value);
 }
 
 /**

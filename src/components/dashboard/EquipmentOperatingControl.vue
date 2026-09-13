@@ -143,7 +143,7 @@
                   label="Horómetro actual"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="1"
                   density="compact"
                   variant="outlined"
                   hide-details="auto"
@@ -194,6 +194,10 @@ import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { api } from "@/app/http/api";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import {
+  formatHorometerForInput,
+  parseHorometerInput,
+} from "@/app/utils/number-format";
 
 export type EquipmentControlItem = {
   id: string | number;
@@ -262,16 +266,10 @@ function normalizeFuncionamiento(value: unknown): "FUNCIONAMIENTO" | "PARADO" {
   return String(value || "").trim().toUpperCase() === "FUNCIONAMIENTO" ? "FUNCIONAMIENTO" : "PARADO";
 }
 
-function parseHorometer(value: unknown) {
-  if (value === null || value === undefined || String(value).trim() === "") return null;
-  const parsed = Number(String(value).trim().replace(",", "."));
-  return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : null;
-}
-
-function formatHorometerInput(value: unknown) {
-  const parsed = parseHorometer(value);
-  return parsed === null ? "" : String(parsed);
-}
+// El horometro es un contador de horas enteras. Antes se redondeaba a dos
+// decimales y el campo aceptaba medias horas; ahora entra y sale entero.
+const parseHorometer = parseHorometerInput;
+const formatHorometerInput = formatHorometerForInput;
 
 function isOperativo(item: EquipmentControlItem) {
   return String(item?.estado_operativo || "").trim().toUpperCase() === "OPERATIVO";

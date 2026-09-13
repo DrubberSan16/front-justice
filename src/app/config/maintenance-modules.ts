@@ -4,6 +4,12 @@ export type MaintenanceField = {
   key: string;
   label: string;
   type: FieldType;
+  /**
+   * Solo para `type: "number"`: el campo no admite decimales. El formulario
+   * pone `step="1"` y redondea al guardar. Un horometro es un contador de
+   * horas enteras, no una medida continua.
+   */
+  integer?: boolean;
   required?: boolean;
   readonly?: boolean;
   sendInPayload?: boolean;
@@ -233,7 +239,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "criticidad", label: "Criticidad", type: "select", options: criticidadEquipoOptions },
       { key: "estado_operativo", label: "Estado operativo", type: "select", options: estadoOperativoEquipoOptions },
       { key: "estado_funcionamiento", label: "Estado de funcionamiento", type: "select", options: estadoFuncionamientoEquipoOptions },
-      { key: "horometro_actual", label: "Horómetro actual", type: "number", required: true },
+      { key: "horometro_actual", label: "Horómetro actual", type: "number", integer: true, required: true },
       { key: "fecha_ultima_lectura", label: "Última actualización del horómetro", type: "text", readonly: true, sendInPayload: false },
       { key: "es_servicio", label: "Equipo con mantenimiento por tiempo", type: "boolean" },
       { key: "intervalo_mantenimiento_valor", label: "Intervalo de mantenimiento", type: "number" },
@@ -408,7 +414,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     fields: [
       { key: "equipo_id", label: "Equipo", type: "select", required: true, sendInPayload: false, relation: { endpoint: "/kpi_maintenance/equipos" } },
       { key: "fecha", label: "Fecha (ISO)", type: "text", required: true },
-      { key: "horometro", label: "Horómetro", type: "number", required: true },
+      { key: "horometro", label: "Horómetro", type: "number", integer: true, required: true },
       { key: "estado_id", label: "Estado (ID)", type: "text" },
       { key: "observaciones", label: "Observaciones", type: "text" },
       { key: "registrado_por", label: "Registrado por", type: "text" },

@@ -6,7 +6,11 @@ import {
   looksLikeDateValue,
 } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
-import { formatNumberForDisplay, roundForDisplay } from "@/app/utils/number-format";
+import {
+  formatHorometerForDisplay,
+  formatNumberForDisplay,
+  roundForDisplay,
+} from "@/app/utils/number-format";
 import { useAuthStore } from "@/app/stores/auth.store";
 
 type AnyRow = Record<string, any>;
@@ -28,7 +32,14 @@ export type ReportColumn = {
   key: string;
   header?: string;
   width?: number;
-  format?: "text" | "number" | "currency" | "date" | "datetime" | "hours";
+  format?:
+    | "text"
+    | "number"
+    | "currency"
+    | "date"
+    | "datetime"
+    | "hours"
+    | "horometer";
 };
 
 export type ReportSheetMedia = {
@@ -314,6 +325,9 @@ function formatColumnValueForPdf(
   value: unknown,
   format?: ReportColumn["format"],
 ): string {
+  if (format === "horometer") {
+    return formatHorometerForDisplay(value, { empty: "" });
+  }
   const formatted = formatValue(value);
   if (
     typeof formatted === "number" &&
@@ -372,9 +386,10 @@ function excelColumnName(index: number) {
 function inferColumnFormat(key: string): ReportColumn["format"] {
   const normalized = repairText(key).toLowerCase();
   if (/fecha|date/.test(normalized)) return normalized.includes("hora") ? "datetime" : "date";
+  if (/horometro|horometer/.test(normalized)) return "horometer";
   if (/hora|hours|hrs/.test(normalized)) return "hours";
   if (/costo|precio|subtotal|total|valorado/.test(normalized)) return "currency";
-  if (/cantidad|stock|promedio|indice|porcentaje|kw|galones|saldo|horometro|resultado|nivel/.test(normalized)) return "number";
+  if (/cantidad|stock|promedio|indice|porcentaje|kw|galones|saldo|resultado|nivel/.test(normalized)) return "number";
   return "text";
 }
 
@@ -536,6 +551,12 @@ function applyCellFormat(cell: any, format: ReportColumn["format"]) {
   }
   if (format === "hours") {
     cell.numFmt = '#,##0.00 "h"';
+    cell.alignment = { horizontal: "right", vertical: "middle" };
+    return;
+  }
+  if (format === "horometer") {
+    // Sin decimales: el horometro cuenta horas enteras.
+    cell.numFmt = '#,##0 "h"';
     cell.alignment = { horizontal: "right", vertical: "middle" };
     return;
   }
@@ -2166,8 +2187,10 @@ function buildWorkOrderSectionSheets(
   const title = String(header.titulo || header.title || "").trim();
   const formatActor = (user: unknown, date: unknown) =>
     [String(user || "").trim(), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
+  // El horometro es un contador de horas enteras: `formatValue` le pondria los
+  // dos decimales que lleva toda cifra de este informe, y ahi no pintan nada.
   const formatHorometer = (value: unknown) =>
-    value !== "" && value != null ? `${formatValue(value)} h` : "-";
+    formatHorometerForDisplay(value, { empty: "-" });
   const info: ReportSummaryItem[] = [
     { label: "Orden", value: [code, title && title !== code ? title : ""].filter(Boolean).join(" - ") || "-" },
     { label: "Estado", value: header.estado || "-" },

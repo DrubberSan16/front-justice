@@ -107,7 +107,11 @@ import {
   workOrderReportFileName,
 } from "@/app/utils/work-order-report-documents";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
-import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
+import {
+  formatCurrencyForDisplay,
+  formatHorometerForDisplay,
+  formatNumberForDisplay,
+} from "@/app/utils/number-format";
 
 /**
  * Detalle de una orden de trabajo, para abrirlo desde cualquier tablero.
@@ -152,7 +156,7 @@ const facts = computed(() => {
     {
       label: "Horómetro",
       value: [row?.horometro_anterior, row?.horometro_actual]
-        .map((value) => (value == null || value === "" ? "-" : String(value)))
+        .map((value) => formatHorometerForDisplay(value, { empty: "-" }))
         .join("  →  "),
     },
     {
