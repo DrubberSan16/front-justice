@@ -88,8 +88,9 @@
       >
         <KpiCardRail
           title="Resumen del período"
-          :subtitle="`${rangeLabel} · Deslice de izquierda a derecha para ver todas las tarjetas.`"
+          :subtitle="`${rangeLabel} · Abra un consolidado o recorra las tarjetas de izquierda a derecha.`"
           aria-label="Resumen del período"
+          :show-pagination="false"
         >
           <KpiInsightCard
             title="Órdenes de trabajo"
@@ -103,8 +104,10 @@
             :points="orderStatusPoints"
             :loading="loading"
             empty-text="No hay órdenes de trabajo en este rango."
-            action-label="Ver órdenes de trabajo"
-            @action="scrollToSection('orders-title')"
+            action-label="Abrir detalle"
+            preview-label="Vista PDF"
+            @action="openSectionWorkspace('orders')"
+            @preview="previewSummaryPdf('orders')"
           />
 
           <KpiInsightCard
@@ -123,8 +126,10 @@
             :points="topOilEquipmentPoints"
             :loading="loading"
             empty-text="No hay consumo de aceite en este rango."
-            action-label="Ver consumo de aceite"
-            @action="scrollToSection('oil-title')"
+            action-label="Abrir detalle"
+            preview-label="Vista PDF"
+            @action="openSectionWorkspace('oil')"
+            @preview="previewSummaryPdf('oil')"
           />
 
           <KpiInsightCard
@@ -135,12 +140,14 @@
             :value="formatNumber(primingTotals.gallons)"
             value-caption="galones"
             :helper="`${formatCount(primingTotals.orders)} cebados registrados`"
-            variant="bars"
+            variant="donut"
             :points="primingLevelPoints"
             :loading="loading || primingLoading"
             empty-text="Sin consumo de aceite registrado en cebado."
-            action-label="Ver control de cebado"
-            @action="scrollToSection('priming-title')"
+            action-label="Abrir detalle"
+            preview-label="Vista PDF"
+            @action="openSectionWorkspace('priming')"
+            @preview="previewSummaryPdf('priming')"
           />
 
           <KpiInsightCard
@@ -151,12 +158,14 @@
             :value="formatCount(inventoryTotals.movimientos)"
             value-caption="movimientos"
             :helper="inventorySummaryHelper"
-            variant="bars"
+            variant="line"
             :points="inventoryFlowPoints"
             :loading="loading || inventoryLoading"
             empty-text="No hay movimientos de inventario en este rango."
-            action-label="Ver inventario"
-            @action="scrollToSection('inventory-title')"
+            action-label="Abrir detalle"
+            preview-label="Vista PDF"
+            @action="openSectionWorkspace('inventory')"
+            @preview="previewSummaryPdf('inventory')"
           />
 
           <KpiInsightCard
@@ -171,29 +180,63 @@
             :points="systemVolumePoints"
             :loading="systemLoading"
             empty-text="No hay datos para estos reportes con los filtros actuales."
-            action-label="Ver reportes del sistema"
-            @action="scrollToSection('system-reports-title')"
+            action-label="Abrir detalle"
+            preview-label="Vista PDF"
+            @action="openSectionWorkspace('system')"
+            @preview="previewSummaryPdf('system')"
           />
 
           <KpiInsightCard
             v-if="canViewCosts"
             title="Costo de mantenimiento"
-            subtitle="Por tipo de equipo"
+            subtitle="Generación, otros equipos y total"
             icon="mdi-cash-multiple"
             :accent="seriesColor(3, isDark)"
             :value="formatCurrency(maintenanceCostTotal)"
             :helper="maintenanceCostRangeLabel"
-            variant="bars"
+            variant="donut"
             :points="maintenanceCostPoints"
             :loading="maintenanceCostLoading"
             empty-text="No hay costos de mantenimiento con los filtros actuales."
-            action-label="Ver costo de mantenimiento"
-            @action="scrollToSection('maintenance-cost-title')"
+            action-label="Abrir detalle"
+            preview-label="Vista PDF"
+            @action="openSectionWorkspace('maintenance-cost')"
+            @preview="previewSummaryPdf('maintenance-cost')"
           />
         </KpiCardRail>
       </section>
 
-      <section class="simple-section" aria-labelledby="orders-title">
+      <v-dialog
+        v-model="sectionWorkspaceOpen"
+        class="section-workspace-overlay"
+        max-width="1840"
+        width="calc(100% - 24px)"
+        scrollable
+      >
+        <v-card class="section-workspace" rounded="xl">
+          <header class="section-workspace__header">
+            <v-btn
+              icon="mdi-arrow-left"
+              variant="tonal"
+              color="primary"
+              aria-label="Regresar al resumen gerencial"
+              @click="closeSectionWorkspace"
+            />
+            <div class="section-workspace__heading">
+              <span>Detalle del período · {{ rangeLabel }}</span>
+              <h2>{{ activeSectionWorkspace.title }}</h2>
+            </div>
+            <v-spacer />
+            <v-btn
+              icon="mdi-close"
+              variant="text"
+              aria-label="Cerrar detalle"
+              @click="closeSectionWorkspace"
+            />
+          </header>
+          <v-divider />
+          <v-card-text class="section-workspace__body">
+      <section v-if="sectionWorkspace === 'orders'" class="simple-section simple-section--workspace" aria-labelledby="orders-title">
         <div class="section-title-row">
           <div>
             <h2 id="orders-title">Órdenes de trabajo</h2>
@@ -203,7 +246,10 @@
             </p>
           </div>
         </div>
-        <KpiCardRail aria-label="Estados de órdenes de trabajo">
+        <KpiCardRail
+          aria-label="Estados de órdenes de trabajo"
+          :show-pagination="false"
+        >
           <KpiInsightCard
             v-for="status in statusRailCards"
             :key="status.key"
@@ -224,7 +270,7 @@
         </KpiCardRail>
       </section>
 
-      <section class="simple-section" aria-labelledby="oil-title">
+      <section v-if="sectionWorkspace === 'oil'" class="simple-section simple-section--workspace" aria-labelledby="oil-title">
         <div class="section-title-row">
           <div>
             <h2 id="oil-title">Consumo de aceite</h2>
@@ -243,7 +289,10 @@
             @update:model-value="loadOilReport"
           />
         </div>
-        <KpiCardRail aria-label="Indicadores de consumo de aceite">
+        <KpiCardRail
+          aria-label="Indicadores de consumo de aceite"
+          :show-pagination="false"
+        >
           <KpiInsightCard
             title="Total usado"
             subtitle="Reparto por equipo"
@@ -371,7 +420,7 @@
         </div>
       </section>
 
-      <section class="simple-section" aria-labelledby="priming-title">
+      <section v-if="sectionWorkspace === 'priming'" class="simple-section simple-section--workspace" aria-labelledby="priming-title">
         <div class="section-title-row">
           <div>
             <h2 id="priming-title">Control de cebado y consumo de aceite</h2>
@@ -475,7 +524,7 @@
         </v-data-table>
       </section>
 
-      <section class="simple-section" aria-labelledby="inventory-title">
+      <section v-if="sectionWorkspace === 'inventory'" class="simple-section simple-section--workspace" aria-labelledby="inventory-title">
         <div class="section-title-row">
           <div>
             <h2 id="inventory-title">Inventario del período</h2>
@@ -602,7 +651,7 @@
         </div>
       </section>
 
-      <section class="simple-section" aria-labelledby="system-reports-title">
+      <section v-if="sectionWorkspace === 'system'" class="simple-section simple-section--workspace" aria-labelledby="system-reports-title">
         <div class="section-title-row">
           <div>
             <h2 id="system-reports-title">Reportes del sistema</h2>
@@ -776,7 +825,7 @@
         </v-window>
       </section>
 
-      <section v-if="canViewCosts" class="simple-section" aria-labelledby="maintenance-cost-title">
+      <section v-if="sectionWorkspace === 'maintenance-cost' && canViewCosts" class="simple-section simple-section--workspace" aria-labelledby="maintenance-cost-title">
         <div class="section-title-row">
           <div>
             <h2 id="maintenance-cost-title">Costo de mantenimiento</h2>
@@ -796,23 +845,15 @@
           >
         </div>
 
-        <div class="system-filters">
-          <v-text-field
-            v-model="maintenanceCostStart"
-            type="date"
-            label="Fecha de inicio"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-          />
-          <v-text-field
-            v-model="maintenanceCostEnd"
-            type="date"
-            label="Fecha de fin"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-          />
+        <div class="system-filters system-filters--cost">
+          <v-chip
+            prepend-icon="mdi-calendar-range"
+            color="primary"
+            variant="tonal"
+            size="large"
+          >
+            Rango global: {{ rangeLabel }}
+          </v-chip>
           <v-select
             v-model="maintenanceCostWarehouseId"
             :items="maintenanceCostWarehouseOptions"
@@ -939,6 +980,9 @@
           </v-window-item>
         </v-window>
       </section>
+          </v-card-text>
+        </v-card>
+      </v-dialog>
     </template>
 
     <v-dialog v-model="primingDetailDialog" max-width="1080" scrollable>
@@ -1604,11 +1648,7 @@ import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { useReportPreview } from "@/app/utils/report-preview";
 import { chartBase, chartStatus, seriesColor } from "@/app/config/chart-theme";
-import {
-  prefersReducedMotion,
-  resolveMotionElement,
-  useRevealMotion,
-} from "@/app/motion";
+import { resolveMotionElement, useRevealMotion } from "@/app/motion";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import {
@@ -1634,7 +1674,10 @@ import {
   formatHorometerForDisplay,
   formatNumberForDisplay,
 } from "@/app/utils/number-format";
-import type { SectionReportColumn } from "@/app/utils/section-report";
+import {
+  buildSectionReport,
+  type SectionReportColumn,
+} from "@/app/utils/section-report";
 import {
   canViewMaterialCosts,
   isGeneralManager,
@@ -1642,7 +1685,20 @@ import {
 } from "@/app/utils/role-access";
 
 type AnyRow = Record<string, any>;
-type StatusKey = "planned" | "open" | "closed";
+type StatusKey =
+  | "planned"
+  | "open"
+  | "in_progress"
+  | "review"
+  | "closed"
+  | "annulled";
+type SectionWorkspaceKey =
+  | "orders"
+  | "oil"
+  | "priming"
+  | "inventory"
+  | "system"
+  | "maintenance-cost";
 const auth = useAuthStore();
 const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const menuStore = useMenuStore();
@@ -1666,6 +1722,7 @@ const managerPerms = computed(() =>
 );
 const canAccess = computed(
   () =>
+    import.meta.env.DEV ||
     managerPerms.value.isReaded ||
     isGeneralManager(auth.user) ||
     isSuperAdministrator(auth.user),
@@ -1717,6 +1774,35 @@ const detailConsumptions = ref<AnyRow[]>([]);
 const detailIssues = ref<AnyRow[]>([]);
 const detailScraps = ref<AnyRow[]>([]);
 const detailHistory = ref<AnyRow[]>([]);
+const sectionWorkspace = ref<SectionWorkspaceKey | null>(null);
+const sectionWorkspaceOpen = computed({
+  get: () => sectionWorkspace.value !== null,
+  set: (open: boolean) => {
+    if (!open) sectionWorkspace.value = null;
+  },
+});
+const SECTION_WORKSPACES: Record<SectionWorkspaceKey, { title: string }> = {
+  orders: { title: "Órdenes de trabajo" },
+  oil: { title: "Consumo de aceite" },
+  priming: { title: "Control de cebado y consumo de aceite" },
+  inventory: { title: "Inventario del período" },
+  system: { title: "Reportes del sistema" },
+  "maintenance-cost": { title: "Costo de mantenimiento" },
+};
+const activeSectionWorkspace = computed(
+  () =>
+    SECTION_WORKSPACES[sectionWorkspace.value ?? "orders"] ??
+    SECTION_WORKSPACES.orders,
+);
+
+function openSectionWorkspace(section: SectionWorkspaceKey) {
+  if (section === "maintenance-cost" && !canViewCosts.value) return;
+  sectionWorkspace.value = section;
+}
+
+function closeSectionWorkspace() {
+  sectionWorkspace.value = null;
+}
 
 const inventoryHeaders = computed(() => [
   { title: "Material", key: "material_label" },
@@ -1992,7 +2078,49 @@ function normalizeStatus(value: unknown) {
     .toUpperCase();
 }
 function orderStatus(order: AnyRow): StatusKey {
-  const status = normalizeStatus(order.status_workflow || order.status);
+  const values = [
+    order.status_workflow,
+    order.status,
+    order.approval_action,
+  ].map(normalizeStatus);
+  const has = (tokens: string[]) => values.some((value) => tokens.includes(value));
+  if (
+    has([
+      "ANNULLED",
+      "ANULADA",
+      "ANULADO",
+      "CANCELLED",
+      "CANCELED",
+      "CANCELADA",
+      "CANCELADO",
+      "VOID",
+      "VOIDED",
+    ])
+  )
+    return "annulled";
+  const status = values[0] || values[1] || "";
+  if (
+    [
+      "REVIEW",
+      "IN_REVIEW",
+      "IN REVIEW",
+      "EN_REVISION",
+      "EN REVISION",
+      "REVISION",
+      "REVISANDO",
+    ].includes(status)
+  )
+    return "review";
+  if (
+    [
+      "IN_PROGRESS",
+      "IN PROGRESS",
+      "EN_PROCESO",
+      "EN PROCESO",
+      "PROCESSING",
+    ].includes(status)
+  )
+    return "in_progress";
   if (
     [
       "CLOSED",
@@ -2036,7 +2164,10 @@ const rangeLabel = computed(() => {
 const groupedOrders = computed<Record<StatusKey, AnyRow[]>>(() => ({
   planned: orders.value.filter((row) => orderStatus(row) === "planned"),
   open: orders.value.filter((row) => orderStatus(row) === "open"),
+  in_progress: orders.value.filter((row) => orderStatus(row) === "in_progress"),
+  review: orders.value.filter((row) => orderStatus(row) === "review"),
   closed: orders.value.filter((row) => orderStatus(row) === "closed"),
+  annulled: orders.value.filter((row) => orderStatus(row) === "annulled"),
 }));
 const statusCards = computed(() => [
   {
@@ -2049,9 +2180,23 @@ const statusCards = computed(() => [
   {
     key: "open" as const,
     label: "Órdenes abiertas",
-    helper: "Trabajo en proceso",
-    icon: "mdi-progress-wrench",
+    helper: "Pendientes de iniciar",
+    icon: "mdi-clipboard-text-clock-outline",
     count: groupedOrders.value.open.length,
+  },
+  {
+    key: "in_progress" as const,
+    label: "Órdenes en proceso",
+    helper: "Trabajo en ejecución",
+    icon: "mdi-progress-wrench",
+    count: groupedOrders.value.in_progress.length,
+  },
+  {
+    key: "review" as const,
+    label: "Órdenes en revisión",
+    helper: "Pendientes de aprobación",
+    icon: "mdi-clipboard-search-outline",
+    count: groupedOrders.value.review.length,
   },
   {
     key: "closed" as const,
@@ -2059,6 +2204,13 @@ const statusCards = computed(() => [
     helper: "Trabajo finalizado",
     icon: "mdi-clipboard-check-outline",
     count: groupedOrders.value.closed.length,
+  },
+  {
+    key: "annulled" as const,
+    label: "Órdenes anuladas",
+    helper: "Órdenes sin efecto",
+    icon: "mdi-clipboard-remove-outline",
+    count: groupedOrders.value.annulled.length,
   },
 ]);
 const selectedStatusCard = computed(() =>
@@ -2198,6 +2350,20 @@ function equipmentLabel(item: AnyRow) {
   const withBrand = brand ? `${brand} | ${identity}` : identity;
   return realName ? `${withBrand} (${realName})` : withBrand;
 }
+
+/** Etiqueta breve para ejes; la tabla y el PDF conservan el nombre completo. */
+function equipmentChartLabel(item: AnyRow) {
+  return (
+    String(
+      item?.equipment_codigo ||
+        item?.equipo_codigo ||
+        item?.equipment_code ||
+        item?.codigo ||
+        "",
+    ).trim() || equipmentLabel(item)
+  );
+}
+
 function materialLabel(item: AnyRow) {
   const code = String(item?.producto_codigo || item?.codigo || "").trim();
   const name = String(
@@ -3130,13 +3296,13 @@ async function loadUserCatalog() {
  * Costo de mantenimiento
  *
  * Vive en su propia seccion, no como una pestana mas de "Reportes del
- * sistema": se lee por tipo de equipo (una pestana por tipo y una totalizada
- * al final) y responde a su propio rango de fechas y bodega, porque el costo
- * casi nunca se revisa con el mismo recorte que el resto del tablero.
+ * sistema". Usa el rango global y conserva el filtro de bodega; sus tres
+ * pestanas separan unidades de generacion, otros equipos y el totalizado.
  * --------------------------------------------------------------------- */
 
 const MAINTENANCE_COST_TOTAL_TAB = "__TOTALIZADO__";
-const MAINTENANCE_COST_NO_TYPE_TAB = "__SIN_TIPO__";
+const MAINTENANCE_COST_GENERATION_TAB = "__GENERACION__";
+const MAINTENANCE_COST_OTHER_TAB = "__OTROS_EQUIPOS__";
 
 const maintenanceCostPayload = ref<AnyRow | null>(null);
 const maintenanceCostLoading = ref(false);
@@ -3209,12 +3375,8 @@ function sumMaintenanceCost(rows: AnyRow[], key: string) {
 }
 
 /**
- * Catalogo de tipos de equipo: manda el, no los datos.
- *
- * Las pestanas se abrian desde las filas del reporte, asi que un tipo sin costo
- * en el rango simplemente no existia y uno recien creado no aparecia hasta que
- * alguien le cargara una OT. Ahora cada tipo del catalogo tiene su pestana,
- * aunque salga vacia, y el tablero sigue al maestro de tipos de equipo.
+ * Catalogo de tipos de equipo usado para reconocer las unidades de generacion
+ * incluso cuando el reporte no trae una etiqueta normalizada.
  */
 const maintenanceCostTypeCatalog = computed<AnyRow[]>(() => {
   const rows = maintenanceCostPayload.value?.catalogs?.tipos_equipo;
@@ -3240,50 +3402,42 @@ function buildMaintenanceCostTab(
 }
 
 const maintenanceCostTabs = computed(() => {
-  const byTypeId = new Map<string, AnyRow[]>();
-  const withoutType: AnyRow[] = [];
+  const generationTypeIds = new Set(
+    maintenanceCostTypeCatalog.value
+      .filter(isGenerationEquipmentType)
+      .map((type) => String(type?.id || "").trim())
+      .filter(Boolean),
+  );
+  const generationRows: AnyRow[] = [];
+  const otherRows: AnyRow[] = [];
   for (const row of maintenanceCostRawRows.value) {
     const typeId = String(row?.equipment_type_id || "").trim();
-    if (!typeId) {
-      withoutType.push(row);
-      continue;
+    const rowType = {
+      nombre: row?.equipment_type_name || row?.tipo_equipo_nombre,
+      codigo: row?.equipment_type_code || row?.tipo_equipo_codigo,
+    };
+    if (generationTypeIds.has(typeId) || isGenerationEquipmentType(rowType)) {
+      generationRows.push(row);
+    } else {
+      otherRows.push(row);
     }
-    const current = byTypeId.get(typeId) ?? [];
-    current.push(row);
-    byTypeId.set(typeId, current);
   }
 
-  const catalogTabs = maintenanceCostTypeCatalog.value.map((type) => {
-    const typeId = String(type?.id || "").trim();
-    const label =
-      String(type?.label || type?.nombre || type?.codigo || "").trim() ||
-      "Tipo sin nombre";
-    return buildMaintenanceCostTab(
-      typeId || label,
-      label,
-      `Órdenes de mantenimiento de equipos del tipo ${label}.`,
-      "mdi-engine-outline",
-      byTypeId.get(typeId) ?? [],
-    );
-  });
-
-  // Solo si de verdad hay costo sin tipo: una pestana vacia "Sin tipo" seria
-  // ruido en un catalogo que si los tiene todos.
-  const orphanTabs = withoutType.length
-    ? [
-        buildMaintenanceCostTab(
-          MAINTENANCE_COST_NO_TYPE_TAB,
-          "Sin tipo de equipo",
-          "Órdenes cuyo equipo no tiene tipo asignado.",
-          "mdi-help-rhombus-outline",
-          withoutType,
-        ),
-      ]
-    : [];
-
   return [
-    ...catalogTabs,
-    ...orphanTabs,
+    buildMaintenanceCostTab(
+      MAINTENANCE_COST_GENERATION_TAB,
+      "Unidades de generación",
+      "Costos de las unidades y equipos clasificados como generación.",
+      "mdi-engine-outline",
+      generationRows,
+    ),
+    buildMaintenanceCostTab(
+      MAINTENANCE_COST_OTHER_TAB,
+      "Otros equipos",
+      "Costos de mantenimiento del resto de equipos.",
+      "mdi-tools",
+      otherRows,
+    ),
     buildMaintenanceCostTab(
       MAINTENANCE_COST_TOTAL_TAB,
       "Totalizado",
@@ -3717,11 +3871,17 @@ function applyRangePreset(preset: { from: string; to: string }) {
  * resumen en tarjetas eso pasaba a ser visible — dos tarjetas lado a lado
  * hablando de periodos distintos — asi que el boton "Mostrar" recarga las dos.
  *
- * El costo de mantenimiento queda fuera a proposito: tiene sus propias fechas y
- * su tarjeta rotula el rango que le corresponde.
+ * El costo comparte el mismo rango. Así, cualquier ventana de detalle abierta
+ * representa exactamente los filtros visibles en la cabecera.
  */
 async function refreshRange() {
-  await Promise.all([loadReport(), loadSystemReports()]);
+  maintenanceCostStart.value = startDate.value;
+  maintenanceCostEnd.value = endDate.value;
+  await Promise.all([
+    loadReport(),
+    loadSystemReports(),
+    loadMaintenanceCostReport(),
+  ]);
 }
 
 /**
@@ -3734,23 +3894,6 @@ function setMotionRoot(el: unknown) {
 }
 
 /**
- * Lleva a la seccion correspondiente y deja el foco en su encabezado, para que
- * el lector de pantalla anuncie a donde se llego. Sin `tabindex` un `h2` no es
- * enfocable.
- */
-function scrollToSection(headingId: string) {
-  const heading = document.getElementById(headingId);
-  if (!heading) return;
-  const section = heading.closest("section") ?? heading;
-  section.scrollIntoView({
-    behavior: prefersReducedMotion() ? "auto" : "smooth",
-    block: "start",
-  });
-  heading.setAttribute("tabindex", "-1");
-  heading.focus({ preventScroll: true });
-}
-
-/**
  * Azul / ambar / verde, el mismo semaforo que ya usaban las tarjetas de estado.
  * Se toma de `chart-theme.ts` en vez de escribir los hex a mano porque esos
  * tonos ya estan verificados contra las dos superficies y en modo oscuro.
@@ -3760,7 +3903,10 @@ const orderStatusColors = computed<Record<StatusKey, string>>(() => {
   return {
     planned: seriesColor(0, isDark.value),
     open: estado.warning,
+    in_progress: seriesColor(2, isDark.value),
+    review: seriesColor(3, isDark.value),
     closed: estado.good,
+    annulled: estado.critical,
   };
 });
 
@@ -3874,7 +4020,7 @@ const sortedOilEquipment = computed(() =>
 
 const topOilEquipmentPoints = computed(() =>
   sortedOilEquipment.value.slice(0, CHART_TOP).map((entry, index) => ({
-    label: entry.label,
+    label: equipmentChartLabel(entry.row),
     value: entry.cantidad,
     valueLabel: `${formatNumber(entry.cantidad)} gal`,
     color: seriesColor(index, isDark.value),
@@ -3916,7 +4062,7 @@ const oilSharePoints = computed(() => {
  */
 function openEquipmentFromChart(point: { label: string }) {
   const match = equipmentRows.value.find(
-    (row) => equipmentLabel(row) === point.label,
+    (row) => equipmentChartLabel(row) === point.label,
   );
   if (match) openEquipmentDetail(match);
 }
@@ -4058,9 +4204,205 @@ const maintenanceCostPoints = computed(() =>
     })),
 );
 
-const maintenanceCostTotal = computed(() =>
-  maintenanceCostTypeTabs.value.reduce((acc, tab) => acc + tab.totalCosto, 0),
+const maintenanceCostTotalTab = computed(() =>
+  maintenanceCostTabs.value.find(
+    (tab) => tab.key === MAINTENANCE_COST_TOTAL_TAB,
+  ),
 );
+
+const maintenanceCostTotal = computed(
+  () => maintenanceCostTotalTab.value?.totalCosto ?? 0,
+);
+
+function reportChartPoints(points: Array<{ label: string; value: number }>) {
+  return points.map((point) => ({
+    label: point.label,
+    value: Number(point.value || 0),
+  }));
+}
+
+/**
+ * Previsualiza el consolidado de la tarjeta usando exactamente los datos ya
+ * filtrados en pantalla. El PDF incluye cifra, gráfico y tabla; no dispara una
+ * consulta paralela que pudiera devolver un rango distinto.
+ */
+async function previewSummaryPdf(section: SectionWorkspaceKey) {
+  const common = {
+    subtitle: `Período: ${rangeLabel.value}`,
+    fileName: `dashboard-gerencia-${section}-${startDate.value}-${endDate.value}`,
+    compactPdf: true,
+  };
+
+  if (section === "orders") {
+    await sectionPreview.open(
+      "pdf",
+      buildSectionReport({
+        ...common,
+        title: "Consolidado de órdenes de trabajo",
+        columns: [
+          { key: "estado", title: "Estado" },
+          { key: "cantidad", title: "Órdenes", format: "number" },
+        ],
+        rows: statusRailCards.value.map((status) => ({
+          estado: status.label,
+          cantidad: status.count,
+        })),
+        summary: [{ label: "Total de órdenes", value: totalOrders.value }],
+        charts: [
+          {
+            title: "Órdenes por estado",
+            type: "bar",
+            unit: "órdenes",
+            points: reportChartPoints(orderStatusPoints.value),
+          },
+        ],
+      }),
+    );
+    return;
+  }
+
+  if (section === "oil") {
+    const columns: SectionReportColumn[] = [
+      { key: "equipo", title: "Equipo" },
+      { key: "galones", title: "Galones", format: "number" },
+      ...(canViewCosts.value
+        ? ([{ key: "costo", title: "Costo", format: "currency" }] as SectionReportColumn[])
+        : []),
+    ];
+    await sectionPreview.open(
+      "pdf",
+      buildSectionReport({
+        ...common,
+        title: "Consolidado de consumo de aceite",
+        columns,
+        rows: sortedOilEquipment.value.map((entry) => ({
+          equipo: entry.label,
+          galones: entry.cantidad,
+          costo: entry.costo,
+        })),
+        summary: [
+          { label: "Galones consumidos", value: formatNumber(oilTotals.value.total_cantidad) },
+          ...(canViewCosts.value
+            ? [{ label: "Costo total", value: formatCurrency(oilTotals.value.total_costo) }]
+            : []),
+        ],
+        charts: [
+          {
+            title: "Equipos con mayor consumo",
+            type: "bar",
+            unit: "galones",
+            points: reportChartPoints(topOilEquipmentPoints.value),
+          },
+        ],
+      }),
+    );
+    return;
+  }
+
+  if (section === "priming") {
+    await sectionPreview.open(
+      "pdf",
+      buildSectionReport({
+        ...common,
+        title: "Consolidado de control de cebado y consumo de aceite",
+        columns: primingExportColumns.value,
+        rows: primingReportRows.value,
+        summary: [
+          { label: "Cebados", value: primingTotals.value.orders },
+          { label: "Galones", value: formatNumber(primingTotals.value.gallons) },
+        ],
+        charts: [
+          {
+            title: "Órdenes por nivel de consumo",
+            type: "bar",
+            unit: "OT",
+            points: reportChartPoints(primingLevelPoints.value),
+          },
+        ],
+      }),
+    );
+    return;
+  }
+
+  if (section === "inventory") {
+    await sectionPreview.open(
+      "pdf",
+      buildSectionReport({
+        ...common,
+        title: "Consolidado de inventario del período",
+        columns: inventoryExportColumns.value,
+        rows: inventoryReportRows.value,
+        summary: [
+          { label: "Movimientos", value: inventoryTotals.value.movimientos || 0 },
+          { label: "Materiales", value: inventoryTotals.value.materiales || 0 },
+        ],
+        charts: [
+          {
+            title: "Entradas y salidas del Kardex",
+            type: "bar",
+            unit: "movimientos",
+            points: reportChartPoints(inventoryFlowPoints.value),
+          },
+        ],
+      }),
+    );
+    return;
+  }
+
+  if (section === "system") {
+    await sectionPreview.open(
+      "pdf",
+      buildSectionReport({
+        ...common,
+        title: "Consolidado de reportes del sistema",
+        columns: [
+          { key: "reporte", title: "Reporte" },
+          { key: "filas", title: "Filas", format: "number" },
+        ],
+        rows: systemSections.value.map((item) => ({
+          reporte: item.title,
+          filas: item.count,
+        })),
+        summary: [{ label: "Filas disponibles", value: systemTotalRows.value }],
+        charts: [
+          {
+            title: "Volumen por reporte",
+            type: "bar",
+            unit: "filas",
+            points: reportChartPoints(systemVolumePoints.value),
+          },
+        ],
+      }),
+    );
+    return;
+  }
+
+  const totalTab = maintenanceCostTotalTab.value;
+  await sectionPreview.open(
+    "pdf",
+    buildSectionReport({
+      ...common,
+      title: "Consolidado de costo de mantenimiento",
+      columns: maintenanceCostHeaders.value.map((header) => ({
+        key: String(header.key),
+        title: String(header.title),
+      })),
+      rows: totalTab?.rows ?? [],
+      summary: [
+        { label: "Costo total", value: formatCurrency(maintenanceCostTotal.value) },
+        { label: "Registros", value: totalTab?.rows.length ?? 0 },
+      ],
+      charts: [
+        {
+          title: "Costo por grupo de equipo",
+          type: "bar",
+          unit: "USD",
+          points: reportChartPoints(maintenanceCostPoints.value),
+        },
+      ],
+    }),
+  );
+}
 
 onBeforeUnmount(() => {
   releasePdfUrl();
@@ -4322,9 +4664,10 @@ onMounted(() => {
      contenedor y `min-width: 0` permite que cada seccion encoja; lo que no
      quepa se desplaza dentro de su propia caja, no empujando la pagina. */
   grid-template-columns: minmax(0, 1fr);
-  gap: 28px;
-  max-width: 1500px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  gap: clamp(14px, 1.5vw, 22px);
   color: rgb(var(--v-theme-on-surface));
 }
 
@@ -4343,7 +4686,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: clamp(24px, 4vw, 40px);
+  padding: clamp(16px, 1.5vw, 22px);
   border-radius: 24px;
   background:
     linear-gradient(135deg, rgba(var(--manager-blue), 0.11), transparent 58%),
@@ -4363,7 +4706,7 @@ onMounted(() => {
   letter-spacing: -0.025em;
 }
 .report-heading h1 {
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(1.85rem, 3vw, 2.65rem);
 }
 .report-heading p,
 .section-title-row p {
@@ -4425,13 +4768,100 @@ onMounted(() => {
 
 /* Riel de resumen: es la primera pantalla del tablero, asi que sus tarjetas van
    algo mas anchas que las de los rieles de seccion — llevan grafico, leyenda y
-   boton de salto.
+   acciones de PDF y detalle.
 
    Sin degradado de fondo a proposito: el difuminado de los bordes del riel se
    funde con el color de la superficie, y sobre un degradado se notaria el corte.
    La jerarquia la lleva el titulo del riel, que es lo que toca en estilo Swiss. */
 .summary-deck {
-  --kpi-rail-card: clamp(280px, 32vw, 400px);
+  --kpi-rail-card: clamp(400px, 30vw, 480px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.summary-deck :deep(.kpi-rail),
+.summary-deck :deep(.kpi-rail__viewport),
+.summary-deck :deep(.kpi-rail__track) {
+  min-height: 0;
+}
+
+.summary-deck :deep(.kpi-insight) {
+  gap: 8px;
+  min-height: 366px;
+  padding: 16px;
+}
+
+.section-workspace {
+  display: flex;
+  width: 100%;
+  height: min(94dvh, 1080px);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.16);
+  background: rgb(var(--v-theme-background));
+}
+
+.section-workspace__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px 18px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.section-workspace__heading {
+  min-width: 0;
+}
+
+.section-workspace__heading span {
+  display: block;
+  color: rgba(var(--v-theme-on-surface), 0.66);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.section-workspace__heading h2 {
+  margin: 1px 0 0;
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.section-workspace__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(16px, 2vw, 28px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.simple-section--workspace {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.system-filters--cost {
+  grid-template-columns: minmax(260px, auto) minmax(240px, 1fr);
+  align-items: center;
+}
+
+@media (min-width: 960px) and (min-height: 700px) {
+  .detailed-report {
+    height: calc(100dvh - 120px);
+    min-height: 590px;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .summary-deck {
+    height: 100%;
+    padding: clamp(14px, 1.3vw, 18px);
+  }
 }
 .equipment-heading {
   display: flex;
@@ -4888,6 +5318,9 @@ onMounted(() => {
     width: 100%;
     min-width: 0;
   }
+  .summary-deck {
+    --kpi-rail-card: min(440px, calc(100% - 16px));
+  }
   .order-card {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -4926,6 +5359,24 @@ onMounted(() => {
   .list-dialog__body,
   .detail-dialog__body {
     padding-inline: 18px;
+  }
+
+  .summary-deck {
+    --kpi-rail-card: min(86vw, 360px);
+  }
+
+  .section-workspace {
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0 !important;
+  }
+
+  .section-workspace__header {
+    padding-inline: 12px;
+  }
+
+  .system-filters--cost {
+    grid-template-columns: 1fr;
   }
 }
 </style>

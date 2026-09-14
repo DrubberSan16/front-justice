@@ -90,6 +90,8 @@ export type ReportDefinition = {
   generatedBy?: string | null;
   summary?: ReportSummaryItem[];
   charts?: ReportChart[];
+  /** Integra resumen, gráficos y tabla en el mismo flujo para evitar portadas vacías. */
+  compactPdf?: boolean;
   sheets: ReportSheet[];
   /**
    * Orientación forzada. Si se omite la decide `resolveReportOrientation`
@@ -1135,24 +1137,47 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
   }
 
   if (chartAssets.length) {
-    const chartWidth = (pageWidth - marginX * 2 - 14) / 2;
-    const chartHeight = 188;
-    const slotsPerPage = 4;
-    chartAssets.forEach((asset, index) => {
-      if (index % slotsPerPage === 0) {
-        doc.addPage(resolveReportOrientation(report));
-        drawPageHeader(report.title, report.subtitle, "Análisis gráfico");
-      }
-      const slot = index % slotsPerPage;
-      const column = slot % 2;
-      const row = Math.floor(slot / 2);
-      const x = marginX + column * (chartWidth + 14);
-      const y = 118 + row * (chartHeight + 18);
-      doc.addImage(asset.imageDataUrl, "PNG", x, y, chartWidth, chartHeight, undefined, "FAST");
-    });
-    doc.addPage(resolveReportOrientation(report));
-    drawPageHeader(report.title, report.subtitle, "Detalle de consumo");
-    cursorY = 118;
+    if (report.compactPdf) {
+      const chartWidth = pageWidth - marginX * 2;
+      const chartHeight = Math.min(220, Math.round(chartWidth * 0.4));
+      chartAssets.forEach((asset) => {
+        if (cursorY + chartHeight > pageHeight - 42) {
+          doc.addPage(resolveReportOrientation(report));
+          drawPageHeader(report.title, report.subtitle, "Análisis gráfico");
+          cursorY = 118;
+        }
+        doc.addImage(
+          asset.imageDataUrl,
+          "PNG",
+          marginX,
+          cursorY,
+          chartWidth,
+          chartHeight,
+          undefined,
+          "FAST",
+        );
+        cursorY += chartHeight + 14;
+      });
+    } else {
+      const chartWidth = (pageWidth - marginX * 2 - 14) / 2;
+      const chartHeight = 188;
+      const slotsPerPage = 4;
+      chartAssets.forEach((asset, index) => {
+        if (index % slotsPerPage === 0) {
+          doc.addPage(resolveReportOrientation(report));
+          drawPageHeader(report.title, report.subtitle, "Análisis gráfico");
+        }
+        const slot = index % slotsPerPage;
+        const column = slot % 2;
+        const row = Math.floor(slot / 2);
+        const x = marginX + column * (chartWidth + 14);
+        const y = 118 + row * (chartHeight + 18);
+        doc.addImage(asset.imageDataUrl, "PNG", x, y, chartWidth, chartHeight, undefined, "FAST");
+      });
+      doc.addPage(resolveReportOrientation(report));
+      drawPageHeader(report.title, report.subtitle, "Detalle de consumo");
+      cursorY = 118;
+    }
   }
 
   let currentSectionId: string | null = null;

@@ -8,9 +8,9 @@
 
       <div v-if="showNav" class="kpi-rail__nav">
         <!-- Sin `aria-live`: el contador cambia en cada fotograma del scroll y
-             como region viva seria un martilleo para el lector de pantalla. La
-             posicion ya la anuncian los puntos con `aria-current`. -->
-        <span class="kpi-rail__counter" aria-hidden="true"
+             como region viva seria un martilleo para el lector de pantalla. Si
+             se muestran, los puntos ya anuncian la posicion con `aria-current`. -->
+        <span v-if="showPagination" class="kpi-rail__counter" aria-hidden="true"
           >Tarjeta {{ activeIndex + 1 }} de {{ itemCount }}</span
         >
         <v-btn
@@ -56,7 +56,7 @@
     </div>
 
     <div
-      v-if="showNav"
+      v-if="showNav && showPagination"
       class="kpi-rail__dots"
       role="group"
       aria-label="Ir directamente a una tarjeta"
@@ -97,8 +97,8 @@ import { EASE_OUT, MOTION, prefersReducedMotion } from "@/app/motion";
  *   porque capturar `pointermove` sobre el contenedor pelea con los tooltips de
  *   los lienzos de ECharts que viven dentro de las tarjetas.
  * - Cada pulsacion avanza UNA tarjeta, no una pagina: es predecible.
- * - Flechas grandes (56px), contador "Tarjeta N de M" y puntos con area de
- *   pulsacion de 44px, que es el minimo del checklist del design system.
+ * - Flechas grandes (56px) y, cuando la vista los necesita, contador
+ *   "Tarjeta N de M" y puntos con area de pulsacion de 44px.
  * - Con `prefers-reduced-motion: reduce` el salto es instantaneo.
  */
 withDefaults(
@@ -106,11 +106,13 @@ withDefaults(
     title?: string;
     subtitle?: string;
     ariaLabel?: string;
+    showPagination?: boolean;
   }>(),
   {
     title: "",
     subtitle: "",
     ariaLabel: "Tarjetas desplazables",
+    showPagination: true,
   },
 );
 

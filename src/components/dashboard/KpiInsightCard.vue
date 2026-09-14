@@ -64,17 +64,28 @@
       </p>
     </template>
 
-    <v-btn
-      v-if="actionLabel"
-      class="kpi-insight__action"
-      variant="tonal"
-      color="primary"
-      block
-      size="large"
-      append-icon="mdi-arrow-right"
-      @click="emit('action')"
-      >{{ actionLabel }}</v-btn
-    >
+    <div v-if="actionLabel || previewLabel" class="kpi-insight__actions">
+      <v-btn
+        v-if="previewLabel"
+        class="kpi-insight__action"
+        variant="outlined"
+        color="primary"
+        size="large"
+        prepend-icon="mdi-file-pdf-box"
+        @click="emit('preview')"
+        >{{ previewLabel }}</v-btn
+      >
+      <v-btn
+        v-if="actionLabel"
+        class="kpi-insight__action"
+        variant="tonal"
+        color="primary"
+        size="large"
+        append-icon="mdi-arrow-right"
+        @click="emit('action')"
+        >{{ actionLabel }}</v-btn
+      >
+    </div>
   </v-card>
 </template>
 
@@ -116,6 +127,7 @@ const props = withDefaults(
     variant?: "bars" | "donut" | "line";
     emptyText?: string;
     actionLabel?: string;
+    previewLabel?: string;
     interactive?: boolean;
     loading?: boolean;
   }>(),
@@ -129,6 +141,7 @@ const props = withDefaults(
     variant: "bars",
     emptyText: "Sin datos para graficar en este rango.",
     actionLabel: "",
+    previewLabel: "",
     interactive: false,
     loading: false,
   },
@@ -136,6 +149,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (event: "action"): void;
+  (event: "preview"): void;
   (event: "point", point: KpiChartPoint): void;
 }>();
 
@@ -189,7 +203,7 @@ const hasData = computed(
 );
 
 const chartHeight = computed(() =>
-  props.variant === "donut" ? "128px" : "116px",
+  props.variant === "donut" ? "116px" : "104px",
 );
 
 const tooltipBase = computed(() => {
@@ -311,8 +325,9 @@ const option = computed<Record<string, any>>(() => {
         color: ink.muted,
         fontSize: 11,
         interval: 0,
-        width: 74,
-        overflow: "truncate" as const,
+        width: 88,
+        overflow: "break" as const,
+        lineHeight: 12,
         hideOverlap: true,
       },
     },
@@ -456,10 +471,8 @@ function onSelect(params: any) {
 }
 
 .kpi-insight__legend-label {
-  overflow: hidden;
   color: rgba(var(--v-theme-on-surface), 0.74);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .kpi-insight__legend strong {
@@ -490,7 +503,7 @@ function onSelect(params: any) {
 
 .kpi-insight__no-chart {
   display: grid;
-  min-height: 104px;
+  min-height: 88px;
   margin: 0;
   padding: 16px;
   place-items: center;
@@ -501,13 +514,21 @@ function onSelect(params: any) {
   text-align: center;
 }
 
+.kpi-insight__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-self: end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
 .kpi-insight__action {
   align-self: end;
-  margin-top: 2px;
   min-height: 48px;
   font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
+  white-space: normal;
 }
 
 .kpi-insight__sr-only {
@@ -529,6 +550,10 @@ function onSelect(params: any) {
 
   .kpi-insight__chart--donut {
     grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .kpi-insight__actions {
+    grid-template-columns: 1fr;
   }
 }
 </style>

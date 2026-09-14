@@ -1,5 +1,6 @@
 import type {
   ReportColumn,
+  ReportChart,
   ReportDefinition,
   ReportSummaryItem,
 } from "@/app/utils/maintenance-intelligence-reports";
@@ -27,9 +28,11 @@ export type SectionReportOptions = {
   columns: SectionReportColumn[];
   rows: Record<string, any>[];
   summary?: ReportSummaryItem[];
+  charts?: ReportChart[];
   note?: string;
   sheetName?: string;
   orientation?: "portrait" | "landscape";
+  compactPdf?: boolean;
 };
 
 /** Columnas sin titulo (acciones, iconos) no viajan al archivo. */
@@ -65,7 +68,9 @@ export function buildSectionReport(
     subtitle: options.subtitle,
     // Sin orientacion pedida la decide el ancho real de la tabla.
     orientation: options.orientation,
+    compactPdf: options.compactPdf,
     summary: options.summary,
+    charts: options.charts,
     sheets: [
       {
         name: options.sheetName || options.title.slice(0, 28) || "Detalle",
