@@ -217,7 +217,7 @@
                           </v-chip>
                         </button>
                         <button
-                          v-if="canCreate"
+                          v-if="canCreate && !isPastSchedulingDate(day.date)"
                           type="button"
                           class="weekly-add-button weekly-add-button--mini"
                           @click="openMonthlyCellCreate(day.date, row)"
@@ -488,7 +488,7 @@
                             <span v-if="item.payload_json?.monthly_work_order?.work_order_code"> · {{ item.payload_json.monthly_work_order.work_order_code }}</span>
                           </div>
                         </button>
-                        <button type="button" class="weekly-add-button" @click="openSelectedWeeklyCell(slot.key, day.date)">
+                        <button v-if="!isPastSchedulingDate(day.date)" type="button" class="weekly-add-button" @click="openSelectedWeeklyCell(slot.key, day.date)">
                           <v-icon icon="mdi-plus" size="16" />
                           <span>Agregar</span>
                         </button>
@@ -665,7 +665,13 @@
               />
             </v-col>
             <v-col cols="12" md="6">
-              <v-text-field v-model="form.proxima_fecha" type="date" label="Fecha programada" variant="outlined" />
+              <v-text-field
+                v-model="form.proxima_fecha"
+                type="date"
+                label="Fecha programada"
+                variant="outlined"
+                :min="currentDateInputValue()"
+              />
             </v-col>
             <v-col cols="12" md="6">
               <v-checkbox v-model="form.activo" label="Activo" hide-details />
@@ -788,6 +794,7 @@
                 type="date"
                 :label="monthlyCellIsReprogramming ? 'Nueva fecha de la orden' : 'Fecha programada'"
                 variant="outlined"
+                :min="currentDateInputValue()"
                 :disabled="monthlyCellDateLocked"
                 :hint="canReprogramMonthlyCell ? 'Al cambiar la fecha, el bloque se registrará como reprogramado.' : undefined"
                 persistent-hint
@@ -1024,6 +1031,7 @@
                 type="date"
                 label="Semana a programar"
                 variant="outlined"
+                :min="currentDateInputValue()"
                 @update:model-value="handleWeeklyAnchorChange"
               />
             </v-col>
@@ -1101,7 +1109,7 @@
                   </td>
                   <td v-for="day in weeklyEditorDays" :key="`${slot.key}-${day.date}`">
                     <div class="matrix-cell matrix-cell--weekly">
-                      <button v-if="canCreate" type="button" class="weekly-add-button" @click="openWeeklyCell(slot.key, day.date)">
+                      <button v-if="canCreate && !isPastSchedulingDate(day.date)" type="button" class="weekly-add-button" @click="openWeeklyCell(slot.key, day.date)">
                         <v-icon icon="mdi-plus" size="16" />
                         <span>Agregar</span>
                       </button>
@@ -1358,7 +1366,11 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
-import { currentDateTimeInputValue, formatDateTime } from "@/app/utils/date-time";
+import {
+  currentDateInputValue,
+  currentDateTimeInputValue,
+  formatDateTime,
+} from "@/app/utils/date-time";
 import {
   formatHorometerForDisplay,
   formatHorometerForInput,
@@ -1438,6 +1450,7 @@ const isWeeklyCellFullscreen = computed(() => smAndDown.value);
 
 const dialog = ref(false);
 const editingId = ref<string | null>(null);
+const originalProgramacionDate = ref("");
 const programacionSourceMode = ref<"DINAMICA" | "CALENDARIO">("DINAMICA");
 const programacionSourceOrigin = ref("MANUAL");
 const programacionSourcePayload = ref<Record<string, unknown>>({});
@@ -1474,6 +1487,7 @@ const weeklyEditor = reactive<any>({
 });
 const weeklyEditorSlots = ref<Array<{ key: string; hora_inicio: string; hora_fin: string }>>([]);
 const weeklyEditorItems = ref<any[]>([]);
+const weeklyOriginalDatesByLocalId = ref<Record<string, string>>({});
 const weeklyCell = reactive<any>({
   local_id: "",
   slot_key: "",
@@ -1945,6 +1959,28 @@ function formatDate(date: Date) {
 
 function normalizeDateOnly(value: unknown) {
   return String(value || "").slice(0, 10);
+}
+
+function isPastSchedulingDate(value: unknown) {
+  const normalized = normalizeDateOnly(value);
+  return Boolean(normalized && normalized < currentDateInputValue());
+}
+
+function validateSchedulingDate(
+  value: unknown,
+  label: string,
+  previous?: unknown,
+) {
+  const normalized = normalizeDateOnly(value);
+  const previousNormalized = normalizeDateOnly(previous);
+  if (
+    !isPastSchedulingDate(normalized) ||
+    (previousNormalized && previousNormalized === normalized)
+  ) {
+    return true;
+  }
+  ui.error(`${label} debe ser hoy o una fecha futura.`);
+  return false;
 }
 
 function findScheduledWorkOrderConflict(options: {
@@ -3520,6 +3556,7 @@ watch(
 
 function resetForm() {
   editingId.value = null;
+  originalProgramacionDate.value = "";
   programacionSourceMode.value = "DINAMICA";
   programacionSourceOrigin.value = "MANUAL";
   programacionSourcePayload.value = {};
@@ -3538,6 +3575,7 @@ function resetForm() {
 
 function openCreateForDate(date: string) {
   if (!canCreate.value) return;
+  if (!validateSchedulingDate(date, "La fecha programada")) return;
   resetForm();
   form.sucursal_id = resolveSucursalId() || "";
   form.proxima_fecha = date;
@@ -3596,6 +3634,7 @@ async function refreshMonthlyPlanningViews() {
 
 function openMonthlyCellCreate(date: string, row?: any) {
   if (!canCreate.value) return;
+  if (!validateSchedulingDate(date, "La fecha programada")) return;
   if (!selectedMonthly.value?.id) {
     resetForm();
     form.sucursal_id = selectedMonthly.value?.sucursal_id || resolveSucursalId() || "";
@@ -3743,6 +3782,15 @@ async function saveMonthlyCell() {
   }
   if (!monthlyCell.fecha_programada) {
     ui.error("Debes indicar la fecha del bloque mensual.");
+    return;
+  }
+  if (
+    !validateSchedulingDate(
+      monthlyCell.fecha_programada,
+      "La fecha del bloque mensual",
+      monthlyCell.id ? monthlyCell.original_fecha_programada : undefined,
+    )
+  ) {
     return;
   }
   if (!String(monthlyCell.valor_crudo || "").trim()) {
@@ -3971,6 +4019,7 @@ function openEdit(item: any) {
   form.ultima_ejecucion_fecha = item.ultima_ejecucion_fecha || "";
   form.ultima_ejecucion_horas = formatHorometerForInput(item.ultima_ejecucion_horas);
   form.proxima_fecha = item.proxima_fecha || "";
+  originalProgramacionDate.value = normalizeDateOnly(item.proxima_fecha);
   form.proxima_horas = formatHorometerForInput(item.proxima_horas);
   form.activo = item.activo !== false;
   dialog.value = true;
@@ -4068,6 +4117,15 @@ async function save() {
   }
   if (!form.equipo_id || (!form.procedimiento_id && !form.plan_id)) {
     ui.error("La orden de trabajo debe tener equipo y plantilla o plan operativo vinculados.");
+    return;
+  }
+  if (
+    !validateSchedulingDate(
+      form.proxima_fecha,
+      "La fecha programada",
+      editingId.value ? originalProgramacionDate.value : undefined,
+    )
+  ) {
     return;
   }
   const payload = buildPayload();
@@ -4233,6 +4291,7 @@ function resetWeeklyEditor() {
   weeklyEditor.documento_origen = "MANUAL";
   weeklyEditorSlots.value = [];
   weeklyEditorItems.value = [];
+  weeklyOriginalDatesByLocalId.value = {};
 }
 
 function sortWeeklySlots() {
@@ -4383,6 +4442,9 @@ function calculateWeeklySlotHours(slotKey: string) {
 
 function openWeeklyCell(slotKey: string, date: string, item?: any) {
   if (item ? !canEdit.value : !canCreate.value) return;
+  if (!item && !validateSchedulingDate(date, "La fecha de la actividad semanal")) {
+    return;
+  }
   weeklyCell.local_id = item?.local_id || "";
   weeklyCell.slot_key = slotKey;
   weeklyCell.fecha_actividad = date;
@@ -4520,8 +4582,12 @@ function loadWeeklyEditorFromSchedule(schedule: any) {
   weeklyEditorAnchorDate.value = schedule.fecha_inicio || formatDate(new Date());
   for (const detail of Array.isArray(schedule.detalles) ? schedule.detalles : []) {
     const slotKey = ensureWeeklySlot(detail.hora_inicio || "07:00", detail.hora_fin || "08:00");
-  weeklyEditorItems.value.push({
-      local_id: detail.id || createLocalId(),
+    const localId = detail.id || createLocalId();
+    weeklyOriginalDatesByLocalId.value[localId] = normalizeDateOnly(
+      detail.fecha_actividad,
+    );
+    weeklyEditorItems.value.push({
+      local_id: localId,
       slot_key: slotKey,
       fecha_actividad: detail.fecha_actividad,
       dia_semana: detail.dia_semana,
@@ -4553,6 +4619,17 @@ async function saveWeeklyEditor() {
   if (!canPersistWeeklyEditor.value) return;
   if (!weeklyEditor.codigo || !weeklyEditor.fecha_inicio || !weeklyEditor.fecha_fin) {
     ui.error("Debes definir código y rango semanal.");
+    return;
+  }
+  const invalidPastDetail = weeklyEditorItems.value.find((item) => {
+    if (!isPastSchedulingDate(item.fecha_actividad)) return false;
+    return (
+      weeklyOriginalDatesByLocalId.value[item.local_id] !==
+      normalizeDateOnly(item.fecha_actividad)
+    );
+  });
+  if (invalidPastDetail) {
+    ui.error("Las actividades del cronograma semanal deben programarse para hoy o una fecha futura.");
     return;
   }
   const sucursalId = ensureSucursalId(weeklyEditor.sucursal_id, "guardar el cronograma semanal");

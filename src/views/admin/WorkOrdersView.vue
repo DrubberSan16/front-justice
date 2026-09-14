@@ -388,10 +388,13 @@
               type="date"
               label="Fecha programación"
               variant="outlined"
+              :min="minimumProgramacionDate()"
               :disabled="isReadOnlyWorkflow"
               :rules="[requiredWorkOrderOutcomeRule('Fecha programación')]"
               :error-messages="programacionDateError"
-              hint="Obligatorio en Cebado: genera y reprograma automáticamente la programación de esta OT."
+              :hint="headerForm.is_emergency
+                ? 'La fecha pasada solo se admite si esta OT se guarda como emergente.'
+                : 'Debe ser hoy o una fecha futura. Genera y reprograma automáticamente esta OT de Cebado.'"
               persistent-hint
             />
           </v-col>
@@ -1914,7 +1917,11 @@ import {
   buildReportPdfBlob,
   buildReportExcelBlob,
 } from "@/app/utils/maintenance-intelligence-reports";
-import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
+import {
+  currentDateInputValue,
+  formatDateOnly,
+  formatDateTime,
+} from "@/app/utils/date-time";
 import {
   canManageAdministrativeOperations,
   canRegisterMaterialIssue,
@@ -2335,12 +2342,37 @@ const isCebadoWorkOrder = computed(
 );
 // Las OT de Cebado generan su programación desde la cabecera: la fecha es obligatoria.
 const requiresProgramacionDate = computed(() => isCebadoWorkOrder.value);
+function minimumProgramacionDate() {
+  return headerForm.is_emergency ? undefined : currentDateInputValue();
+}
+
+function canKeepExistingPastProgramacionDate(value: string) {
+  if (!editingId.value) return false;
+  const currentPayload = parseValorJson(currentWorkOrderRecord.value?.valor_json);
+  const currentDate = toEditableDateOnly(
+    currentPayload?.fecha_programacion ??
+      currentWorkOrderRecord.value?.linked_programacion_fecha,
+  );
+  return Boolean(currentDate && currentDate === value);
+}
+
+function hasInvalidPastProgramacionDate() {
+  const value = toEditableDateOnly(headerForm.fecha_programacion);
+  if (!value || headerForm.is_emergency || value >= currentDateInputValue()) {
+    return false;
+  }
+  return !canKeepExistingPastProgramacionDate(value);
+}
+
 const programacionDateError = computed(() => {
   if (!requiresProgramacionDate.value) return [];
   if (!workOrderOutcomeValidationTouched.value) return [];
-  return String(headerForm.fecha_programacion || "").trim()
-    ? []
-    : ["Fecha programación es obligatoria."];
+  if (!String(headerForm.fecha_programacion || "").trim()) {
+    return ["Fecha programación es obligatoria."];
+  }
+  return hasInvalidPastProgramacionDate()
+    ? ["La fecha debe ser hoy o posterior; solo una OT emergente admite una fecha pasada."]
+    : [];
 });
 const requiresOilProductsForCurrentWorkOrder = computed(
   () => isCebadoWorkOrder.value,
@@ -5552,6 +5584,13 @@ function validateRequiredWorkOrderOutcomeFields() {
   ) {
     ui.error(
       "La fecha de programación es obligatoria en las órdenes de trabajo de tipo Cebado.",
+    );
+    return false;
+  }
+
+  if (requiresProgramacionDate.value && hasInvalidPastProgramacionDate()) {
+    ui.error(
+      "La fecha de programación debe ser hoy o posterior. Una fecha pasada solo se permite si la OT se guarda como emergente.",
     );
     return false;
   }
