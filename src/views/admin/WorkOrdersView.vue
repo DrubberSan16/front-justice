@@ -1109,16 +1109,31 @@
               style="gap: 8px; flex-wrap: wrap;"
             >
               <div class="text-subtitle-2">Salidas reales registradas</div>
-              <v-btn
-                size="small"
-                variant="tonal"
-                prepend-icon="mdi-printer-outline"
-                :disabled="!issueRows.length"
-                :loading="isPrintingIssueDocuments(currentWorkOrderRecord)"
-                @click="printWorkOrderIssueDocuments(currentWorkOrderRecord)"
-              >
-                Imprimir Egreso
-              </v-btn>
+              <div class="d-flex align-center flex-wrap" style="gap: 8px;">
+                <!-- Bodega cierra el circuito: avisa a quien levanto la OT de que
+                     el material ya salio, sin que tenga que entrar a mirarlo. -->
+                <v-btn
+                  size="small"
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="mdi-email-fast-outline"
+                  :disabled="!issueRows.length || notifyingMaterialIssue"
+                  :loading="notifyingMaterialIssue"
+                  @click="notifyMaterialIssue"
+                >
+                  Informar salida de material
+                </v-btn>
+                <v-btn
+                  size="small"
+                  variant="tonal"
+                  prepend-icon="mdi-printer-outline"
+                  :disabled="!issueRows.length"
+                  :loading="isPrintingIssueDocuments(currentWorkOrderRecord)"
+                  @click="printWorkOrderIssueDocuments(currentWorkOrderRecord)"
+                >
+                  Imprimir Egreso
+                </v-btn>
+              </div>
             </div>
             <v-data-table
               :headers="issueHeaders"
@@ -1900,7 +1915,12 @@ import {
   buildReportExcelBlob,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
-import { canManageAdministrativeOperations, canViewMaterialCosts, isSuperAdministrator } from "@/app/utils/role-access";
+import {
+  canManageAdministrativeOperations,
+  canRegisterMaterialIssue,
+  canViewMaterialCosts,
+  isSuperAdministrator,
+} from "@/app/utils/role-access";
 import {
   appendOilIndicator,
   buildProductDisplayTitle,
@@ -2328,11 +2348,11 @@ const requiresOilProductsForCurrentWorkOrder = computed(
 const consumoProductHint = computed(() =>
   selectedProcedureWarehouseId.value
     ? requiresOilProductsForCurrentWorkOrder.value
-      ? "La bodega se toma desde la plantilla y solo se listan materiales marcados como aceite."
-      : "La bodega se toma desde la plantilla y los materiales se cargan desde esa bodega."
+      ? "La bodega se toma desde la plantilla y solo se listan materiales marcados como aceite, tengan o no stock."
+      : "La bodega se toma desde la plantilla. Puedes reservar aunque la bodega no tenga stock: la falta se informa por correo."
     : requiresOilProductsForCurrentWorkOrder.value
-      ? "Para OT de tipo Cebado solo se listan materiales marcados como aceite en la bodega seleccionada."
-      : "Se cargan materiales por bodega a medida que los necesites.",
+      ? "Para OT de tipo Cebado solo se listan materiales marcados como aceite. Puedes reservar aunque no haya stock."
+      : "Puedes reservar cualquier material aunque la bodega no tenga stock: la falta se informa por correo.",
 );
 const materialIssueHelperText = computed(() =>
   requiresOilProductsForCurrentWorkOrder.value
@@ -2450,14 +2470,23 @@ const canCreateConsumo = computed(() => {
     !isReadOnlyWorkflow.value
   );
 });
+/**
+ * La salida de material es un acto de bodega: mueve stock y genera kardex.
+ * Quien levanta la OT reserva el material, pero no lo saca.
+ */
+const canIssueMaterials = computed(() => canRegisterMaterialIssue(auth.user));
 const showMaterialsTab = computed(
-  () => !!editingId.value && (isInProcess.value || isInReview.value || isClosed.value),
+  () =>
+    !!editingId.value &&
+    canIssueMaterials.value &&
+    (isInProcess.value || isInReview.value || isClosed.value),
 );
 const showScrapTab = computed(
   () => !!editingId.value && (isInProcess.value || isInReview.value || isClosed.value),
 );
 const canRegisterRealIssue = computed(
   () =>
+    canIssueMaterials.value &&
     !!editingId.value &&
     ["IN_PROGRESS", "REVIEW"].includes(normalizedWorkflow.value) &&
     ["IN_PROGRESS", "REVIEW"].includes(persistedWorkflow.value) &&
@@ -3418,7 +3447,9 @@ function normalizeStockProductOption(row: any) {
   return {
     value: productId,
     title:
-      `${productLabel} - Disponible: ${stock}` +
+      (stock > 0
+        ? `${productLabel} - Disponible: ${stock}`
+        : `${productLabel} - SIN STOCK en esta bodega`) +
       (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
     label: String(productLabel || productId),
     es_aceite: Boolean(row?.es_aceite),
@@ -3532,7 +3563,11 @@ async function loadConsumoProducts(options?: { reset?: boolean; search?: string 
 
   loadingConsumoProducts.value = true;
   try {
-    const { data } = await api.get("/kpi_inventory/stock-bodega", {
+    // Catalogo completo de la bodega, no solo lo que tiene existencia: si el
+    // material que hace falta no se puede ni nombrar, la falta no queda
+    // registrada y nadie se entera de que hay que comprarlo. Lo que no hay sale
+    // marcado como "Sin stock" y el correo de reserva lo informa.
+    const { data } = await api.get("/kpi_inventory/stock-bodega/catalogo", {
       params: {
         bodega_id: warehouseId,
         search: searchValue || undefined,
@@ -7108,6 +7143,38 @@ function closeMaterialIssueDialog() {
   materialIssueForm.cantidad = "";
   materialIssueForm.condicion_material = "NUEVO";
   materialIssueForm.observacion = "";
+}
+
+const notifyingMaterialIssue = ref(false);
+
+/**
+ * Avisa por correo que la salida ya se realizo.
+ *
+ * Es manual y no automatico al registrar la salida: una OT puede entregarse en
+ * varias tandas y solo bodega sabe cuando esta completa. Enviar un correo por
+ * cada linea seria ruido.
+ */
+async function notifyMaterialIssue() {
+  if (notifyingMaterialIssue.value) return;
+  if (!editingId.value) {
+    return ui.error("Guarda primero la OT para informar la salida de material.");
+  }
+  if (!issueRows.value.length) {
+    return ui.error("Todavia no hay ninguna salida de material registrada.");
+  }
+  try {
+    notifyingMaterialIssue.value = true;
+    const { data } = await api.post(
+      `/kpi_maintenance/work-orders/${editingId.value}/notify-material-issue`,
+    );
+    ui.success(data?.message || "Aviso de salida de material enviado.");
+  } catch (e: any) {
+    ui.error(
+      e?.response?.data?.message || "No se pudo informar la salida de material.",
+    );
+  } finally {
+    notifyingMaterialIssue.value = false;
+  }
 }
 
 async function submitMaterialIssue() {

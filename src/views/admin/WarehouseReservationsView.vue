@@ -152,6 +152,26 @@
                 {{ (item.raw ?? item).estado }}
               </v-chip>
             </template>
+            <!-- Solo cuando la bodega se quedó sin el material: el resto de
+                 filas no tienen nada que pedir y un botón permanente seria
+                 ruido en una tabla de once columnas. -->
+            <template #item.solicitud_matriz="{ item }">
+              <v-btn
+                v-if="(item.raw ?? item).sin_stock_en_bodega"
+                size="small"
+                color="error"
+                variant="tonal"
+                prepend-icon="mdi-email-alert-outline"
+                :loading="requestingMatrizKey === matrizKey(item.raw ?? item)"
+                :disabled="Boolean(requestingMatrizKey)"
+                @click="requestMaterialFromMatriz(item.raw ?? item)"
+              >
+                Solicitar material a matriz
+              </v-btn>
+              <span v-else class="text-caption text-medium-emphasis">
+                Stock: {{ formatNumberForDisplay((item.raw ?? item).stock_actual ?? 0) }}
+              </span>
+            </template>
             <template #item.observacion_menor_uso_reserva="{ item }">
               {{ (item.raw ?? item).observacion_menor_uso_reserva || "-" }}
             </template>
@@ -252,6 +272,7 @@ const summaryCards = computed(() => [
 
 const tableHeaders = [
   { title: "Estado", key: "estado" },
+  { title: "Matriz", key: "solicitud_matriz", sortable: false },
   { title: "Bodega", key: "bodega_label" },
   { title: "Material", key: "producto_label" },
   { title: "Orden de trabajo", key: "work_order_label" },
@@ -263,6 +284,47 @@ const tableHeaders = [
   { title: "Liberado", key: "cantidad_liberada" },
   { title: "Motivo menor uso", key: "observacion_menor_uso_reserva" },
 ];
+
+const requestingMatrizKey = ref<string | null>(null);
+
+/** Identifica la linea: una misma OT puede pedir el mismo material en dos bodegas. */
+function matrizKey(row: any) {
+  return [row?.work_order_id, row?.producto_id, row?.bodega_id]
+    .map((value) => String(value || ""))
+    .join("|");
+}
+
+/**
+ * Pide a matriz el material que esta bodega no tiene.
+ *
+ * Solo informa por correo a administración, superadministración y gerencia
+ * general: no mueve stock ni abre una orden de compra, porque esa decisión no
+ * es de bodega. La cantidad la resuelve el servidor desde la reserva de la OT,
+ * para que lo que se pide sea exactamente lo que la orden necesita.
+ */
+async function requestMaterialFromMatriz(row: any) {
+  if (requestingMatrizKey.value) return;
+  const key = matrizKey(row);
+  try {
+    requestingMatrizKey.value = key;
+    const { data } = await api.post(
+      "/kpi_maintenance/work-orders/reservations/request-matriz",
+      {
+        work_order_id: row?.work_order_id,
+        producto_id: row?.producto_id,
+        bodega_id: row?.bodega_id,
+      },
+    );
+    ui.success(data?.message || "Solicitud de material enviada a matriz.");
+  } catch (e: any) {
+    ui.error(
+      e?.response?.data?.message ||
+        "No se pudo enviar la solicitud de material a matriz.",
+    );
+  } finally {
+    requestingMatrizKey.value = null;
+  }
+}
 
 function estadoColor(estado: string) {
   if (estado === "RESERVADO") return "primary";
