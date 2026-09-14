@@ -503,10 +503,10 @@
               v-model="headerForm.horometro_actual"
               label="Horometro actual"
               type="number"
-              min="0"
+              :min="minHorometroParaOT"
               step="1"
               variant="outlined"
-              :disabled="isReadOnlyWorkflow"
+              :disabled="isReadOnlyWorkflow || isEditingLockedFields"
               :hint="selectedEquipmentHorometroHint"
               persistent-hint
             />
@@ -5302,13 +5302,53 @@ const resolvedHorasARealizarLabel = computed(() =>
     : "Sin horas configuradas",
 );
 
+/** Lectura viva del equipo seleccionado. */
+const equipmentCurrentHorometer = computed(() =>
+  parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual),
+);
+
+/**
+ * Mínimo admisible al crear la OT: la lectura tiene que avanzar.
+ *
+ * Es lo que hace que el par "anterior → actual" del informe signifique algo: el
+ * anterior es la lectura con la que llegó la máquina y el actual el que se
+ * anota al abrir la orden. Con la OT ya guardada el campo está bloqueado, así
+ * que no hay mínimo que imponer.
+ */
+const minHorometroParaOT = computed(() => {
+  if (editingId.value) return 0;
+  const vigente = equipmentCurrentHorometer.value;
+  return vigente != null ? vigente + 1 : 0;
+});
+
 const selectedEquipmentHorometroHint = computed(() => {
-  const equipmentHorometro = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
+  if (editingId.value) {
+    return "El horómetro se registra al crear la OT y queda fijo: es la lectura con la que entró la máquina.";
+  }
+  const equipmentHorometro = equipmentCurrentHorometer.value;
   if (equipmentHorometro != null) {
-    return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. El valor guardado en la OT actualizará también el equipo.`;
+    return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. Debe ser MAYOR. Al guardar se actualizará también el equipo.`;
   }
   return "Ingresa el horometro de la OT; al guardar se actualizará también el equipo.";
 });
+
+/**
+ * Mensaje de rechazo cuando la lectura no avanza, o `null` si está bien.
+ *
+ * Solo aplica al crear: en una OT guardada el campo ya no se puede tocar, y el
+ * equipo pudo avanzar con órdenes posteriores.
+ */
+function validateHorometroAvanza(): string | null {
+  if (editingId.value) return null;
+  const vigente = equipmentCurrentHorometer.value;
+  const capturado = resolvedHorometroActual.value;
+  if (vigente == null || capturado == null) return null;
+  if (capturado > vigente) return null;
+  return `El horómetro debe ser mayor que la lectura vigente del equipo (${formatHorometerForDisplay(
+    vigente,
+    { suffix: "" },
+  )}). Ingresaste ${formatHorometerForDisplay(capturado, { suffix: "" })}.`;
+}
 
 const requiresHorometroCapture = computed(() =>
   parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
@@ -6516,6 +6556,11 @@ async function saveHeader(
     ui.error("El horometro actual no puede ser negativo.");
     return false;
   }
+  const horometroNoAvanza = validateHorometroAvanza();
+  if (horometroNoAvanza) {
+    ui.error(horometroNoAvanza);
+    return false;
+  }
   if (isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
@@ -6696,6 +6741,11 @@ async function saveAll() {
     }
     if (resolvedHorometroActual.value != null && resolvedHorometroActual.value < 0) {
       ui.error("El horometro actual no puede ser negativo.");
+      return;
+    }
+    const horometroSinAvance = validateHorometroAvanza();
+    if (horometroSinAvance) {
+      ui.error(horometroSinAvance);
       return;
     }
     if (!validateRequiredWorkOrderOutcomeFields()) {

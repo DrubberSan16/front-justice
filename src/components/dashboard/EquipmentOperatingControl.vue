@@ -142,7 +142,7 @@
                   v-model="stateFor(item).horometerInput"
                   label="Horómetro actual"
                   type="number"
-                  min="0"
+                  :min="minHorometroFor(item)"
                   step="1"
                   density="compact"
                   variant="outlined"
@@ -166,6 +166,9 @@
               </div>
               <span class="equipment-card__horometer-date">
                 Última lectura: {{ formatDateTime(stateFor(item).horometerUpdatedAt, "Sin lectura registrada") }}
+                <template v-if="stateFor(item).savedHorometer !== null">
+                  · debe ser mayor a {{ stateFor(item).savedHorometer }}
+                </template>
               </span>
             </div>
 
@@ -271,6 +274,17 @@ function normalizeFuncionamiento(value: unknown): "FUNCIONAMIENTO" | "PARADO" {
 const parseHorometer = parseHorometerInput;
 const formatHorometerInput = formatHorometerForInput;
 
+/**
+ * Primera lectura admisible: la vigente más uno.
+ *
+ * Da la pista nativa del navegador con las flechas del campo; el rechazo de
+ * verdad lo hace `saveHorometer` y, por encima, el servidor.
+ */
+function minHorometroFor(item: EquipmentControlItem) {
+  const saved = stateFor(item).savedHorometer;
+  return saved === null ? 0 : saved + 1;
+}
+
 function isOperativo(item: EquipmentControlItem) {
   return String(item?.estado_operativo || "").trim().toUpperCase() === "OPERATIVO";
 }
@@ -353,14 +367,14 @@ async function saveHorometer(item: EquipmentControlItem) {
     state.horometerError = "Ingresa un horómetro válido mayor o igual a cero.";
     return;
   }
-  if (state.savedHorometer === next) {
-    state.horometerError = null;
-    state.horometerInput = formatHorometerInput(next);
+  // El horómetro es un contador físico: solo avanza. Que baje significa que
+  // alguien tecleó mal, y ese error se propaga al par "anterior → actual" de
+  // todos los informes que lo leen. La corrección hacia abajo sigue existiendo,
+  // pero por el módulo de Equipos, que es administrativo y deja el motivo.
+  if (state.savedHorometer !== null && next <= state.savedHorometer) {
+    state.horometerError = `Debe ser mayor que la lectura vigente (${state.savedHorometer}).`;
     return;
   }
-
-  const previousHorometer = state.savedHorometer;
-  const isBackwardCorrection = previousHorometer !== null && next < previousHorometer;
 
   state.horometerSaving = true;
   state.horometerError = null;
@@ -376,9 +390,7 @@ async function saveHorometer(item: EquipmentControlItem) {
     state.savedHorometer = savedValue;
     state.horometerInput = formatHorometerInput(savedValue);
     state.horometerUpdatedAt = updatedAt;
-    liveMessage.value = isBackwardCorrection
-      ? `Horómetro de ${label} corregido de ${previousHorometer} a ${savedValue}.`
-      : `Horómetro de ${label} actualizado a ${savedValue}.`;
+    liveMessage.value = `Horómetro de ${label} actualizado a ${savedValue}.`;
     emit("horometer-updated", {
       id: item.id,
       horometro_actual: savedValue,
