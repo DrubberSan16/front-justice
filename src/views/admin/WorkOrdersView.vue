@@ -421,6 +421,29 @@
               </div>
             </div>
           </v-col>
+          <v-col v-if="headerForm.is_emergency" cols="12" md="4">
+            <v-text-field
+              v-model="headerForm.hora_inicio"
+              type="datetime-local"
+              label="Hora inicio real"
+              variant="outlined"
+              :disabled="isReadOnlyWorkflow"
+              hint="Captura manual disponible solo para órdenes emergentes."
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="headerForm.is_emergency" cols="12" md="4">
+            <v-text-field
+              v-model="headerForm.hora_fin"
+              type="datetime-local"
+              label="Hora fin real"
+              variant="outlined"
+              :disabled="isReadOnlyWorkflow"
+              :min="headerForm.hora_inicio || undefined"
+              hint="No puede ser anterior a la hora de inicio."
+              persistent-hint
+            />
+          </v-col>
           <v-col cols="12">
             <v-textarea
               v-model="headerForm.description"
@@ -1920,7 +1943,9 @@ import {
 import {
   currentDateInputValue,
   formatDateOnly,
+  formatDateTimeForInput,
   formatDateTime,
+  parseAppDate,
 } from "@/app/utils/date-time";
 import {
   canManageAdministrativeOperations,
@@ -2084,6 +2109,8 @@ const headerForm = reactive<any>({
   fecha_programacion: "",
   is_emergency: false,
   emergency_reason: "",
+  hora_inicio: "",
+  hora_fin: "",
   status_workflow: "PLANNED",
   procedimiento_id: "",
   plan_id: "",
@@ -2821,6 +2848,24 @@ function toEditableDateOnly(value: unknown) {
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+}
+
+function toApiDateTime(value: unknown) {
+  const parsed = parseAppDate(value);
+  return parsed ? parsed.toISOString() : null;
+}
+
+function validateEmergencyWorkOrderHours(): string | null {
+  if (!headerForm.is_emergency) return null;
+  const start = parseAppDate(headerForm.hora_inicio);
+  const end = parseAppDate(headerForm.hora_fin);
+  if (String(headerForm.hora_fin || "").trim() && !start) {
+    return "Debes registrar la hora de inicio antes de la hora de fin.";
+  }
+  if (start && end && end.getTime() < start.getTime()) {
+    return "La hora de fin no puede ser anterior a la hora de inicio.";
+  }
+  return null;
 }
 
 function formatDecimalValue(value: unknown) {
@@ -5006,6 +5051,12 @@ function buildWorkOrderSaveBundlePayload() {
       maintenance_kind: headerForm.maintenance_kind || null,
       is_emergency: Boolean(headerForm.is_emergency),
       emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
+      ...(headerForm.is_emergency
+        ? {
+            hora_inicio: toApiDateTime(headerForm.hora_inicio),
+            hora_fin: toApiDateTime(headerForm.hora_fin),
+          }
+        : {}),
       status_workflow: normalizedWorkflow.value,
       plan_id: headerForm.plan_id || null,
       procedimiento_id: headerForm.procedimiento_id || null,
@@ -5099,6 +5150,12 @@ function applySavedWorkOrderState(savedHeader: any) {
   headerForm.alerta_id = savedHeader?.alerta_id ?? headerForm.alerta_id;
   headerForm.is_emergency = parseBooleanFlag(savedHeader?.is_emergency ?? headerForm.is_emergency);
   headerForm.emergency_reason = headerForm.is_emergency ? String(savedHeader?.emergency_reason || "") : "";
+  headerForm.hora_inicio = headerForm.is_emergency
+    ? formatDateTimeForInput(savedHeader?.hora_inicio)
+    : "";
+  headerForm.hora_fin = headerForm.is_emergency
+    ? formatDateTimeForInput(savedHeader?.hora_fin)
+    : "";
   headerForm.blocked_by_work_order_id = savedHeader?.blocked_by_work_order_id ?? headerForm.blocked_by_work_order_id;
   headerForm.blocked_reason = savedHeader?.blocked_reason ?? headerForm.blocked_reason;
   headerForm.horometro_actual = formatHorometerForInput(
@@ -5349,6 +5406,7 @@ const equipmentCurrentHorometer = computed(() =>
  */
 const minHorometroParaOT = computed(() => {
   if (editingId.value) return 0;
+  if (headerForm.is_emergency) return 0;
   const vigente = equipmentCurrentHorometer.value;
   return vigente != null ? vigente + 1 : 0;
 });
@@ -5359,6 +5417,9 @@ const selectedEquipmentHorometroHint = computed(() => {
   }
   const equipmentHorometro = equipmentCurrentHorometer.value;
   if (equipmentHorometro != null) {
+    if (headerForm.is_emergency) {
+      return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. Al guardarse como emergente puede registrar un horómetro anterior.`;
+    }
     return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. Debe ser MAYOR. Al guardar se actualizará también el equipo.`;
   }
   return "Ingresa el horometro de la OT; al guardar se actualizará también el equipo.";
@@ -5372,6 +5433,7 @@ const selectedEquipmentHorometroHint = computed(() => {
  */
 function validateHorometroAvanza(): string | null {
   if (editingId.value) return null;
+  if (headerForm.is_emergency) return null;
   const vigente = equipmentCurrentHorometer.value;
   const capturado = resolvedHorometroActual.value;
   if (vigente == null || capturado == null) return null;
@@ -6258,6 +6320,8 @@ function resetAllForms() {
   headerForm.alerta_id = "";
   headerForm.is_emergency = false;
   headerForm.emergency_reason = "";
+  headerForm.hora_inicio = "";
+  headerForm.hora_fin = "";
   headerForm.blocked_by_work_order_id = "";
   headerForm.blocked_reason = "";
   headerForm.causa = "";
@@ -6344,6 +6408,12 @@ async function openEdit(item: any) {
   headerForm.alerta_id = item.alerta_id ?? "";
   headerForm.is_emergency = parseBooleanFlag(item?.is_emergency);
   headerForm.emergency_reason = headerForm.is_emergency ? String(item?.emergency_reason || "") : "";
+  headerForm.hora_inicio = headerForm.is_emergency
+    ? formatDateTimeForInput(item?.hora_inicio)
+    : "";
+  headerForm.hora_fin = headerForm.is_emergency
+    ? formatDateTimeForInput(item?.hora_fin)
+    : "";
   headerForm.blocked_by_work_order_id = item.blocked_by_work_order_id ?? "";
   headerForm.blocked_reason = item.blocked_reason ?? "";
   const headerValorJson = parseValorJson(item?.valor_json);
@@ -6587,6 +6657,11 @@ async function saveHeader(
     ui.error("Debes indicar por que la orden es emergente.");
     return false;
   }
+  const emergencyHoursError = validateEmergencyWorkOrderHours();
+  if (emergencyHoursError) {
+    ui.error(emergencyHoursError);
+    return false;
+  }
   if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
     ui.error("Debes ingresar el horometro actual para calcular la OT.");
     return false;
@@ -6620,6 +6695,12 @@ async function saveHeader(
     maintenance_kind: headerForm.maintenance_kind || null,
     is_emergency: Boolean(headerForm.is_emergency),
     emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
+    ...(headerForm.is_emergency
+      ? {
+          hora_inicio: toApiDateTime(headerForm.hora_inicio),
+          hora_fin: toApiDateTime(headerForm.hora_fin),
+        }
+      : {}),
     status_workflow: normalizedWorkflow.value,
     plan_id: headerForm.plan_id || null,
     procedimiento_id: headerForm.procedimiento_id || null,
@@ -6645,6 +6726,12 @@ async function saveHeader(
     equipo_componente_ids: getHeaderComponentIds(),
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
+    ...(headerForm.is_emergency
+      ? {
+          hora_inicio: toApiDateTime(headerForm.hora_inicio),
+          hora_fin: toApiDateTime(headerForm.hora_fin),
+        }
+      : {}),
     valor_json: createPayload.valor_json,
   };
   updatePayload.valor_json = {
@@ -6716,6 +6803,12 @@ function buildWorkOrderHeaderComparableState() {
     equipo_componente_ids: [...getHeaderComponentIds()].sort(),
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
+    ...(headerForm.is_emergency
+      ? {
+          hora_inicio: toApiDateTime(headerForm.hora_inicio),
+          hora_fin: toApiDateTime(headerForm.hora_fin),
+        }
+      : {}),
     valor_json: {
       causa: headerForm.causa || "",
       accion: headerForm.accion || "",
@@ -6772,6 +6865,11 @@ async function saveAll() {
     }
     if (!editingId.value && headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
       ui.error("Debes indicar por que la orden es emergente.");
+      return;
+    }
+    const emergencyHoursError = validateEmergencyWorkOrderHours();
+    if (emergencyHoursError) {
+      ui.error(emergencyHoursError);
       return;
     }
     if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
@@ -7596,6 +7694,8 @@ watch(
   (value) => {
     if (!value) {
       headerForm.emergency_reason = "";
+      headerForm.hora_inicio = "";
+      headerForm.hora_fin = "";
     }
   },
 );

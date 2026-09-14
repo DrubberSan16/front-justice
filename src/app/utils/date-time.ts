@@ -129,8 +129,9 @@ export function currentDateInputValue() {
   return formatDateForInput(new Date());
 }
 
-export function currentDateTimeInputValue() {
-  const parsed = parseAppDate(new Date()) ?? new Date();
+export function formatDateTimeForInput(value: unknown) {
+  const parsed = parseAppDate(value);
+  if (!parsed) return "";
   const dateParts = buildFormatterParts(parsed, {
     year: "numeric",
     month: "2-digit",
@@ -151,6 +152,10 @@ export function currentDateTimeInputValue() {
   const second = pad(getPart(timeParts, "second"));
 
   return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+}
+
+export function currentDateTimeInputValue() {
+  return formatDateTimeForInput(new Date());
 }
 
 export function currentTimeValue() {
