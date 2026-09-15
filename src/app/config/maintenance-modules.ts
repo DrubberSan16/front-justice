@@ -568,13 +568,25 @@ export function getInventoryModule(key: string): MaintenanceModuleConfig | null 
  * manda la pantalla.
  */
 const GENERATION_UNITS_MODULE_KEY = "unidades-generacion";
+const PROJECTS_MODULE_KEY = "proyectos";
+
+/**
+ * Entradas de menu que comparten la definicion de Equipos.
+ *
+ * Un proyecto es un equipo cuyo tipo es "Proyectos": mismo registro, mismos
+ * campos y mismo endpoint que una unidad de generacion. Lo unico que cambia es
+ * el grupo con el que la pantalla consulta.
+ */
+const EQUIPMENT_MODULE_ALIASES: Record<string, string> = {
+  [GENERATION_UNITS_MODULE_KEY]: "Unidades de generación",
+  [PROJECTS_MODULE_KEY]: "Proyectos",
+};
 
 export function getMaintenanceModule(key: string): MaintenanceModuleConfig | null {
-  if (key === GENERATION_UNITS_MODULE_KEY) {
+  const alias = EQUIPMENT_MODULE_ALIASES[key];
+  if (alias) {
     const equipos = maintenanceModules.find((m) => m.key === "equipos");
-    return equipos
-      ? { ...equipos, key: GENERATION_UNITS_MODULE_KEY, title: "Unidades de generación" }
-      : null;
+    return equipos ? { ...equipos, key, title: alias } : null;
   }
   return maintenanceModules.find((m) => m.key === key) ?? null;
 }

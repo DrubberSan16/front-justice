@@ -440,11 +440,13 @@ const { mdAndDown, smAndDown } = useDisplay();
 const isEquipmentModule = computed(
   () =>
     props.moduleKey === "equipos" ||
-    props.moduleKey === "unidades-generacion",
+    props.moduleKey === "unidades-generacion" ||
+    props.moduleKey === "proyectos",
 );
 const isGenerationUnitsModule = computed(
   () => props.moduleKey === "unidades-generacion",
 );
+const isProjectsModule = computed(() => props.moduleKey === "proyectos");
 
 const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
 const modulePermissionAliases = computed(() => {
@@ -1371,12 +1373,14 @@ async function fetchRecords(skipLoading = false) {
       {
         search: search.value.trim() || undefined,
         equipo_tipo_id: equipmentTypeFilterId.value || undefined,
-        // La flota de generacion vive en su propia entrada del menu; "Equipos"
-        // lista todo lo demas para que no aparezcan dos veces.
+        // Generacion y Proyectos tienen su propia entrada de menu; "Otros
+        // Equipos" lista el resto, para que ninguno aparezca dos veces.
         grupo: isEquipmentModule.value
           ? isGenerationUnitsModule.value
             ? "GENERACION"
-            : "RESTO"
+            : isProjectsModule.value
+              ? "PROYECTOS"
+              : "RESTO"
           : undefined,
       },
       {

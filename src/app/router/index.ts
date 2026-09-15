@@ -262,16 +262,17 @@ export const router = createRouter({
           },
         },
         {
-          // Pantallas aun sin contenido definido. La ruta y el permiso quedan
-          // operativos desde ya para poder asignar el acceso y ordenar el menu
-          // antes de que exista el tablero.
+          // Un proyecto es un equipo cuyo tipo es "Proyectos": misma pantalla y
+          // mismo registro que Unidades de generacion, solo cambia el grupo que
+          // consulta.
           path: "proyectos",
           name: "proyectos",
-          component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
+          component: () => import("@/views/admin/MaintenanceCrudView.vue"),
+          props: { moduleKey: "proyectos" },
           meta: {
             title: "Proyectos",
             permissionComponent: "proyectos",
-            viewFile: "views/dashboard/DashboardPlaceholderView.vue",
+            viewFile: "views/admin/MaintenanceCrudView.vue",
           },
         },
         {
