@@ -1088,6 +1088,21 @@
             <div class="text-body-2 text-medium-emphasis pt-2 mb-3">
               {{ materialIssueHelperText }}
             </div>
+            <!-- Sin el permiso la pestaña no desaparece: se consulta lo que
+                 salio y se imprime el egreso, que es la constancia que firma
+                 quien recibe el material. Registrar la salida sigue siendo de
+                 bodega. -->
+            <v-alert
+              v-if="!canIssueMaterials"
+              type="info"
+              variant="tonal"
+              density="comfortable"
+              class="mb-3"
+            >
+              Puedes consultar las salidas e imprimir el egreso de bodega. El
+              registro de la salida real lo realiza Bodega, Administración,
+              Super Administración o Gerencia General.
+            </v-alert>
             <v-alert
               v-if="String(headerForm.close_shortfall_reason || '').trim()"
               type="info"
@@ -1115,6 +1130,7 @@
                   variant="tonal"
                   prepend-icon="mdi-package-variant-closed"
                   :disabled="
+                    !canIssueMaterials ||
                     isReadOnlyWorkflow ||
                     toPositiveNumber((item.raw ?? item).cantidad_pendiente) <= 0 ||
                     issuingMaterials
@@ -1143,7 +1159,9 @@
                   color="primary"
                   variant="tonal"
                   prepend-icon="mdi-email-fast-outline"
-                  :disabled="!issueRows.length || notifyingMaterialIssue"
+                  :disabled="
+                    !canIssueMaterials || !issueRows.length || notifyingMaterialIssue
+                  "
                   :loading="notifyingMaterialIssue"
                   @click="notifyMaterialIssue"
                 >
@@ -2537,7 +2555,6 @@ const canIssueMaterials = computed(() => canRegisterMaterialIssue(auth.user));
 const showMaterialsTab = computed(
   () =>
     !!editingId.value &&
-    canIssueMaterials.value &&
     (isInProcess.value || isInReview.value || isClosed.value),
 );
 const showScrapTab = computed(
