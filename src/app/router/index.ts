@@ -262,6 +262,29 @@ export const router = createRouter({
           },
         },
         {
+          // Pantallas aun sin contenido definido. La ruta y el permiso quedan
+          // operativos desde ya para poder asignar el acceso y ordenar el menu
+          // antes de que exista el tablero.
+          path: "proyectos",
+          name: "proyectos",
+          component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
+          meta: {
+            title: "Proyectos",
+            permissionComponent: "proyectos",
+            viewFile: "views/dashboard/DashboardPlaceholderView.vue",
+          },
+        },
+        {
+          path: "reporteria",
+          name: "reporteria",
+          component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
+          meta: {
+            title: "Reportería",
+            permissionComponent: "reporteria",
+            viewFile: "views/dashboard/DashboardPlaceholderView.vue",
+          },
+        },
+        {
           path: "dashboard-operativo",
           name: "dashboard-operativo",
           component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
