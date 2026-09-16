@@ -111,6 +111,82 @@
     <div v-if="!procedureActivities.length" class="text-body-2 text-medium-emphasis">Aun no hay actividades configuradas.</div>
   </div>
 
+  <!--
+    Personal a contratar de una plantilla de proyecto. Es una tabla y no un
+    JSON a mano: quien arma la plantilla define cargos y tarifas, no estructuras
+    de datos. Por debajo se sigue guardando el mismo arreglo.
+  -->
+  <div v-else-if="field.editor === 'project-staff'" class="structured-field">
+    <div class="d-flex align-center justify-space-between mb-3" style="gap: 12px; flex-wrap: wrap;">
+      <div>
+        <div class="text-subtitle-2 font-weight-medium">{{ repairText(field.label) }}</div>
+        <div class="text-body-2 text-medium-emphasis">
+          Cargos que se contratan para este proyecto. El nombre de cada persona y los días
+          trabajados se registran después, en la OT.
+        </div>
+      </div>
+      <v-btn color="primary" variant="tonal" prepend-icon="mdi-account-plus-outline" @click="addProjectStaffRow">
+        Agregar cargo
+      </v-btn>
+    </div>
+
+    <v-table v-if="projectStaffRows.length" density="compact" class="structured-field__table">
+      <thead>
+        <tr>
+          <th class="text-left">Cargo</th>
+          <th class="text-left" style="width: 140px;">Cantidad</th>
+          <th class="text-left" style="width: 180px;">Valor día</th>
+          <th style="width: 56px;" />
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(item, index) in projectStaffRows" :key="`staff-${index}`">
+          <td>
+            <v-text-field
+              :model-value="item.rol ?? ''"
+              placeholder="Soldador estructural"
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              @update:model-value="updateProjectStaffRow(index, 'rol', $event)"
+            />
+          </td>
+          <td>
+            <v-text-field
+              :model-value="item.cantidad ?? ''"
+              type="number"
+              min="1"
+              step="1"
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              @update:model-value="updateProjectStaffRow(index, 'cantidad', asNullableNumber($event))"
+            />
+          </td>
+          <td>
+            <v-text-field
+              :model-value="item.valor_dia ?? ''"
+              type="number"
+              min="0"
+              step="0.01"
+              variant="outlined"
+              density="compact"
+              hide-details="auto"
+              @update:model-value="updateProjectStaffRow(index, 'valor_dia', asNullableNumber($event))"
+            />
+          </td>
+          <td class="text-right">
+            <v-btn icon="mdi-delete" size="small" variant="text" color="error" @click="removeProjectStaffRow(index)" />
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
+
+    <div v-else class="text-body-2 text-medium-emphasis">
+      Aún no hay cargos definidos. Si el proyecto no contrata personal, déjalo vacío.
+    </div>
+  </div>
+
   <div v-else-if="field.editor === 'relation-multi-select'" class="structured-field">
     <div class="text-subtitle-2 font-weight-medium mb-2">{{ repairText(field.label) }}</div>
     <v-autocomplete
@@ -433,6 +509,26 @@ function updateRelationMultiSelect(value: any) {
   emitValue(Array.isArray(value) ? value.map((item) => String(item ?? "").trim()).filter(Boolean) : []);
 }
 
+const projectStaffRows = computed<AnyRow[]>(() =>
+  Array.isArray(props.modelValue) ? props.modelValue : [],
+);
+
+function addProjectStaffRow() {
+  emitValue([...projectStaffRows.value, { rol: "", cantidad: 1, valor_dia: 0 }]);
+}
+
+function updateProjectStaffRow(index: number, key: string, value: any) {
+  const next = cloneValue(projectStaffRows.value);
+  next[index] = { ...(next[index] ?? {}), [key]: value };
+  emitValue(next);
+}
+
+function removeProjectStaffRow(index: number) {
+  emitValue(
+    projectStaffRows.value.filter((_, currentIndex) => currentIndex !== index),
+  );
+}
+
 const procedureActivities = computed<AnyRow[]>(() => (Array.isArray(props.modelValue) ? props.modelValue : []));
 
 function addProcedureActivity() {
@@ -686,6 +782,11 @@ async function handleSingleFileUpload(value: File[] | File | null) {
 .structured-field {
   display: grid;
   gap: 8px;
+}
+
+.structured-field__table :deep(td) {
+  padding-block: 6px;
+  vertical-align: middle;
 }
 
 .chip-list {

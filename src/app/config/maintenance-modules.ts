@@ -14,7 +14,7 @@ export type MaintenanceField = {
   readonly?: boolean;
   sendInPayload?: boolean;
   jsonMode?: "array" | "object";
-  editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
+  editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload" | "project-staff";
   hidden?: boolean;
   fullWidth?: boolean;
   options?: Array<{ value: any; title: string }>;

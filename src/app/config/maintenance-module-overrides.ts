@@ -1,7 +1,7 @@
 import { getMaintenanceModule, type MaintenanceModuleConfig, type MaintenanceField } from "@/app/config/maintenance-modules";
 
 export type EnhancedMaintenanceField = MaintenanceField & {
-  editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload";
+  editor?: "string-list" | "relation-multi-select" | "procedure-activities" | "analysis-details" | "analysis-payload" | "issue-items" | "file-upload" | "project-staff";
   hidden?: boolean;
   fullWidth?: boolean;
   readonly?: boolean;
@@ -197,9 +197,10 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
       },
       {
         key: "personal_requerido",
-        label: "Personal a contratar (JSON: rol, cantidad, valor_dia)",
+        label: "Personal a contratar",
         type: "json",
         jsonMode: "array",
+        editor: "project-staff",
         fullWidth: true,
         visibleWhen: isProyectoTemplate,
       },
