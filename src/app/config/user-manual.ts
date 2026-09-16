@@ -69,6 +69,7 @@ const routeCategoryMap = new Map<string, string>([
   ["alertas", "Control operativo"],
   ["programaciones", "Planificacion"],
   ["work-orders", "Mantenimiento"],
+  ["work-orders-proyecto", "Mantenimiento"],
   ["inteligencia-procedimientos", "Mantenimiento"],
   ["inteligencia-analisis-lubricante", "Mantenimiento"],
   ["equipos", "Mantenimiento"],
@@ -611,6 +612,116 @@ const manualOverrides: Record<string, ManualOverride> = {
       "OT cerrada solo cuando toda la trazabilidad este completa.",
     ],
     relatedRoutes: ["alertas", "programaciones", "kardex", "stock-bodega"],
+  },
+  "work-orders-proyecto": {
+    routeName: "work-orders-proyecto",
+    title: "OT. Proyecto",
+    category: "Mantenimiento",
+    summary:
+      "Levanta y ejecuta una orden de trabajo de tipo Proyecto: se realiza sobre ubicaciones y bodegas, contrata personal eventual y carga sus materiales.",
+    purpose:
+      "Usa este modulo cuando el trabajo no recae sobre un equipo sino sobre un sitio: una construccion, una adecuacion o cualquier obra con personal contratado por dia.",
+    prerequisites: [
+      "Debe existir una plantilla de tipo Proyecto; aqui solo se listan esas.",
+      "Ten claras las ubicaciones y bodegas donde se ejecutara el proyecto.",
+    ],
+    flow: [
+      {
+        id: "cabecera",
+        title: "Describe el proyecto",
+        description:
+          "Elige la plantilla de proyecto y revisa lo que carga por defecto: empresa, objetivo general, objetivos especificos, metodologia y alcance. Todo se puede ajustar.",
+        fields: ["Plantilla", "Nombre del proyecto", "Empresa", "Objetivo general", "Objetivos específicos", "Metodología aplicable", "Alcance del proyecto"],
+        checks: [
+          "El tipo de mantenimiento no se elige: la pantalla guarda Proyecto por debajo.",
+          "Objetivo general y metodologia son obligatorios; sustituyen a causa, accion y prevencion.",
+        ],
+      },
+      {
+        id: "sitios",
+        title: "Indica donde se ejecuta",
+        description:
+          "Un proyecto no tiene equipo. En su lugar se seleccionan las ubicaciones y las bodegas donde se realizara el trabajo.",
+        fields: ["Ubicaciones donde se ejecuta", "Bodegas donde se ejecuta"],
+        checks: [
+          "Debe quedar al menos una ubicacion o una bodega.",
+          "Se admiten varias de cada una si el proyecto se reparte entre sitios.",
+        ],
+      },
+      {
+        id: "personal",
+        title: "Registra la contratacion de personal",
+        description:
+          "Una fila por persona contratada, con su cargo, nombre, dias trabajados, ubicacion, valor del dia y observacion. La plantilla propone los cargos; los dias y el nombre se capturan aqui.",
+        fields: ["Cargo", "Nombre y apellido", "Días", "Ubicación", "Valor día", "Fecha", "Observación"],
+        checks: [
+          "Cada persona debe tener cargo; sin el, la fila no se guarda.",
+          "El total por persona y el total de mano de obra se calculan solos.",
+        ],
+      },
+      {
+        id: "materiales",
+        title: "Carga los materiales del proyecto",
+        description:
+          "Los materiales de un proyecto son variables y por eso no vienen de la plantilla: se registran aqui como consumo y salida de bodega, igual que en cualquier OT.",
+        fields: ["Bodega", "Material", "Cantidad", "Observacion"],
+        checks: [
+          "La bodega se elige por movimiento: un proyecto puede consumir de varias.",
+          "Revisa kardex y stock despues de emitir materiales.",
+        ],
+      },
+      {
+        id: "cierre",
+        title: "Cierra el proyecto",
+        description:
+          "Confirma que el personal, los materiales y las evidencias reflejan lo ejecutado antes de finalizar la orden.",
+        fields: ["Finalizar OT", "Guardar"],
+        checks: [
+          "El informe en PDF sale con el formato del documento de proyecto.",
+          "Cierra solo cuando la trazabilidad este completa.",
+        ],
+      },
+    ],
+    extraFields: [
+      { key: "proyecto_ubicaciones", label: "Ubicaciones donde se ejecuta", type: "Seleccion multiple", required: true, note: "Obligatoria si no se indican bodegas." },
+      { key: "proyecto_bodegas", label: "Bodegas donde se ejecuta", type: "Seleccion multiple", required: true, note: "Obligatoria si no se indican ubicaciones." },
+      { key: "proyecto_personal", label: "Contratación de personal", type: "Tabla", required: false, note: "Una fila por persona contratada; el total se calcula con dias por valor del dia." },
+    ],
+    tips: [
+      "Si un proyecto se repite, deja su cabecera armada en una plantilla de tipo Proyecto y reusala.",
+      "En la plantilla se define el cargo y cuanto se paga por dia; el nombre y los dias reales van en la OT.",
+    ],
+    warnings: [
+      "Los materiales no se definen en la plantilla de proyecto: si los buscas ahi, no estan.",
+      "Esta pantalla solo muestra OT de Proyecto; las de mantenimiento siguen en Ordenes de Trabajo.",
+    ],
+    commonErrors: [
+      {
+        title: "No aparece ninguna plantilla para elegir",
+        whatHappens: "El selector de plantilla sale vacío al crear la OT de proyecto.",
+        why: "Aquí solo se listan las plantillas cuyo tipo de proceso es Proyecto, y todavía no hay ninguna creada.",
+        howToResolve: "Entra a Configuración, Plantillas, crea una nueva y elige Proyecto en Tipo de proceso.",
+      },
+      {
+        title: "No deja guardar el proyecto",
+        whatHappens: "Al presionar Guardar aparece un aviso y la orden no se crea.",
+        why: "Falta indicar dónde se ejecuta, o falta el objetivo general o la metodología, que son obligatorios en este tipo de OT.",
+        howToResolve: "Selecciona al menos una ubicación o una bodega y completa objetivo general y metodología antes de guardar.",
+      },
+      {
+        title: "Una persona contratada no se guardó",
+        whatHappens: "Llenaste nombre y días pero al volver a abrir la OT esa fila no está.",
+        why: "La fila se descarta cuando no tiene cargo: el cargo es lo que identifica a la persona dentro del proyecto.",
+        howToResolve: "Vuelve a agregarla indicando el cargo, por ejemplo Soldador estructural o Esmerilador, y guarda de nuevo.",
+      },
+    ],
+    checklist: [
+      "Plantilla de proyecto elegida y cabecera revisada.",
+      "Ubicaciones o bodegas donde se ejecuta indicadas.",
+      "Personal contratado con cargo, dias y valor del dia.",
+      "Materiales cargados y validados contra bodega.",
+    ],
+    relatedRoutes: ["work-orders", "inteligencia-procedimientos", "locations", "stock-bodega"],
   },
   kardex: {
     routeName: "kardex",
