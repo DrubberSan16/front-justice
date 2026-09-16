@@ -166,9 +166,7 @@
               </div>
               <span class="equipment-card__horometer-date">
                 Última lectura: {{ formatDateTime(stateFor(item).horometerUpdatedAt, "Sin lectura registrada") }}
-                <template v-if="stateFor(item).savedHorometer !== null">
-                  · debe ser mayor a {{ stateFor(item).savedHorometer }}
-                </template>
+                {{ horometerHintFor(item) }}
               </span>
             </div>
 
@@ -189,12 +187,55 @@
     </div>
 
     <div class="equipment-panel__sr-live" aria-live="polite">{{ liveMessage }}</div>
+
+    <v-dialog v-model="lowerHorometer.open" max-width="520" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="text-subtitle-1 font-weight-bold">
+          Registrar un horómetro menor
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
+            El horómetro pasaría de {{ lowerHorometer.current }} a {{ lowerHorometer.next }}.
+            Es una corrección administrativa: queda en el histórico del equipo marcada
+            como ajuste directo, con tu nombre y este motivo.
+          </v-alert>
+          <v-textarea
+            v-model="lowerHorometer.motivo"
+            label="¿Por qué se registra una lectura menor?"
+            variant="outlined"
+            rows="3"
+            auto-grow
+            counter="300"
+            maxlength="300"
+            autofocus
+            :disabled="lowerHorometer.saving"
+            :error-messages="lowerHorometer.error || undefined"
+          />
+        </v-card-text>
+        <v-card-actions class="justify-end">
+          <v-btn variant="text" :disabled="lowerHorometer.saving" @click="cancelLowerHorometer">
+            Cancelar
+          </v-btn>
+          <v-btn
+            color="primary"
+            variant="tonal"
+            :loading="lowerHorometer.saving"
+            :disabled="lowerHorometer.saving"
+            @click="confirmLowerHorometer"
+          >
+            Guardar ajuste
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
+import { useAuthStore } from "@/app/stores/auth.store";
+import { isAdministrator, isSuperAdministrator } from "@/app/utils/role-access";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import {
@@ -258,8 +299,34 @@ const emit = defineEmits<{
   ): void;
 }>();
 
+const auth = useAuthStore();
+
+/**
+ * Bajar el horómetro es una corrección administrativa, no una lectura del día.
+ *
+ * El contador solo avanza: que baje casi siempre significa que alguien tecleó
+ * mal, y ese error se propaga al par "anterior → actual" de todos los informes.
+ * Por eso solo Administrador y Súper Administrador pueden hacerlo, y tienen que
+ * decir por qué. El servidor vuelve a comprobarlo: esconder el control no
+ * protege el endpoint.
+ */
+const canLowerHorometer = computed(
+  () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
+);
+
 const states = reactive<Record<string, CardState>>({});
 const liveMessage = ref("");
+
+/** Diálogo que pide el motivo antes de bajar una lectura. */
+const lowerHorometer = reactive({
+  open: false,
+  item: null as EquipmentControlItem | null,
+  next: 0,
+  current: 0,
+  motivo: "",
+  saving: false,
+  error: "",
+});
 const scrollerRef = ref<HTMLElement | null>(null);
 const canScrollPrev = ref(false);
 const canScrollNext = ref(false);
@@ -281,8 +348,17 @@ const formatHorometerInput = formatHorometerForInput;
  * verdad lo hace `saveHorometer` y, por encima, el servidor.
  */
 function minHorometroFor(item: EquipmentControlItem) {
+  if (canLowerHorometer.value) return 0;
   const saved = stateFor(item).savedHorometer;
   return saved === null ? 0 : saved + 1;
+}
+
+function horometerHintFor(item: EquipmentControlItem) {
+  const saved = stateFor(item).savedHorometer;
+  if (saved === null) return "";
+  return canLowerHorometer.value
+    ? `· lectura vigente ${saved}; bajarla pide motivo`
+    : `· debe ser mayor a ${saved}`;
 }
 
 function isOperativo(item: EquipmentControlItem) {
@@ -362,20 +438,74 @@ async function saveHorometer(item: EquipmentControlItem) {
   if (state.horometerSaving) return;
 
   const next = parseHorometer(state.horometerInput);
-  const label = equipmentHeaderLabel(item);
   if (next === null || next < 0) {
     state.horometerError = "Ingresa un horómetro válido mayor o igual a cero.";
     return;
   }
-  // El horómetro es un contador físico: solo avanza. Que baje significa que
-  // alguien tecleó mal, y ese error se propaga al par "anterior → actual" de
-  // todos los informes que lo leen. La corrección hacia abajo sigue existiendo,
-  // pero por el módulo de Equipos, que es administrativo y deja el motivo.
-  if (state.savedHorometer !== null && next <= state.savedHorometer) {
-    state.horometerError = `Debe ser mayor que la lectura vigente (${state.savedHorometer}).`;
+  if (state.savedHorometer !== null && next === state.savedHorometer) {
+    state.horometerError = `El horómetro ya está en ${state.savedHorometer}.`;
+    return;
+  }
+  if (state.savedHorometer !== null && next < state.savedHorometer) {
+    if (!canLowerHorometer.value) {
+      state.horometerError = `Debe ser mayor que la lectura vigente (${state.savedHorometer}). Solo Administrador y Súper Administrador pueden registrar una lectura menor.`;
+      return;
+    }
+    // Se pide el motivo antes de tocar nada: queda en el histórico marcado como
+    // ajuste directo y es lo único que explica el salto meses después.
+    state.horometerError = null;
+    lowerHorometer.item = item;
+    lowerHorometer.next = next;
+    lowerHorometer.current = state.savedHorometer;
+    lowerHorometer.motivo = "";
+    lowerHorometer.error = "";
+    lowerHorometer.saving = false;
+    lowerHorometer.open = true;
     return;
   }
 
+  await persistHorometer(item, next);
+}
+
+async function confirmLowerHorometer() {
+  const item = lowerHorometer.item;
+  if (!item || lowerHorometer.saving) return;
+  const motivo = lowerHorometer.motivo.trim();
+  if (!motivo) {
+    lowerHorometer.error = "Indica por qué se registra una lectura menor.";
+    return;
+  }
+  lowerHorometer.saving = true;
+  lowerHorometer.error = "";
+  const ok = await persistHorometer(item, lowerHorometer.next, motivo);
+  lowerHorometer.saving = false;
+  if (ok) {
+    lowerHorometer.open = false;
+    lowerHorometer.item = null;
+  } else {
+    lowerHorometer.error = stateFor(item).horometerError || "No se pudo actualizar el horómetro.";
+  }
+}
+
+function cancelLowerHorometer() {
+  const item = lowerHorometer.item;
+  lowerHorometer.open = false;
+  lowerHorometer.item = null;
+  // Se devuelve el campo a la lectura vigente: si no, queda en pantalla un
+  // número que nadie guardó.
+  if (item) {
+    const state = stateFor(item);
+    state.horometerInput = formatHorometerInput(state.savedHorometer);
+  }
+}
+
+async function persistHorometer(
+  item: EquipmentControlItem,
+  next: number,
+  motivo?: string,
+) {
+  const state = stateFor(item);
+  const label = equipmentHeaderLabel(item);
   state.horometerSaving = true;
   state.horometerError = null;
   liveMessage.value = `Actualizando horómetro de ${label}...`;
@@ -383,6 +513,7 @@ async function saveHorometer(item: EquipmentControlItem) {
   try {
     const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/horometro`, {
       horometro_actual: next,
+      ...(motivo ? { motivo } : {}),
     });
     const updated = data?.data ?? data ?? {};
     const savedValue = parseHorometer(updated?.horometro_actual) ?? next;
@@ -390,15 +521,19 @@ async function saveHorometer(item: EquipmentControlItem) {
     state.savedHorometer = savedValue;
     state.horometerInput = formatHorometerInput(savedValue);
     state.horometerUpdatedAt = updatedAt;
-    liveMessage.value = `Horómetro de ${label} actualizado a ${savedValue}.`;
+    liveMessage.value = motivo
+      ? `Horómetro de ${label} ajustado a ${savedValue}. Queda registrado como ajuste directo.`
+      : `Horómetro de ${label} actualizado a ${savedValue}.`;
     emit("horometer-updated", {
       id: item.id,
       horometro_actual: savedValue,
       fecha_ultima_lectura: updatedAt,
     });
+    return true;
   } catch (e: any) {
     state.horometerError = e?.response?.data?.message || "No se pudo actualizar el horómetro.";
     liveMessage.value = `No se pudo actualizar el horómetro de ${label}: ${state.horometerError}`;
+    return false;
   } finally {
     state.horometerSaving = false;
   }
