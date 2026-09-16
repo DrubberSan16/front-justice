@@ -2,11 +2,23 @@
   <v-card rounded="xl" class="pa-4 work-orders-shell enterprise-surface">
     <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
       <div>
-        <div class="text-h6 font-weight-bold">Órdenes de trabajo</div>
-        <div class="text-body-2 text-medium-emphasis">Cabeceras creadas y gestión de todo el detalle en una sola pantalla.</div>
+        <div class="text-h6 font-weight-bold">
+          {{ isProjectMode ? "OT. Proyecto" : "Órdenes de trabajo" }}
+        </div>
+        <div class="text-body-2 text-medium-emphasis">
+          {{ isProjectMode
+            ? "Proyectos ejecutados sobre ubicaciones y bodegas. Los materiales se cargan aquí, no en la plantilla."
+            : "Cabeceras creadas y gestión de todo el detalle en una sola pantalla." }}
+        </div>
       </div>
       <div class="d-flex flex-wrap" style="gap: 8px;">
+        <!--
+          El purgado borra TODAS las OT, no solo las del modo actual, asi que
+          solo se ofrece desde Ordenes de Trabajo para no dar a entender que
+          alcanza unicamente a los proyectos.
+        -->
         <MassPurgeButton
+          v-if="!isProjectMode"
           endpoint="/kpi_maintenance/work-orders/purge-all"
           module-title="Ordenes de trabajo"
           @purged="fetchWorkOrders"
@@ -29,7 +41,9 @@
         >
           PDF listado
         </v-btn>
-        <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">Nueva OT</v-btn>
+        <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
+          {{ isProjectMode ? "Nueva OT de proyecto" : "Nueva OT" }}
+        </v-btn>
       </div>
     </div>
 
@@ -44,7 +58,7 @@
           clearable
         />
       </v-col>
-      <v-col cols="12" md="3">
+      <v-col v-if="!isProjectMode" cols="12" md="3">
         <v-autocomplete
           v-model="equipmentFilter"
           :items="equipmentOptions"
@@ -58,7 +72,7 @@
           clearable
         />
       </v-col>
-      <v-col cols="12" md="2">
+      <v-col v-if="!isProjectMode" cols="12" md="2">
         <v-select
           v-model="maintenanceKindFilter"
           :items="maintenanceKindFilterOptions"
@@ -248,7 +262,11 @@
     <v-card class="work-order-dialog-card">
       <v-toolbar color="primary" class="work-orders-toolbar">
         <v-btn icon="mdi-close" @click="dialog = false" />
-        <v-toolbar-title>{{ editingId ? `Editar OT ${headerForm.code || editingId}` : "Nueva orden de trabajo" }}</v-toolbar-title>
+        <v-toolbar-title>
+          {{ editingId
+            ? `${isProjectMode ? "Editar OT de proyecto" : "Editar OT"} ${headerForm.code || editingId}`
+            : (isProjectMode ? "Nueva OT de proyecto" : "Nueva orden de trabajo") }}
+        </v-toolbar-title>
         <v-spacer />
         <v-chip v-if="editingId" color="accent" class="mr-2 workflow-chip" variant="flat">
           {{ currentWorkflowLabel }}
@@ -353,15 +371,17 @@
 
         <v-card variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
 
-          <div class="text-subtitle-2 font-weight-bold mb-3">Cabecera de orden de trabajo</div>
+          <div class="text-subtitle-2 font-weight-bold mb-3">
+            {{ isProjectMode ? "Cabecera del proyecto" : "Cabecera de orden de trabajo" }}
+          </div>
           <v-row dense>
           <v-col cols="12" md="4">
             <v-text-field v-model="headerForm.code" label="Code" variant="outlined" readonly />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-select v-model="headerForm.equipment_id" :items="equipmentOptions" item-title="title" item-value="value" label="Equipo" variant="outlined" :disabled="isReadOnlyWorkflow || isEditingLockedFields" />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-autocomplete
               v-model="headerForm.equipo_componente_ids"
               :items="equipmentComponentOptions"
@@ -379,7 +399,62 @@
               persistent-hint
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <!--
+            En Proyecto el tipo de mantenimiento no se muestra: se guarda
+            siempre PROYECTO. En su lugar se piden el nombre del proyecto y los
+            sitios donde se ejecuta.
+          -->
+          <v-col v-if="isProjectMode" cols="12" md="4">
+            <v-text-field
+              v-model="headerForm.title"
+              label="Nombre del proyecto"
+              variant="outlined"
+              :disabled="isReadOnlyWorkflow"
+              hint="Encabeza el documento del proyecto."
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="isProjectMode" cols="12" md="4">
+            <v-text-field
+              v-model="headerForm.proyecto_empresa"
+              label="Empresa"
+              variant="outlined"
+              :disabled="isReadOnlyWorkflow"
+            />
+          </v-col>
+          <v-col v-if="isProjectMode" cols="12" md="6">
+            <v-autocomplete
+              v-model="headerForm.proyecto_ubicacion_ids"
+              :items="locationOptions"
+              item-title="title"
+              item-value="value"
+              label="Ubicaciones donde se ejecuta"
+              variant="outlined"
+              multiple
+              chips
+              closable-chips
+              clearable
+              :disabled="isReadOnlyWorkflow"
+              hint="Al menos una ubicación o una bodega."
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="isProjectMode" cols="12" md="6">
+            <v-autocomplete
+              v-model="headerForm.proyecto_bodega_ids"
+              :items="warehouseOptions"
+              item-title="title"
+              item-value="value"
+              label="Bodegas donde se ejecuta"
+              variant="outlined"
+              multiple
+              chips
+              closable-chips
+              clearable
+              :disabled="isReadOnlyWorkflow"
+            />
+          </v-col>
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorRole" />
           </v-col>
           <v-col v-if="requiresProgramacionDate" cols="12" md="4">
@@ -524,7 +599,7 @@
               readonly
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-text-field
               v-model="headerForm.horometro_actual"
               label="Horometro actual"
@@ -537,7 +612,7 @@
               persistent-hint
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-text-field
               :model-value="resolvedHorasARealizarLabel"
               label="Horas a realizar (horas-hombre)"
@@ -557,7 +632,7 @@
               persistent-hint
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-textarea
               v-model="headerForm.causa"
               label="Causa"
@@ -571,7 +646,7 @@
               :error-messages="workOrderOutcomeError('causa', 'Causa')"
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-textarea
               v-model="headerForm.accion"
               label="Acción"
@@ -585,7 +660,7 @@
               :error-messages="workOrderOutcomeError('accion', 'Acción')"
             />
           </v-col>
-          <v-col cols="12" md="4">
+          <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-textarea
               v-model="headerForm.prevencion"
               label="Prevención"
@@ -599,7 +674,184 @@
               :error-messages="workOrderOutcomeError('prevencion', 'Prevención')"
             />
           </v-col>
+          <!-- Formato de proyecto: objetivos, metodología y alcance. -->
+          <v-col v-if="isProjectMode" cols="12">
+            <v-textarea
+              v-model="headerForm.proyecto_objetivo_general"
+              label="Objetivo general"
+              variant="outlined"
+              rows="2"
+              auto-grow
+              :disabled="isReadOnlyWorkflow"
+              hint="Obligatorio"
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="isProjectMode" cols="12">
+            <v-combobox
+              v-model="headerForm.proyecto_objetivos_especificos"
+              label="Objetivos específicos"
+              variant="outlined"
+              multiple
+              chips
+              closable-chips
+              clearable
+              :disabled="isReadOnlyWorkflow"
+              hint="Escribe cada objetivo y pulsa Enter."
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="isProjectMode" cols="12">
+            <v-textarea
+              v-model="headerForm.proyecto_metodologia"
+              label="Metodología aplicable"
+              variant="outlined"
+              rows="3"
+              auto-grow
+              :disabled="isReadOnlyWorkflow"
+              hint="Obligatorio"
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="isProjectMode" cols="12">
+            <v-combobox
+              v-model="headerForm.proyecto_alcance"
+              label="Alcance del proyecto"
+              variant="outlined"
+              multiple
+              chips
+              closable-chips
+              clearable
+              :disabled="isReadOnlyWorkflow"
+              hint="Actividades que cubre el proyecto. Escribe cada una y pulsa Enter."
+              persistent-hint
+            />
+          </v-col>
           </v-row>
+        </v-card>
+
+        <!--
+          Contratación de personal: una fila por persona eventual. El cargo y el
+          valor del día los propone la plantilla; los días y el nombre se
+          capturan aquí.
+        -->
+        <v-card v-if="isProjectMode" variant="flat" rounded="lg" class="pa-4 mb-4 section-card">
+          <div class="d-flex align-center justify-space-between mb-3" style="gap: 8px; flex-wrap: wrap;">
+            <div class="text-subtitle-2 font-weight-bold">Contratación de personal</div>
+            <v-btn
+              v-if="!isReadOnlyWorkflow"
+              size="small"
+              variant="tonal"
+              prepend-icon="mdi-account-plus-outline"
+              @click="addProjectPersonnelRow"
+            >
+              Agregar persona
+            </v-btn>
+          </div>
+
+          <div v-if="!projectPersonnelRows.length" class="text-body-2 text-medium-emphasis">
+            Sin personal contratado. La plantilla de proyecto puede proponer los cargos.
+          </div>
+
+          <v-row v-for="(persona, index) in projectPersonnelRows" :key="`persona-${index}`" dense class="align-center">
+            <v-col cols="12" md="2">
+              <v-text-field
+                v-model="persona.rol"
+                label="Cargo"
+                variant="outlined"
+                density="compact"
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="12" md="2">
+              <v-text-field
+                v-model="persona.nombre"
+                label="Nombre y apellido"
+                variant="outlined"
+                density="compact"
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="6" md="1">
+              <v-text-field
+                v-model="persona.dias_laborados"
+                type="number"
+                min="0"
+                step="0.5"
+                label="Días"
+                variant="outlined"
+                density="compact"
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="12" md="2">
+              <v-autocomplete
+                v-model="persona.location_id"
+                :items="locationOptions"
+                item-title="title"
+                item-value="value"
+                label="Ubicación"
+                variant="outlined"
+                density="compact"
+                clearable
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="6" md="1">
+              <v-text-field
+                v-model="persona.valor_dia"
+                type="number"
+                min="0"
+                step="0.01"
+                label="Valor día"
+                variant="outlined"
+                density="compact"
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="6" md="1">
+              <v-text-field
+                :model-value="formatNumberForDisplay(projectPersonnelRowTotal(persona), 2)"
+                label="Total"
+                variant="outlined"
+                density="compact"
+                readonly
+              />
+            </v-col>
+            <v-col cols="6" md="1">
+              <v-text-field
+                v-model="persona.fecha"
+                type="date"
+                label="Fecha"
+                variant="outlined"
+                density="compact"
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="12" md="1">
+              <v-text-field
+                v-model="persona.observacion"
+                label="Observación"
+                variant="outlined"
+                density="compact"
+                :disabled="isReadOnlyWorkflow"
+              />
+            </v-col>
+            <v-col cols="12" md="1" class="d-flex justify-end">
+              <v-btn
+                v-if="!isReadOnlyWorkflow"
+                icon="mdi-delete-outline"
+                variant="text"
+                color="error"
+                size="small"
+                @click="removeProjectPersonnelRow(index)"
+              />
+            </v-col>
+          </v-row>
+
+          <div v-if="projectPersonnelRows.length" class="d-flex justify-end mt-2 text-body-2 font-weight-bold">
+            Total mano de obra: {{ formatNumberForDisplay(projectPersonnelTotal, 2) }}
+          </div>
         </v-card>
 
         <v-divider class="my-4" />
@@ -1982,11 +2234,61 @@ import {
   type MaterialIssueDocumentLike,
   type MaterialIssueWorkOrderLike,
 } from "@/app/utils/material-issue-documents";
+import {
+  buildProjectWorkOrderReportPdfBlob,
+  projectWorkOrderReportFileName,
+  type ProjectWorkOrderReportData,
+} from "@/app/utils/project-work-order-documents";
 import { usePdfPreview } from "@/app/utils/pdf-preview";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import { useExcelPreview } from "@/app/utils/excel-preview";
 import ExcelPreviewDialog from "@/components/ui/ExcelPreviewDialog.vue";
+
+/**
+ * La pantalla sirve dos menus con el mismo formulario:
+ *
+ *   - "Ordenes de Trabajo" (modo `standard`): OT de mantenimiento sobre un equipo.
+ *   - "OT. Proyecto" (modo `proyecto`): el tipo de mantenimiento queda fijo en
+ *     PROYECTO y no se muestra, no se pide equipo sino las ubicaciones y
+ *     bodegas donde corre el proyecto, y solo se listan las plantillas de
+ *     formato proyecto.
+ */
+const props = withDefaults(
+  defineProps<{ mode?: "standard" | "proyecto" }>(),
+  { mode: "standard" },
+);
+const isProjectMode = computed(() => props.mode === "proyecto");
+/** Tipo de mantenimiento que se guarda por debajo en una OT de Proyecto. */
+const PROJECT_MAINTENANCE_KIND = "PROYECTO";
+/** Tipo de proceso que identifica a una plantilla de formato proyecto. */
+const PROJECT_TEMPLATE_PROCESS_TYPE = "PROYECTO";
+
+function normalizeMaintenanceKindKey(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function isProjectWorkOrderRecord(item: any) {
+  return (
+    normalizeMaintenanceKindKey(item?.maintenance_kind) ===
+    PROJECT_MAINTENANCE_KIND
+  );
+}
+
+function isProjectTemplateRecord(item: any) {
+  return (
+    String(item?.tipo_proceso ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, "_") === PROJECT_TEMPLATE_PROCESS_TYPE
+  );
+}
 
 const ui = useUiStore();
 const workOrderPdfPreview = usePdfPreview({
@@ -2052,6 +2354,8 @@ const closingFlow = ref(false);
 const unsupportedDetailMessages = ref<string[]>([]);
 const currentWorkOrderRecord = ref<any | null>(null);
 
+const locationOptions = ref<any[]>([]);
+const locationCatalogRows = ref<any[]>([]);
 const equipmentOptions = ref<any[]>([]);
 const equipmentCatalogRows = ref<any[]>([]);
 const loadingEquipmentCatalog = ref(false);
@@ -2141,7 +2445,63 @@ const headerForm = reactive<any>({
   horometro_actual: "",
   horas_a_realizar: "",
   close_shortfall_reason: "",
+  // Cabecera del formato de proyecto. La plantilla de tipo proyecto las carga
+  // por defecto y se pueden ajustar en la OT.
+  proyecto_empresa: "",
+  proyecto_objetivo_general: "",
+  proyecto_objetivos_especificos: [] as string[],
+  proyecto_metodologia: "",
+  proyecto_alcance: [] as string[],
+  proyecto_ubicacion_ids: [] as string[],
+  proyecto_bodega_ids: [] as string[],
 });
+
+type ProjectPersonnelRow = {
+  rol: string;
+  nombre: string;
+  dias_laborados: string;
+  location_id: string;
+  valor_dia: string;
+  fecha: string;
+  observacion: string;
+};
+
+function newProjectPersonnelRow(rol = "", valorDia = ""): ProjectPersonnelRow {
+  return {
+    rol,
+    nombre: "",
+    dias_laborados: "",
+    location_id: "",
+    valor_dia: valorDia,
+    fecha: "",
+    observacion: "",
+  };
+}
+
+/** Filas de "Contratacion de personal" del formato de proyecto. */
+const projectPersonnelRows = ref<ProjectPersonnelRow[]>([]);
+
+function addProjectPersonnelRow() {
+  projectPersonnelRows.value.push(newProjectPersonnelRow());
+}
+
+function removeProjectPersonnelRow(index: number) {
+  projectPersonnelRows.value.splice(index, 1);
+}
+
+function projectPersonnelRowTotal(row: ProjectPersonnelRow) {
+  const dias = Number(row.dias_laborados);
+  const valor = Number(row.valor_dia);
+  if (!Number.isFinite(dias) || !Number.isFinite(valor)) return 0;
+  return dias * valor;
+}
+
+const projectPersonnelTotal = computed(() =>
+  projectPersonnelRows.value.reduce(
+    (acc, row) => acc + projectPersonnelRowTotal(row),
+    0,
+  ),
+);
 
 const taskForm = reactive<any>({
   plan_id: "",
@@ -2198,7 +2558,12 @@ const workflowOptions = [
 ];
 
 const perms = computed(() =>
-  getPermissionsForAnyComponent(menuStore.tree, ["Work Orders", "Ordenes de trabajo", "Órdenes de trabajo", "OT"]),
+  getPermissionsForAnyComponent(
+    menuStore.tree,
+    isProjectMode.value
+      ? ["work-orders-proyecto", "OT. Proyecto", "OT Proyecto"]
+      : ["Work Orders", "Ordenes de trabajo", "Órdenes de trabajo", "OT"],
+  ),
 );
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
@@ -2282,6 +2647,11 @@ const maintenanceKindFilterOptions = [
   { title: "Todos", value: "" },
   ...maintenanceKindOptions,
 ];
+// "Proyecto" no aparece en el selector: lo fija el modo de la pantalla.
+const PROJECT_MAINTENANCE_KIND_OPTION = {
+  title: "Proyecto",
+  value: PROJECT_MAINTENANCE_KIND,
+};
 
 function normalizeWorkflowStatus(value: unknown) {
   const raw = String(value || "").trim().toUpperCase();
@@ -2347,6 +2717,9 @@ function normalizeMaintenanceKindValue(value: unknown) {
 }
 
 function getMaintenanceKindLabel(value: unknown) {
+  if (normalizeMaintenanceKindKey(value) === PROJECT_MAINTENANCE_KIND) {
+    return PROJECT_MAINTENANCE_KIND_OPTION.title;
+  }
   const normalized = normalizeMaintenanceKindValue(value);
   return maintenanceKindOptions.find((item) => item.value === normalized)?.title || normalized || "Sin definir";
 }
@@ -2639,7 +3012,7 @@ const closeRestrictionText = computed(() => {
   return `Solo ${owner} puede cerrar o anular esta orden de trabajo.`;
 });
 
-const headers = [
+const standardHeaders = [
   { title: "Código", key: "code", fixed: true, width: 150 },
   { title: "Tipo mantenimiento", key: "maintenance_kind_label" },
   { title: "Título", key: "title" },
@@ -2653,6 +3026,23 @@ const headers = [
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
+
+// En Proyecto no hay equipo ni horometro: mandan el sitio y la plantilla.
+const projectHeaders = [
+  { title: "Código", key: "code", fixed: true, width: 150 },
+  { title: "Proyecto", key: "title" },
+  { title: "Plantilla", key: "procedimiento_nombre" },
+  { title: "Ubicaciones", key: "proyecto_ubicaciones_label" },
+  { title: "Bodegas", key: "proyecto_bodegas_label" },
+  { title: "Personal", key: "proyecto_personal_count" },
+  { title: "Estado", key: "status_workflow" },
+  { title: "Fecha", key: "operational_date_label" },
+  { title: "Acciones", key: "actions", sortable: false },
+];
+
+const headers = computed(() =>
+  isProjectMode.value ? projectHeaders : standardHeaders,
+);
 
 const taskHeaders = [
   { title: "Plan", key: "plan_id" },
@@ -3301,6 +3691,80 @@ async function openWorkOrderExcelPreview(report: ReportDefinition) {
   });
 }
 
+/**
+ * Datos del informe de proyecto, con el formato del documento en papel.
+ *
+ * Los materiales salen de lo que realmente se entrego a la OT (salidas de
+ * bodega): en un proyecto son variables, no vienen de la plantilla.
+ */
+const projectReportData = computed<ProjectWorkOrderReportData>(() => {
+  const audit = currentWorkOrderAudit.value ?? {};
+  return {
+    code: headerForm.code || "",
+    projectName: headerForm.title || selectedProcedureLabel.value || "",
+    empresa: headerForm.proyecto_empresa || "",
+    fecha:
+      getWorkOrderOperationalDateLabel(currentWorkOrderRecord.value) ||
+      formatDateOnly(audit?.created_at, "") ||
+      "",
+    statusLabel: workflowLabel(headerForm.status_workflow),
+    plantilla: selectedProcedureLabel.value || "",
+    objetivoGeneral: headerForm.proyecto_objetivo_general || "",
+    objetivosEspecificos: [...headerForm.proyecto_objetivos_especificos],
+    metodologia: headerForm.proyecto_metodologia || "",
+    alcance: [...headerForm.proyecto_alcance],
+    ubicaciones: headerForm.proyecto_ubicacion_ids
+      .map((id: string) => getProjectOptionLabel(locationOptions.value, id))
+      .filter(Boolean),
+    bodegas: headerForm.proyecto_bodega_ids
+      .map((id: string) => getProjectOptionLabel(warehouseOptions.value, id))
+      .filter(Boolean),
+    personal: projectPersonnelRows.value
+      .filter((row) => String(row.rol || "").trim())
+      .map((row) => ({
+        rol: row.rol,
+        nombre: row.nombre,
+        diasLaborados: Number(row.dias_laborados) || 0,
+        ubicacion: getProjectOptionLabel(locationOptions.value, row.location_id),
+        valorDia: Number(row.valor_dia) || 0,
+        fecha: row.fecha ? formatDateOnly(row.fecha, "-") : "",
+        observacion: row.observacion,
+      })),
+    materiales: issueRows.value.map((row: any) => ({
+      descripcion: String(row?.producto_label || ""),
+      cantidad: Number(row?.cantidad) || 0,
+      unidad: "",
+      marca: String(row?.condicion_material || ""),
+    })),
+    mostrarCostos: canViewCosts.value,
+    createdBy: String(
+      audit?.created_by_label || audit?.created_by || "",
+    ),
+    processedBy: String(
+      audit?.processed_by_label || audit?.updated_by || "",
+    ),
+    updatedBy: String(audit?.updated_by || ""),
+  };
+});
+
+/** Etiqueta de un id dentro de una lista de opciones `{ value, title }`. */
+function getProjectOptionLabel(options: any[], id: unknown) {
+  const key = String(id || "").trim();
+  if (!key) return "";
+  const match = options.find((item: any) => String(item?.value || "") === key);
+  return String(match?.title || key);
+}
+
+async function openProjectWorkOrderPdfPreview() {
+  const data = projectReportData.value;
+  await workOrderPdfPreview.open({
+    title: "Previsualización del proyecto",
+    subtitle: data.projectName,
+    fileName: projectWorkOrderReportFileName(data),
+    build: () => buildProjectWorkOrderReportPdfBlob(data),
+  });
+}
+
 async function openWorkOrderPdfPreview(report: ReportDefinition) {
   await workOrderPdfPreview.open({
     title: report.title,
@@ -3321,6 +3785,8 @@ async function exportWorkOrder(format: "excel" | "pdf") {
   try {
     if (format === "excel") {
       await openWorkOrderExcelPreview(workOrderReportDefinition.value);
+    } else if (isProjectMode.value) {
+      await openProjectWorkOrderPdfPreview();
     } else {
       await openWorkOrderPdfPreview(workOrderReportDefinition.value);
     }
@@ -4085,16 +4551,29 @@ async function ensureEquipmentCatalogLoaded(force = false) {
 async function loadCatalogs() {
   loadingCatalogs.value = true;
   try {
-    const [, planes, procedimientos, bodegas, usuarios] = await Promise.all([
-      ensureEquipmentCatalogLoaded(),
-      listAll("/kpi_maintenance/planes"),
-      listAll("/kpi_maintenance/inteligencia/procedimientos"),
-      listAll("/kpi_inventory/bodegas"),
-      listAll("/kpi_security/users"),
-    ]);
+    const [, planes, procedimientos, bodegas, usuarios, ubicaciones] =
+      await Promise.all([
+        ensureEquipmentCatalogLoaded(),
+        listAll("/kpi_maintenance/planes"),
+        listAll("/kpi_maintenance/inteligencia/procedimientos"),
+        listAll("/kpi_inventory/bodegas"),
+        listAll("/kpi_security/users"),
+        isProjectMode.value
+          ? listAll("/kpi_maintenance/locaciones")
+          : Promise.resolve([] as any[]),
+      ]);
     planOptions.value = planes.map(normalize);
-    procedureCatalog.value = procedimientos;
-    procedureOptions.value = procedimientos.map(normalize);
+    // En OT Proyecto solo se ofrecen las plantillas de formato proyecto; en el
+    // resto de OT se ocultan, porque su cabecera es otra.
+    const procedimientosDelModo = procedimientos.filter((item: any) =>
+      isProjectMode.value
+        ? isProjectTemplateRecord(item)
+        : !isProjectTemplateRecord(item),
+    );
+    procedureCatalog.value = procedimientosDelModo;
+    procedureOptions.value = procedimientosDelModo.map(normalize);
+    locationCatalogRows.value = ubicaciones;
+    locationOptions.value = ubicaciones.map(normalize);
     workOrderCatalogRows.value = records.value;
     /* legacy manual alert catalog removed
     value: item.id,
@@ -5051,6 +5530,73 @@ function buildDraftAttachmentPersistencePayload(attachment: any) {
   };
 }
 
+/** Cabecera del proyecto que viaja dentro de `valor_json`. */
+function buildProjectValorJsonPayload() {
+  if (!isProjectMode.value) return {};
+  return {
+    proyecto: {
+      empresa: String(headerForm.proyecto_empresa || "").trim(),
+      objetivo_general: String(headerForm.proyecto_objetivo_general || "").trim(),
+      objetivos_especificos: headerForm.proyecto_objetivos_especificos
+        .map((item: string) => String(item || "").trim())
+        .filter(Boolean),
+      metodologia: String(headerForm.proyecto_metodologia || "").trim(),
+      alcance: headerForm.proyecto_alcance
+        .map((item: string) => String(item || "").trim())
+        .filter(Boolean),
+    },
+  };
+}
+
+/** Sitios y personal del proyecto, que viven en tablas propias. */
+function buildProjectHeaderPayload() {
+  if (!isProjectMode.value) return {};
+  return {
+    proyecto_ubicacion_ids: [...headerForm.proyecto_ubicacion_ids],
+    proyecto_bodega_ids: [...headerForm.proyecto_bodega_ids],
+    proyecto_personal: projectPersonnelRows.value
+      .filter((row) => String(row.rol || "").trim())
+      .map((row, index) => ({
+        orden: index + 1,
+        rol: String(row.rol).trim(),
+        nombre: String(row.nombre || "").trim() || null,
+        dias_laborados: Number(row.dias_laborados) || 0,
+        location_id: row.location_id || null,
+        valor_dia: Number(row.valor_dia) || 0,
+        fecha: String(row.fecha || "").trim() || null,
+        observacion: String(row.observacion || "").trim() || null,
+      })),
+  };
+}
+
+/** Mensaje de rechazo del formulario de proyecto, o `null` si esta completo. */
+function validateProjectHeader(): string | null {
+  if (!isProjectMode.value) return null;
+  if (
+    !headerForm.proyecto_ubicacion_ids.length &&
+    !headerForm.proyecto_bodega_ids.length
+  ) {
+    return "Debes indicar al menos una ubicación o una bodega donde se ejecuta el proyecto.";
+  }
+  if (!String(headerForm.proyecto_objetivo_general || "").trim()) {
+    return "Objetivo general es obligatorio.";
+  }
+  if (!String(headerForm.proyecto_metodologia || "").trim()) {
+    return "Metodología aplicable es obligatoria.";
+  }
+  const personalIncompleto = projectPersonnelRows.value.some(
+    (row) =>
+      !String(row.rol || "").trim() &&
+      (String(row.nombre || "").trim() ||
+        String(row.dias_laborados || "").trim() ||
+        String(row.valor_dia || "").trim()),
+  );
+  if (personalIncompleto) {
+    return "Cada persona contratada debe tener un cargo.";
+  }
+  return null;
+}
+
 function buildWorkOrderSaveBundlePayload() {
   const { generatedTitle, generatedType } = buildAutoHeaderValues();
   const consumoWarehouseId = effectiveConsumoWarehouseId.value;
@@ -5079,6 +5625,7 @@ function buildWorkOrderSaveBundlePayload() {
       procedimiento_id: headerForm.procedimiento_id || null,
       blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
       blocked_reason: headerForm.blocked_reason || null,
+      ...buildProjectHeaderPayload(),
       valor_json: {
         causa: headerForm.causa || "",
         accion: headerForm.accion || "",
@@ -5087,6 +5634,7 @@ function buildWorkOrderSaveBundlePayload() {
         horas_a_realizar: resolvedHorasARealizar.value,
         observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
         ...buildProgramacionDatePayload(),
+        ...buildProjectValorJsonPayload(),
       },
     },
   };
@@ -5449,6 +5997,7 @@ const selectedEquipmentHorometroHint = computed(() => {
  * equipo pudo avanzar con órdenes posteriores.
  */
 function validateHorometroAvanza(): string | null {
+  if (isProjectMode.value) return null;
   if (editingId.value) return null;
   if (headerForm.is_emergency) return null;
   const vigente = equipmentCurrentHorometer.value;
@@ -5461,8 +6010,11 @@ function validateHorometroAvanza(): string | null {
   )}). Ingresaste ${formatHorometerForDisplay(capturado, { suffix: "" })}.`;
 }
 
+// Una OT de Proyecto no toca ningun horometro: no hay equipo al que medirle.
 const requiresHorometroCapture = computed(() =>
-  parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
+  isProjectMode.value
+    ? false
+    : parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
 );
 
 function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
@@ -5614,6 +6166,14 @@ function buildAutoHeaderValues() {
   const referenceLabel = headerForm.procedimiento_id
     ? selectedProcedureLabel.value
     : getSelectedPlanLabel(headerForm.plan_id);
+  if (isProjectMode.value) {
+    // El titulo de un proyecto es el nombre del proyecto, no el de la plantilla.
+    const projectName =
+      String(headerForm.title || "").trim() ||
+      String(selectedProcedure.value?.nombre || "").trim() ||
+      `Proyecto (${referenceLabel})`;
+    return { generatedTitle: projectName, generatedType: "PROYECTO" };
+  }
   const generatedTitle = `Orden (${referenceLabel})`;
   const generatedType = headerForm.type || "MANTENIMIENTO";
   return { generatedTitle, generatedType };
@@ -5627,6 +6187,9 @@ function requiredWorkOrderOutcomeRule(label: string) {
 }
 
 function workOrderOutcomeError(key: WorkOrderOutcomeField, label: string) {
+  // Causa / Acción / Prevención son el cierre de una OT de mantenimiento; el
+  // formato de proyecto no los tiene.
+  if (isProjectMode.value) return [];
   if (!workOrderOutcomeValidationTouched.value) return [];
   return String(headerForm[key] || "").trim()
     ? []
@@ -5642,11 +6205,15 @@ function buildProgramacionDatePayload() {
 
 function validateRequiredWorkOrderOutcomeFields() {
   workOrderOutcomeValidationTouched.value = true;
-  const requiredFields = [
-    { key: "causa", label: "Causa" },
-    { key: "accion", label: "Acción" },
-    { key: "prevencion", label: "Prevención" },
-  ] as const;
+  // En una OT de Proyecto los obligatorios son los del formato de proyecto
+  // (objetivo general y metodología), que valida `validateProjectHeader`.
+  const requiredFields = isProjectMode.value
+    ? ([] as ReadonlyArray<{ key: "causa" | "accion" | "prevencion"; label: string }>)
+    : ([
+        { key: "causa", label: "Causa" },
+        { key: "accion", label: "Acción" },
+        { key: "prevencion", label: "Prevención" },
+      ] as const);
 
   const missingFields = requiredFields.filter(
     (field) => !String(headerForm[field.key] || "").trim(),
@@ -6208,7 +6775,9 @@ async function fetchWorkOrders() {
   error.value = null;
   try {
     const params: Record<string, string> = {};
-    if (appliedMaintenanceKindFilter.value) {
+    if (isProjectMode.value) {
+      params.maintenance_kind = PROJECT_MAINTENANCE_KIND;
+    } else if (appliedMaintenanceKindFilter.value) {
       params.maintenance_kind = appliedMaintenanceKindFilter.value;
     }
     if (appliedDateFromFilter.value) {
@@ -6218,7 +6787,13 @@ async function fetchWorkOrders() {
       params.fecha_hasta = appliedDateToFilter.value;
     }
     const { data } = await api.get("/kpi_maintenance/work-orders", { params });
-    const fetchedRows = asArray(data);
+    // Cada menu ve solo lo suyo: las OT de Proyecto no se mezclan con las de
+    // mantenimiento ni al reves.
+    const fetchedRows = asArray(data).filter((item: any) =>
+      isProjectMode.value
+        ? isProjectWorkOrderRecord(item)
+        : !isProjectWorkOrderRecord(item),
+    );
     records.value = canViewAnnulledWorkOrders.value
       ? fetchedRows
       : fetchedRows.filter((item: any) => !isAnnulledWorkOrder(item));
@@ -6285,6 +6860,15 @@ async function loadDetailData() {
   }
 }
 
+/** "UBI-1 - Patio, UBI-2 - Taller" a partir del detalle que devuelve la API. */
+function getProjectSitesLabel(items: unknown) {
+  if (!Array.isArray(items) || !items.length) return "—";
+  return items
+    .map((item: any) => String(item?.label || item?.nombre || item?.id || "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 const rows = computed(() => {
   const q = search.value.trim().toLowerCase();
   const selectedEquipmentId = String(appliedEquipmentFilter.value || "").trim();
@@ -6299,6 +6883,11 @@ const rows = computed(() => {
       scheduled_program_date_label: getWorkOrderScheduledProgramDateLabel(r),
       operational_date: getWorkOrderOperationalDate(r),
       operational_date_label: getWorkOrderOperationalDateLabel(r),
+      proyecto_ubicaciones_label: getProjectSitesLabel(r?.proyecto_ubicaciones),
+      proyecto_bodegas_label: getProjectSitesLabel(r?.proyecto_bodegas),
+      proyecto_personal_count: Array.isArray(r?.proyecto_personal)
+        ? r.proyecto_personal.length
+        : 0,
       _raw: r,
       _search: JSON.stringify({
         ...r,
@@ -6319,6 +6908,62 @@ const rows = computed(() => {
     });
 });
 
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item ?? "").trim())
+    .filter((item) => item.length > 0);
+}
+
+/**
+ * Carga en el formulario los valores por defecto de una plantilla de proyecto.
+ *
+ * Solo la cabecera: empresa, objetivos, metodologia, alcance y los roles a
+ * contratar. Los materiales de un proyecto son variables, no vienen de la
+ * plantilla y se cargan en la pestana de materiales de la OT.
+ */
+function applyProjectTemplateDefaults(template: any, options?: { force?: boolean }) {
+  if (!template) return;
+  const force = options?.force ?? false;
+  const setIfEmpty = (key: keyof typeof headerForm, value: string) => {
+    if (!value) return;
+    if (force || !String(headerForm[key] || "").trim()) {
+      (headerForm as any)[key] = value;
+    }
+  };
+  setIfEmpty("proyecto_empresa", String(template.empresa || "").trim());
+  setIfEmpty("proyecto_objetivo_general", String(template.objetivo || "").trim());
+  setIfEmpty("proyecto_metodologia", String(template.metodologia || "").trim());
+  setIfEmpty("title", String(template.nombre || "").trim());
+
+  const objetivos = toStringList(template.objetivos_especificos);
+  if (objetivos.length && (force || !headerForm.proyecto_objetivos_especificos.length)) {
+    headerForm.proyecto_objetivos_especificos = [...objetivos];
+  }
+  const alcance = toStringList(template.alcance);
+  if (alcance.length && (force || !headerForm.proyecto_alcance.length)) {
+    headerForm.proyecto_alcance = [...alcance];
+  }
+
+  const personalRequerido = Array.isArray(template.personal_requerido)
+    ? template.personal_requerido
+    : [];
+  if (personalRequerido.length && (force || !projectPersonnelRows.value.length)) {
+    const filas: ProjectPersonnelRow[] = [];
+    for (const definicion of personalRequerido) {
+      const rol = String(definicion?.rol || "").trim();
+      if (!rol) continue;
+      const cantidad = Math.max(1, Math.trunc(Number(definicion?.cantidad) || 1));
+      const valorDia = Number(definicion?.valor_dia);
+      const valorDiaTexto = Number.isFinite(valorDia) && valorDia > 0 ? String(valorDia) : "";
+      for (let i = 0; i < cantidad; i += 1) {
+        filas.push(newProjectPersonnelRow(rol, valorDiaTexto));
+      }
+    }
+    if (filas.length) projectPersonnelRows.value = filas;
+  }
+}
+
 function resetAllForms() {
   workOrderOutcomeValidationTouched.value = false;
   currentWorkOrderRecord.value = null;
@@ -6329,7 +6974,11 @@ function resetAllForms() {
   headerForm.equipment_id = "";
   headerForm.equipo_componente_ids = [];
   headerForm.equipo_componentes = [];
-  headerForm.maintenance_kind = isOperatorRole.value ? "CEBADO" : "CORRECTIVO";
+  headerForm.maintenance_kind = isProjectMode.value
+    ? PROJECT_MAINTENANCE_KIND
+    : isOperatorRole.value
+      ? "CEBADO"
+      : "CORRECTIVO";
   headerForm.fecha_programacion = "";
   headerForm.status_workflow = "PLANNED";
   headerForm.procedimiento_id = "";
@@ -6346,6 +6995,14 @@ function resetAllForms() {
   headerForm.prevencion = "";
   headerForm.horometro_actual = "";
   headerForm.horas_a_realizar = "";
+  headerForm.proyecto_empresa = "";
+  headerForm.proyecto_objetivo_general = "";
+  headerForm.proyecto_objetivos_especificos = [];
+  headerForm.proyecto_metodologia = "";
+  headerForm.proyecto_alcance = [];
+  headerForm.proyecto_ubicacion_ids = [];
+  headerForm.proyecto_bodega_ids = [];
+  projectPersonnelRows.value = [];
 
   taskForm.plan_id = "";
   taskForm.tarea_id = "";
@@ -6393,7 +7050,9 @@ async function openCreate() {
   resetAllForms();
   dialog.value = true;
   await ensureCatalogsLoaded();
-  if (isOperatorRole.value) {
+  if (isProjectMode.value) {
+    headerForm.maintenance_kind = PROJECT_MAINTENANCE_KIND;
+  } else if (isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
   await assignNextWorkOrderCode();
@@ -6414,9 +7073,11 @@ async function openEdit(item: any) {
     ? normalizeEquipmentComponentIds(item.equipo_componente_ids)
     : normalizeEquipmentComponentIds(item.equipo_componente_id);
   headerForm.equipo_componentes = getWorkOrderComponentSnapshots(item);
-  headerForm.maintenance_kind = isOperatorRole.value
-    ? "CEBADO"
-    : (item.maintenance_kind ?? "CORRECTIVO");
+  headerForm.maintenance_kind = isProjectMode.value
+    ? PROJECT_MAINTENANCE_KIND
+    : isOperatorRole.value
+      ? "CEBADO"
+      : (item.maintenance_kind ?? "CORRECTIVO");
   const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
   headerForm.status_workflow = initialWorkflow;
   headerForm.procedimiento_id = item.procedimiento_id ?? "";
@@ -6450,6 +7111,32 @@ async function openEdit(item: any) {
       headerValorJson?.horas_a_realizar ??
       headerValorJson?.horas_plantilla,
   );
+  const proyectoGuardado =
+    headerValorJson?.proyecto && typeof headerValorJson.proyecto === "object"
+      ? (headerValorJson.proyecto as Record<string, any>)
+      : {};
+  headerForm.proyecto_empresa = String(proyectoGuardado.empresa ?? "");
+  headerForm.proyecto_objetivo_general = String(
+    proyectoGuardado.objetivo_general ?? "",
+  );
+  headerForm.proyecto_objetivos_especificos = toStringList(
+    proyectoGuardado.objetivos_especificos,
+  );
+  headerForm.proyecto_metodologia = String(proyectoGuardado.metodologia ?? "");
+  headerForm.proyecto_alcance = toStringList(proyectoGuardado.alcance);
+  headerForm.proyecto_ubicacion_ids = toStringList(item?.proyecto_ubicacion_ids);
+  headerForm.proyecto_bodega_ids = toStringList(item?.proyecto_bodega_ids);
+  projectPersonnelRows.value = Array.isArray(item?.proyecto_personal)
+    ? item.proyecto_personal.map((row: any) => ({
+        rol: String(row?.rol ?? ""),
+        nombre: String(row?.nombre ?? ""),
+        dias_laborados: toEditableNumber(row?.dias_laborados),
+        location_id: String(row?.location_id ?? ""),
+        valor_dia: toEditableNumber(row?.valor_dia),
+        fecha: toEditableDateOnly(row?.fecha),
+        observacion: String(row?.observacion ?? ""),
+      }))
+    : [];
   dialog.value = true;
   await ensureCatalogsLoaded();
   await loadEquipmentComponents(String(headerForm.equipment_id || ""));
@@ -6655,12 +7342,17 @@ async function saveHeader(
     ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return false;
   }
-  if (!headerForm.equipment_id) {
+  if (!isProjectMode.value && !headerForm.equipment_id) {
     ui.error("Equipo es obligatorio.");
     return false;
   }
   if (!headerForm.procedimiento_id && !headerForm.plan_id) {
     ui.error("Debes seleccionar una plantilla para la OT.");
+    return false;
+  }
+  const projectHeaderError = validateProjectHeader();
+  if (projectHeaderError) {
+    ui.error(projectHeaderError);
     return false;
   }
   if (!headerForm.maintenance_kind) {
@@ -6706,7 +7398,8 @@ async function saveHeader(
     code: headerForm.code || null,
     type: generatedType,
     title: generatedTitle,
-    equipment_id: headerForm.equipment_id,
+    equipment_id: headerForm.equipment_id || null,
+    ...buildProjectHeaderPayload(),
     equipo_componente_id: getHeaderComponentIds()[0] || null,
     equipo_componente_ids: getHeaderComponentIds(),
     maintenance_kind: headerForm.maintenance_kind || null,
@@ -6731,6 +7424,7 @@ async function saveHeader(
       horas_a_realizar: resolvedHorasARealizar.value,
       observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
+      ...buildProjectValorJsonPayload(),
       ...buildWorkOrderAuditPayload(false),
     },
   };
@@ -6739,6 +7433,7 @@ async function saveHeader(
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
+    ...buildProjectHeaderPayload(),
     equipo_componente_id: getHeaderComponentIds()[0] || null,
     equipo_componente_ids: getHeaderComponentIds(),
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
@@ -6818,6 +7513,7 @@ function buildWorkOrderHeaderComparableState() {
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
     equipo_componente_ids: [...getHeaderComponentIds()].sort(),
+    ...buildProjectHeaderPayload(),
     blocked_by_work_order_id: headerForm.blocked_by_work_order_id || null,
     blocked_reason: headerForm.blocked_reason || null,
     ...(headerForm.is_emergency
@@ -6834,6 +7530,7 @@ function buildWorkOrderHeaderComparableState() {
       horas_a_realizar: resolvedHorasARealizar.value,
       observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
+      ...buildProjectValorJsonPayload(),
     },
   });
 }
@@ -6868,12 +7565,17 @@ async function saveAll() {
       ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
       return;
     }
-    if (!headerForm.equipment_id) {
+    if (!isProjectMode.value && !headerForm.equipment_id) {
       ui.error("Equipo es obligatorio.");
       return;
     }
     if (!headerForm.procedimiento_id && !headerForm.plan_id) {
       ui.error("Debes seleccionar una plantilla para la OT.");
+      return;
+    }
+    const projectHeaderError = validateProjectHeader();
+    if (projectHeaderError) {
+      ui.error(projectHeaderError);
       return;
     }
     if (!headerForm.maintenance_kind) {
@@ -7642,6 +8344,12 @@ watch(
     const selected = procedureCatalog.value.find(
       (item: any) => String(item?.id || "") === String(procedimientoId || ""),
     );
+    if (isProjectMode.value) {
+      // La plantilla de proyecto trae la cabecera del documento; al cambiarla
+      // en una OT nueva se sobrescribe, y en una ya guardada solo se rellenan
+      // los campos que el usuario aun no ha escrito.
+      applyProjectTemplateDefaults(selected, { force: !editingId.value });
+    }
     const suggestedComponentId = isOperatorRole.value
       ? getMotorEquipmentComponentId()
       : getSuggestedProcedureComponentId(selected);

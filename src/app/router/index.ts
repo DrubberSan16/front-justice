@@ -365,6 +365,21 @@ export const router = createRouter({
           meta: { title: "Work Orders", viewFile: "views/admin/WorkOrdersView.vue" },
         },
         {
+          // Una OT de Proyecto es la misma pantalla que una OT normal. Cambia
+          // el modo: el tipo de mantenimiento queda fijo en PROYECTO, no se
+          // pide equipo sino ubicaciones y bodegas, y solo se listan las
+          // plantillas de formato proyecto.
+          path: "work-orders-proyecto",
+          name: "work-orders-proyecto",
+          component: () => import("@/views/admin/WorkOrdersView.vue"),
+          props: { mode: "proyecto" },
+          meta: {
+            title: "OT. Proyecto",
+            permissionComponent: "work-orders-proyecto",
+            viewFile: "views/admin/WorkOrdersView.vue",
+          },
+        },
+        {
           path: "bitacora",
           name: "bitacora",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),

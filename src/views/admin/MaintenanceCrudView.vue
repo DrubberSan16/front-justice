@@ -1508,22 +1508,31 @@ function pruneWarehouseDependentSelections() {
   }
 }
 
+/**
+ * Un campo se pinta (y se valida) solo si aplica al estado actual del
+ * formulario. Sin esto, un obligatorio que la configuracion oculta —la bodega
+ * de una plantilla de proyecto, por ejemplo— bloquearia el guardado sin que el
+ * usuario pueda verlo ni llenarlo.
+ */
+function isFieldVisible(field: EnhancedMaintenanceField) {
+  if (field.hidden) return false;
+  if (field.visibleWhen && !field.visibleWhen(form)) return false;
+  if (!isEquipmentModule.value) return true;
+  if (
+    [
+      "intervalo_mantenimiento_valor",
+      "intervalo_mantenimiento_unidad",
+      "ultimo_servicio_fecha",
+      "proximo_servicio_fecha",
+    ].includes(field.key)
+  ) {
+    return Boolean(form.es_servicio);
+  }
+  return true;
+}
+
 const visibleFields = computed(() =>
-  (moduleConfig.value?.fields ?? []).filter((field) => {
-    if (field.hidden) return false;
-    if (!isEquipmentModule.value) return true;
-    if (
-      [
-        "intervalo_mantenimiento_valor",
-        "intervalo_mantenimiento_unidad",
-        "ultimo_servicio_fecha",
-        "proximo_servicio_fecha",
-      ].includes(field.key)
-    ) {
-      return Boolean(form.es_servicio);
-    }
-    return true;
-  }),
+  (moduleConfig.value?.fields ?? []).filter((field) => isFieldVisible(field)),
 );
 
 const headers = computed(() => {
@@ -1756,6 +1765,7 @@ function validateForm() {
 
   for (const field of cfg.fields) {
     if (!field.required) continue;
+    if (!isFieldVisible(field)) continue;
     if (isAutoCodeField(field)) continue;
     const val = field.type === "json" && !field.editor && !field.hidden ? jsonTextFields[field.key] : form[field.key];
     if (field.type === "boolean") continue;

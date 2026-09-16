@@ -5,7 +5,28 @@ export type EnhancedMaintenanceField = MaintenanceField & {
   hidden?: boolean;
   fullWidth?: boolean;
   readonly?: boolean;
+  /**
+   * Muestra el campo solo cuando el formulario cumple la condicion. Un campo
+   * oculto por aqui tampoco se valida como obligatorio.
+   */
+  visibleWhen?: (form: Record<string, any>) => boolean;
 };
+
+/** Normaliza un tipo de proceso de plantilla (`PROCEDIMIENTO DE TRABAJO` -> `PROCEDIMIENTO_DE_TRABAJO`). */
+function normalizeTipoProceso(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+const isProyectoTemplate = (form: Record<string, any>) =>
+  normalizeTipoProceso(form?.tipo_proceso) === "PROYECTO";
+
+const isNotProyectoTemplate = (form: Record<string, any>) =>
+  !isProyectoTemplate(form);
 
 export type EnhancedMaintenanceModuleConfig = Omit<MaintenanceModuleConfig, "fields"> & {
   fields: EnhancedMaintenanceField[];
@@ -80,6 +101,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
           { value: "PROCEDIMIENTO_TRABAJO", title: "Procedimiento de trabajo" },
           { value: "INSPECCION", title: "Inspeccion" },
           { value: "LUBRICACION", title: "Lubricacion" },
+          { value: "PROYECTO", title: "Proyecto" },
         ],
       },
       {
@@ -88,16 +110,20 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         type: "select",
         required: true,
         relation: { endpoint: "/kpi_inventory/bodegas" },
+        // En un proyecto las bodegas se eligen en la OT, no en la plantilla.
+        visibleWhen: isNotProyectoTemplate,
       },
       {
         key: "compartimiento_codigo_referencia",
         label: "Codigo compartimiento",
         type: "text",
+        visibleWhen: isNotProyectoTemplate,
       },
       {
         key: "compartimiento_nombre_oficial",
         label: "Compartimiento oficial",
         type: "text",
+        visibleWhen: isNotProyectoTemplate,
       },
       {
         key: "clase_mantenimiento",
@@ -110,11 +136,73 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
           { value: "CEBADO", title: "Cebado" },
           { value: "RUTINARIO", title: "Rutinario" },
         ],
+        visibleWhen: isNotProyectoTemplate,
       },
-      { key: "frecuencia_horas", label: "Frecuencia horas", type: "number" },
+      {
+        key: "frecuencia_horas",
+        label: "Frecuencia horas",
+        type: "number",
+        visibleWhen: isNotProyectoTemplate,
+      },
       { key: "documento_referencia", label: "Documento referencia", type: "text" },
       { key: "version", label: "Version", type: "text" },
-      { key: "objetivo", label: "Objetivo", type: "text", fullWidth: true },
+      {
+        key: "objetivo",
+        label: "Objetivo",
+        type: "text",
+        fullWidth: true,
+        visibleWhen: isNotProyectoTemplate,
+      },
+      // ------------------------------------------- Formato de proyecto
+      // Estos campos reproducen la cabecera del documento de proyecto y son los
+      // que la OT de Proyecto carga por defecto. Los materiales no estan aqui:
+      // en un proyecto son variables y se cargan en la propia OT.
+      {
+        key: "empresa",
+        label: "Empresa",
+        type: "text",
+        visibleWhen: isProyectoTemplate,
+      },
+      {
+        key: "objetivo",
+        label: "Objetivo general",
+        type: "text",
+        fullWidth: true,
+        visibleWhen: isProyectoTemplate,
+      },
+      {
+        key: "objetivos_especificos",
+        label: "Objetivos especificos",
+        type: "json",
+        jsonMode: "array",
+        editor: "string-list",
+        fullWidth: true,
+        visibleWhen: isProyectoTemplate,
+      },
+      {
+        key: "metodologia",
+        label: "Metodologia aplicable",
+        type: "text",
+        fullWidth: true,
+        visibleWhen: isProyectoTemplate,
+      },
+      {
+        key: "alcance",
+        label: "Alcance del proyecto",
+        type: "json",
+        jsonMode: "array",
+        editor: "string-list",
+        fullWidth: true,
+        visibleWhen: isProyectoTemplate,
+      },
+      {
+        key: "personal_requerido",
+        label: "Personal a contratar (JSON: rol, cantidad, valor_dia)",
+        type: "json",
+        jsonMode: "array",
+        fullWidth: true,
+        visibleWhen: isProyectoTemplate,
+      },
       {
         key: "precauciones",
         label: "Precauciones",
@@ -139,6 +227,8 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         editor: "relation-multi-select",
         relation: { endpoint: "/kpi_inventory/productos" },
         fullWidth: true,
+        // Los materiales de un proyecto son variables: se cargan en la OT.
+        visibleWhen: isNotProyectoTemplate,
       },
       {
         key: "responsabilidades",
