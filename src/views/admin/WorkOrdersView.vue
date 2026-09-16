@@ -3087,7 +3087,7 @@ function normalizeTaskResponsibles(values: any) {
       (itemDisplayName && itemDisplayName !== userId ? itemDisplayName : "") ||
       (previousDisplayName && previousDisplayName !== userId ? previousDisplayName : "") ||
       buildUserDisplayName(item) ||
-      userId;
+      "Usuario asignado";
     grouped.set(userId, {
       user_id: userId,
       username:
@@ -3459,11 +3459,11 @@ const workOrderPreviewMainInfo = computed(() => {
   ];
 });
 const workOrderPreviewTraceability = computed(() => [
-  { label: "Creado por", value: currentWorkOrderAudit.value?.created_by_label || currentWorkOrderAudit.value?.created_by || "" },
+  { label: "Creado por", value: resolveUserDisplayLabel(currentWorkOrderAudit.value?.created_by_label, currentWorkOrderAudit.value?.created_by) },
   { label: "Fecha creación", value: currentWorkOrderAudit.value?.created_at || "" },
-  { label: "Realizado por", value: currentWorkOrderAudit.value?.processed_by_label || currentWorkOrderAudit.value?.updated_by || "" },
+  { label: "Realizado por", value: resolveUserDisplayLabel(currentWorkOrderAudit.value?.processed_by_label, currentWorkOrderAudit.value?.updated_by) },
   { label: "Fecha realización", value: currentWorkOrderAudit.value?.processed_at || currentWorkOrderAudit.value?.updated_at || "" },
-  { label: "Aprobado por", value: currentWorkOrderAudit.value?.approved_by_label || "" },
+  { label: "Aprobado por", value: resolveUserDisplayLabel(currentWorkOrderAudit.value?.approved_by_label) },
   { label: "Fecha aprobación", value: currentWorkOrderAudit.value?.approved_at || "" },
   { label: "Acción final", value: currentWorkOrderAudit.value?.approval_action || "" },
   { label: "OT bloqueante", value: selectedBlockingOrderLabel.value },
@@ -3567,7 +3567,7 @@ const reportPreviewHistory = computed(() =>
   localHistory.value.map((item: any) => ({
     from: workflowLabel(item?.from_status),
     to: workflowLabel(item?.to_status),
-    user: item?.changed_by || "",
+    user: getHistoryUser(item),
     date: item?.changed_at ? formatDateTime(item.changed_at, "") : "",
     note: item?.note || "",
   })),
@@ -3578,7 +3578,15 @@ function normalizeHistoryStatus(value: unknown) {
 }
 
 function getHistoryUser(item: any) {
-  return String(item?.changed_by || item?.usuario || item?.user || "").trim();
+  // `changed_by` es el id del usuario. El backend ya manda resuelto
+  // `changed_by_label`; el catalogo local cubre el historial en memoria.
+  return resolveUserDisplayLabel(
+    item?.changed_by_label,
+    item?.changed_by_username,
+    item?.changed_by,
+    item?.usuario,
+    item?.user,
+  );
 }
 
 function getHistoryDate(item: any) {
@@ -3612,10 +3620,12 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
 
   return {
     creado_por:
-      header?.created_by_label ||
-      header?.created_by_name ||
-      header?.created_by_username ||
-      header?.created_by ||
+      resolveUserDisplayLabel(
+        header?.created_by_label,
+        header?.created_by_name,
+        header?.created_by_username,
+        header?.created_by,
+      ) ||
       getHistoryUser(plannedHistory) ||
       "",
     fecha_creacion:
@@ -3623,11 +3633,13 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
       getHistoryDate(plannedHistory) ||
       "",
     realizado_por:
-      header?.processed_by_label ||
-      header?.processed_by_name ||
-      header?.processed_by_username ||
+      resolveUserDisplayLabel(
+        header?.processed_by_label,
+        header?.processed_by_name,
+        header?.processed_by_username,
+      ) ||
       getHistoryUser(processedHistory) ||
-      header?.updated_by ||
+      resolveUserDisplayLabel(header?.updated_by) ||
       "",
     fecha_realizacion:
       header?.processed_at ||
@@ -3635,9 +3647,11 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
       header?.started_at ||
       "",
     aprobado_por:
-      header?.approved_by_label ||
-      header?.approved_by_name ||
-      header?.approved_by_username ||
+      resolveUserDisplayLabel(
+        header?.approved_by_label,
+        header?.approved_by_name,
+        header?.approved_by_username,
+      ) ||
       getHistoryUser(approvedHistory) ||
       "",
     fecha_aprobacion:
@@ -3722,7 +3736,7 @@ const workOrderReportDefinition = computed(() =>
     history: localHistory.value.map((item: any) => ({
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
-      usuario: item?.changed_by || "",
+      usuario: getHistoryUser(item),
       nota: item?.note || "",
       fecha: item?.changed_at || "",
     })),
@@ -3902,8 +3916,16 @@ function normalizeEquipmentComponent(item: any) {
   };
 }
 
+/**
+ * Nombre de un usuario del catalogo.
+ *
+ * Devuelve vacio cuando no hay usuario, a proposito: antes caia en el id o en
+ * la palabra "Usuario", y eso convertia un catalogo sin cargar -exportar el PDF
+ * desde el listado, sin abrir la OT- en una tabla de responsables donde todos se
+ * llamaban igual. Vacio deja que el llamador siga con su propio respaldo.
+ */
 function buildUserDisplayName(user: any) {
-  return String(user?.nameSurname || user?.nameUser || user?.id || "Usuario").trim();
+  return String(user?.nameSurname || user?.nameUser || "").trim();
 }
 
 const userCatalogMap = computed(
@@ -3912,6 +3934,42 @@ const userCatalogMap = computed(
       userCatalogRows.value.map((item: any) => [String(item?.id || ""), item]),
     ),
 );
+
+const userCatalogByUsername = computed(() => {
+  const out = new Map<string, any>();
+  for (const item of userCatalogRows.value) {
+    const key = String(item?.nameUser || "").trim().toLowerCase();
+    if (!key || out.has(key)) continue;
+    out.set(key, item);
+  }
+  return out;
+});
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidLike(value: unknown) {
+  return UUID_PATTERN.test(String(value ?? "").trim());
+}
+
+/**
+ * Nombre legible de un usuario a partir de lo que llegue: id, usuario o el
+ * nombre ya resuelto, en ese orden de preferencia.
+ *
+ * Un id no se imprime nunca. Si el unico dato es un uuid que no esta en el
+ * catalogo, se devuelve vacio: "sin dato" se entiende, un uuid no.
+ */
+function resolveUserDisplayLabel(...values: unknown[]) {
+  for (const value of values) {
+    const raw = String(value ?? "").trim();
+    if (!raw) continue;
+    const byId = userCatalogMap.value.get(raw);
+    if (byId) return buildUserDisplayName(byId);
+    const byUsername = userCatalogByUsername.value.get(raw.toLowerCase());
+    if (byUsername) return buildUserDisplayName(byUsername);
+    if (!isUuidLike(raw)) return raw;
+  }
+  return "";
+}
 
 const userOptions = computed(() =>
   userCatalogRows.value
@@ -5206,7 +5264,8 @@ function upsertTaskResponsible(task: any, userId: string, hours: number, mode: "
       username: catalogUser?.nameUser || existing?.username || null,
       display_name:
         existing?.display_name ||
-        buildUserDisplayName(catalogUser || { id: normalizedUserId }),
+        buildUserDisplayName(catalogUser) ||
+        "Usuario asignado",
       horas: nextHours,
     },
   ]);
@@ -6531,7 +6590,7 @@ async function fetchWorkOrderExportBundle(order: any) {
     history: history.map((item: any) => ({
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
-      usuario: item?.changed_by || "",
+      usuario: getHistoryUser(item),
       fecha: item?.changed_at || "",
       nota: item?.note || "",
     })),
