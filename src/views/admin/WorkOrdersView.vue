@@ -7509,6 +7509,12 @@ async function saveHeader(
 
 function buildWorkOrderHeaderComparableState() {
   return JSON.stringify({
+    // El titulo y la descripcion viajan en el guardado y el backend los aplica,
+    // pero no estaban en la comparacion: editar solo uno de los dos dejaba la
+    // pantalla diciendo "no hay cambios pendientes". En OT de Proyecto el
+    // titulo es el nombre del proyecto y se edita a mano, asi que se nota.
+    title: String(headerForm.title || "").trim(),
+    description: String(headerForm.description || "").trim(),
     maintenance_kind: headerForm.maintenance_kind || null,
     status_workflow: normalizedWorkflow.value,
     procedimiento_id: headerForm.procedimiento_id || null,
