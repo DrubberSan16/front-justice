@@ -2028,7 +2028,10 @@
           <div>
             <div class="text-h6 font-weight-bold">{{ headerForm.code || "Orden de trabajo" }}</div>
             <div class="text-body-2 text-medium-emphasis">
-              {{ [selectedEquipmentLabel, selectedEquipmentComponentLabel, headerForm.maintenance_kind, resolvedEmergencyOrderLabel].filter(Boolean).join(" · ") || "Sin contexto operativo" }}
+              {{ (isProjectMode
+                ? [headerForm.title, headerForm.proyecto_empresa, projectPreviewSitesLabel]
+                : [selectedEquipmentLabel, selectedEquipmentComponentLabel, headerForm.maintenance_kind, resolvedEmergencyOrderLabel]
+              ).filter(Boolean).join(" · ") || "Sin contexto operativo" }}
             </div>
           </div>
           <div class="d-flex flex-wrap" style="gap: 8px;">
@@ -3385,31 +3388,76 @@ const scrapHeaders = computed(() => {
 const currentWorkOrderAudit = computed(() => currentWorkOrderRecord.value?._raw ?? currentWorkOrderRecord.value ?? {});
 const workOrderPreviewSummary = computed(() => [
   { label: "Estado", value: workflowLabel(headerForm.status_workflow) },
+  ...(isProjectMode.value
+    ? [{ label: "Personal", value: projectPersonnelRows.value.length }]
+    : []),
   { label: "Tareas", value: taskRows.value.length },
   { label: "Adjuntos", value: attachmentRows.value.length },
   { label: "Consumos", value: consumoRows.value.length },
   { label: "Salidas", value: issueRows.value.length },
   { label: "Desechos", value: scrapRows.value.length },
 ]);
-const workOrderPreviewMainInfo = computed(() => [
-  { label: "Código", value: headerForm.code },
-  { label: "Descripción", value: headerForm.description },
-  { label: "Equipo", value: selectedEquipmentLabel.value },
-  { label: "Compartimiento", value: selectedEquipmentComponentLabel.value },
-  { label: "Tipo de mantenimiento", value: headerForm.maintenance_kind },
-  {
-    label: "Fecha programación",
-    value: isCebadoWorkOrder.value ? headerForm.fecha_programacion : "",
-  },
-  { label: "Clase de orden", value: resolvedEmergencyOrderLabel.value },
-  { label: "Motivo emergencia", value: headerForm.is_emergency ? headerForm.emergency_reason : "" },
-  { label: "Procedimiento", value: selectedProcedureLabel.value },
-  { label: "Plan operativo", value: resolvedOperationalPlanLabel.value },
-  { label: "Alerta", value: selectedAlertLabel.value },
-  { label: "Causa", value: headerForm.causa },
-  { label: "Acción", value: headerForm.accion },
-  { label: "Prevención", value: headerForm.prevencion },
-]);
+/** Sitios y personal del proyecto, en texto, para la previsualización. */
+const projectPreviewSitesLabel = computed(() =>
+  [
+    ...headerForm.proyecto_ubicacion_ids.map((id: string) =>
+      getProjectOptionLabel(locationOptions.value, id),
+    ),
+    ...headerForm.proyecto_bodega_ids.map((id: string) =>
+      getProjectOptionLabel(warehouseOptions.value, id),
+    ),
+  ]
+    .filter(Boolean)
+    .join(", "),
+);
+
+const workOrderPreviewMainInfo = computed(() => {
+  // La previsualización muestra la misma cabecera que el formulario: en un
+  // proyecto no hay equipo ni cierre de mantenimiento que enseñar, y dejar esas
+  // filas vacías haría leer el informe como incompleto.
+  if (isProjectMode.value) {
+    return [
+      { label: "Código", value: headerForm.code },
+      { label: "Proyecto", value: headerForm.title },
+      { label: "Empresa", value: headerForm.proyecto_empresa },
+      { label: "Descripción", value: headerForm.description },
+      { label: "Lugar de ejecución", value: projectPreviewSitesLabel.value },
+      { label: "Plantilla", value: selectedProcedureLabel.value },
+      { label: "Objetivo general", value: headerForm.proyecto_objetivo_general },
+      {
+        label: "Objetivos específicos",
+        value: headerForm.proyecto_objetivos_especificos.join(" · "),
+      },
+      { label: "Metodología aplicable", value: headerForm.proyecto_metodologia },
+      { label: "Alcance", value: headerForm.proyecto_alcance.join(" · ") },
+      {
+        label: "Personal contratado",
+        value: projectPersonnelRows.value.length
+          ? `${projectPersonnelRows.value.length} persona(s)`
+          : "",
+      },
+    ];
+  }
+  return [
+    { label: "Código", value: headerForm.code },
+    { label: "Descripción", value: headerForm.description },
+    { label: "Equipo", value: selectedEquipmentLabel.value },
+    { label: "Compartimiento", value: selectedEquipmentComponentLabel.value },
+    { label: "Tipo de mantenimiento", value: headerForm.maintenance_kind },
+    {
+      label: "Fecha programación",
+      value: isCebadoWorkOrder.value ? headerForm.fecha_programacion : "",
+    },
+    { label: "Clase de orden", value: resolvedEmergencyOrderLabel.value },
+    { label: "Motivo emergencia", value: headerForm.is_emergency ? headerForm.emergency_reason : "" },
+    { label: "Procedimiento", value: selectedProcedureLabel.value },
+    { label: "Plan operativo", value: resolvedOperationalPlanLabel.value },
+    { label: "Alerta", value: selectedAlertLabel.value },
+    { label: "Causa", value: headerForm.causa },
+    { label: "Acción", value: headerForm.accion },
+    { label: "Prevención", value: headerForm.prevencion },
+  ];
+});
 const workOrderPreviewTraceability = computed(() => [
   { label: "Creado por", value: currentWorkOrderAudit.value?.created_by_label || currentWorkOrderAudit.value?.created_by || "" },
   { label: "Fecha creación", value: currentWorkOrderAudit.value?.created_at || "" },
