@@ -1372,8 +1372,11 @@
               loading-text="Obteniendo consumos reservados..."
               density="comfortable"
               class="table-enterprise enterprise-table mb-4"
-              :items-per-page="5"
+              :items-per-page="-1"
             >
+              <!-- La salida debe exponer todos los consumos reservados. Con cinco
+                   filas y el pie oculto, los restantes quedaban en una segunda
+                   pagina sin ningun control para acceder a ella. -->
               <template #bottom />
               <template #item.actions="{ item }">
                 <v-btn
