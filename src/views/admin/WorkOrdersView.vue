@@ -1314,7 +1314,6 @@
               class="table-enterprise enterprise-table"
               :items-per-page="5"
             >
-              <template #bottom />
               <template #item.costo_unitario="{ item }">{{ formatDecimalValue((item.raw ?? item).costo_unitario || 0) }}</template>
               <template #item.subtotal="{ item }">{{ formatDecimalValue((item.raw ?? item).subtotal || 0) }}</template>
               <template #item.actions="{ item }">
@@ -1372,12 +1371,8 @@
               loading-text="Obteniendo consumos reservados..."
               density="comfortable"
               class="table-enterprise enterprise-table mb-4"
-              :items-per-page="-1"
+              :items-per-page="5"
             >
-              <!-- La salida debe exponer todos los consumos reservados. Con cinco
-                   filas y el pie oculto, los restantes quedaban en una segunda
-                   pagina sin ningun control para acceder a ella. -->
-              <template #bottom />
               <template #item.actions="{ item }">
                 <v-btn
                   color="primary"
