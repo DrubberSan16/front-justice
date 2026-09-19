@@ -245,6 +245,76 @@
             </div>
           </div>
 
+          <section class="manual-state-section" aria-labelledby="manual-state-title">
+            <div class="manual-section-heading">
+              <div class="manual-section-heading__icon manual-section-heading__icon--info">
+                <v-icon icon="mdi-progress-check" size="20" aria-hidden="true" />
+              </div>
+              <div>
+                <strong id="manual-state-title">Estados y controles del proceso</strong>
+                <span>Antes de avanzar, confirma qué significa la etapa y qué debe quedar listo.</span>
+              </div>
+            </div>
+            <div class="manual-state-grid">
+              <article
+                v-for="(state, index) in activeManual.states"
+                :key="`${activeManual.routeName}-state-${index}`"
+                class="manual-state-card"
+              >
+                <div class="manual-state-card__number">{{ index + 1 }}</div>
+                <div class="manual-state-card__body">
+                  <h3>{{ state.name }}</h3>
+                  <p>{{ state.meaning }}</p>
+                  <dl>
+                    <div>
+                      <dt>Qué debe hacer la persona usuaria</dt>
+                      <dd>{{ state.userAction }}</dd>
+                    </div>
+                    <div>
+                      <dt>Cómo confirmar que puede avanzar</dt>
+                      <dd>{{ state.validation }}</dd>
+                    </div>
+                  </dl>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section
+            v-if="activeManual.handoffs.length"
+            class="manual-handoff-section"
+            aria-labelledby="manual-handoff-title"
+          >
+            <div class="manual-section-heading">
+              <div class="manual-section-heading__icon manual-section-heading__icon--warning">
+                <v-icon icon="mdi-account-switch-outline" size="20" aria-hidden="true" />
+              </div>
+              <div>
+                <strong id="manual-handoff-title">Quién interviene después</strong>
+                <span>Estos relevos requieren que otro perfil complete su parte antes de continuar.</span>
+              </div>
+            </div>
+            <div class="manual-handoff-list">
+              <article
+                v-for="(handoff, index) in activeManual.handoffs"
+                :key="`${activeManual.routeName}-handoff-${index}`"
+                class="manual-handoff-card"
+              >
+                <div class="manual-handoff-card__moment">{{ handoff.moment }}</div>
+                <div class="manual-handoff-card__route">
+                  <span>{{ handoff.delivers }}</span>
+                  <v-icon icon="mdi-arrow-right" size="18" aria-hidden="true" />
+                  <span>{{ handoff.receives }}</span>
+                </div>
+                <p>{{ handoff.action }}</p>
+                <div class="manual-handoff-card__ready">
+                  <v-icon icon="mdi-check-circle-outline" size="18" aria-hidden="true" />
+                  <span><strong>Listo para avanzar cuando</strong> {{ handoff.readyWhen }}</span>
+                </div>
+              </article>
+            </div>
+          </section>
+
           <v-row dense class="mt-4">
             <v-col cols="12" lg="7">
               <v-card rounded="xl" class="pa-4 manual-section-card">
@@ -273,6 +343,10 @@
                     </div>
                     <div class="text-body-2 text-medium-emphasis mt-2">
                       {{ field.note }}
+                    </div>
+                    <div v-if="field.example" class="manual-field__example">
+                      <strong>Ejemplo</strong>
+                      <span>{{ field.example }}</span>
                     </div>
                   </div>
                 </div>
@@ -469,7 +543,10 @@ const accessibleManuals = computed(() => {
   for (const node of flattenMenu(menu.tree)) {
     const routeItem = findMenuRouteByValue(router, node.urlComponent || "");
     const routeName = routeItem?.routeName ?? String(node.urlComponent || "").trim();
-    const manual = getOperativeUserManualDefinition(routeName);
+    const manual = getOperativeUserManualDefinition(
+      routeName,
+      routeItem?.title || node.nombre,
+    );
     if (!manual || manualMap.has(manual.routeName)) continue;
     manualMap.set(manual.routeName, manual);
   }
@@ -512,7 +589,15 @@ const filteredManuals = computed(() => {
       ]),
       ...manual.checklist,
       ...manual.flow.flatMap((item) => [item.title, item.description, ...item.fields, ...item.checks]),
-      ...manual.fields.flatMap((field) => [field.label, field.type, field.note]),
+      ...manual.states.flatMap((state) => [state.name, state.meaning, state.userAction, state.validation]),
+      ...manual.handoffs.flatMap((handoff) => [
+        handoff.moment,
+        handoff.delivers,
+        handoff.receives,
+        handoff.action,
+        handoff.readyWhen,
+      ]),
+      ...manual.fields.flatMap((field) => [field.label, field.note, field.example || ""]),
     ]
       .join(" ")
       .toLowerCase();
@@ -1509,6 +1594,11 @@ function setMotionRoot(el: unknown) {
   background: rgba(var(--manual-error), 0.1);
 }
 
+.manual-section-heading__icon--info {
+  color: rgb(var(--manual-info));
+  background: rgba(var(--manual-info), 0.11);
+}
+
 .manual-prerequisites__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1596,6 +1686,154 @@ function setMotionRoot(el: unknown) {
 .manual-field:hover {
   border-color: rgba(var(--manual-primary), 0.18);
   background: rgba(var(--manual-primary), 0.035);
+}
+
+.manual-field__example {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  background: rgba(var(--manual-primary), 0.055);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.manual-field__example strong {
+  color: rgb(var(--v-theme-primary));
+}
+
+.manual-state-section,
+.manual-handoff-section {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.08);
+  border-radius: 20px;
+  background: rgba(var(--v-theme-surface), 0.82);
+}
+
+.manual-state-grid,
+.manual-handoff-list {
+  display: grid;
+  gap: 11px;
+}
+
+.manual-state-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.manual-state-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid rgba(var(--manual-info), 0.16);
+  border-radius: 15px;
+  background: rgba(var(--manual-info), 0.035);
+}
+
+.manual-state-card__number {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  color: rgb(var(--manual-info));
+  background: rgba(var(--manual-info), 0.12);
+  font-weight: 800;
+}
+
+.manual-state-card h3 {
+  margin: 0;
+  color: rgba(var(--v-theme-on-surface), 0.92);
+  font-size: 0.88rem;
+}
+
+.manual-state-card p,
+.manual-handoff-card p {
+  margin: 5px 0 10px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.manual-state-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.manual-state-card dl > div {
+  padding-top: 8px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.07);
+}
+
+.manual-state-card dt {
+  color: rgba(var(--v-theme-on-surface), 0.86);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.manual-state-card dd {
+  margin: 3px 0 0;
+  color: rgba(var(--v-theme-on-surface), 0.66);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.manual-handoff-section {
+  border-color: rgba(var(--manual-warning), 0.17);
+  background: linear-gradient(135deg, rgba(var(--manual-warning), 0.045), rgba(var(--v-theme-surface), 0.88) 58%);
+}
+
+.manual-handoff-card {
+  padding: 15px;
+  border: 1px solid rgba(var(--manual-warning), 0.16);
+  border-radius: 15px;
+  background: rgb(var(--v-theme-surface));
+}
+
+.manual-handoff-card__moment {
+  color: rgb(var(--manual-warning));
+  font-size: 0.69rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.manual-handoff-card__route {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.manual-handoff-card__route .v-icon {
+  color: rgb(var(--manual-warning));
+}
+
+.manual-handoff-card__ready {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.72);
+  background: rgba(var(--manual-success), 0.07);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.manual-handoff-card__ready .v-icon {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: rgb(var(--manual-success));
 }
 
 .manual-section-card {
@@ -1741,7 +1979,8 @@ function setMotionRoot(el: unknown) {
   }
 
   .manual-prerequisites__grid,
-  .manual-errors-grid {
+  .manual-errors-grid,
+  .manual-state-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1774,6 +2013,11 @@ function setMotionRoot(el: unknown) {
   .manual-error-card__row {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+
+  .manual-field__example {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }
 </style>

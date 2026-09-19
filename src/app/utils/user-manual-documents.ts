@@ -102,6 +102,40 @@ export function buildUserManualExcelReport(
         ),
       },
       {
+        name: "Estados del proceso",
+        note: "Cada etapa indica qué significa, qué debe hacer la persona usuaria y cómo confirmar que puede avanzar.",
+        groupBy: ["modulo", "categoria"],
+        rows: manuals.flatMap((manual) =>
+          manual.states.map((state, index) => ({
+            modulo: manual.title,
+            categoria: manual.category,
+            orden: index + 1,
+            estado_o_etapa: state.name,
+            que_significa: state.meaning,
+            que_debe_hacer: state.userAction,
+            como_validar: state.validation,
+          })),
+        ),
+      },
+      ...(manuals.some((manual) => manual.handoffs.length)
+        ? [{
+            name: "Relevos entre perfiles",
+            note: "Solo se incluyen pasos operativos que requieren la intervención de otro perfil para continuar.",
+            groupBy: ["modulo", "categoria"],
+            rows: manuals.flatMap((manual) =>
+              manual.handoffs.map((handoff) => ({
+                modulo: manual.title,
+                categoria: manual.category,
+                momento: handoff.moment,
+                entrega: handoff.delivers,
+                recibe: handoff.receives,
+                accion_del_otro_perfil: handoff.action,
+                listo_para_avanzar_cuando: handoff.readyWhen,
+              })),
+            ),
+          }]
+        : []),
+      {
         name: "Datos a completar",
         note: "Los datos obligatorios deben completarse antes de guardar. Las indicaciones explican cómo utilizarlos.",
         groupBy: ["modulo", "categoria"],
@@ -112,6 +146,7 @@ export function buildUserManualExcelReport(
             dato: field.label,
             es_obligatorio: field.required ? "Sí" : "No",
             como_completarlo: field.note,
+            ejemplo: field.example || "Depende de la operación",
           })),
         ),
       },
@@ -352,14 +387,42 @@ export async function buildUserManualPdfBlob(context: UserManualDocumentContext)
       ]),
     );
 
+    moduleY = sectionTitle("Estados y controles del proceso", moduleY + 4);
+    moduleY = table(
+      moduleY,
+      ["Estado o etapa", "Qué significa", "Qué debe hacer", "Cómo validar"],
+      manual.states.map((state) => [
+        state.name,
+        state.meaning,
+        state.userAction,
+        state.validation,
+      ]),
+    );
+
+    if (manual.handoffs.length) {
+      moduleY = sectionTitle("Quién interviene después", moduleY + 4);
+      moduleY = table(
+        moduleY,
+        ["Momento", "Entrega", "Recibe", "Acción", "Listo para avanzar cuando"],
+        manual.handoffs.map((handoff) => [
+          handoff.moment,
+          handoff.delivers,
+          handoff.receives,
+          handoff.action,
+          handoff.readyWhen,
+        ]),
+      );
+    }
+
     moduleY = sectionTitle("Información que debes completar", moduleY + 4);
     moduleY = table(
       moduleY,
-      ["Dato", "Obligatorio", "Cómo completarlo"],
+      ["Dato", "Obligatorio", "Cómo completarlo", "Ejemplo"],
       sortedFields(manual).map((field) => [
         field.label,
         field.required ? "Sí" : "No",
         field.note,
+        field.example || "Depende de la operación",
       ]),
     );
 
