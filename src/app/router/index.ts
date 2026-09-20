@@ -278,11 +278,12 @@ export const router = createRouter({
         {
           path: "reporteria",
           name: "reporteria",
-          component: () => import("@/views/dashboard/DashboardPlaceholderView.vue"),
+          component: () => import("@/views/admin/ReportsHubView.vue"),
           meta: {
             title: "Reportería",
             permissionComponent: "reporteria",
-            viewFile: "views/dashboard/DashboardPlaceholderView.vue",
+            superAdministratorOnly: true,
+            viewFile: "views/admin/ReportsHubView.vue",
           },
         },
         {

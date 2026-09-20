@@ -88,7 +88,8 @@ export const useMenuStore = defineStore("menu", {
                   .length ||
                 String(node.status).toUpperCase() === "ACTIVE";
               const isRoleBlocked =
-                component === "gemelos-digitales" && !canAccessDigitalTwins(auth.user);
+                (component === "gemelos-digitales" && !canAccessDigitalTwins(auth.user)) ||
+                (component === "reporteria" && !isSuperAdministrator(auth.user));
 
               if (!isActive || isRoleBlocked) return null;
               if (!canRead && !children.length) return null;

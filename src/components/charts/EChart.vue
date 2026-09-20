@@ -7,6 +7,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import * as echarts from "echarts/core";
 import { BarChart, LineChart, PieChart } from "echarts/charts";
 import {
+  AriaComponent,
   DataZoomComponent,
   GridComponent,
   LegendComponent,
@@ -34,6 +35,7 @@ echarts.use([
   // Dona: reparto de un total en pocas partes. Va siempre acompanada de una
   // leyenda de texto, porque el color solo no comunica.
   PieChart,
+  AriaComponent,
   GridComponent,
   TooltipComponent,
   LegendComponent,
