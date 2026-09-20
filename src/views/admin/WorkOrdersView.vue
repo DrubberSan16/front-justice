@@ -4210,6 +4210,22 @@ function useProcedureSuggestedMaterial(item: any) {
   void syncConsumoUnitCost();
 }
 
+function getSelectedConsumoProductOption() {
+  const selectedProductId = String(consumoForm.producto_id || "").trim();
+  if (!selectedProductId) return null;
+  return consumoProductOptions.value.find(
+    (item: any) => String(item?.value || "").trim() === selectedProductId,
+  ) ?? null;
+}
+
+function isSelectedConsumoProductDisplaySearch(value: unknown) {
+  const selectedOption = getSelectedConsumoProductOption();
+  if (!selectedOption) return false;
+  const normalizedSearch = String(value || "").trim();
+  const selectedTitle = String(selectedOption?.title || "").trim();
+  return !normalizedSearch || normalizedSearch === selectedTitle;
+}
+
 async function loadConsumoProducts(options?: { reset?: boolean; search?: string }) {
   const warehouseId = effectiveConsumoWarehouseId.value;
   if (!warehouseId) {
@@ -4245,7 +4261,14 @@ async function loadConsumoProducts(options?: { reset?: boolean; search?: string 
 
     const rows = asArray(data).map(normalizeStockProductOption).filter((item: any) => item.value);
     const pagination = data?.pagination ?? {};
-    const nextItems = reset ? [] : [...consumoProductOptions.value];
+    // El autocomplete necesita conservar la opcion seleccionada aunque una
+    // busqueda o una recarga paginada ya no la incluya. Si se elimina, Vuetify
+    // conserva el UUID en el modelo pero pierde el titulo y termina mostrando
+    // el identificador tecnico en pantalla.
+    const selectedOption = getSelectedConsumoProductOption();
+    const nextItems = reset
+      ? (selectedOption ? [selectedOption] : [])
+      : [...consumoProductOptions.value];
     const seen = new Set(nextItems.map((item: any) => String(item?.value || "")));
     for (const row of rows) {
       const key = String(row?.value || "");
@@ -4282,7 +4305,10 @@ async function loadMoreConsumoProducts() {
 
 async function refreshConsumoProducts() {
   if (!effectiveConsumoWarehouseId.value || loadingConsumoProducts.value) return;
-  await loadConsumoProducts({ reset: true, search: consumoProductSearch.value });
+  const search = isSelectedConsumoProductDisplaySearch(consumoProductSearch.value)
+    ? ""
+    : consumoProductSearch.value;
+  await loadConsumoProducts({ reset: true, search });
 }
 
 async function loadScrapProducts(options?: { reset?: boolean }) {
@@ -8587,8 +8613,21 @@ watch(
   () => consumoProductSearch.value,
   (value) => {
     if (!effectiveConsumoWarehouseId.value) return;
+
+    // En seleccion simple Vuetify copia el titulo al search y, al perder el
+    // foco, lo limpia. Ninguno de esos dos cambios fue escrito por el usuario;
+    // consultarlos otra vez reemplazaba las opciones y dejaba visible el UUID.
+    if (isSelectedConsumoProductDisplaySearch(value)) {
+      if (consumoSearchTimer) {
+        clearTimeout(consumoSearchTimer);
+        consumoSearchTimer = null;
+      }
+      return;
+    }
+
     if (consumoSearchTimer) clearTimeout(consumoSearchTimer);
     consumoSearchTimer = setTimeout(() => {
+      consumoSearchTimer = null;
       void loadConsumoProducts({ reset: true, search: value });
     }, 300);
   },
