@@ -39,6 +39,15 @@ export function isGeneralManager(user: AuthUser): boolean {
   return ["GERENTE GENERAL", "GERENCIA GENERAL"].includes(getRoleName(user));
 }
 
+/** Perfiles autorizados para consultar el Centro de Reportería. */
+export function canAccessReporting(user: AuthUser): boolean {
+  return (
+    isAdministrator(user) ||
+    isGeneralManager(user) ||
+    isSuperAdministrator(user)
+  );
+}
+
 /** Los importes de materiales solo pertenecen a perfiles administrativos. */
 export function canViewMaterialCosts(user: AuthUser): boolean {
   return (

@@ -23,7 +23,7 @@
     </div>
 
     <div v-if="!collapsed" class="reports-sidebar__intro">
-      <span>Menú exclusivo</span>
+      <span>Menú de análisis</span>
       <strong>Reportería</strong>
       <small>Seleccione un informe para cruzar su información con los demás procesos.</small>
     </div>

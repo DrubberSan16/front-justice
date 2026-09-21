@@ -282,7 +282,7 @@ export const router = createRouter({
           meta: {
             title: "Reportería",
             permissionComponent: "reporteria",
-            superAdministratorOnly: true,
+            reportingRolesOnly: true,
             viewFile: "views/admin/ReportsHubView.vue",
           },
         },

@@ -1,7 +1,7 @@
 <template>
   <div class="reports-hub">
     <v-alert v-if="!canAccess" type="warning" variant="tonal" rounded="xl">
-      El Centro de Informes está habilitado únicamente para Súper Administrador.
+      El Centro de Informes está habilitado para Administración, Gerencia General y Súper Administración.
     </v-alert>
 
     <template v-else>
@@ -547,7 +547,7 @@ import {
 } from "@/app/utils/reporting-relations";
 import { currentDateInputValue, formatDateOnly } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
-import { isSuperAdministrator } from "@/app/utils/role-access";
+import { canAccessReporting } from "@/app/utils/role-access";
 import EChart from "@/components/charts/EChart.vue";
 import ReportsDomainDashboard from "@/components/reports/ReportsDomainDashboard.vue";
 
@@ -571,7 +571,7 @@ const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const theme = useTheme();
-const canAccess = computed(() => isSuperAdministrator(auth.user));
+const canAccess = computed(() => canAccessReporting(auth.user));
 
 const today = currentDateInputValue();
 const defaultStart = `${today.slice(0, 7)}-01`;

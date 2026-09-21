@@ -1,6 +1,10 @@
 import type { MenuNode } from "@/app/types/menu.types";
 import { useAuthStore } from "@/app/stores/auth.store";
-import { canAccessDigitalTwins, isSuperAdministrator } from "@/app/utils/role-access";
+import {
+  canAccessDigitalTwins,
+  canAccessReporting,
+  isSuperAdministrator,
+} from "@/app/utils/role-access";
 
 export type MenuPermissions = {
   isReaded: boolean;
@@ -46,6 +50,9 @@ function isRoleBlockedComponent(urlComponent: string): boolean {
   if (!canAccessDigitalTwins(auth.user) && component === "gemelos-digitales") {
     return true;
   }
+  if (!canAccessReporting(auth.user) && component === "reporteria") {
+    return true;
+  }
   return false;
 }
 
@@ -65,6 +72,7 @@ export function findMenuNodeByComponent(tree: MenuNode[], urlComponent: string):
 export function getPermissionsForComponent(tree: MenuNode[], urlComponent: string): MenuPermissions {
   const auth = useAuthStore();
   if (isSuperAdministrator(auth.user)) return fullPerms;
+  if (normalize(urlComponent) === "reporteria" && canAccessReporting(auth.user)) return fullPerms;
   if (isRoleBlockedComponent(urlComponent)) return defaultPerms;
   const node = findMenuNodeByComponent(tree, urlComponent);
   return (node?.permissions as MenuPermissions) ?? defaultPerms;
@@ -77,6 +85,7 @@ export function getPermissionsForAnyComponent(
   const auth = useAuthStore();
   if (isSuperAdministrator(auth.user)) return fullPerms;
   for (const name of urlComponents) {
+    if (normalize(name) === "reporteria" && canAccessReporting(auth.user)) return fullPerms;
     if (isRoleBlockedComponent(name)) continue;
     const node = findMenuNodeByComponent(tree, name);
     if (node?.permissions) return node.permissions as MenuPermissions;
@@ -88,6 +97,7 @@ export function getPermissionsForAnyComponent(
 export function canReadComponent(tree: MenuNode[], urlComponent: string): boolean {
   const auth = useAuthStore();
   if (isSuperAdministrator(auth.user)) return true;
+  if (normalize(urlComponent) === "reporteria" && canAccessReporting(auth.user)) return true;
   if (isRoleBlockedComponent(urlComponent)) return false;
   return Boolean(findMenuNodeByComponent(tree, urlComponent)?.permissions?.isReaded);
 }

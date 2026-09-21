@@ -8,7 +8,7 @@ import {
 } from "@/app/utils/menu-permissions";
 import {
   canAccessDigitalTwins,
-  isSuperAdministrator,
+  canAccessReporting,
 } from "@/app/utils/role-access";
 
 export function applyGuards(router: Router) {
@@ -64,8 +64,8 @@ export function applyGuards(router: Router) {
 
     if (
       auth.isAuthenticated &&
-      to.meta.superAdministratorOnly === true &&
-      !isSuperAdministrator(auth.user)
+      to.meta.reportingRolesOnly === true &&
+      !canAccessReporting(auth.user)
     ) {
       return { name: homeRoute };
     }

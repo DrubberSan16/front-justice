@@ -3,6 +3,7 @@ import type { MenuNode } from "@/app/types/menu.types";
 import { useAuthStore } from "@/app/stores/auth.store";
 import {
   canAccessDigitalTwins,
+  canAccessReporting,
   isGeneralManager,
   isSuperAdministrator,
 } from "@/app/utils/role-access";
@@ -67,6 +68,14 @@ export const useMenuStore = defineStore("menu", {
             .sort((a, b) => Number(a.menuPosition) - Number(b.menuPosition))
             .map((n) => ({ ...n, children: n.children ? sortTree(n.children) : [] }));
 
+        const normalizeText = (value: unknown) =>
+          String(value || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .trim()
+            .toUpperCase();
+        const canUseReports = canAccessReporting(auth.user);
+
         const filterTreeByPermissions = (nodes: MenuNode[]): MenuNode[] =>
           (nodes ?? [])
             .map((node) => {
@@ -79,9 +88,10 @@ export const useMenuStore = defineStore("menu", {
                 .replace(/^\/+/, "")
                 .replace(/^app\//, "")
                 .replace(/[\s_]+/g, "-");
-              const canRead = isSuperAdministrator(auth.user)
-                ? true
-                : Boolean(node.permissions?.isReaded);
+              const canRead =
+                isSuperAdministrator(auth.user) ||
+                (component === "reporteria" && canUseReports) ||
+                Boolean(node.permissions?.isReaded);
               const isActive =
                 !String(node.status ?? "")
                   .trim()
@@ -89,7 +99,7 @@ export const useMenuStore = defineStore("menu", {
                 String(node.status).toUpperCase() === "ACTIVE";
               const isRoleBlocked =
                 (component === "gemelos-digitales" && !canAccessDigitalTwins(auth.user)) ||
-                (component === "reporteria" && !isSuperAdministrator(auth.user));
+                (component === "reporteria" && !canUseReports);
 
               if (!isActive || isRoleBlocked) return null;
               if (!canRead && !children.length) return null;
@@ -103,15 +113,29 @@ export const useMenuStore = defineStore("menu", {
 
         const normalizedTree = sortTree((data ?? []).map((node) => normalizeNode(node)));
         let visibleTree = filterTreeByPermissions(normalizedTree);
+        const hasComponent = (nodes: MenuNode[], componentName: string): boolean =>
+          nodes.some(
+            (node) =>
+              normalizeText(node.urlComponent) === normalizeText(componentName) ||
+              hasComponent(node.children ?? [], componentName),
+          );
+        if (canUseReports && !hasComponent(visibleTree, "reporteria")) {
+          visibleTree.push({
+            id: "system-reporteria",
+            parentId: null,
+            nombre: "Reportería",
+            descripcion: "Informes consolidados de la operación",
+            icon: "mdi-chart-box-multiple-outline",
+            urlComponent: "reporteria",
+            menuPosition: "89",
+            status: "ACTIVE",
+            permissions: fullPermissions,
+            children: [],
+          });
+        }
         const canAccessDetailedReport =
           isGeneralManager(auth.user) || isSuperAdministrator(auth.user);
         if (canAccessDetailedReport) {
-          const normalizeText = (value: unknown) =>
-            String(value || "")
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .trim()
-              .toUpperCase();
           const isDetailedReport = (node: MenuNode) =>
             normalizeText(node.urlComponent) === "REPORTE-DETALLADO";
           const isAdministration = (node: MenuNode) =>
