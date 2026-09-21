@@ -18,6 +18,7 @@ export type WorkOrderDetailPayload = {
   issues: Record<string, any>[];
   scraps: Record<string, any>[];
   history: Record<string, any>[];
+  attachments: Record<string, any>[];
 };
 
 const EMPTY_DETAIL: WorkOrderDetailPayload = {
@@ -27,6 +28,7 @@ const EMPTY_DETAIL: WorkOrderDetailPayload = {
   issues: [],
   scraps: [],
   history: [],
+  attachments: [],
 };
 
 function asList(payload: unknown): Record<string, any>[] {
@@ -70,7 +72,7 @@ export async function fetchWorkOrderDetail(
   const id = String(workOrderId || "").trim();
   if (!id) return { ...EMPTY_DETAIL };
 
-  const [headerResponse, tasks, consumptions, issues, scraps, history] =
+  const [headerResponse, tasks, consumptions, issues, scraps, history, attachments] =
     await Promise.all([
       api.get(`/kpi_maintenance/work-orders/${id}`),
       safeList(`/kpi_maintenance/work-orders/${id}/tareas`),
@@ -78,6 +80,7 @@ export async function fetchWorkOrderDetail(
       safeList(`/kpi_maintenance/work-orders/${id}/issue-materials`),
       safeList(`/kpi_maintenance/work-orders/${id}/scrap-materials`),
       safeList(`/kpi_maintenance/work-orders/${id}/history`),
+      safeList(`/kpi_maintenance/work-orders/${id}/adjuntos`),
     ]);
 
   return {
@@ -88,6 +91,7 @@ export async function fetchWorkOrderDetail(
     issues,
     scraps,
     history,
+    attachments,
   };
 }
 
@@ -139,29 +143,59 @@ export function buildMaterialSummary(
   issues: Record<string, any>[],
   scraps: Record<string, any>[],
   labelOf: (row: Record<string, any>) => string,
+  consumptions: Record<string, any>[] = [],
 ) {
   const rows = new Map<
     string,
     {
       label: string;
+      requested: number;
       delivered: number;
       deliveredNuevo: number;
       deliveredUsado: number;
       scrapped: number;
+      category: string;
+      isSpare: boolean;
     }
   >();
   const emptyRow = (label: string) => ({
     label,
+    requested: 0,
     delivered: 0,
     deliveredNuevo: 0,
     deliveredUsado: 0,
     scrapped: 0,
+    category: "",
+    isSpare: false,
   });
+
+  const classify = (current: ReturnType<typeof emptyRow>, item: Record<string, any>) => {
+    const category = String(
+      item?.categoria_nombre || item?.categoria_label || item?.producto_categoria || item?.category_name || item?.tipo_material || "",
+    ).trim();
+    if (category) current.category = category;
+    current.isSpare =
+      current.isSpare ||
+      item?.es_repuesto === true ||
+      /REPUEST/.test(`${category} ${current.label}`.toUpperCase());
+    if (!current.category && current.isSpare) current.category = "Repuesto";
+  };
+
+  for (const item of flattenDetailLines(consumptions)) {
+    const label = labelOf(item);
+    const current = rows.get(label) ?? emptyRow(label);
+    current.requested += toNumber(
+      item?.cantidad_solicitada ?? item?.cantidad_reservada ?? item?.cantidad,
+    );
+    classify(current, item);
+    rows.set(label, current);
+  }
 
   for (const item of flattenDetailLines(issues)) {
     const label = labelOf(item);
     const current = rows.get(label) ?? emptyRow(label);
     const cantidad = toNumber(item?.cantidad);
+    classify(current, item);
     current.delivered += cantidad;
     if (issueConditionLabel(item?.condicion_material) === "Usado") {
       current.deliveredUsado += cantidad;
@@ -174,6 +208,7 @@ export function buildMaterialSummary(
   for (const item of flattenDetailLines(scraps)) {
     const label = labelOf(item);
     const current = rows.get(label) ?? emptyRow(label);
+    classify(current, item);
     current.scrapped += toNumber(item?.cantidad);
     rows.set(label, current);
   }
@@ -214,6 +249,7 @@ export function buildWorkOrderReportPayload(
     detail.issues,
     detail.scraps,
     context.materialLabel,
+    detail.consumptions,
   );
   const consumos = flattenDetailLines(detail.consumptions);
   const oilRows = consumos.filter((row) => row?.es_aceite === true);

@@ -5,17 +5,9 @@
     </v-alert>
 
     <template v-else>
-      <section class="reports-hero" aria-labelledby="reports-hub-title">
-        <div class="reports-hero__copy">
-          <span class="reports-hero__eyebrow">Centro de Informes</span>
-          <h1 id="reports-hub-title">Consolidados de toda la operación</h1>
-          <p>
-            Elija un módulo, revise sus indicadores y seleccione cualquier dato
-            del gráfico para conocer los registros que lo explican.
-          </p>
-        </div>
-
-        <div class="reports-hero__filters" aria-label="Rango del informe">
+      <section class="reports-parameters" aria-label="Parámetros del informe">
+        <strong>Parámetros</strong>
+        <div class="reports-parameters__filters">
           <v-text-field
             v-model="draftStartDate"
             type="date"
@@ -34,13 +26,13 @@
           />
           <v-btn
             color="primary"
-            size="large"
+            size="default"
             prepend-icon="mdi-filter-check-outline"
             :loading="loading"
             :disabled="invalidDraftRange"
             @click="applyDateRange"
           >
-            Aplicar rango
+            Aplicar filtros
           </v-btn>
         </div>
       </section>
@@ -108,8 +100,18 @@
       </div>
 
       <template v-else>
+        <ReportsDomainDashboard
+          v-if="specializedReport"
+          :module-key="activeModule.key"
+          :title="activeModule.title"
+          :raw-rows="rawRows"
+          :relationship-payload="relationshipPayload"
+          :start-date="appliedStartDate"
+          :end-date="appliedEndDate"
+          :material-view="materialView"
+        />
         <v-alert
-          v-if="ignoredUndatedCount"
+          v-if="!specializedReport && ignoredUndatedCount"
           type="info"
           variant="tonal"
           rounded="xl"
@@ -119,7 +121,7 @@
           incluyeron en el período. Puede revisarlos directamente en el módulo origen.
         </v-alert>
 
-        <section class="summary-grid" aria-label="Indicadores principales">
+        <section v-if="!specializedReport" class="summary-grid" aria-label="Indicadores principales">
           <article v-for="card in summaryCards" :key="card.label" class="summary-card">
             <div class="summary-card__icon">
               <v-icon :icon="card.icon" aria-hidden="true" />
@@ -133,7 +135,7 @@
         </section>
 
         <v-alert
-          v-if="events.length"
+          v-if="!specializedReport && events.length"
           color="primary"
           variant="tonal"
           rounded="xl"
@@ -143,7 +145,7 @@
           <strong>Lectura rápida:</strong> {{ insightText }}
         </v-alert>
 
-        <section class="relationship-section" aria-labelledby="relationship-title">
+        <section v-if="!specializedReport" class="relationship-section" aria-labelledby="relationship-title">
           <div class="relationship-section__heading">
             <div>
               <span class="section-eyebrow">Análisis interrelacionado</span>
@@ -289,7 +291,7 @@
           </div>
         </section>
 
-        <div v-if="!events.length" class="empty-report" role="status">
+        <div v-if="!specializedReport && !events.length" class="empty-report" role="status">
           <v-icon icon="mdi-chart-box-outline" size="52" aria-hidden="true" />
           <h3>No hay datos para mostrar</h3>
           <p>
@@ -302,7 +304,7 @@
           </v-btn>
         </div>
 
-        <template v-else>
+        <template v-else-if="!specializedReport">
           <section class="chart-grid" aria-label="Gráficos del consolidado">
             <article class="chart-card chart-card--wide">
               <div class="chart-card__heading">
@@ -461,7 +463,6 @@
             <template #item.status="{ item }">
               <v-chip size="small" variant="tonal">{{ item.status }}</v-chip>
             </template>
-            <template #item.value="{ item }">{{ formatNumber(item.value) }}</template>
           </v-data-table>
         </v-card-text>
         <v-card-actions class="detail-dialog__actions">
@@ -548,6 +549,7 @@ import { currentDateInputValue, formatDateOnly } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { isSuperAdministrator } from "@/app/utils/role-access";
 import EChart from "@/components/charts/EChart.vue";
+import ReportsDomainDashboard from "@/components/reports/ReportsDomainDashboard.vue";
 
 type AnyRow = Record<string, any>;
 type ReportEvent = {
@@ -602,10 +604,24 @@ const detailHeaders = [
   { title: "Estado", key: "status" },
   { title: "Clasificación", key: "category" },
   { title: "Responsable", key: "owner" },
-  { title: "Valor", key: "value", align: "end" as const },
 ];
 
 const activeModule = computed(() => getReportingModule(activeModuleKey.value));
+const materialView = computed(() => String(route.query.vista || "informativo"));
+const specializedReport = computed(() =>
+  [
+    "work-orders",
+    "project-work-orders",
+    "generation-units",
+    "equipment",
+    "lubricant-analysis",
+    "materials",
+    "warehouse-transfers",
+    "warehouse-reservations",
+    "purchase-orders",
+    "service-orders",
+  ].includes(activeModule.value.key),
+);
 const invalidDraftRange = computed(
   () => Boolean(draftStartDate.value && draftEndDate.value && draftStartDate.value > draftEndDate.value),
 );
@@ -745,6 +761,9 @@ const relationshipHeaders = computed(() => {
     { title: "Materiales", key: "relatedMaterials" },
   ];
 });
+// Vuetify consume estas cabeceras desde los `v-data-table` del template.
+void detailHeaders;
+void relationshipHeaders;
 
 function validDateQuery(value: unknown) {
   const normalized = String(Array.isArray(value) ? value[0] : value || "");
@@ -1339,6 +1358,25 @@ onMounted(() => {
   padding-bottom: 32px;
 }
 
+.reports-parameters {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--report-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, rgb(var(--v-theme-surface)) 94%, transparent);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(12px);
+}
+.reports-parameters > strong { white-space: nowrap; }
+.reports-parameters__filters { display: grid; grid-template-columns: minmax(150px, 190px) minmax(150px, 190px) auto; align-items: center; gap: 10px; }
+.reports-parameters__filters :deep(.v-field) { min-height: 42px; }
+
 .reports-hero,
 .chart-card,
 .recent-card,
@@ -1464,6 +1502,9 @@ onMounted(() => {
 
 @media (max-width: 700px) {
   .reports-hub { gap: 16px; }
+  .reports-parameters { position: static; align-items: stretch; flex-direction: column; }
+  .reports-parameters__filters { grid-template-columns: 1fr; }
+  .reports-parameters__filters .v-btn { min-height: 44px; }
   .reports-hero,
   .chart-card,
   .relationship-section { padding: 16px; border-radius: 14px; }

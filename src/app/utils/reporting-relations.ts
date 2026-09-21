@@ -22,6 +22,7 @@ export type ReportingRelationshipRow = {
   label: string;
   context: string;
   status: string;
+  entityId: string;
   workOrders: number;
   hours: number;
   elapsedHours: number;
@@ -36,6 +37,8 @@ export type ReportingRelationshipRow = {
   incomingValue: number;
   outgoingValue: number;
   movements: number;
+  horometerInitial: number | null;
+  horometerFinal: number | null;
   relatedEquipment: string;
   relatedWarehouses: string;
   relatedMaterials: string;
@@ -268,10 +271,48 @@ function addOrderDetails(
   row: AnyRow,
   includeDurations = false,
 ) {
+  if (!target.entityId) {
+    target.entityId = textValue(
+      row?.work_order_id,
+      row?.equipment_id,
+      row?.producto_id,
+      row?.bodega_id,
+    );
+  }
   const details = Array.isArray(row.detalle_ordenes) ? row.detalle_ordenes : [];
   for (const detail of details) {
     addToken(target._orders, detail?.work_order_code);
     addToken(target._equipment, detail?.equipment_name ?? detail?.equipment_label);
+    if (!target.entityId) {
+      target.entityId = textValue(
+        detail?.work_order_id,
+        detail?.equipment_id,
+        row?.work_order_id,
+        row?.equipment_id,
+      );
+    }
+    const horometerInitial = numberOrNull(
+      detail?.horometro_inicial ??
+        detail?.horometro_anterior_ot ??
+        row?.horometro_inicial ??
+        row?.horometro_anterior_ot,
+    );
+    const horometerFinal = numberOrNull(
+      detail?.horometro_final ??
+        detail?.horometro_actual_ot ??
+        row?.horometro_final ??
+        row?.horometro_actual_ot,
+    );
+    if (horometerInitial !== null) {
+      target.horometerInitial = target.horometerInitial === null
+        ? horometerInitial
+        : Math.min(target.horometerInitial, horometerInitial);
+    }
+    if (horometerFinal !== null) {
+      target.horometerFinal = target.horometerFinal === null
+        ? horometerFinal
+        : Math.max(target.horometerFinal, horometerFinal);
+    }
     if (includeDurations) {
       target.elapsedHours += numberValue(detail?.flow_duration_hours);
       target.effectiveHours += numberValue(detail?.effective_duration_hours);
@@ -291,12 +332,19 @@ function addOrderDetails(
   target.sourceRows.push(row);
 }
 
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function createWorkingRow(key: string, label: string): WorkingRow {
   return {
     key,
     label,
     context: "",
     status: "",
+    entityId: "",
     workOrders: 0,
     hours: 0,
     elapsedHours: 0,
@@ -311,6 +359,8 @@ function createWorkingRow(key: string, label: string): WorkingRow {
     incomingValue: 0,
     outgoingValue: 0,
     movements: 0,
+    horometerInitial: null,
+    horometerFinal: null,
     relatedEquipment: "",
     relatedWarehouses: "",
     relatedMaterials: "",

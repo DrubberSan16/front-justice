@@ -47,12 +47,40 @@
           </div>
 
           <div v-if="materiales.length" class="wo-block">
-            <h4>Materiales</h4>
-            <div v-for="row in materiales" :key="row.label" class="wo-line wo-line--material">
-              <span>{{ row.label }}</span>
-              <span>Entregado: <strong>{{ formatNumber(row.delivered) }}</strong></span>
-              <span>Condición: <strong>{{ conditionLabel(row) }}</strong></span>
-              <span>A chatarra: <strong>{{ formatNumber(row.scrapped) }}</strong></span>
+            <h4>Materiales solicitados y entregados</h4>
+            <div class="wo-table-wrap">
+              <table class="wo-table">
+                <thead><tr><th>Material</th><th>Tipo</th><th>Solicitado</th><th>Entregado</th><th>Condición</th><th>Disposición</th></tr></thead>
+                <tbody>
+                  <tr v-for="row in materiales" :key="row.label">
+                    <td><strong>{{ row.label }}</strong></td>
+                    <td>{{ row.category || (row.isSpare ? "Repuesto" : "Material") }}</td>
+                    <td>{{ formatNumber(row.requested) }}</td>
+                    <td>{{ formatNumber(row.delivered) }}</td>
+                    <td>{{ conditionLabel(row) }}</td>
+                    <td>
+                      <v-chip v-if="row.scrapped > 0" color="warning" size="small" variant="tonal">En chatarra · {{ formatNumber(row.scrapped) }}</v-chip>
+                      <span v-else>Sin envío a chatarra</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div v-if="evidences.length" class="wo-block">
+            <h4>Evidencias y archivos</h4>
+            <div class="wo-evidence-grid">
+              <a
+                v-for="row in evidences"
+                :key="String(row.id || row.view_url || row.download_url)"
+                :href="String(row.view_url || row.download_url || '#')"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <v-icon icon="mdi-paperclip" aria-hidden="true" />
+                <span>{{ row.nombre_archivo || row.file_name || row.nombre || "Evidencia adjunta" }}</span>
+              </a>
             </div>
           </div>
 
@@ -136,14 +164,28 @@ const detail = ref<WorkOrderDetailPayload>({
   issues: [],
   scraps: [],
   history: [],
+  attachments: [],
 });
 
 const showCosts = computed(() => canViewMaterialCosts(auth.user));
 const header = computed<Record<string, any>>(() => detail.value.header ?? {});
 const responsables = computed(() => buildResponsibleHours(detail.value.tasks));
 const materiales = computed(() =>
-  buildMaterialSummary(detail.value.issues, detail.value.scraps, materialLabel),
+  buildMaterialSummary(
+    detail.value.issues,
+    detail.value.scraps,
+    materialLabel,
+    detail.value.consumptions,
+  ),
 );
+const evidences = computed(() => detail.value.attachments || []);
+
+function historyActor(pattern: RegExp) {
+  const hit = detail.value.history.find((row: any) =>
+    pattern.test(String(row?.new_status || row?.estado_nuevo || row?.status || row?.accion || "").toUpperCase()),
+  );
+  return String(hit?.changed_by_label || hit?.changed_by_username || hit?.changed_by || "-");
+}
 
 const facts = computed(() => {
   const row = header.value;
@@ -165,7 +207,9 @@ const facts = computed(() => {
         responsables.value.reduce((sum, item) => sum + item.hours, 0),
       )} h`,
     },
-    { label: "Creada por", value: String(row?.created_by || "-") },
+    { label: "Registrada por", value: String(row?.created_by_label || row?.created_by || "-") },
+    { label: "Iniciada por", value: String(row?.processed_by_label || row?.processed_by || historyActor(/IN.?PROGRESS|EN.?PROCESO|INICI/)) },
+    { label: "Finalizada por", value: String(row?.approved_by_label || row?.approved_by || historyActor(/CLOSED|FINALIZ|CERRAD/)) },
   ];
   if (!showCosts.value) return base;
   return [
@@ -336,4 +380,13 @@ watch(
   flex: 1 1 240px;
   font-weight: 600;
 }
+
+.wo-table-wrap { overflow-x: auto; border: 1px solid rgba(var(--v-theme-on-surface), 0.1); border-radius: 12px; }
+.wo-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 0.86rem; }
+.wo-table th,
+.wo-table td { padding: 10px 12px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.08); text-align: left; vertical-align: middle; }
+.wo-table th { color: rgba(var(--v-theme-on-surface), 0.7); background: rgba(var(--v-theme-on-surface), 0.035); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.wo-evidence-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.wo-evidence-grid a { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 9px 12px; border: 1px solid rgba(var(--v-theme-on-surface), 0.12); border-radius: 10px; color: rgb(var(--v-theme-primary)); text-decoration: none; overflow-wrap: anywhere; }
+.wo-evidence-grid a:hover { background: rgba(var(--v-theme-primary), 0.08); }
 </style>

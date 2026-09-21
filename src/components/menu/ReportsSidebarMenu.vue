@@ -31,13 +31,20 @@
     <div v-for="group in visibleGroups" :key="group.name" class="reports-sidebar__group">
       <div v-if="!collapsed" class="reports-sidebar__label">{{ group.name }}</div>
       <v-list density="comfortable" nav class="reports-sidebar__list">
-        <v-tooltip
-          v-for="module in group.modules"
-          :key="module.key"
-          :text="module.title"
-          location="end"
-          :disabled="!collapsed"
-        >
+        <template v-for="module in group.modules" :key="module.key">
+          <v-list-group v-if="module.key === 'materials' && !collapsed" value="materials">
+            <template #activator="{ props }">
+              <v-list-item v-bind="props" :title="module.shortTitle" :prepend-icon="module.icon" rounded="xl" class="reports-sidebar__item" />
+            </template>
+            <v-list-item title="Informativo" prepend-icon="mdi-chart-box-outline" :active="activeModuleKey === 'materials' && activeMaterialView === 'informativo'" rounded="xl" class="reports-sidebar__item reports-sidebar__subitem" @click="selectMaterialView('informativo')" />
+            <v-list-item title="Detalle" prepend-icon="mdi-format-list-bulleted" :active="activeModuleKey === 'materials' && activeMaterialView === 'detalle'" rounded="xl" class="reports-sidebar__item reports-sidebar__subitem" @click="selectMaterialView('detalle')" />
+          </v-list-group>
+          <v-tooltip
+            v-else
+            :text="module.title"
+            location="end"
+            :disabled="!collapsed"
+          >
           <template #activator="{ props }">
             <v-list-item
               v-bind="props"
@@ -49,7 +56,8 @@
               @click="selectModule(module.key)"
             />
           </template>
-        </v-tooltip>
+          </v-tooltip>
+        </template>
       </v-list>
     </div>
 
@@ -75,12 +83,14 @@ const router = useRouter();
 const search = ref("");
 
 const activeModuleKey = computed(() => String(route.query.modulo || REPORTING_MODULES[0]?.key || ""));
+const activeMaterialView = computed(() => String(route.query.vista || "informativo"));
+const hiddenInventoryReports = new Set(["warehouse-stock", "kardex", "warehouse-income", "warehouse-output"]);
 const visibleGroups = computed(() => {
   const term = search.value.trim().toLocaleLowerCase("es-EC");
   return REPORTING_MODULE_GROUPS.map((name) => ({
     name,
     modules: REPORTING_MODULES.filter((module) => {
-      if (module.group !== name) return false;
+      if (module.group !== name || hiddenInventoryReports.has(module.key)) return false;
       if (!term) return true;
       return `${module.title} ${module.shortTitle} ${module.description}`
         .toLocaleLowerCase("es-EC")
@@ -99,7 +109,15 @@ function selectModule(moduleKey: string) {
     query: {
       ...route.query,
       modulo: moduleKey,
+      vista: moduleKey === "materials" ? "informativo" : undefined,
     },
+  });
+}
+
+function selectMaterialView(view: "informativo" | "detalle") {
+  void router.push({
+    name: "reporteria",
+    query: { ...route.query, modulo: "materials", vista: view },
   });
 }
 
@@ -129,6 +147,7 @@ function leaveReports() {
 .reports-sidebar__item:focus-visible,
 .reports-sidebar__back:focus-visible { outline: 3px solid rgba(122, 190, 230, 0.42); outline-offset: 1px; }
 .reports-sidebar__item.v-list-item--active { color: var(--nav-text); background: var(--nav-active); box-shadow: inset 3px 0 var(--nav-accent); }
+.reports-sidebar__subitem { margin-left: 12px; min-height: 42px; }
 .reports-sidebar__empty { display: grid; min-height: 110px; place-items: center; align-content: center; gap: 8px; color: var(--nav-muted); font-size: 0.82rem; }
 @media (prefers-reduced-motion: reduce) { .reports-sidebar__item { transition: none; } }
 </style>
