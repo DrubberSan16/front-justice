@@ -3924,8 +3924,15 @@ async function openGuideDialog(item: TransferRow) {
       draft.ambiente ||
         (payload?.config as Record<string, unknown> | null)?.ambiente_default,
     );
+    // Por defecto la fecha de la transferencia, no la de hoy: la guia acompana
+    // a ese traslado. El servidor ya la propone; esto cubre un draft sin fecha.
     guideForm.fecha_emision = String(
-      draft.fecha_emision || formatDateForInput(),
+      draft.fecha_emision ||
+        formatDateForInput(
+          payload?.transferencia?.fecha_transferencia ||
+            item.fecha_transferencia ||
+            undefined,
+        ),
     );
     guideForm.fecha_ini_transporte = String(
       draft.fecha_ini_transporte || guideForm.fecha_emision,
