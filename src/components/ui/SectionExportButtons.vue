@@ -49,6 +49,8 @@ const props = defineProps<{
   note?: string;
   /** Orientacion forzada; si se omite la decide el ancho real de la tabla. */
   orientation?: "portrait" | "landscape";
+  /** Rotulo de la tabla en el PDF y nombre de la hoja; por defecto, el titulo. */
+  sheetName?: string;
 }>();
 
 async function run(format: "pdf" | "excel") {
@@ -63,6 +65,7 @@ async function run(format: "pdf" | "excel") {
       summary: props.summary,
       note: props.note,
       orientation: props.orientation,
+      sheetName: props.sheetName,
     }),
   );
 }

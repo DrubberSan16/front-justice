@@ -73,7 +73,10 @@ export function buildSectionReport(
     charts: options.charts,
     sheets: [
       {
-        name: options.sheetName || options.title.slice(0, 28) || "Detalle",
+        // Sin recortar: el nombre tambien es el rotulo de la tabla en el PDF, y
+        // cortado a 28 caracteres salia "Cebado y aceite · CATERPILLA". El
+        // limite de 31 de Excel ya lo aplica `uniqueSheetName` al escribir.
+        name: options.sheetName || options.title || "Detalle",
         fitColumnsToPage: true,
         note: options.note,
         rows: options.rows.map((row) =>

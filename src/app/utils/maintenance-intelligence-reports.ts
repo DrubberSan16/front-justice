@@ -1055,6 +1055,40 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
   const generatedStamp = buildGeneratedStamp(report);
   const chartAssets = buildReportChartAssets(report);
 
+  /**
+   * Recorta `text` con puntos suspensivos hasta que quepa en `maxWidth`, con
+   * la fuente que este puesta en ese momento.
+   */
+  function fitTextToWidth(text: string, maxWidth: number) {
+    if (doc.getTextWidth(text) <= maxWidth) return text;
+    let fitted = text;
+    while (fitted.length > 1 && doc.getTextWidth(`${fitted}…`) > maxWidth) {
+      fitted = fitted.slice(0, -1);
+    }
+    return `${fitted.trimEnd()}…`;
+  }
+
+  /**
+   * El titulo se escribia de un tiron a 18 pt: con el nombre completo de un
+   * equipo pasaba por encima del rotulo de la derecha ("Reporte operativo").
+   * Ahora baja de tamano hasta caber en el hueco libre y, si ni al minimo
+   * cabe, se parte en dos lineas.
+   */
+  function layoutHeaderTitle(title: string, maxWidth: number) {
+    doc.setFont("helvetica", "bold");
+    for (let size = 18; size >= 13; size -= 1) {
+      doc.setFontSize(size);
+      if (doc.getTextWidth(title) <= maxWidth) return { size, lines: [title] };
+    }
+    doc.setFontSize(13);
+    const lines = doc.splitTextToSize(title, maxWidth) as string[];
+    if (lines.length <= 2) return { size: 13, lines };
+    return {
+      size: 13,
+      lines: [lines[0] ?? "", fitTextToWidth(lines.slice(1).join(" "), maxWidth)],
+    };
+  }
+
   function drawPageHeader(title: string, subtitle?: string, pageLabel?: string) {
     doc.setFillColor(31, 78, 120);
     doc.rect(0, 0, pageWidth, 86, "F");
@@ -1065,18 +1099,35 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       maxHeight: 34,
     });
     doc.setTextColor(255, 255, 255);
+
+    // El rotulo de la derecha reserva su ancho antes de medir el titulo. Se
+    // acota a un tercio del hueco: en las paginas de continuacion es el nombre
+    // de la hoja, que puede ser tan largo como el titulo.
+    const headerWidth = pageWidth - headerTextX - marginX;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    const label = pageLabel
+      ? fitTextToWidth(repairText(pageLabel), headerWidth / 3)
+      : "";
+    const titleWidth = headerWidth - (label ? doc.getTextWidth(label) + 16 : 0);
+
+    const titleLayout = layoutHeaderTitle(repairText(title), titleWidth);
+    const twoLines = titleLayout.lines.length > 1;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text(repairText(title), headerTextX, 34);
+    doc.setFontSize(titleLayout.size);
+    doc.text(titleLayout.lines, headerTextX, twoLines ? 27 : 34, {
+      lineHeightFactor: 1.15,
+    });
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     if (subtitle) {
-      const lines = doc.splitTextToSize(repairText(subtitle), pageWidth - headerTextX - marginX);
-      doc.text(lines, headerTextX, 52);
+      const lines = doc.splitTextToSize(repairText(subtitle), headerWidth);
+      doc.text(lines, headerTextX, twoLines ? 58 : 52);
     }
-    if (pageLabel) {
+    if (label) {
       doc.setFontSize(9);
-      doc.text(repairText(pageLabel), pageWidth - marginX, 34, { align: "right" });
+      doc.text(label, pageWidth - marginX, 34, { align: "right" });
     }
     doc.setTextColor(91, 107, 123);
     doc.setFontSize(9);
@@ -1335,7 +1386,11 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(31, 41, 55);
-    doc.text(repairText(sheet.name), marginX + 10, cursorY + 14);
+    doc.text(
+      fitTextToWidth(repairText(sheet.name), pageWidth - marginX * 2 - 20),
+      marginX + 10,
+      cursorY + 14,
+    );
     cursorY += 34;
 
     if (sheet.note) {

@@ -289,9 +289,14 @@
             @update:model-value="loadOilReport"
           />
         </div>
-        <KpiCardRail
+        <!-- Cuadricula de dos columnas y no el riel del resumen: en el riel cada
+             tarjeta medía un tercio de pantalla, las barras partían el nombre
+             del equipo en cuatro renglones y a la derecha sobraba medio
+             tablero. Aquí cada gráfico tiene el ancho para leerse entero. -->
+        <div
+          class="oil-insights"
+          role="group"
           aria-label="Indicadores de consumo de aceite"
-          :show-pagination="false"
         >
           <KpiInsightCard
             title="Total usado"
@@ -300,8 +305,11 @@
             :accent="seriesColor(0, isDark)"
             :value="formatNumber(oilTotals.total_cantidad)"
             value-caption="gal"
-            :helper="`${equipmentWithUsageCount} equipos con consumo`"
+            :helper="`${formatCount(equipmentWithUsageCount)} equipos con consumo`"
             variant="donut"
+            chart-height="216px"
+            show-share
+            fill
             :points="oilSharePoints"
             :loading="loading"
             empty-text="No hay consumo de aceite en este rango."
@@ -319,10 +327,12 @@
                 : formatNumber(0)
             "
             value-caption="gal"
-            helper="Presione una barra para abrir el detalle de ese equipo."
-            variant="bars"
+            helper="Presione una barra o un nombre para abrir el detalle del equipo."
+            variant="hbars"
+            :chart-height="rankingChartHeight(oilEquipmentRankingPoints.length)"
+            fill
             interactive
-            :points="topOilEquipmentPoints"
+            :points="oilEquipmentRankingPoints"
             :loading="loading"
             empty-text="No hay consumo de aceite en este rango."
             :action-label="topOilEquipment ? 'Ver detalle del equipo' : ''"
@@ -338,26 +348,34 @@
               topOilOrder ? formatNumber(topOilOrder.cantidad) : formatNumber(0)
             "
             value-caption="gal"
-            helper="Órdenes con mayor consumo del rango."
-            variant="bars"
-            :points="topOilOrderPoints"
+            helper="Presione una barra para abrir la orden de trabajo."
+            variant="hbars"
+            :chart-height="rankingChartHeight(oilOrderRankingPoints.length)"
+            fill
+            interactive
+            :points="oilOrderRankingPoints"
             :loading="loading"
             empty-text="Ninguna orden registró consumo en este rango."
+            @point="openOilOrderFromChart"
           />
           <KpiInsightCard
             v-if="muestraCostos"
             title="Costo de aceite"
-            subtitle="Por equipo"
+            subtitle="Equipos con mayor costo"
             icon="mdi-cash"
             :accent="seriesColor(3, isDark)"
             :value="formatCurrency(oilTotals.total_costo)"
-            :helper="rangeLabel"
-            variant="bars"
+            helper="Presione una barra para abrir el detalle del equipo."
+            variant="hbars"
+            :chart-height="rankingChartHeight(oilCostPoints.length)"
+            fill
+            interactive
             :points="oilCostPoints"
             :loading="loading"
             empty-text="No hay costo de aceite en este rango."
+            @point="openEquipmentFromChart"
           />
-        </KpiCardRail>
+        </div>
         <div class="equipment-heading">
           <h3>Consumo por equipo</h3>
           <div class="equipment-heading__tools">
@@ -999,6 +1017,7 @@
               :title="`Cebado y aceite · ${equipmentLabel(primingDetailEquipment || {})}`"
               :subtitle="rangeLabel"
               file-name="gerencia_cebado_detalle"
+              sheet-name="Órdenes de cebado"
               :columns="primingDetailExportColumns"
               :rows="primingDetailExportRows"
             />
@@ -1962,31 +1981,41 @@ const primingDetailHeaders = computed(() => {
  *
  * Se aplanan tendencia y semaforo: en pantalla son un icono y un distintivo de
  * color, y en papel tienen que ser texto o salen en blanco.
+ *
+ * Anchos explicitos: sin ellos el generador reparte por el largo del
+ * encabezado, y "Horóm. del cebado" se llevaba el doble que el producto, que
+ * es el texto largo de la fila y salia partido en tres renglones.
  */
 const primingDetailExportColumns = computed(() => {
   const columnas: SectionReportColumn[] = [
-    { key: "orden", title: "Orden" },
-    { key: "fecha", title: "Fecha" },
-    { key: "producto", title: "Producto" },
-    { key: "horometro_anterior", title: "Horóm. anterior" },
-    { key: "horometro_actual", title: "Horóm. del cebado" },
-    { key: "galones", title: "Galones", format: "number" },
-    { key: "tendencia", title: "Tendencia" },
-    { key: "nivel", title: "Nivel" },
+    { key: "orden", title: "Orden", width: 11 },
+    { key: "fecha", title: "Fecha", width: 11 },
+    { key: "producto", title: "Producto", width: 30 },
+    { key: "horometro_anterior", title: "Horóm. anterior", format: "horometer", width: 12 },
+    { key: "horometro_actual", title: "Horóm. del cebado", format: "horometer", width: 12 },
+    { key: "galones", title: "Galones", format: "number", width: 9 },
+    { key: "tendencia", title: "Tendencia", width: 11 },
+    { key: "nivel", title: "Nivel", width: 13 },
   ];
   if (canViewCosts.value && primingDetailRows.value.some((item) => "costo" in item)) {
-    columnas.push({ key: "costo", title: "Costo", format: "currency" });
+    columnas.push({ key: "costo", title: "Costo", format: "currency", width: 10 });
   }
   return columnas;
 });
 
+/**
+ * Los horometros viajan como numero, no como el texto de la pantalla. La
+ * columna es de tipo horometro y el generador le da el formato: si recibe
+ * "23.266 h" no lo puede leer como cifra y el PDF salia con la columna en
+ * blanco, aunque la modal si los mostraba.
+ */
 const primingDetailExportRows = computed(() => {
   const filas = primingDetailRows.value.map((row: AnyRow) => ({
     orden: row?.orden || "",
     fecha: formatShortDate(row?.fecha),
     producto: row?.producto || "",
-    horometro_anterior: formatHorometro(row?.horometro_anterior),
-    horometro_actual: formatHorometro(row?.horometro_actual),
+    horometro_anterior: row?.horometro_anterior ?? null,
+    horometro_actual: row?.horometro_actual ?? null,
     galones: Number(row?.galones || 0),
     tendencia:
       row?.tendencia && row.tendencia !== "SIN_REFERENCIA"
@@ -2263,11 +2292,36 @@ const visibleEquipmentRows = computed<AnyRow[]>(() =>
 const topOilEquipment = computed<AnyRow | null>(
   () => equipmentRows.value[0] ?? null,
 );
+/**
+ * Consumo por orden, de mayor a menor.
+ *
+ * El servicio agrupa por orden Y material, asi que una orden que uso dos
+ * aceites llega en dos filas; aqui se suma por orden para que la barra y la
+ * cifra de cabecera digan cuanto gasto la orden entera.
+ */
+const oilOrdersRanked = computed<AnyRow[]>(() => {
+  const byOrder = new Map<string, AnyRow>();
+  for (const row of oilWorkOrders.value) {
+    const key = String(row.work_order_id || row.work_order_code || "").trim();
+    if (!key) continue;
+    const current = byOrder.get(key);
+    if (current) {
+      current.cantidad += Number(row.cantidad || 0);
+      current.subtotal += Number(row.subtotal || 0);
+    } else {
+      byOrder.set(key, {
+        ...row,
+        cantidad: Number(row.cantidad || 0),
+        subtotal: Number(row.subtotal || 0),
+      });
+    }
+  }
+  return [...byOrder.values()]
+    .filter((row) => row.cantidad > 0)
+    .sort((a, b) => b.cantidad - a.cantidad);
+});
 const topOilOrder = computed<AnyRow | null>(
-  () =>
-    [...oilWorkOrders.value].sort(
-      (a, b) => Number(b.cantidad || 0) - Number(a.cantidad || 0),
-    )[0] ?? null,
+  () => oilOrdersRanked.value[0] ?? null,
 );
 const selectedEquipmentOrders = computed(() => {
   if (!selectedEquipment.value) return [];
@@ -2309,7 +2363,7 @@ function isGenerationEquipmentType(type: AnyRow) {
   return normalized.includes("GENERACION") || normalized.includes("GENERADOR");
 }
 
-function equipmentLabel(item: AnyRow) {
+function findEquipmentCatalogItem(item: AnyRow) {
   const equipmentId = String(
     item?.equipment_id || item?.equipo_id || "",
   ).trim();
@@ -2320,7 +2374,7 @@ function equipmentLabel(item: AnyRow) {
       item?.codigo ||
       "",
   ).trim();
-  const catalogItem = equipmentCatalog.value.find((row) => {
+  return equipmentCatalog.value.find((row) => {
     const rowId = String(row?.id || "").trim();
     const rowCode = String(row?.codigo || "").trim();
     return (
@@ -2328,7 +2382,11 @@ function equipmentLabel(item: AnyRow) {
       (directCode && rowCode.toUpperCase() === directCode.toUpperCase())
     );
   });
-  const name = String(
+}
+
+/** El `nombre` del equipo (JC - UG21): como se lo conoce en campo. */
+function equipmentName(item: AnyRow, catalogItem = findEquipmentCatalogItem(item)) {
+  return String(
     catalogItem?.nombre ||
       item?.equipment_nombre ||
       item?.equipo_nombre ||
@@ -2336,6 +2394,14 @@ function equipmentLabel(item: AnyRow) {
       item?.nombre ||
       "",
   ).trim();
+}
+
+function equipmentLabel(item: AnyRow) {
+  const equipmentId = String(
+    item?.equipment_id || item?.equipo_id || "",
+  ).trim();
+  const catalogItem = findEquipmentCatalogItem(item);
+  const name = equipmentName(item, catalogItem);
   if (!name)
     return String(item?.equipment_label || equipmentId || "Sin equipo");
   const source = { ...item, ...catalogItem, nombre: name };
@@ -2351,17 +2417,14 @@ function equipmentLabel(item: AnyRow) {
   return realName ? `${withBrand} (${realName})` : withBrand;
 }
 
-/** Etiqueta breve para ejes; la tabla y el PDF conservan el nombre completo. */
+/**
+ * Etiqueta breve para ejes: el nombre de campo (JC - UG21), que es como se
+ * conoce la unidad. Antes era el codigo interno (EQ-A00017), que el reporte no
+ * muestra en ningun otro lado. La tabla, el tooltip y el PDF conservan el
+ * nombre completo.
+ */
 function equipmentChartLabel(item: AnyRow) {
-  return (
-    String(
-      item?.equipment_codigo ||
-        item?.equipo_codigo ||
-        item?.equipment_code ||
-        item?.codigo ||
-        "",
-    ).trim() || equipmentLabel(item)
-  );
+  return equipmentName(item) || equipmentLabel(item);
 }
 
 function materialLabel(item: AnyRow) {
@@ -4003,13 +4066,32 @@ const statusRailCards = computed(() =>
 
 /* --- Aceite -------------------------------------------------------------- */
 
-/** Tope de barras por tarjeta: mas de cinco etiquetas no caben sin truncar. */
+/**
+ * Tope de columnas en las tarjetas del resumen: en su ancho, mas de cinco
+ * etiquetas no caben sin truncar.
+ */
 const CHART_TOP = 5;
+
+/**
+ * Tope de barras de los rankings del detalle. Son horizontales y el nombre va
+ * entero a la izquierda, asi que caben mas; el resto sigue en la tabla.
+ */
+const RANKING_TOP = 8;
+
+/**
+ * Alto de un ranking horizontal: una banda fija por barra, para que con pocas
+ * barras no queden gruesas ni separadas por un vacio. Con `fill` la tarjeta
+ * centra el grafico en el alto que le sobre.
+ */
+function rankingChartHeight(count: number) {
+  return `${Math.max(count, 3) * 32 + 8}px`;
+}
 
 const sortedOilEquipment = computed(() =>
   [...equipmentRows.value]
     .map((row) => ({
       row,
+      key: equipmentKey(row),
       label: equipmentLabel(row),
       cantidad: Number(row.total_cantidad || 0),
       costo: Number(row.total_costo || 0),
@@ -4020,10 +4102,26 @@ const sortedOilEquipment = computed(() =>
 
 const topOilEquipmentPoints = computed(() =>
   sortedOilEquipment.value.slice(0, CHART_TOP).map((entry, index) => ({
+    key: entry.key,
     label: equipmentChartLabel(entry.row),
+    tooltipLabel: entry.label,
     value: entry.cantidad,
     valueLabel: `${formatNumber(entry.cantidad)} gal`,
     color: seriesColor(index, isDark.value),
+  })),
+);
+
+/**
+ * Ranking del detalle: una sola serie y por tanto un solo color, el de la
+ * tarjeta. El eje lleva el nombre de campo y el tooltip la etiqueta completa.
+ */
+const oilEquipmentRankingPoints = computed(() =>
+  sortedOilEquipment.value.slice(0, RANKING_TOP).map((entry) => ({
+    key: entry.key,
+    label: equipmentChartLabel(entry.row),
+    tooltipLabel: entry.label,
+    value: entry.cantidad,
+    valueLabel: `${formatNumber(entry.cantidad)} gal`,
   })),
 );
 
@@ -4035,6 +4133,7 @@ const topOilEquipmentPoints = computed(() =>
 const oilSharePoints = computed(() => {
   const rows = sortedOilEquipment.value;
   const points = rows.slice(0, 4).map((entry, index) => ({
+    key: entry.key,
     label: entry.label,
     value: entry.cantidad,
     valueLabel: `${formatNumber(entry.cantidad)} gal`,
@@ -4046,7 +4145,8 @@ const oilSharePoints = computed(() => {
     .reduce((acc, entry) => acc + entry.cantidad, 0);
   if (resto > 0) {
     points.push({
-      label: `Otros equipos (${rows.length - 4})`,
+      key: "otros-equipos",
+      label: `Otros equipos (${formatCount(rows.length - 4)})`,
       value: resto,
       valueLabel: `${formatNumber(resto)} gal`,
       color: seriesColor(4, isDark.value),
@@ -4056,43 +4156,55 @@ const oilSharePoints = computed(() => {
 });
 
 /**
- * La barra del grafico solo conoce la etiqueta del equipo, no su fila. Se
- * resuelve contra el mismo `equipmentLabel` con el que se dibujo, que es lo que
- * garantiza que coincidan.
+ * La barra devuelve la clave de su equipo, no solo la etiqueta: hay equipos
+ * homonimos ("SSA", "SUB ESTACION") y por nombre se abria el que no era.
  */
-function openEquipmentFromChart(point: { label: string }) {
-  const match = equipmentRows.value.find(
-    (row) => equipmentChartLabel(row) === point.label,
+function openEquipmentFromChart(point: { key?: string; label: string }) {
+  const match = equipmentRows.value.find((row) =>
+    point.key
+      ? equipmentKey(row) === point.key
+      : equipmentChartLabel(row) === point.label,
   );
   if (match) openEquipmentDetail(match);
 }
 
-const topOilOrderPoints = computed(() =>
-  [...oilWorkOrders.value]
-    .map((row) => ({
-      label: String(row.work_order_code || "Sin código"),
+const oilOrderRankingPoints = computed(() =>
+  oilOrdersRanked.value.slice(0, RANKING_TOP).map((row) => {
+    const code = String(row.work_order_code || "Sin código");
+    const equipment = String(row.equipment_label || "").trim();
+    return {
+      key: String(row.work_order_id || code),
+      label: code,
+      tooltipLabel: equipment ? `${code} · ${equipment}` : code,
       value: Number(row.cantidad || 0),
-    }))
-    .filter((row) => row.value > 0)
-    .sort((left, right) => right.value - left.value)
-    .slice(0, CHART_TOP)
-    .map((row, index) => ({
-      ...row,
-      valueLabel: `${formatNumber(row.value)} gal`,
-      color: seriesColor(index, isDark.value),
-    })),
+      valueLabel: `${formatNumber(row.cantidad)} gal`,
+    };
+  }),
 );
+
+function openOilOrderFromChart(point: { key?: string }) {
+  const row = oilOrdersRanked.value.find(
+    (order) => String(order.work_order_id || order.work_order_code) === point.key,
+  );
+  if (!row?.work_order_id) return;
+  void openOrderDetail({
+    ...row,
+    id: row.work_order_id,
+    code: row.work_order_code,
+  });
+}
 
 const oilCostPoints = computed(() =>
   [...sortedOilEquipment.value]
     .filter((entry) => entry.costo > 0)
     .sort((left, right) => right.costo - left.costo)
-    .slice(0, CHART_TOP)
-    .map((entry, index) => ({
-      label: entry.label,
+    .slice(0, RANKING_TOP)
+    .map((entry) => ({
+      key: entry.key,
+      label: equipmentChartLabel(entry.row),
+      tooltipLabel: entry.label,
       value: entry.costo,
       valueLabel: formatCurrency(entry.costo),
-      color: seriesColor(index, isDark.value),
     })),
 );
 
@@ -4843,6 +4955,28 @@ onMounted(() => {
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+/* Indicadores de aceite: dos columnas que llenan el ancho de la ventana. Por
+   debajo de 1100px, una: la barra horizontal necesita ancho para la etiqueta
+   y la cifra. */
+.oil-insights {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Sin la tarjeta de costo quedan tres: la ultima ocupa la fila entera en vez
+   de dejar media fila vacia. */
+.oil-insights > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+  .oil-insights {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .system-filters--cost {

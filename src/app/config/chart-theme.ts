@@ -84,6 +84,24 @@ export function chartInk(dark: boolean) {
   };
 }
 
+let resolvedChartFont = "";
+
+/**
+ * Familia tipográfica de la página, para el lienzo.
+ *
+ * `fontFamily: "inherit"` no es una fuente válida para un canvas: el navegador
+ * descarta la asignación y el texto se dibuja y se mide con la fuente anterior
+ * del contexto (por defecto, 10px sans-serif). Se resuelve la de verdad.
+ */
+export function chartFontFamily(): string {
+  if (resolvedChartFont) return resolvedChartFont;
+  if (typeof document === "undefined") return "sans-serif";
+  const family = window.getComputedStyle(document.body).fontFamily.trim();
+  if (!family) return "sans-serif";
+  resolvedChartFont = family;
+  return family;
+}
+
 /**
  * Base común de `option`: rejilla recesiva, tooltip siempre presente y ejes
  * discretos. Quien la use añade `series`, `xAxis.data` y la leyenda.

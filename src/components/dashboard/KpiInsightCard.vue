@@ -2,6 +2,7 @@
   <v-card
     rounded="xl"
     class="kpi-insight js-stagger-item js-hover-card"
+    :class="{ 'kpi-insight--fill': fill }"
     :style="{ '--kpi-accent': accentColor }"
   >
     <header class="kpi-insight__head">
@@ -24,7 +25,7 @@
       />
       <v-skeleton-loader
         type="image"
-        :height="chartHeight"
+        :height="resolvedChartHeight"
         class="kpi-insight__skeleton"
       />
       <span class="kpi-insight__sr-only">{{ title }}: cargando datos.</span>
@@ -37,18 +38,31 @@
       </div>
       <p v-if="helper" class="kpi-insight__helper">{{ helper }}</p>
 
-      <div v-if="hasData" class="kpi-insight__chart" :class="`kpi-insight__chart--${variant}`">
+      <div
+        v-if="hasData"
+        ref="chartBox"
+        class="kpi-insight__chart"
+        :class="`kpi-insight__chart--${variant}`"
+        :style="chartBoxStyle"
+      >
         <EChart
           :option="option"
-          :height="chartHeight"
+          :height="resolvedChartHeight"
           class="kpi-insight__canvas"
           @select="onSelect"
         />
-        <ul v-if="variant === 'donut'" class="kpi-insight__legend">
-          <li v-for="point in resolvedPoints" :key="point.label">
+        <ul
+          v-if="variant === 'donut'"
+          class="kpi-insight__legend"
+          :class="{ 'kpi-insight__legend--share': showShare }"
+        >
+          <li v-for="point in resolvedPoints" :key="point.key">
             <i class="kpi-insight__swatch" :style="{ background: point.color }" />
             <span class="kpi-insight__legend-label">{{ point.label }}</span>
             <strong>{{ point.valueLabel }}</strong>
+            <span v-if="showShare" class="kpi-insight__legend-share">{{
+              point.shareLabel
+            }}</span>
           </li>
         </ul>
       </div>
@@ -58,8 +72,8 @@
            dato, en texto, para quien no ve el dibujo. -->
       <p v-if="hasData" class="kpi-insight__sr-only">
         {{ title }}.
-        <template v-for="point in resolvedPoints" :key="`sr-${point.label}`">
-          {{ point.label }}: {{ point.valueLabel }}.
+        <template v-for="point in resolvedPoints" :key="`sr-${point.key}`">
+          {{ point.tooltipLabel }}: {{ point.valueLabel }}.
         </template>
       </p>
     </template>
@@ -90,28 +104,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useTheme } from "vuetify";
 import EChart from "@/components/charts/EChart.vue";
-import { chartInk, seriesColor } from "@/app/config/chart-theme";
+import {
+  chartFontFamily,
+  chartInk,
+  seriesColor,
+} from "@/app/config/chart-theme";
+import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 /**
  * Tarjeta de KPI con grafico incrustado, pensada para vivir dentro de
- * `KpiCardRail`.
+ * `KpiCardRail` o de una cuadricula.
  *
  * La tarjeta arma la `option` de ECharts a partir de una lista plana de puntos,
  * igual que hace `DashboardBarChartCard`: quien la usa no toca ECharts. Los
  * colores salen de `chart-theme.ts`, que es la paleta validada del repo.
  *
- * Alturas contenidas a proposito (110-140px). El grafico aqui es un apoyo de
- * lectura junto a la cifra, no el protagonista; el detalle vive en la tabla de
- * la seccion correspondiente.
+ * En el riel las alturas van contenidas a proposito (104-116px): el grafico es
+ * un apoyo de lectura junto a la cifra. En una cuadricula con espacio, `fill`
+ * y `chartHeight` dejan que el grafico ocupe la tarjeta y se lea completo.
  */
 type KpiChartPoint = {
   label: string;
   value: number;
   valueLabel?: string;
   color?: string;
+  /**
+   * Identidad del punto. Dos equipos pueden llamarse igual ("SSA"), asi que
+   * quien escucha `point` debe resolver la fila por esta clave y no por la
+   * etiqueta. Por defecto, la etiqueta.
+   */
+  key?: string;
+  /** Nombre completo para el tooltip cuando el eje muestra uno abreviado. */
+  tooltipLabel?: string;
 };
 
 const props = withDefaults(
@@ -124,12 +151,23 @@ const props = withDefaults(
     valueCaption?: string;
     helper?: string;
     points?: KpiChartPoint[];
-    variant?: "bars" | "donut" | "line";
+    /**
+     * `hbars` es la barra horizontal: la forma de un ranking cuando las
+     * etiquetas son largas, porque el nombre se lee entero a la izquierda en
+     * vez de partirse en cuatro renglones bajo una columna.
+     */
+    variant?: "bars" | "hbars" | "donut" | "line";
     emptyText?: string;
     actionLabel?: string;
     previewLabel?: string;
     interactive?: boolean;
     loading?: boolean;
+    /** Alto del grafico; en la dona tambien es su diametro. */
+    chartHeight?: string;
+    /** La dona agrega a la leyenda el porcentaje de cada parte. */
+    showShare?: boolean;
+    /** El grafico ocupa el alto sobrante de la tarjeta y lo centra. */
+    fill?: boolean;
   }>(),
   {
     subtitle: "",
@@ -144,6 +182,9 @@ const props = withDefaults(
     previewLabel: "",
     interactive: false,
     loading: false,
+    chartHeight: "",
+    showShare: false,
+    fill: false,
   },
 );
 
@@ -179,18 +220,47 @@ function withAlpha(color: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-const resolvedPoints = computed(() =>
-  (props.points ?? []).map((point, index) => ({
-    label: point.label,
-    value: Number(point.value || 0),
-    valueLabel: point.valueLabel ?? String(point.value ?? ""),
-    color:
-      point.color ||
-      (props.variant === "bars" || props.variant === "donut"
-        ? seriesColor(index, isDark.value)
-        : accentColor.value),
-  })),
-);
+/**
+ * El tooltip de ECharts se pinta como HTML y las etiquetas son datos (nombres
+ * de equipos, codigos): se escapan para que un nombre con `<` no se interprete.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const resolvedPoints = computed(() => {
+  const points = props.points ?? [];
+  const total = points.reduce(
+    (acc, point) => acc + Math.max(0, Number(point.value || 0)),
+    0,
+  );
+  return points.map((point, index) => {
+    const value = Number(point.value || 0);
+    return {
+      label: point.label,
+      value,
+      valueLabel: point.valueLabel ?? String(point.value ?? ""),
+      key: point.key ?? `${point.label}-${index}`,
+      tooltipLabel: point.tooltipLabel || point.label,
+      shareLabel:
+        total > 0
+          ? `${formatNumberForDisplay((Math.max(0, value) / total) * 100)} %`
+          : "",
+      // Un ranking es una sola serie: todas sus barras del mismo color. Pintar
+      // cada barra de otro tono sugeriria categorias que no existen.
+      color:
+        point.color ||
+        (props.variant === "bars" || props.variant === "donut"
+          ? seriesColor(index, isDark.value)
+          : accentColor.value),
+    };
+  });
+});
 
 /**
  * Una dona de puros ceros dibuja un anillo vacio que parece un fallo de carga.
@@ -202,9 +272,41 @@ const hasData = computed(
     resolvedPoints.value.some((point) => point.value !== 0),
 );
 
-const chartHeight = computed(() =>
-  props.variant === "donut" ? "116px" : "104px",
+const resolvedChartHeight = computed(() => {
+  if (props.chartHeight) return props.chartHeight;
+  return props.variant === "donut" ? "116px" : "104px";
+});
+
+/** El diametro de la dona fija el ancho de su columna junto a la leyenda. */
+const chartBoxStyle = computed(() =>
+  props.variant === "donut" && props.chartHeight
+    ? { "--kpi-donut-size": props.chartHeight }
+    : undefined,
 );
+
+/**
+ * Ancho real del grafico, para repartir el de las barras horizontales entre
+ * la etiqueta y la barra. ECharts pide la anchura de la etiqueta en pixeles.
+ */
+const chartBox = ref<HTMLElement | null>(null);
+const chartWidth = ref(0);
+let resizeObserver: ResizeObserver | null = null;
+
+watch(chartBox, (element) => {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+  if (!element || typeof ResizeObserver === "undefined") return;
+  resizeObserver = new ResizeObserver((entries) => {
+    const width = Math.round(entries[0]?.contentRect.width ?? 0);
+    if (width && Math.abs(width - chartWidth.value) > 4) chartWidth.value = width;
+  });
+  resizeObserver.observe(element);
+});
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+});
 
 const tooltipBase = computed(() => {
   const ink = chartInk(isDark.value);
@@ -216,10 +318,39 @@ const tooltipBase = computed(() => {
   };
 });
 
+/** Tooltip: primero la cifra, que es lo que se busca; despues de que es. */
+function tooltipHtml(index: number, extra = "") {
+  const point = resolvedPoints.value[index];
+  if (!point) return "";
+  const figure = [point.valueLabel, extra].filter(Boolean).join(" · ");
+  return `<strong>${escapeHtml(figure)}</strong><div>${escapeHtml(
+    point.tooltipLabel,
+  )}</div>`;
+}
+
+let measureContext: CanvasRenderingContext2D | null = null;
+
+/**
+ * Ancho en pixeles del texto mas largo, medido con la misma fuente con la que
+ * lo dibuja el lienzo. Si no hay canvas, una estimacion por caracteres.
+ */
+function widestLabel(labels: string[], font: string): number {
+  if (!labels.length) return 0;
+  if (!measureContext && typeof document !== "undefined") {
+    measureContext = document.createElement("canvas").getContext("2d");
+  }
+  if (!measureContext) return Math.max(...labels.map((text) => text.length * 7));
+  measureContext.font = font;
+  return Math.max(
+    ...labels.map((text) => measureContext?.measureText(text).width ?? 0),
+  );
+}
+
 const option = computed<Record<string, any>>(() => {
   const ink = chartInk(isDark.value);
   const points = resolvedPoints.value;
   const labels = points.map((point) => point.label);
+  const fontFamily = chartFontFamily();
 
   if (props.variant === "donut") {
     return {
@@ -227,11 +358,12 @@ const option = computed<Record<string, any>>(() => {
         trigger: "item" as const,
         ...tooltipBase.value,
         formatter: (params: any) =>
-          `<strong>${params.name}</strong><div>${
-            points[params.dataIndex]?.valueLabel ?? ""
-          }</div>`,
+          tooltipHtml(
+            params.dataIndex,
+            props.showShare ? points[params.dataIndex]?.shareLabel : "",
+          ),
       },
-      textStyle: { color: ink.text, fontFamily: "inherit" },
+      textStyle: { color: ink.text, fontFamily },
       series: [
         {
           type: "pie" as const,
@@ -263,12 +395,10 @@ const option = computed<Record<string, any>>(() => {
         ...tooltipBase.value,
         formatter: (params: any) => {
           const first = Array.isArray(params) ? params[0] : params;
-          const row = points[first?.dataIndex ?? 0];
-          if (!row) return "";
-          return `<strong>${row.label}</strong><div>${row.valueLabel}</div>`;
+          return tooltipHtml(first?.dataIndex ?? 0);
         },
       },
-      textStyle: { color: ink.text, fontFamily: "inherit" },
+      textStyle: { color: ink.text, fontFamily },
       xAxis: {
         type: "category" as const,
         boundaryGap: false,
@@ -305,17 +435,88 @@ const option = computed<Record<string, any>>(() => {
     };
   }
 
+  if (props.variant === "hbars") {
+    // La etiqueta mide lo que su texto mas largo, hasta un tercio del ancho;
+    // el resto queda para la barra. Con un ancho fijo, nombres cortos como
+    // "JC - UG21" dejaban un hueco a su izquierda. Lo que no cabe se corta con
+    // puntos suspensivos y el nombre entero sigue en el tooltip y en la tabla.
+    const width = chartWidth.value || 480;
+    const maxLabelWidth = Math.min(200, Math.max(88, width * 0.32));
+    const labelWidth = Math.round(
+      Math.min(
+        maxLabelWidth,
+        widestLabel(labels, `600 12px ${fontFamily}`) + 2,
+      ),
+    );
+    return {
+      // A la derecha, sitio fijo para la cifra al final de la barra: el
+      // `containLabel` de ECharts mide los ejes, no las etiquetas de la serie.
+      grid: { left: 4, right: 86, top: 4, bottom: 4, containLabel: true },
+      tooltip: {
+        trigger: "item" as const,
+        ...tooltipBase.value,
+        formatter: (params: any) => tooltipHtml(params.dataIndex),
+      },
+      textStyle: { color: ink.text, fontFamily },
+      xAxis: { type: "value" as const, show: false },
+      yAxis: {
+        type: "category" as const,
+        // El primero arriba: se lee de mayor a menor, como una tabla.
+        inverse: true,
+        // Categorias por posicion, no por nombre: dos equipos homonimos se
+        // fundirian en una sola barra.
+        data: points.map((_, index) => String(index)),
+        axisLine: { show: false },
+        axisTick: { show: false },
+        // Pulsar el nombre abre lo mismo que pulsar la barra: el blanco de
+        // la pulsacion es la fila entera, no solo el trazo.
+        triggerEvent: props.interactive,
+        axisLabel: {
+          color: ink.text,
+          fontSize: 12,
+          fontWeight: 600,
+          width: labelWidth,
+          overflow: "truncate" as const,
+          formatter: (value: string) => points[Number(value)]?.label ?? "",
+        },
+      },
+      series: [
+        {
+          type: "bar" as const,
+          barMaxWidth: 20,
+          barCategoryGap: "36%",
+          // Extremo de dato redondeado y base recta, pegada al eje.
+          itemStyle: {
+            borderRadius: [0, 4, 4, 0] as [number, number, number, number],
+          },
+          cursor: props.interactive ? "pointer" : "default",
+          label: {
+            show: true,
+            position: "right" as const,
+            distance: 8,
+            color: ink.text,
+            fontSize: 12,
+            fontWeight: 700,
+            formatter: (params: any) =>
+              points[params.dataIndex]?.valueLabel ?? "",
+          },
+          data: points.map((point) => ({
+            value: point.value,
+            itemStyle: { color: point.color },
+          })),
+        },
+      ],
+    };
+  }
+
   return {
     grid: { left: 2, right: 2, top: 24, bottom: 2, containLabel: true },
     tooltip: {
       trigger: "item" as const,
       ...tooltipBase.value,
-      formatter: (params: any) =>
-        `<strong>${params.name}</strong><div>${
-          points[params.dataIndex]?.valueLabel ?? ""
-        }</div>`,
+      formatter: (params: any) => tooltipHtml(params.dataIndex),
     },
-    textStyle: { color: ink.text, fontFamily: "inherit" },
+    textStyle: { color: ink.text, fontFamily },
     xAxis: {
       type: "category" as const,
       data: labels,
@@ -358,8 +559,20 @@ const option = computed<Record<string, any>>(() => {
 
 function onSelect(params: any) {
   if (!props.interactive) return;
-  const point = resolvedPoints.value[params?.dataIndex];
-  if (point) emit("point", point);
+  // En `hbars` tambien responde el nombre del eje, que entrega su categoria
+  // (la posicion) en vez de `dataIndex`.
+  const index =
+    params?.componentType === "yAxis" ? Number(params.value) : params?.dataIndex;
+  const point = resolvedPoints.value[index];
+  if (!point) return;
+  emit("point", {
+    label: point.label,
+    value: point.value,
+    valueLabel: point.valueLabel,
+    color: point.color,
+    key: point.key,
+    tooltipLabel: point.tooltipLabel,
+  });
 }
 </script>
 
@@ -379,6 +592,32 @@ function onSelect(params: any) {
       transparent 52%
     ),
     rgb(var(--v-theme-surface));
+}
+
+/* En una cuadricula las tarjetas de una fila miden lo mismo: el grafico toma
+   el alto que sobra y se centra en el, y las acciones van al pie. Sin esto la
+   tarjeta mas baja de la fila quedaba con un hueco vacio debajo. */
+.kpi-insight--fill {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-insight--fill .kpi-insight__chart,
+.kpi-insight--fill .kpi-insight__no-chart {
+  flex: 1 1 auto;
+}
+
+.kpi-insight--fill .kpi-insight__chart {
+  display: grid;
+  align-content: center;
+}
+
+.kpi-insight--fill .kpi-insight__chart--donut {
+  align-items: center;
+}
+
+.kpi-insight--fill .kpi-insight__actions {
+  margin-top: auto;
 }
 
 .kpi-insight__head {
@@ -423,12 +662,13 @@ function onSelect(params: any) {
   flex-wrap: wrap;
 }
 
+/* Cifras proporcionales: a este tamano las de ancho fijo dejan "121" suelto.
+   Las tabulares quedan para columnas que se alinean, no para un numero solo. */
 .kpi-insight__value strong {
   font-size: clamp(1.7rem, 3.2vw, 2.3rem);
   font-weight: 800;
   line-height: 1.05;
   letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
 }
 
 .kpi-insight__value span {
@@ -449,7 +689,7 @@ function onSelect(params: any) {
 
 .kpi-insight__chart--donut {
   display: grid;
-  grid-template-columns: 128px minmax(0, 1fr);
+  grid-template-columns: var(--kpi-donut-size, 128px) minmax(0, 1fr);
   align-items: center;
   gap: 12px;
 }
@@ -470,13 +710,28 @@ function onSelect(params: any) {
   font-size: 0.85rem;
 }
 
-.kpi-insight__legend-label {
-  color: rgba(var(--v-theme-on-surface), 0.74);
-  overflow-wrap: anywhere;
+/* Columna fija para el porcentaje: asi las cifras de todas las filas quedan
+   alineadas por la derecha. */
+.kpi-insight__legend--share li {
+  grid-template-columns: auto minmax(0, 1fr) auto 4.6em;
 }
 
-.kpi-insight__legend strong {
+/* Corta en los espacios. Con `anywhere` partia dentro de la palabra y se leia
+   "CATERPILLA / R" o "GENERACIO / N". */
+.kpi-insight__legend-label {
+  color: rgba(var(--v-theme-on-surface), 0.74);
+  overflow-wrap: break-word;
+}
+
+.kpi-insight__legend strong,
+.kpi-insight__legend-share {
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.kpi-insight__legend-share {
+  color: rgba(var(--v-theme-on-surface), 0.66);
 }
 
 .kpi-insight__swatch {
@@ -550,6 +805,16 @@ function onSelect(params: any) {
 
   .kpi-insight__chart--donut {
     grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  /* La dona grande no cabe al lado de la leyenda en un telefono: va encima. */
+  .kpi-insight--fill .kpi-insight__chart--donut {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .kpi-insight--fill .kpi-insight__chart--donut .kpi-insight__canvas {
+    justify-self: center;
+    width: min(100%, var(--kpi-donut-size, 128px));
   }
 
   .kpi-insight__actions {
