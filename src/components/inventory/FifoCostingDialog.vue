@@ -140,7 +140,8 @@ function formatPeriod(periodo?: string | null) {
 }
 
 function formatStamp(value?: string | null) {
-  const raw = String(value ?? "");
+  // La API entrega "2026-09-23T07:19:06" o "2026-09-23 07:19:06".
+  const raw = String(value ?? "").replace("T", " ");
   if (!raw) return "-";
   const [date, time = ""] = raw.split(" ");
   const [year, month, day] = (date ?? "").split("-");
