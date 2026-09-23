@@ -43,6 +43,30 @@
             </div>
           </div>
 
+          <template v-if="status.total_alertas">
+            <div class="text-subtitle-2 mt-5 mb-1">Para revisar ({{ status.total_alertas }})</div>
+            <p class="text-body-2 text-medium-emphasis mb-2">
+              Salidas que no encontraron capa y se costearon al ultimo costo conocido, o capas que no suman lo mismo
+              que el stock. No bloquean la operacion.
+            </p>
+            <v-table density="compact" class="fifo-alerts">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th>Bodega</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(alerta, index) in status.alertas" :key="index">
+                  <td>{{ alerta.material }}</td>
+                  <td>{{ alerta.bodega }}</td>
+                  <td>{{ alerta.detalle }}</td>
+                </tr>
+              </tbody>
+            </v-table>
+          </template>
+
           <div class="text-subtitle-2 mt-5 mb-2">Meses cerrados</div>
           <v-table v-if="status.cierres?.length" density="compact">
             <thead>
@@ -111,6 +135,8 @@ type FifoStatus = {
   cierres: Array<{ id: string; periodo: string; fecha_limite: string; created_at: string; created_by?: string }>;
   pendientes: number;
   pendientes_con_error?: number;
+  alertas?: Array<{ tipo: string; detalle: string; material: string; bodega: string }>;
+  total_alertas?: number;
 };
 
 const MONTHS = [
@@ -241,6 +267,11 @@ async function closeMonth() {
   padding: 10px 12px;
   border: 1px solid var(--surface-border);
   border-radius: 12px;
+}
+
+.fifo-alerts {
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .fifo-fact span {
