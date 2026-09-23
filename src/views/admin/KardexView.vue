@@ -27,7 +27,7 @@
             <div class="kardex-hero__actions">
               <MassPurgeButton endpoint="/kpi_inventory/kardex/purge-all"
                 module-title="Kardex y movimientos de inventario" @purged="handleKardexPurged" />
-              <FifoCostingDialog v-if="canViewCosts" />
+              <FifoCostingDialog v-if="canManageFifo" />
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-excel"
                 :loading="isExporting('excel')" @click="exportInventoryReport('excel')">Excel</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-pdf-box"
@@ -551,6 +551,7 @@ import {
   resolveEquipmentModel,
 } from "@/app/utils/equipment-display";
 import {
+  canManageFifoCosting,
   canViewAnnulledRecords,
   canViewMaterialCosts,
 } from "@/app/utils/role-access";
@@ -642,6 +643,7 @@ const canCreate = computed(() => perms.value.isCreated);
 const canDelete = computed(() => perms.value.permitDeleted);
 const canSeeAnnulled = computed(() => canViewAnnulledRecords(auth.user));
 const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
+const canManageFifo = computed(() => canManageFifoCosting(auth.user));
 /**
  * El precio de entrada solo se pide donde tiene sentido: bodega registrando
  * un ingreso. En un egreso el costo lo pone el inventario.

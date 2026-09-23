@@ -57,6 +57,15 @@ export function canViewMaterialCosts(user: AuthUser): boolean {
   );
 }
 
+/** El costeo FIFO (estado y cierre de mes) es solo de Gerencia y Administracion. */
+export function canManageFifoCosting(user: AuthUser): boolean {
+  return (
+    isGeneralManager(user) ||
+    isAdministrator(user) ||
+    isSuperAdministrator(user)
+  );
+}
+
 export function isWarehouseKeeper(user: AuthUser): boolean {
   return ["BODEGA", "BODEGUERO"].includes(getRoleName(user));
 }
