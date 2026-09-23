@@ -27,6 +27,7 @@
             <div class="kardex-hero__actions">
               <MassPurgeButton endpoint="/kpi_inventory/kardex/purge-all"
                 module-title="Kardex y movimientos de inventario" @purged="handleKardexPurged" />
+              <FifoCostingDialog v-if="canViewCosts" />
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-excel"
                 :loading="isExporting('excel')" @click="exportInventoryReport('excel')">Excel</v-btn>
               <v-btn v-if="canAccessInventoryReports" variant="tonal" prepend-icon="mdi-file-pdf-box"
@@ -559,6 +560,7 @@ import ExcelPreviewDialog from "@/components/ui/ExcelPreviewDialog.vue";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
 import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
+import FifoCostingDialog from "@/components/inventory/FifoCostingDialog.vue";
 
 type StockRow = { id: string; bodega_id: string; producto_id: string; stock_actual: string; stock_nuevo?: string | number; stock_usado?: string | number; stock_disponible?: string | number; stock_critico?: string | number; cantidad_reservada_activa?: string | number; es_usado?: boolean; stock_min_bodega: string; stock_max_bodega: string; stock_min_global: string; stock_contenedores: string; costo_promedio_bodega: string; };
 type KardexMovementRow = { id: string; documento_id?: string | null; fecha_emision: string; fecha_creacion: string; fecha_actualizacion: string; documento: string; referencia: string; concepto: string; descripcion: string; bodega: string; tipo_movimiento: string; usuario_responsable: string; usuario_actualizacion: string; entrada: number | string; salida: number | string; stock_inicial: number | string; stock_final: number | string; stock: number | string; anulado?: boolean; anulado_por?: string | null; anulado_at?: string | null; };
