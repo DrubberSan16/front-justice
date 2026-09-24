@@ -1,6 +1,15 @@
 <template>
   <div class="domain-report">
     <section v-if="isWorkOrder" class="domain-stack">
+      <div v-if="canFilterCebado" class="scope-bar">
+        <span id="work-order-scope-label" class="scope-bar__label">Mostrar</span>
+        <v-btn-toggle :model-value="onlyCebado ? 'cebado' : 'all'" mandatory divided density="comfortable" variant="outlined" color="primary" rounded="lg" aria-labelledby="work-order-scope-label" @update:model-value="setWorkOrderScope">
+          <v-btn value="all" prepend-icon="mdi-clipboard-list-outline">Todas las OT</v-btn>
+          <v-btn value="cebado" prepend-icon="mdi-oil">Solo cebado</v-btn>
+        </v-btn-toggle>
+        <small v-if="onlyCebado">Las tarjetas, la tabla y los equipos cuentan solo las OT de cebado.</small>
+      </div>
+
       <div class="metric-grid metric-grid--status">
         <article v-for="card in workOrderStatusCards" :key="card.key" class="metric-card metric-card--interactive" tabindex="0" @click="openStatusOrders(card)" @keydown.enter="openStatusOrders(card)">
           <v-icon :icon="card.icon" :color="card.color" aria-hidden="true" />
@@ -9,22 +18,17 @@
         </article>
       </div>
 
-      <div class="report-grid">
-        <ReportTableCard title="Horas trabajadas por OT" subtitle="Duración real de la intervención y horas reportadas por responsables." icon="mdi-account-clock-outline" @preview="previewRelationship('hours')">
-          <table class="data-table"><thead><tr><th>OT</th><th>Equipo</th><th class="number">Horas responsables</th><th class="number">Duración OT</th><th>Responsables</th></tr></thead><tbody>
-            <tr v-for="row in workOrderRows" :key="row.key"><td><button class="entity-link" @click="openWorkOrder(row)">{{ row.label }}</button></td><td>{{ row.relatedEquipment || row.context || '-' }}</td><td class="number">{{ hours(row.hours) }}</td><td class="number">{{ hours(durationForRelationship(row)) }}</td><td><v-btn size="small" variant="tonal" prepend-icon="mdi-account-group-outline" @click="openResponsibles(row)">Ver responsables</v-btn></td></tr>
-          </tbody></table>
-        </ReportTableCard>
-        <ReportTableCard title="Costo de materiales por OT" subtitle="Costo histórico de los materiales efectivamente utilizados." icon="mdi-cash-wrench" @preview="previewRelationship('cost')">
-          <table class="data-table"><thead><tr><th>OT</th><th>Equipo</th><th class="number">Unidades</th><th class="number">Costo</th><th>Detalle</th></tr></thead><tbody>
-            <tr v-for="row in costRows" :key="row.key"><td><button class="entity-link" @click="openWorkOrder(row)">{{ row.label }}</button></td><td>{{ row.relatedEquipment || row.context || '-' }}</td><td class="number">{{ number(row.consumedQuantity) }}</td><td class="number">{{ currency(row.maintenanceCost) }}</td><td><v-btn size="small" variant="tonal" prepend-icon="mdi-package-variant" @click="openMaterials(row)">Ver materiales</v-btn></td></tr>
-          </tbody></table>
-        </ReportTableCard>
-      </div>
+      <ReportTableCard title="Órdenes de trabajo del período" subtitle="Duración, responsables, horómetro y costo de los materiales usados en cada OT." icon="mdi-clipboard-text-clock-outline" wide @preview="previewOrders">
+        <table class="data-table data-table--anchored data-table--orders"><thead><tr><th>OT</th><th>Equipo</th><th class="number">Duración OT</th><th>Responsables</th><th class="number">Horómetro inicial</th><th class="number">Horómetro final</th><th class="number">Costo</th><th>Materiales</th></tr></thead><tbody>
+          <tr v-for="order in orderSummaries" :key="order.key"><td><button class="entity-link" @click="openWorkOrderId(order.id)">{{ order.code }}</button></td><td>{{ order.equipmentLabel }}</td><td class="number">{{ hours(order.duration) }}</td><td><v-btn size="small" variant="tonal" prepend-icon="mdi-account-group-outline" :disabled="!order.responsibles.length" @click="openResponsibles(order)">{{ order.responsibles.length ? 'Ver responsables' : 'Sin responsables' }}</v-btn></td><td class="number">{{ horometer(order.horometerInitial) }}</td><td class="number">{{ horometer(order.horometerFinal) }}</td><td class="number">{{ currency(order.cost) }}</td><td><v-btn size="small" variant="tonal" prepend-icon="mdi-package-variant" :disabled="!order.materials.length" @click="openOrderMaterials(order)">{{ order.materials.length ? 'Ver materiales' : 'Sin materiales' }}</v-btn></td></tr>
+          <tr v-if="!orderSummaries.length"><td colspan="8" class="empty-cell">No hay OT en el período{{ onlyCebado ? ' con el filtro de cebado' : '' }}.</td></tr>
+        </tbody></table>
+      </ReportTableCard>
 
-      <ReportTableCard title="Equipos y trazabilidad de horómetro" subtitle="Lectura previa a la primera OT y lectura final guardada al ejecutar la última OT del período." icon="mdi-speedometer" wide @preview="previewEquipmentTrace">
-        <table class="data-table"><thead><tr><th>Equipo</th><th class="number">OT trabajadas</th><th class="number">Horómetro inicial</th><th class="number">Horómetro final</th><th>OT vinculadas</th></tr></thead><tbody>
-          <tr v-for="row in equipmentTraceRows" :key="row.key"><td><strong>{{ row.label }}</strong></td><td class="number">{{ count(row.orders.length) }}</td><td class="number">{{ horometer(row.initial) }}</td><td class="number">{{ horometer(row.final) }}</td><td><v-btn size="small" variant="tonal" @click="openOrderList(row.orders, row.label)">Ver OT vinculadas</v-btn></td></tr>
+      <ReportTableCard title="Equipos y trazabilidad de horómetro" subtitle="Primera y última lectura de horómetro registradas en las OT del período, y costo de los materiales usados en el equipo." icon="mdi-speedometer" wide @preview="previewEquipmentTrace">
+        <table class="data-table"><thead><tr><th>Equipo</th><th class="number">OT trabajadas</th><th class="number">Horómetro inicial</th><th class="number">Horómetro final</th><th class="number">Costo</th></tr></thead><tbody>
+          <tr v-for="row in equipmentTraceRows" :key="row.key"><td><strong>{{ row.label }}</strong></td><td class="number"><button class="entity-link" :aria-label="`Ver las ${row.orders.length} OT de ${row.label}`" @click="openOrderList(row.orders.map(orderListRow), row.label, 'orders')">{{ count(row.orders.length) }}</button></td><td class="number">{{ horometer(row.initial) }}</td><td class="number">{{ horometer(row.final) }}</td><td class="number">{{ currency(row.cost) }}</td></tr>
+          <tr v-if="!equipmentTraceRows.length"><td colspan="5" class="empty-cell">No hay equipos con OT en el período.</td></tr>
         </tbody></table>
       </ReportTableCard>
     </section>
@@ -113,9 +117,11 @@
       </ReportTableCard>
     </section>
 
-    <v-dialog v-model="listDialog" max-width="940" scrollable><v-card rounded="xl"><v-card-title class="dialog-title"><div><small>Detalle relacionado</small><h2>{{ listTitle }}</h2></div><v-btn icon="mdi-close" variant="text" @click="listDialog=false" /></v-card-title><v-divider/><v-card-text><table class="data-table"><thead><tr><th>Código</th><th>Descripción / equipo</th><th>Estado</th><th class="number">Horas</th></tr></thead><tbody><tr v-for="row in listRows" :key="String(row.work_order_id || row.work_order_code || row.label)"><td><button v-if="row.work_order_id" class="entity-link" @click="openWorkOrderId(row.work_order_id)">{{ row.work_order_code || row.label }}</button><span v-else>{{ row.work_order_code || row.label }}</span></td><td>{{ row.work_order_title || row.equipment_name || row.context || '-' }}</td><td>{{ row.work_order_status || row.status || '-' }}</td><td class="number">{{ row.hours !== undefined ? hours(row.hours) : '-' }}</td></tr></tbody></table></v-card-text></v-card></v-dialog>
+    <v-dialog v-model="listDialog" max-width="980" scrollable><v-card rounded="xl"><v-card-title class="dialog-title"><div><small>Detalle relacionado</small><h2>{{ listTitle }}</h2></div><v-btn icon="mdi-close" variant="text" aria-label="Cerrar detalle relacionado" @click="listDialog=false" /></v-card-title><v-divider/><v-card-text><table class="data-table"><thead><tr><th>Código</th><th>Descripción / equipo</th><th>Estado</th><template v-if="listMode === 'orders'"><th class="number">Horómetro final</th><th class="number">Costo</th></template><th v-else class="number">Horas</th></tr></thead><tbody><tr v-for="row in listRows" :key="String(row.work_order_id || row.work_order_code || row.label)"><td><button v-if="row.work_order_id" class="entity-link" @click="openWorkOrderId(row.work_order_id)">{{ row.work_order_code || row.label }}</button><span v-else>{{ row.work_order_code || row.label }}</span></td><td>{{ row.work_order_title || row.equipment_name || row.context || '-' }}</td><td>{{ workflowStatusLabel(row.work_order_status || row.status) }}</td><template v-if="listMode === 'orders'"><td class="number">{{ horometer(row.horometer_final) }}</td><td class="number">{{ currency(row.cost) }}</td></template><td v-else class="number">{{ row.hours !== undefined ? hours(row.hours) : '-' }}</td></tr></tbody><tfoot v-if="listMode === 'orders'"><tr><th scope="row" colspan="4">Total · {{ count(listRows.length) }} OT</th><td class="number">{{ currency(listTotalCost) }}</td></tr></tfoot></table></v-card-text></v-card></v-dialog>
 
-    <v-dialog v-model="responsibleDialog" max-width="680" scrollable><v-card rounded="xl"><v-card-title class="dialog-title"><div><small>Horas realizadas</small><h2>{{ responsibleTitle }}</h2></div><v-btn icon="mdi-close" variant="text" @click="responsibleDialog=false" /></v-card-title><v-divider/><v-card-text><table class="data-table"><thead><tr><th>Responsable</th><th class="number">Horas</th></tr></thead><tbody><tr v-for="row in responsibleRows" :key="String(row.user_id || row.display_name)"><td>{{ row.display_name || row.responsable || '-' }}</td><td class="number">{{ hours(row.horas) }}</td></tr></tbody></table></v-card-text></v-card></v-dialog>
+    <v-dialog v-model="responsibleDialog" max-width="680" scrollable><v-card rounded="xl"><v-card-title class="dialog-title"><div><small>Horas realizadas</small><h2>{{ responsibleTitle }}</h2></div><v-btn icon="mdi-close" variant="text" aria-label="Cerrar responsables" @click="responsibleDialog=false" /></v-card-title><v-divider/><v-card-text><table class="data-table"><thead><tr><th>Responsable</th><th class="number">Horas</th></tr></thead><tbody><tr v-for="row in responsibleRows" :key="row.key"><td>{{ row.label }}</td><td class="number">{{ hours(row.hours) }}</td></tr></tbody><tfoot><tr><th scope="row">Total</th><td class="number">{{ hours(responsibleTotal) }}</td></tr></tfoot></table></v-card-text></v-card></v-dialog>
+
+    <v-dialog v-model="orderMaterialsDialog" max-width="760" scrollable><v-card rounded="xl"><v-card-title class="dialog-title"><div><small>Materiales usados</small><h2>{{ orderMaterialsTitle }}</h2></div><v-btn icon="mdi-close" variant="text" aria-label="Cerrar materiales" @click="orderMaterialsDialog=false" /></v-card-title><v-divider/><v-card-text><v-progress-linear v-if="orderMaterialsLoading" indeterminate color="primary" class="mb-3" /><v-alert v-if="orderMaterialsError" type="warning" variant="tonal" density="compact" class="mb-3">{{ orderMaterialsError }}</v-alert><table class="data-table"><thead><tr><th>Material</th><th class="number">Cantidad</th><th>Chatarra</th></tr></thead><tbody><tr v-for="row in orderMaterialRows" :key="row.key"><td>{{ row.label }}</td><td class="number">{{ row.quantity === null ? '-' : number(row.quantity) }}</td><td :class="{ 'scrap-yes': row.scrap === true }">{{ row.scrap === null ? '-' : row.scrap ? 'Sí' : 'No' }}</td></tr><tr v-if="!orderMaterialRows.length"><td colspan="3" class="empty-cell">Esta OT no registra materiales.</td></tr></tbody></table></v-card-text></v-card></v-dialog>
 
     <v-dialog v-model="materialDetailDialog" max-width="1180" scrollable><v-card rounded="xl"><v-card-title class="dialog-title"><div><small>Trazabilidad del material</small><h2>{{ selectedMaterialLabel }}</h2></div><v-btn icon="mdi-close" variant="text" @click="materialDetailDialog=false" /></v-card-title><v-divider/><v-card-text><v-progress-linear v-if="materialDetailLoading" indeterminate color="primary"/><v-alert v-else-if="materialDetailError" type="warning" variant="tonal">{{ materialDetailError }}</v-alert><template v-else><EChart v-if="materialMovements.length" :option="materialChartOption" height="280px"/><div class="modal-table-viewport"><table class="data-table data-table--wide"><thead><tr><th>Fecha</th><th>Documento</th><th>Referencia</th><th>Descripción</th><th>Bodega</th><th class="number">Inicial</th><th class="number">Ingresó</th><th class="number">Salió</th><th class="number">Final</th></tr></thead><tbody><tr v-for="row in materialMovements" :key="String(row.id)"><td>{{ dateTime(row.fecha_creacion || row.fecha) }}</td><td><button v-if="row.documento_id" class="entity-link" @click="openKardexDocument(row)">{{ row.documento }}</button><span v-else>{{ row.documento || '-' }}</span></td><td><button v-if="isOperationalReference(row.referencia)" class="entity-link" @click="openReferenceCode(row.referencia)">{{ row.referencia }}</button><span v-else>{{ row.referencia || '-' }}</span></td><td>{{ row.descripcion || row.concepto || '-' }}</td><td>{{ row.bodega || '-' }}</td><td class="number">{{ number(row.stock_inicial) }}</td><td class="number positive">{{ row.entrada ? number(row.entrada) : '-' }}</td><td class="number negative">{{ row.salida ? number(row.salida) : '-' }}</td><td class="number"><strong>{{ number(row.stock_final) }}</strong></td></tr></tbody></table></div></template></v-card-text></v-card></v-dialog>
 
@@ -127,6 +133,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -137,6 +144,7 @@ import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { chartBase, chartInk, seriesColor } from "@/app/config/chart-theme";
 import { buildReportingRelationshipRows, type ReportingRelationshipRow } from "@/app/utils/reporting-relations";
 import { useReportPreview } from "@/app/utils/report-preview";
+import { flattenDetailLines } from "@/app/utils/work-order-detail";
 import type { ReportColumn, ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 import EChart from "@/components/charts/EChart.vue";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
@@ -147,8 +155,14 @@ import ReportTableCard from "@/components/reports/ReportTableCard.vue";
 
 type AnyRow = Record<string, any>;
 type DocumentType = "kardex" | "transfer" | "purchase" | "service";
+type OrderMaterial = { key: string; label: string; quantity: number };
+type OrderResponsible = { key: string; label: string; hours: number };
+type OrderSummary = { key: string; id: string; code: string; title: string; status: string; equipmentKey: string; equipmentLabel: string; duration: number; responsibles: OrderResponsible[]; responsibleHours: number; horometerInitial: number | null; horometerFinal: number | null; cost: number; materials: OrderMaterial[]; startedAt: number };
+type OrderMaterialRow = { key: string; label: string; quantity: number | null; scrap: boolean | null };
 const props = defineProps<{ moduleKey: string; title: string; rawRows: AnyRow[]; relationshipPayload: AnyRow | null; startDate: string; endDate: string; materialView?: string }>();
 const theme = useTheme();
+const route = useRoute();
+const router = useRouter();
 const reportPreview = useReportPreview({ title: "Previsualización del informe" });
 const isWorkOrder = computed(() => ["work-orders","project-work-orders"].includes(props.moduleKey));
 const isEquipment = computed(() => ["generation-units","equipment"].includes(props.moduleKey));
@@ -167,19 +181,33 @@ const horometer = (value: unknown) => value === null || value === undefined || v
 const date = (value: unknown) => formatDateOnly(value, "-");
 const dateTime = (value: unknown) => formatDateTime(value, "-");
 
-const workOrders = computed(() => props.rawRows.filter((row) => props.moduleKey === "project-work-orders" ? normalize(row.maintenance_kind)==="PROYECTO" : normalize(row.maintenance_kind)!=="PROYECTO"));
-function statusGroup(row: AnyRow) { const status=normalize(row.status_workflow||row.estado||row.status); if(/ANUL|CANCEL|VOID/.test(status))return"annulled"; if(/CLOSED|FINALIZ|CERRAD|COMPLET/.test(status))return"closed"; if(/IN.?PROGRESS|PROCES|EJEC/.test(status))return"progress"; return"planned"; }
+// Una OT anulada conserva status_workflow = CLOSED: la anulacion vive en
+// `status` y en valor_json. Mirando solo el flujo se contaba como finalizada.
+const isAnnulledWorkOrder = (row: AnyRow) => isAnnulled(row) || [row.status, row.approval_action, row.valor_json?.approval_action].some((value) => /ANUL|CANCEL|VOID/.test(normalize(value))) || Boolean(row.valor_json?.annulment);
+const WORKFLOW_LABELS: Record<string, string> = { PLANNED: "Planificada", IN_PROGRESS: "En proceso", REVIEW: "En revisión", BLOCKED: "Bloqueada", CLOSED: "Cerrada" };
+function workflowStatusLabel(value: unknown) { const key = normalize(value).replace(/\s+/g, "_"); if (!key) return "-"; if (/ANUL|CANCEL|VOID/.test(key)) return "Anulada"; return WORKFLOW_LABELS[key] || String(value); }
+function workOrderStatusLabel(row: AnyRow) { return isAnnulledWorkOrder(row) ? "Anulada" : workflowStatusLabel(row.status_workflow || row.estado); }
+
+// "Solo cebado" filtra todo el informe de OT, equipos incluidos. Vive en la
+// URL para sobrevivir al cambio de fechas, que vuelve a montar este tablero.
+const canFilterCebado = computed(() => props.moduleKey === "work-orders");
+const onlyCebado = computed(() => canFilterCebado.value && String(route.query.ot || "") === "cebado");
+function setWorkOrderScope(value: unknown) { void router.replace({ query: { ...route.query, ot: value === "cebado" ? "cebado" : undefined } }); }
+const scopeNote = computed(() => onlyCebado.value ? " · Solo OT de cebado" : "");
+
+const workOrders = computed(() => props.rawRows.filter((row) => {
+  const kind = normalize(row.maintenance_kind);
+  if (props.moduleKey === "project-work-orders") return kind === "PROYECTO";
+  return kind !== "PROYECTO" && (!onlyCebado.value || kind === "CEBADO");
+}));
+function statusGroup(row: AnyRow) { if(isAnnulledWorkOrder(row))return"annulled"; const status=normalize(row.status_workflow||row.estado||row.status); if(/CLOSED|FINALIZ|CERRAD|COMPLET/.test(status))return"closed"; if(/IN.?PROGRESS|PROCES|EJEC/.test(status))return"progress"; return"planned"; }
 const workOrderStatusCards = computed(() => [
   {key:"planned",label:"OT planificadas",icon:"mdi-calendar-clock",color:"info",rows:workOrders.value.filter(r=>statusGroup(r)==="planned")},
   {key:"progress",label:"OT en proceso",icon:"mdi-progress-wrench",color:"warning",rows:workOrders.value.filter(r=>statusGroup(r)==="progress")},
   {key:"closed",label:"OT finalizadas",icon:"mdi-check-circle-outline",color:"success",rows:workOrders.value.filter(r=>statusGroup(r)==="closed")},
   {key:"annulled",label:"OT anuladas",icon:"mdi-cancel",color:"error",rows:workOrders.value.filter(r=>statusGroup(r)==="annulled")},
 ]);
-const workOrderRows = computed(() => relationshipRows.value.filter(row=>!/ANUL|CANCEL|VOID/.test(normalize(row.status))).slice().sort((a,b)=>b.hours-a.hours));
-const costRows = computed(() => workOrderRows.value.slice().sort((a,b)=>b.maintenanceCost-a.maintenanceCost));
-function rawOrderId(row: ReportingRelationshipRow) { for(const source of row.sourceRows as AnyRow[]){ if(source.work_order_id)return String(source.work_order_id); for(const detail of source.detalle_ordenes||[])if(detail.work_order_id)return String(detail.work_order_id); } return row.entityId || ""; }
 function dateHours(start: unknown,end: unknown){ if(!start||!end)return 0; const result=(new Date(String(end)).getTime()-new Date(String(start)).getTime())/3600000; return Number.isFinite(result)?Math.max(0,result):0; }
-function durationForRelationship(row:ReportingRelationshipRow){ const raw=workOrders.value.find(order=>normalize(order.code||order.codigo)===normalize(row.label)); if(raw){const duration=durationForRawOrder(raw);if(duration>0)return duration;} for(const source of row.sourceRows as AnyRow[]){ if(source.effective_started_at&&source.effective_closed_at)return dateHours(source.effective_started_at,source.effective_closed_at); if(source.started_at&&source.closed_at)return dateHours(source.started_at,source.closed_at); } return row.effectiveHours>0?row.effectiveHours:row.elapsedHours; }
 // La OT trae el id y el nombre de campo del equipo (JC - UG09), pero no su marca
 // ni su modelo: la etiqueta completa sale del catalogo, igual que la de las
 // tablas que arma el servidor en esta misma pantalla.
@@ -187,9 +215,59 @@ const equipmentCatalog = ref<AnyRow[]>([]);
 const equipmentLabelById = computed(()=>new Map(equipmentCatalog.value.map(row=>[String(row.id),buildEquipmentManagerLabel(row)])));
 function workOrderEquipmentLabel(row:AnyRow){ return equipmentLabelById.value.get(String(row.equipment_id||""))||String(row.equipment_nombre||"Sin equipo"); }
 async function loadEquipmentCatalog(){ if(!isWorkOrder.value)return; try{ equipmentCatalog.value=await listAllPages("/kpi_maintenance/equipos",{}, {limit:100,maxPages:100,cacheTtlMs:DEFAULT_CATALOG_CACHE_TTL_MS}); }catch{ /* Sin catalogo queda el nombre de campo del equipo. */ } }
-const equipmentTraceRows = computed(()=>{ const map=new Map<string,{key:string;label:string;orders:AnyRow[];initial:number|null;final:number|null}>(); for(const row of workOrders.value.filter(r=>!isAnnulled(r))){ const key=String(row.equipment_id||row.equipment_label||row.equipment_name||"SIN_EQUIPO"); const current=map.get(key)||{key,label:workOrderEquipmentLabel(row),orders:[],initial:null,final:null}; current.orders.push({work_order_id:row.id,work_order_code:row.code||row.codigo,work_order_title:row.title,status:row.status_workflow,equipment_name:current.label,hours:durationForRawOrder(row)}); const initial=nullableNumber(row.horometro_anterior??row.horometro_inicial); const final=nullableNumber(row.horometro_actual??row.horometro_final); if(initial!==null)current.initial=current.initial===null?initial:Math.min(current.initial,initial); if(final!==null)current.final=current.final===null?final:Math.max(current.final,final); map.set(key,current); } return [...map.values()].sort((a,b)=>b.orders.length-a.orders.length); });
 function durationForRawOrder(row:AnyRow){ return row.hora_inicio&&row.hora_fin?dateHours(row.hora_inicio,row.hora_fin):dateHours(row.started_at,row.closed_at); }
-function nullableNumber(value:unknown){ if(value===null||value===undefined||value==="")return null; const parsed=Number(value); return Number.isFinite(parsed)?parsed:null; }
+// Una lectura en 0 es un horómetro que no se registró, no un equipo nuevo:
+// contarla como inicial arrastraba el horómetro del equipo a cero.
+function horometerReading(value:unknown){ if(value===null||value===undefined||value==="")return null; const parsed=Number(value); return Number.isFinite(parsed)&&parsed>0?parsed:null; }
+function orderTimestamp(row:AnyRow){ for(const value of [row.hora_inicio,row.started_at,row.created_at]){ const time=new Date(String(value||"")).getTime(); if(value&&Number.isFinite(time))return time; } return 0; }
+
+// `reportes-sistema` agrupado por OT trae, por cada orden, las horas de sus
+// responsables, el costo FIFO de sus materiales y cada material consumido. Se
+// cruza por id con el listado de OT, que es el que manda sobre qué OT se ven.
+function payloadRows(key:string):AnyRow[]{ const rows=props.relationshipPayload?.reports?.[key]?.rows; return Array.isArray(rows)?rows:[]; }
+const hoursByOrder = computed(()=>new Map(payloadRows("horas_trabajadas").map(row=>[String(row.work_order_id||""),row])));
+const costByOrder = computed(()=>{ const map=new Map<string,number>(); for(const row of payloadRows("costo_mantenimiento")){ const id=String(row.work_order_id||""); if(id)map.set(id,(map.get(id)??0)+Number(row.total_costo||0)); } return map; });
+const materialsByOrder = computed(()=>{ const map=new Map<string,Map<string,OrderMaterial>>(); for(const row of payloadRows("inventario_consumido")){ const id=String(row.work_order_id||""); if(!id)continue; const materials=map.get(id)??new Map<string,OrderMaterial>(); const key=String(row.producto_id||row.material_label||""); const current=materials.get(key)??{key,label:String(row.material_label||"Material"),quantity:0}; current.quantity+=Number(row.total_cantidad||0); materials.set(key,current); map.set(id,materials); } return map; });
+function orderKey(row:AnyRow){ return String(row.id||row.code||row.codigo||""); }
+function orderDuration(row:AnyRow,hoursRow?:AnyRow){ const duration=durationForRawOrder(row); if(duration>0)return duration; return Number(hoursRow?.effective_duration_hours||0)||Number(hoursRow?.flow_duration_hours||0); }
+function orderSummary(row:AnyRow):OrderSummary{
+  const id=String(row.id||"");
+  const hoursRow=hoursByOrder.value.get(id);
+  const responsibles:OrderResponsible[]=(Array.isArray(hoursRow?.responsables_meta)?hoursRow.responsables_meta:[]).map((item:AnyRow,index:number)=>({key:String(item.user_id||item.display_name||index),label:String(item.display_name||item.responsable||"Responsable"),hours:Number(item.horas||0)}));
+  return {
+    key:orderKey(row),
+    id,
+    code:String(row.code||row.codigo||"-"),
+    title:String(row.title||row.descripcion||""),
+    status:workOrderStatusLabel(row),
+    equipmentKey:String(row.equipment_id||"SIN_EQUIPO"),
+    equipmentLabel:workOrderEquipmentLabel(row),
+    duration:orderDuration(row,hoursRow),
+    responsibles,
+    responsibleHours:responsibles.reduce((sum,item)=>sum+item.hours,0),
+    horometerInitial:horometerReading(row.horometro_anterior??hoursRow?.horometro_anterior_ot),
+    horometerFinal:horometerReading(row.horometro_actual??hoursRow?.horometro_actual_ot),
+    cost:costByOrder.value.get(id)??0,
+    materials:[...(materialsByOrder.value.get(id)?.values()??[])].sort((a,b)=>a.label.localeCompare(b.label,"es")),
+    startedAt:orderTimestamp(row),
+  };
+}
+const summaryByKey = computed(()=>new Map(workOrders.value.map(row=>[orderKey(row),orderSummary(row)])));
+function summaryFor(row:AnyRow){ return summaryByKey.value.get(orderKey(row))??orderSummary(row); }
+const orderSummaries = computed(()=>workOrders.value.filter(row=>!isAnnulledWorkOrder(row)).map(summaryFor).sort((a,b)=>b.startedAt-a.startedAt||b.code.localeCompare(a.code)));
+
+// El horómetro solo sube: la lectura de la primera OT del equipo (o su primer
+// registro, si esa OT no lo guardó) es la menor del período y la de la última,
+// la mayor. No se ordena por fecha porque hay OT de cebado registradas días
+// después con la fecha de ejecución escrita a mano, y su "anterior" es la
+// lectura del día en que se cargaron: por fecha, el final salía menor que el inicial.
+function horometerRange(orders:OrderSummary[]){ const readings=orders.flatMap(order=>[order.horometerInitial,order.horometerFinal]).filter((value):value is number=>value!==null); return readings.length?{initial:Math.min(...readings),final:Math.max(...readings)}:{initial:null,final:null}; }
+const equipmentTraceRows = computed(()=>{
+  const groups=new Map<string,OrderSummary[]>();
+  for(const order of orderSummaries.value){ const list=groups.get(order.equipmentKey)??[]; list.push(order); groups.set(order.equipmentKey,list); }
+  return [...groups.entries()].map(([key,orders])=>{ const chronological=orders.slice().sort((a,b)=>a.startedAt-b.startedAt||a.code.localeCompare(b.code)); return {key,label:chronological[0]!.equipmentLabel,orders:chronological,...horometerRange(orders),cost:orders.reduce((sum,order)=>sum+order.cost,0)}; }).sort((a,b)=>b.orders.length-a.orders.length||b.cost-a.cost);
+});
+function orderListRow(order:OrderSummary){ return {work_order_id:order.id,work_order_code:order.code,work_order_title:order.title,equipment_name:order.equipmentLabel,work_order_status:order.status,horometer_final:order.horometerFinal,cost:order.cost}; }
 
 const allowedEquipmentKeys = computed(() => {
   const keys = new Set<string>();
@@ -286,10 +364,42 @@ const documentMetrics=computed(()=>{const rows=activeDocumentRows.value; if(prop
 const documentTableTitle=computed(()=>({"warehouse-transfers":"Transferencias de bodega","warehouse-reservations":"Reservas solicitadas por OT","purchase-orders":"Órdenes de compra","service-orders":"Órdenes de servicio"} as Record<string,string>)[props.moduleKey]||props.title);
 const documentTableSubtitle=computed(()=>({"warehouse-transfers":"Origen, destino, cantidad y documentos IB/EB relacionados.","warehouse-reservations":"Material solicitado, entrega de bodega y saldo pendiente.","purchase-orders":"Proveedor, bodega, valor y transferencia relacionada.","service-orders":"Proveedor, lugar de entrega y confirmación del servicio."} as Record<string,string>)[props.moduleKey]||"");
 
-const workOrderDialog=ref(false);const selectedWorkOrderId=ref<string|null>(null);function openWorkOrder(row:ReportingRelationshipRow){openWorkOrderId(rawOrderId(row));}function openWorkOrderId(id:unknown){const value=String(id||"").trim();if(!value)return;selectedWorkOrderId.value=value;workOrderDialog.value=true;}
-const listDialog=ref(false);const listTitle=ref("");const listRows=ref<AnyRow[]>([]);function openOrderList(rows:AnyRow[],title:string){listTitle.value=`OT vinculadas · ${title}`;listRows.value=rows;listDialog.value=true;}function openStatusOrders(card:AnyRow){openOrderList(card.rows.map((row:AnyRow)=>({work_order_id:row.id,work_order_code:row.code||row.codigo,work_order_title:row.title||row.descripcion,work_order_status:row.status_workflow||row.estado,equipment_name:workOrderEquipmentLabel(row),hours:durationForRawOrder(row)})),card.label);}
-const responsibleDialog=ref(false);const responsibleTitle=ref("");const responsibleRows=ref<AnyRow[]>([]);function openResponsibles(row:ReportingRelationshipRow){responsibleTitle.value=row.label;responsibleRows.value=(row.sourceRows as AnyRow[]).flatMap(source=>Array.isArray(source.responsables_meta)?source.responsables_meta:[]).filter((item,index,array)=>array.findIndex(other=>String(other.user_id||other.display_name)===String(item.user_id||item.display_name))===index);responsibleDialog.value=true;}
-function openMaterials(row:ReportingRelationshipRow){const materials=new Set<string>();for(const value of String(row.relatedMaterials||"").split(/\s+\|\s+|\s*;\s*/))if(value.trim())materials.add(value.trim());for(const source of row.sourceRows as AnyRow[]){if(source.material_label)materials.add(String(source.material_label));for(const detail of source.detalle_materiales||[])if(detail.material_label)materials.add(String(detail.material_label));}listTitle.value=`Materiales · ${row.label}`;listRows.value=[...materials].map(label=>({label,context:"Material utilizado"}));listDialog.value=true;}
+const workOrderDialog=ref(false);const selectedWorkOrderId=ref<string|null>(null);function openWorkOrderId(id:unknown){const value=String(id||"").trim();if(!value)return;selectedWorkOrderId.value=value;workOrderDialog.value=true;}
+// En el informe de OT el detalle muestra horómetro final y costo con su total;
+// Equipos y Materiales siguen con horas porque su informe no trae costo por OT.
+const listDialog=ref(false);const listTitle=ref("");const listRows=ref<AnyRow[]>([]);const listMode=ref<"orders"|"hours">("hours");
+const listTotalCost=computed(()=>listRows.value.reduce((sum,row)=>sum+Number(row.cost||0),0));
+function openOrderList(rows:AnyRow[],title:string,mode:"orders"|"hours"="hours"){listTitle.value=`OT vinculadas · ${title}`;listRows.value=rows;listMode.value=mode;listDialog.value=true;}
+function openStatusOrders(card:AnyRow){openOrderList(card.rows.map((row:AnyRow)=>orderListRow(summaryFor(row))),card.label,"orders");}
+const responsibleDialog=ref(false);const responsibleTitle=ref("");const responsibleRows=ref<OrderResponsible[]>([]);
+const responsibleTotal=computed(()=>responsibleRows.value.reduce((sum,row)=>sum+row.hours,0));
+function openResponsibles(order:OrderSummary){responsibleTitle.value=order.code;responsibleRows.value=order.responsibles;responsibleDialog.value=true;}
+// La cantidad es lo consumido en la OT, la misma base de su costo. La chatarra
+// no viaja en el informe: se consulta al abrir, y marca cada material devuelto.
+const orderMaterialsDialog=ref(false);const orderMaterialsTitle=ref("");const orderMaterialRows=ref<OrderMaterialRow[]>([]);const orderMaterialsLoading=ref(false);const orderMaterialsError=ref("");let orderMaterialsRequest=0;
+async function openOrderMaterials(order:OrderSummary){
+  const request=++orderMaterialsRequest;
+  orderMaterialsTitle.value=order.code;
+  orderMaterialRows.value=order.materials.map(item=>({key:item.key,label:item.label,quantity:item.quantity,scrap:null}));
+  orderMaterialsError.value="";
+  orderMaterialsDialog.value=true;
+  if(!order.id)return;
+  orderMaterialsLoading.value=true;
+  try{
+    const{data}=await api.get(`/kpi_maintenance/work-orders/${order.id}/scrap-materials`);
+    if(request!==orderMaterialsRequest)return;
+    const scrapped=new Map<string,string>();
+    for(const item of flattenDetailLines(responseRows(data)))if(Number(item.cantidad||0)>0)scrapped.set(String(item.producto_id||item.producto_label||""),String(item.producto_label||item.producto_nombre||"Material"));
+    const rows=orderMaterialRows.value.map(row=>({...row,scrap:scrapped.has(row.key)}));
+    for(const[key,label]of scrapped)if(!rows.some(row=>row.key===key))rows.push({key,label,quantity:null,scrap:true});
+    orderMaterialRows.value=rows;
+  }catch{
+    if(request===orderMaterialsRequest)orderMaterialsError.value="No se pudo consultar la chatarra de esta OT; la columna queda sin dato.";
+  }finally{
+    if(request===orderMaterialsRequest)orderMaterialsLoading.value=false;
+  }
+}
+function openMaterials(row:ReportingRelationshipRow){const materials=new Set<string>();for(const value of String(row.relatedMaterials||"").split(/\s+\|\s+|\s*;\s*/))if(value.trim())materials.add(value.trim());for(const source of row.sourceRows as AnyRow[]){if(source.material_label)materials.add(String(source.material_label));for(const detail of source.detalle_materiales||[])if(detail.material_label)materials.add(String(detail.material_label));}listTitle.value=`Materiales · ${row.label}`;listRows.value=[...materials].map(label=>({label,context:"Material utilizado"}));listMode.value="hours";listDialog.value=true;}
 function openMaterial(id:unknown){const value=String(id||"");if(!value)return;selectedMaterialId.value=value;materialDetailDialog.value=true;void loadMaterialTimeline();}
 const documentDialog=ref(false);const selectedDocumentId=ref<string|null>(null);const selectedDocumentCode=ref("");const selectedDocumentType=ref<DocumentType>("kardex");function openOperationalDocument(row:AnyRow,type:DocumentType){selectedDocumentId.value=String(row.id||row.documento_id||"");selectedDocumentCode.value=String(row.codigo||row.numero_documento||row.documento||"");selectedDocumentType.value=type;documentDialog.value=Boolean(selectedDocumentId.value);}function openKardexDocument(row:AnyRow){openOperationalDocument({id:row.documento_id,documento:row.documento},"kardex");}function openKardexByReference(id:unknown,code:unknown){openOperationalDocument({id,codigo:code},"kardex");}
 function isOperationalReference(value:unknown){return /^(?:OT-|IB-|EB-|TB-|(?:JCTI-)?OC)/i.test(String(value||""));}
@@ -312,11 +422,13 @@ async function openReferenceCode(reference:unknown){
   }catch{/* El detalle actual permanece visible si la referencia ya no está disponible. */}
 }
 
-function reportDefinition(title:string,rows:AnyRow[],columns:ReportColumn[],summary:{label:string;value:string|number}[]=[]):ReportDefinition{return{fileName:`reporteria-${props.moduleKey}-${props.startDate}-${props.endDate}`,title,subtitle:`Período: ${date(props.startDate)} - ${date(props.endDate)}`,compactPdf:true,summary,sheets:[{name:"Detalle",rows,columns}]};}
-async function preview(title:string,rows:AnyRow[],columns:ReportColumn[],summary:{label:string;value:string|number}[]=[]){await reportPreview.open("pdf",reportDefinition(title,rows,columns,summary));}
-function previewStatus(card:AnyRow){return preview(card.label,card.rows.map((r:AnyRow)=>({ot:r.code||r.codigo,equipo:workOrderEquipmentLabel(r),estado:r.status_workflow,responsable:r.created_by_label||r.created_by})),[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"estado",header:"Estado"},{key:"responsable",header:"Registrada por"}],[{label:card.label,value:card.rows.length}]);}
-function previewRelationship(type:"hours"|"cost"){const rows=type==="hours"?workOrderRows.value:costRows.value;return preview(type==="hours"?"Horas trabajadas por OT":"Costo de materiales por OT",rows.map(r=>({ot:r.label,equipo:r.relatedEquipment,horas:r.hours,duracion:durationForRelationship(r),unidades:r.consumedQuantity,costo:r.maintenanceCost})),type==="hours"?[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"horas",header:"Horas responsables",format:"hours"},{key:"duracion",header:"Duración OT",format:"hours"}]:[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"unidades",header:"Unidades",format:"number"},{key:"costo",header:"Costo",format:"currency"}]);}
-function previewEquipmentTrace(){return preview("Equipos y trazabilidad de horómetro",equipmentTraceRows.value.map(r=>({equipo:r.label,ots:r.orders.length,inicial:r.initial,final:r.final})),[{key:"equipo",header:"Equipo"},{key:"ots",header:"OT",format:"number"},{key:"inicial",header:"Horómetro inicial",format:"horometer"},{key:"final",header:"Horómetro final",format:"horometer"}]);}
+function reportDefinition(title:string,rows:AnyRow[],columns:ReportColumn[],summary:{label:string;value:string|number}[]=[],fitColumnsToPage=false):ReportDefinition{return{fileName:`reporteria-${props.moduleKey}-${props.startDate}-${props.endDate}`,title,subtitle:`Período: ${date(props.startDate)} - ${date(props.endDate)}${scopeNote.value}`,compactPdf:true,summary,sheets:[{name:"Detalle",rows,columns,fitColumnsToPage}]};}
+async function preview(title:string,rows:AnyRow[],columns:ReportColumn[],summary:{label:string;value:string|number}[]=[],fitColumnsToPage=false){await reportPreview.open("pdf",reportDefinition(title,rows,columns,summary,fitColumnsToPage));}
+// Los PDF de OT declaran anchos y se ajustan a la hoja: con el ancho por
+// omisión la tabla ocupaba un tercio de la página y partía el equipo en cinco líneas.
+function previewStatus(card:AnyRow){return preview(card.label,card.rows.map((r:AnyRow)=>({ot:r.code||r.codigo,equipo:workOrderEquipmentLabel(r),estado:workOrderStatusLabel(r),responsable:r.created_by_label||r.created_by})),[{key:"ot",header:"OT",width:12},{key:"equipo",header:"Equipo",width:42},{key:"estado",header:"Estado",width:12},{key:"responsable",header:"Registrada por",width:26}],[{label:card.label,value:card.rows.length}],true);}
+function previewOrders(){const rows=orderSummaries.value;return preview("Órdenes de trabajo del período",rows.map(o=>({ot:o.code,equipo:o.equipmentLabel,duracion:o.duration,horas:o.responsibleHours,inicial:o.horometerInitial,final:o.horometerFinal,costo:o.cost})),[{key:"ot",header:"OT",width:12},{key:"equipo",header:"Equipo",width:40},{key:"duracion",header:"Duración OT",format:"hours",width:12},{key:"horas",header:"Horas responsables",format:"hours",width:13},{key:"inicial",header:"Horómetro inicial",format:"horometer",width:13},{key:"final",header:"Horómetro final",format:"horometer",width:13},{key:"costo",header:"Costo",format:"currency",width:13}],[{label:"OT",value:rows.length},{label:"Horas responsables",value:hours(rows.reduce((sum,o)=>sum+o.responsibleHours,0))},{label:"Costo de materiales",value:currency(rows.reduce((sum,o)=>sum+o.cost,0))}],true);}
+function previewEquipmentTrace(){const rows=equipmentTraceRows.value;return preview("Equipos y trazabilidad de horómetro",rows.map(r=>({equipo:r.label,ots:r.orders.length,inicial:r.initial,final:r.final,costo:r.cost})),[{key:"equipo",header:"Equipo",width:42},{key:"ots",header:"OT trabajadas",width:12},{key:"inicial",header:"Horómetro inicial",format:"horometer",width:13},{key:"final",header:"Horómetro final",format:"horometer",width:13},{key:"costo",header:"Costo",format:"currency",width:12}],[{label:"Equipos",value:rows.length},{label:"OT",value:rows.reduce((sum,r)=>sum+r.orders.length,0)},{label:"Costo de materiales",value:currency(rows.reduce((sum,r)=>sum+r.cost,0))}],true);}
 function previewEquipmentSummary(){return preview("Consolidado de equipos",equipmentRows.value.map(r=>({equipo:r.label,ots:r.workOrders,horas:r.hours,costo:r.maintenanceCost})),[{key:"equipo",header:"Equipo"},{key:"ots",header:"OT",format:"number"},{key:"horas",header:"Horas",format:"hours"},{key:"costo",header:"Costo",format:"currency"}]);}
 function previewEquipmentTable(type:"hours"|"cost"){ void type; return previewEquipmentSummary(); }
 function previewLubricant(){return preview("Diagnóstico de análisis de lubricante",lubricantRows.value.map(r=>({fecha:r.fecha_muestra,codigo:r.codigo,equipo:r.equipo_nombre,compartimento:r.compartimento_principal,diagnostico:r.estado_diagnostico||r.diagnostico,normal:summaryNumber(r,"normal"),precaucion:summaryNumber(r,"precaucion"),anormal:summaryNumber(r,"anormal")})),[{key:"fecha",header:"Fecha",format:"date"},{key:"codigo",header:"Análisis"},{key:"equipo",header:"Equipo"},{key:"compartimento",header:"Compartimento"},{key:"diagnostico",header:"Diagnóstico"},{key:"normal",header:"Normal",format:"number"},{key:"precaucion",header:"Precaución",format:"number"},{key:"anormal",header:"Anormal",format:"number"}]);}
@@ -338,4 +450,7 @@ watch(()=>[props.moduleKey,props.startDate,props.endDate],()=>{selectedMaterialI
 
 <style scoped>
 .domain-report,.domain-stack{display:grid;gap:16px}.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.metric-card{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:12px;min-height:118px;padding:16px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:16px;background:rgb(var(--v-theme-surface))}.metric-card--interactive{cursor:pointer}.metric-card--interactive:focus-visible,.entity-link:focus-visible{outline:3px solid rgba(var(--v-theme-primary),.38);outline-offset:2px}.metric-card>div{display:grid;gap:3px}.metric-card span{color:rgba(var(--v-theme-on-surface),.66);font-size:.76rem;font-weight:750}.metric-card strong{font-size:1.45rem;font-variant-numeric:tabular-nums}.metric-card small{color:rgba(var(--v-theme-on-surface),.62)}.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.data-table{width:100%;border-collapse:collapse;font-size:.84rem}.data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid rgba(var(--v-theme-on-surface),.08);text-align:left;vertical-align:middle}.data-table th{position:sticky;top:0;z-index:1;color:rgba(var(--v-theme-on-surface),.67);background:rgb(var(--v-theme-surface));font-size:.69rem;text-transform:uppercase;letter-spacing:.035em}.data-table td small{display:block;color:rgba(var(--v-theme-on-surface),.6)}.number{text-align:right!important;font-variant-numeric:tabular-nums}.positive{color:rgb(var(--v-theme-success))}.negative{color:rgb(var(--v-theme-error))}.entity-link{border:0;padding:2px 0;color:rgb(var(--v-theme-primary));background:transparent;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.material-selector{position:sticky;top:76px;z-index:8;padding:12px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:14px;background:rgb(var(--v-theme-surface));box-shadow:0 8px 22px rgba(0,0,0,.08)}.detail-loading{padding:24px}.dialog-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 24px}.dialog-title small{color:rgb(var(--v-theme-primary));font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.dialog-title h2{margin:2px 0;font-size:1.2rem}.modal-table-viewport{max-height:360px;overflow:auto;margin-top:12px;border:1px solid rgba(var(--v-theme-on-surface),.1);border-radius:12px}@media(max-width:1100px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-grid{grid-template-columns:1fr}}@media(max-width:640px){.metric-grid{grid-template-columns:1fr}.data-table--wide{min-width:920px}}
+.scope-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px 14px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:14px;background:rgb(var(--v-theme-surface))}.scope-bar__label{color:rgba(var(--v-theme-on-surface),.66);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.scope-bar small{color:rgba(var(--v-theme-on-surface),.66)}.scope-bar :deep(.v-btn){letter-spacing:0;text-transform:none}
+.data-table tfoot th,.data-table tfoot td{position:sticky;top:auto;bottom:0;z-index:1;border-top:2px solid rgba(var(--v-theme-on-surface),.16);border-bottom:0;color:rgb(var(--v-theme-on-surface));background:rgb(var(--v-theme-surface));font-size:.84rem;font-weight:800;letter-spacing:0;text-transform:none}.empty-cell{color:rgba(var(--v-theme-on-surface),.62);text-align:center!important}.scrap-yes{font-weight:800}
+.data-table--orders{min-width:1080px}.data-table--orders td:nth-child(2){min-width:240px}.data-table--anchored th:first-child,.data-table--anchored td:first-child:not([colspan]){position:sticky;left:0;z-index:2;background:rgb(var(--v-theme-surface))}.data-table--anchored thead th:first-child{z-index:3}
 </style>

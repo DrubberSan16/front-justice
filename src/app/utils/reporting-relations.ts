@@ -61,8 +61,6 @@ const EQUIPMENT_MODULES = new Set([
   "generation-units",
   "equipment",
   "projects",
-  "equipment-types",
-  "locations",
   "schedules",
   "alerts",
   "templates",
@@ -75,18 +73,11 @@ const WAREHOUSE_MODULES = new Set([
   "warehouse-output",
   "warehouse-transfers",
   "warehouse-reservations",
-  "warehouses",
-  "branches",
 ]);
 const MATERIAL_MODULES = new Set([
   "materials",
   "purchase-orders",
   "service-orders",
-  "lines",
-  "categories",
-  "brands",
-  "units",
-  "third-parties",
 ]);
 
 export function relationshipProfileForModule(

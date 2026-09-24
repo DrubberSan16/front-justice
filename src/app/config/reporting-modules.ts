@@ -1,4 +1,4 @@
-export type ReportingModuleGroup = "Mantenimiento" | "Inventario" | "Catálogos";
+export type ReportingModuleGroup = "Mantenimiento" | "Inventario";
 
 export type ReportingLoader =
   | "standard"
@@ -38,7 +38,8 @@ const commonStatus = ["estado", "status", "estado_workflow"];
  * Incluye todos los módulos de negocio que hoy aparecen activos en el menú de
  * producción. Se excluyen seguridad, manuales y los demás dashboards porque no
  * representan un proceso operativo que deba contarse de nuevo dentro de
- * Reportería.
+ * Reportería. Los catálogos (sucursales, bodegas, marcas...) también quedaron
+ * fuera: son tablas de referencia, no actividad del período.
  */
 export const REPORTING_MODULES: ReportingModule[] = [
   {
@@ -372,42 +373,11 @@ export const REPORTING_MODULES: ReportingModule[] = [
     ownerFields: ["emitido_por_nombre", ...auditOwner],
     valueLabel: "Valor contratado",
   },
-  ...([
-    ["branches", "Sucursales", "Sucursales", "mdi-domain", "sucursales", "/kpi_inventory/sucursales"],
-    ["warehouses", "Bodegas", "Bodegas", "mdi-warehouse", "bodegas", "/kpi_inventory/bodegas"],
-    ["locations", "Ubicaciones", "Ubicaciones", "mdi-map-marker-outline", "locations", "/kpi_maintenance/locaciones"],
-    ["lines", "Líneas", "Líneas", "mdi-vector-line", "lineas", "/kpi_inventory/lineas"],
-    ["categories", "Categorías", "Categorías", "mdi-shape-outline", "categorias", "/kpi_inventory/categorias"],
-    ["brands", "Marcas", "Marcas", "mdi-tag-outline", "marcas", "/kpi_inventory/marcas"],
-    ["units", "Unidades de medida", "Unidades", "mdi-ruler-square", "unidades-medida", "/kpi_inventory/unidades-medida"],
-    ["third-parties", "Terceros", "Terceros", "mdi-account-group-outline", "terceros", "/kpi_inventory/terceros"],
-    ["equipment-types", "Tipos de equipo", "Tipos equipo", "mdi-shape-plus-outline", "tipo-equipo", "/kpi_maintenance/tipo-equipo"],
-  ] as Array<[string, string, string, string, string, string]>).map(
-    ([key, title, shortTitle, icon, routeName, endpoint]) => ({
-      key,
-      title,
-      shortTitle,
-      description: `Distribución y vigencia del catálogo de ${title.toLowerCase()}.`,
-      icon,
-      group: "Catálogos" as const,
-      routeName,
-      endpoint,
-      snapshot: true,
-      dateFields: auditDates,
-      titleFields: ["codigo", "nombre", "razon_social", "descripcion"],
-      statusFields: commonStatus,
-      categoryFields: ["tipo", "sucursal_nombre", "ciudad", "categoria"],
-      valueFields: ["cantidad", "total"],
-      ownerFields: auditOwner,
-      valueLabel: "Valor registrado",
-    }),
-  ),
 ];
 
 export const REPORTING_MODULE_GROUPS: ReportingModuleGroup[] = [
   "Mantenimiento",
   "Inventario",
-  "Catálogos",
 ];
 
 export function getReportingModule(
