@@ -133,7 +133,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -161,8 +160,6 @@ type OrderSummary = { key: string; id: string; code: string; title: string; stat
 type OrderMaterialRow = { key: string; label: string; quantity: number | null; scrap: boolean | null };
 const props = defineProps<{ moduleKey: string; title: string; rawRows: AnyRow[]; relationshipPayload: AnyRow | null; startDate: string; endDate: string; materialView?: string }>();
 const theme = useTheme();
-const route = useRoute();
-const router = useRouter();
 const reportPreview = useReportPreview({ title: "Previsualización del informe" });
 const isWorkOrder = computed(() => ["work-orders","project-work-orders"].includes(props.moduleKey));
 const isEquipment = computed(() => ["generation-units","equipment"].includes(props.moduleKey));
@@ -188,11 +185,15 @@ const WORKFLOW_LABELS: Record<string, string> = { PLANNED: "Planificada", IN_PRO
 function workflowStatusLabel(value: unknown) { const key = normalize(value).replace(/\s+/g, "_"); if (!key) return "-"; if (/ANUL|CANCEL|VOID/.test(key)) return "Anulada"; return WORKFLOW_LABELS[key] || String(value); }
 function workOrderStatusLabel(row: AnyRow) { return isAnnulledWorkOrder(row) ? "Anulada" : workflowStatusLabel(row.status_workflow || row.estado); }
 
-// "Solo cebado" filtra todo el informe de OT, equipos incluidos. Vive en la
-// URL para sobrevivir al cambio de fechas, que vuelve a montar este tablero.
+// "Solo cebado" filtra todo el informe de OT, equipos incluidos. No va en la
+// URL: el layout vuelve a montar la vista con cada cambio de ruta y alternarlo
+// recargaba el informe entero. En la pestaña sobrevive al cambio de fechas.
+const WORK_ORDER_SCOPE_KEY = "kpi-reporteria-ot-alcance";
+function readStoredScope() { try { return sessionStorage.getItem(WORK_ORDER_SCOPE_KEY) === "cebado"; } catch { return false; } }
+const cebadoSelected = ref(readStoredScope());
 const canFilterCebado = computed(() => props.moduleKey === "work-orders");
-const onlyCebado = computed(() => canFilterCebado.value && String(route.query.ot || "") === "cebado");
-function setWorkOrderScope(value: unknown) { void router.replace({ query: { ...route.query, ot: value === "cebado" ? "cebado" : undefined } }); }
+const onlyCebado = computed(() => canFilterCebado.value && cebadoSelected.value);
+function setWorkOrderScope(value: unknown) { cebadoSelected.value = value === "cebado"; try { sessionStorage.setItem(WORK_ORDER_SCOPE_KEY, cebadoSelected.value ? "cebado" : "all"); } catch { /* Sin almacenamiento el filtro dura lo que la vista. */ } }
 const scopeNote = computed(() => onlyCebado.value ? " · Solo OT de cebado" : "");
 
 const workOrders = computed(() => props.rawRows.filter((row) => {
@@ -452,5 +453,5 @@ watch(()=>[props.moduleKey,props.startDate,props.endDate],()=>{selectedMaterialI
 .domain-report,.domain-stack{display:grid;gap:16px}.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.metric-card{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:12px;min-height:118px;padding:16px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:16px;background:rgb(var(--v-theme-surface))}.metric-card--interactive{cursor:pointer}.metric-card--interactive:focus-visible,.entity-link:focus-visible{outline:3px solid rgba(var(--v-theme-primary),.38);outline-offset:2px}.metric-card>div{display:grid;gap:3px}.metric-card span{color:rgba(var(--v-theme-on-surface),.66);font-size:.76rem;font-weight:750}.metric-card strong{font-size:1.45rem;font-variant-numeric:tabular-nums}.metric-card small{color:rgba(var(--v-theme-on-surface),.62)}.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.data-table{width:100%;border-collapse:collapse;font-size:.84rem}.data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid rgba(var(--v-theme-on-surface),.08);text-align:left;vertical-align:middle}.data-table th{position:sticky;top:0;z-index:1;color:rgba(var(--v-theme-on-surface),.67);background:rgb(var(--v-theme-surface));font-size:.69rem;text-transform:uppercase;letter-spacing:.035em}.data-table td small{display:block;color:rgba(var(--v-theme-on-surface),.6)}.number{text-align:right!important;font-variant-numeric:tabular-nums}.positive{color:rgb(var(--v-theme-success))}.negative{color:rgb(var(--v-theme-error))}.entity-link{border:0;padding:2px 0;color:rgb(var(--v-theme-primary));background:transparent;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.material-selector{position:sticky;top:76px;z-index:8;padding:12px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:14px;background:rgb(var(--v-theme-surface));box-shadow:0 8px 22px rgba(0,0,0,.08)}.detail-loading{padding:24px}.dialog-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 24px}.dialog-title small{color:rgb(var(--v-theme-primary));font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.dialog-title h2{margin:2px 0;font-size:1.2rem}.modal-table-viewport{max-height:360px;overflow:auto;margin-top:12px;border:1px solid rgba(var(--v-theme-on-surface),.1);border-radius:12px}@media(max-width:1100px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-grid{grid-template-columns:1fr}}@media(max-width:640px){.metric-grid{grid-template-columns:1fr}.data-table--wide{min-width:920px}}
 .scope-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px 14px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:14px;background:rgb(var(--v-theme-surface))}.scope-bar__label{color:rgba(var(--v-theme-on-surface),.66);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.scope-bar small{color:rgba(var(--v-theme-on-surface),.66)}.scope-bar :deep(.v-btn){letter-spacing:0;text-transform:none}
 .data-table tfoot th,.data-table tfoot td{position:sticky;top:auto;bottom:0;z-index:1;border-top:2px solid rgba(var(--v-theme-on-surface),.16);border-bottom:0;color:rgb(var(--v-theme-on-surface));background:rgb(var(--v-theme-surface));font-size:.84rem;font-weight:800;letter-spacing:0;text-transform:none}.empty-cell{color:rgba(var(--v-theme-on-surface),.62);text-align:center!important}.scrap-yes{font-weight:800}
-.data-table--orders{min-width:1080px}.data-table--orders td:nth-child(2){min-width:240px}.data-table--anchored th:first-child,.data-table--anchored td:first-child:not([colspan]){position:sticky;left:0;z-index:2;background:rgb(var(--v-theme-surface))}.data-table--anchored thead th:first-child{z-index:3}
+.data-table--orders{min-width:1080px}.data-table--orders td:first-child{white-space:nowrap}.data-table--orders td:nth-child(2){min-width:240px}.data-table--anchored th:first-child,.data-table--anchored td:first-child:not([colspan]){position:sticky;left:0;z-index:2;background:rgb(var(--v-theme-surface))}.data-table--anchored thead th:first-child{z-index:3}
 </style>
