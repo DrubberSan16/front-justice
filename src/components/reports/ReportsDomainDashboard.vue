@@ -130,9 +130,10 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
-import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import { buildEquipmentDisplayTitle, buildEquipmentManagerLabel } from "@/app/utils/equipment-display";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { chartBase, chartInk, seriesColor } from "@/app/config/chart-theme";
 import { buildReportingRelationshipRows, type ReportingRelationshipRow } from "@/app/utils/reporting-relations";
 import { useReportPreview } from "@/app/utils/report-preview";
@@ -179,7 +180,14 @@ const costRows = computed(() => workOrderRows.value.slice().sort((a,b)=>b.mainte
 function rawOrderId(row: ReportingRelationshipRow) { for(const source of row.sourceRows as AnyRow[]){ if(source.work_order_id)return String(source.work_order_id); for(const detail of source.detalle_ordenes||[])if(detail.work_order_id)return String(detail.work_order_id); } return row.entityId || ""; }
 function dateHours(start: unknown,end: unknown){ if(!start||!end)return 0; const result=(new Date(String(end)).getTime()-new Date(String(start)).getTime())/3600000; return Number.isFinite(result)?Math.max(0,result):0; }
 function durationForRelationship(row:ReportingRelationshipRow){ const raw=workOrders.value.find(order=>normalize(order.code||order.codigo)===normalize(row.label)); if(raw){const duration=durationForRawOrder(raw);if(duration>0)return duration;} for(const source of row.sourceRows as AnyRow[]){ if(source.effective_started_at&&source.effective_closed_at)return dateHours(source.effective_started_at,source.effective_closed_at); if(source.started_at&&source.closed_at)return dateHours(source.started_at,source.closed_at); } return row.effectiveHours>0?row.effectiveHours:row.elapsedHours; }
-const equipmentTraceRows = computed(()=>{ const map=new Map<string,{key:string;label:string;orders:AnyRow[];initial:number|null;final:number|null}>(); for(const row of workOrders.value.filter(r=>!isAnnulled(r))){ const key=String(row.equipment_id||row.equipment_label||row.equipment_name||"SIN_EQUIPO"); const current=map.get(key)||{key,label:String(row.equipment_label||row.equipment_name||"Sin equipo"),orders:[],initial:null,final:null}; current.orders.push({work_order_id:row.id,work_order_code:row.code||row.codigo,work_order_title:row.title,status:row.status_workflow,equipment_name:current.label,hours:durationForRawOrder(row)}); const initial=nullableNumber(row.horometro_anterior??row.horometro_inicial); const final=nullableNumber(row.horometro_actual??row.horometro_final); if(initial!==null)current.initial=current.initial===null?initial:Math.min(current.initial,initial); if(final!==null)current.final=current.final===null?final:Math.max(current.final,final); map.set(key,current); } return [...map.values()].sort((a,b)=>b.orders.length-a.orders.length); });
+// La OT trae el id y el nombre de campo del equipo (JC - UG09), pero no su marca
+// ni su modelo: la etiqueta completa sale del catalogo, igual que la de las
+// tablas que arma el servidor en esta misma pantalla.
+const equipmentCatalog = ref<AnyRow[]>([]);
+const equipmentLabelById = computed(()=>new Map(equipmentCatalog.value.map(row=>[String(row.id),buildEquipmentManagerLabel(row)])));
+function workOrderEquipmentLabel(row:AnyRow){ return equipmentLabelById.value.get(String(row.equipment_id||""))||String(row.equipment_nombre||"Sin equipo"); }
+async function loadEquipmentCatalog(){ if(!isWorkOrder.value)return; try{ equipmentCatalog.value=await listAllPages("/kpi_maintenance/equipos",{}, {limit:100,maxPages:100,cacheTtlMs:DEFAULT_CATALOG_CACHE_TTL_MS}); }catch{ /* Sin catalogo queda el nombre de campo del equipo. */ } }
+const equipmentTraceRows = computed(()=>{ const map=new Map<string,{key:string;label:string;orders:AnyRow[];initial:number|null;final:number|null}>(); for(const row of workOrders.value.filter(r=>!isAnnulled(r))){ const key=String(row.equipment_id||row.equipment_label||row.equipment_name||"SIN_EQUIPO"); const current=map.get(key)||{key,label:workOrderEquipmentLabel(row),orders:[],initial:null,final:null}; current.orders.push({work_order_id:row.id,work_order_code:row.code||row.codigo,work_order_title:row.title,status:row.status_workflow,equipment_name:current.label,hours:durationForRawOrder(row)}); const initial=nullableNumber(row.horometro_anterior??row.horometro_inicial); const final=nullableNumber(row.horometro_actual??row.horometro_final); if(initial!==null)current.initial=current.initial===null?initial:Math.min(current.initial,initial); if(final!==null)current.final=current.final===null?final:Math.max(current.final,final); map.set(key,current); } return [...map.values()].sort((a,b)=>b.orders.length-a.orders.length); });
 function durationForRawOrder(row:AnyRow){ return row.hora_inicio&&row.hora_fin?dateHours(row.hora_inicio,row.hora_fin):dateHours(row.started_at,row.closed_at); }
 function nullableNumber(value:unknown){ if(value===null||value===undefined||value==="")return null; const parsed=Number(value); return Number.isFinite(parsed)?parsed:null; }
 
@@ -188,10 +196,7 @@ const allowedEquipmentKeys = computed(() => {
   for (const row of props.rawRows) {
     const label = buildEquipmentDisplayTitle(row);
     if (label) keys.add(normalize(label));
-    const identity = [row.nombre, row.modelo].filter(Boolean).join(" - ");
-    const operational = identity
-      ? `${row.marca_nombre ? `${row.marca_nombre} | ` : ""}${identity}${row.nombre_real ? ` (${row.nombre_real})` : ""}`
-      : String(row.nombre_real || row.marca_nombre || "");
+    const operational = buildEquipmentManagerLabel(row);
     if (operational) keys.add(normalize(operational));
     for (const value of [row.id, row.equipment_id, row.equipment_label, row.nombre]) {
       if (value) keys.add(normalize(value));
@@ -282,7 +287,7 @@ const documentTableTitle=computed(()=>({"warehouse-transfers":"Transferencias de
 const documentTableSubtitle=computed(()=>({"warehouse-transfers":"Origen, destino, cantidad y documentos IB/EB relacionados.","warehouse-reservations":"Material solicitado, entrega de bodega y saldo pendiente.","purchase-orders":"Proveedor, bodega, valor y transferencia relacionada.","service-orders":"Proveedor, lugar de entrega y confirmación del servicio."} as Record<string,string>)[props.moduleKey]||"");
 
 const workOrderDialog=ref(false);const selectedWorkOrderId=ref<string|null>(null);function openWorkOrder(row:ReportingRelationshipRow){openWorkOrderId(rawOrderId(row));}function openWorkOrderId(id:unknown){const value=String(id||"").trim();if(!value)return;selectedWorkOrderId.value=value;workOrderDialog.value=true;}
-const listDialog=ref(false);const listTitle=ref("");const listRows=ref<AnyRow[]>([]);function openOrderList(rows:AnyRow[],title:string){listTitle.value=`OT vinculadas · ${title}`;listRows.value=rows;listDialog.value=true;}function openStatusOrders(card:AnyRow){openOrderList(card.rows.map((row:AnyRow)=>({work_order_id:row.id,work_order_code:row.code||row.codigo,work_order_title:row.title||row.descripcion,work_order_status:row.status_workflow||row.estado,equipment_name:row.equipment_label||row.equipment_name,hours:durationForRawOrder(row)})),card.label);}
+const listDialog=ref(false);const listTitle=ref("");const listRows=ref<AnyRow[]>([]);function openOrderList(rows:AnyRow[],title:string){listTitle.value=`OT vinculadas · ${title}`;listRows.value=rows;listDialog.value=true;}function openStatusOrders(card:AnyRow){openOrderList(card.rows.map((row:AnyRow)=>({work_order_id:row.id,work_order_code:row.code||row.codigo,work_order_title:row.title||row.descripcion,work_order_status:row.status_workflow||row.estado,equipment_name:workOrderEquipmentLabel(row),hours:durationForRawOrder(row)})),card.label);}
 const responsibleDialog=ref(false);const responsibleTitle=ref("");const responsibleRows=ref<AnyRow[]>([]);function openResponsibles(row:ReportingRelationshipRow){responsibleTitle.value=row.label;responsibleRows.value=(row.sourceRows as AnyRow[]).flatMap(source=>Array.isArray(source.responsables_meta)?source.responsables_meta:[]).filter((item,index,array)=>array.findIndex(other=>String(other.user_id||other.display_name)===String(item.user_id||item.display_name))===index);responsibleDialog.value=true;}
 function openMaterials(row:ReportingRelationshipRow){const materials=new Set<string>();for(const value of String(row.relatedMaterials||"").split(/\s+\|\s+|\s*;\s*/))if(value.trim())materials.add(value.trim());for(const source of row.sourceRows as AnyRow[]){if(source.material_label)materials.add(String(source.material_label));for(const detail of source.detalle_materiales||[])if(detail.material_label)materials.add(String(detail.material_label));}listTitle.value=`Materiales · ${row.label}`;listRows.value=[...materials].map(label=>({label,context:"Material utilizado"}));listDialog.value=true;}
 function openMaterial(id:unknown){const value=String(id||"");if(!value)return;selectedMaterialId.value=value;materialDetailDialog.value=true;void loadMaterialTimeline();}
@@ -309,7 +314,7 @@ async function openReferenceCode(reference:unknown){
 
 function reportDefinition(title:string,rows:AnyRow[],columns:ReportColumn[],summary:{label:string;value:string|number}[]=[]):ReportDefinition{return{fileName:`reporteria-${props.moduleKey}-${props.startDate}-${props.endDate}`,title,subtitle:`Período: ${date(props.startDate)} - ${date(props.endDate)}`,compactPdf:true,summary,sheets:[{name:"Detalle",rows,columns}]};}
 async function preview(title:string,rows:AnyRow[],columns:ReportColumn[],summary:{label:string;value:string|number}[]=[]){await reportPreview.open("pdf",reportDefinition(title,rows,columns,summary));}
-function previewStatus(card:AnyRow){return preview(card.label,card.rows.map((r:AnyRow)=>({ot:r.code||r.codigo,equipo:r.equipment_label||r.equipment_name,estado:r.status_workflow,responsable:r.created_by_label||r.created_by})),[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"estado",header:"Estado"},{key:"responsable",header:"Registrada por"}],[{label:card.label,value:card.rows.length}]);}
+function previewStatus(card:AnyRow){return preview(card.label,card.rows.map((r:AnyRow)=>({ot:r.code||r.codigo,equipo:workOrderEquipmentLabel(r),estado:r.status_workflow,responsable:r.created_by_label||r.created_by})),[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"estado",header:"Estado"},{key:"responsable",header:"Registrada por"}],[{label:card.label,value:card.rows.length}]);}
 function previewRelationship(type:"hours"|"cost"){const rows=type==="hours"?workOrderRows.value:costRows.value;return preview(type==="hours"?"Horas trabajadas por OT":"Costo de materiales por OT",rows.map(r=>({ot:r.label,equipo:r.relatedEquipment,horas:r.hours,duracion:durationForRelationship(r),unidades:r.consumedQuantity,costo:r.maintenanceCost})),type==="hours"?[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"horas",header:"Horas responsables",format:"hours"},{key:"duracion",header:"Duración OT",format:"hours"}]:[{key:"ot",header:"OT"},{key:"equipo",header:"Equipo"},{key:"unidades",header:"Unidades",format:"number"},{key:"costo",header:"Costo",format:"currency"}]);}
 function previewEquipmentTrace(){return preview("Equipos y trazabilidad de horómetro",equipmentTraceRows.value.map(r=>({equipo:r.label,ots:r.orders.length,inicial:r.initial,final:r.final})),[{key:"equipo",header:"Equipo"},{key:"ots",header:"OT",format:"number"},{key:"inicial",header:"Horómetro inicial",format:"horometer"},{key:"final",header:"Horómetro final",format:"horometer"}]);}
 function previewEquipmentSummary(){return preview("Consolidado de equipos",equipmentRows.value.map(r=>({equipo:r.label,ots:r.workOrders,horas:r.hours,costo:r.maintenanceCost})),[{key:"equipo",header:"Equipo"},{key:"ots",header:"OT",format:"number"},{key:"horas",header:"Horas",format:"hours"},{key:"costo",header:"Costo",format:"currency"}]);}
@@ -328,7 +333,7 @@ function previewOperationalDocuments(){
   return preview(documentTableTitle.value,activeDocumentRows.value.map(r=>({codigo:r.codigo||r.numero,fecha:r.fecha_emision,proveedor:r.proveedor_nombre,bodega:r.bodega_label||r.lugar_entrega,estado:r.estado,total:r.total??r.total_final,transferencia:r.transferencia_codigo})),[{key:"codigo",header:"Documento"},{key:"fecha",header:"Fecha",format:"date"},{key:"proveedor",header:"Proveedor"},{key:"bodega",header:"Bodega / lugar"},{key:"estado",header:"Estado"},{key:"total",header:"Total",format:"currency"},{key:"transferencia",header:"TB relacionada"}]);
 }
 
-watch(()=>[props.moduleKey,props.startDate,props.endDate],()=>{selectedMaterialId.value="";materialMovements.value=[];void loadMaterialSupport();});onMounted(()=>void loadMaterialSupport());
+watch(()=>[props.moduleKey,props.startDate,props.endDate],()=>{selectedMaterialId.value="";materialMovements.value=[];void loadMaterialSupport();void loadEquipmentCatalog();});onMounted(()=>{void loadMaterialSupport();void loadEquipmentCatalog();});
 </script>
 
 <style scoped>

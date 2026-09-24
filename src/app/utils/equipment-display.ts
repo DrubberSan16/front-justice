@@ -49,3 +49,21 @@ export function buildEquipmentDisplayTitle(item: EquipmentLike) {
   const base = `${brand} - ${name}`;
   return model ? `${base} (${model})` : base;
 }
+
+/**
+ * Etiqueta de equipo de los tableros: `marca | nombre - modelo (nombre real)`.
+ *
+ * Replica `buildEquipmentManagerLabel` de kpi-maintenance, para que una tabla
+ * armada en el navegador diga lo mismo que las que ya llegan hechas del
+ * servidor. Recibe una fila del catalogo de equipos, que trae `marca_nombre`.
+ */
+export function buildEquipmentManagerLabel(item: EquipmentLike) {
+  const brand = firstText(item?.marca_nombre);
+  const realName = firstText(item?.nombre_real);
+  const identity = [firstText(item?.nombre), firstText(item?.modelo)]
+    .filter(Boolean)
+    .join(" - ");
+  if (!identity) return realName || brand;
+  const withBrand = brand ? `${brand} | ${identity}` : identity;
+  return realName ? `${withBrand} (${realName})` : withBrand;
+}
