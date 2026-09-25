@@ -48,6 +48,15 @@
           <table class="data-table"><thead><tr><th>Equipo</th><th class="number">Costo</th><th class="number">Unidades</th><th>Materiales</th></tr></thead><tbody><tr v-for="row in equipmentCostRows" :key="row.key"><td><strong>{{ row.label }}</strong></td><td class="number">{{ currency(row.maintenanceCost) }}</td><td class="number">{{ number(row.consumedQuantity) }}</td><td><v-btn size="small" variant="tonal" @click="openMaterials(row)">Ver materiales</v-btn></td></tr></tbody></table>
         </ReportTableCard>
       </div>
+      <!-- Bajar el horómetro a mano es una corrección, no trabajo de la máquina:
+           sin esta tabla, el salto hacia atrás no tenía explicación en ningún informe. -->
+      <ReportTableCard title="Ajustes directos de horómetro" subtitle="Correcciones manuales hacia atrás hechas en el período, con el motivo que escribió quien las registró." icon="mdi-speedometer-slow" wide @preview="previewHorometerAdjustments">
+        <v-alert v-if="horometerAdjustmentsError" type="warning" variant="tonal" density="compact" class="ma-3">{{ horometerAdjustmentsError }}</v-alert>
+        <table class="data-table data-table--anchored data-table--adjustments"><thead><tr><th>Equipo</th><th>Fecha</th><th class="number">Horómetro anterior</th><th class="number">Corregido a</th><th class="number">Diferencia</th><th>Motivo</th><th>Registrado por</th></tr></thead><tbody>
+          <tr v-for="row in horometerAdjustmentRows" :key="row.key"><td><strong>{{ row.equipmentLabel }}</strong></td><td>{{ dateTime(row.changedAt) }}</td><td class="number">{{ formatHorometerForDisplay(row.previous) }}</td><td class="number">{{ formatHorometerForDisplay(row.next) }}</td><td class="number">{{ formatHorometerForDisplay(row.difference) }}</td><td>{{ row.reason || 'Sin motivo registrado' }}</td><td>{{ row.user || '-' }}</td></tr>
+          <tr v-if="!horometerAdjustmentRows.length"><td colspan="7" class="empty-cell">{{ horometerAdjustmentsLoading ? 'Cargando ajustes de horómetro…' : 'No hubo ajustes directos de horómetro en el período.' }}</td></tr>
+        </tbody></table>
+      </ReportTableCard>
     </section>
 
     <section v-else-if="isLubricant" class="domain-stack">
@@ -138,6 +147,7 @@ import { api } from "@/app/http/api";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle, buildEquipmentManagerLabel } from "@/app/utils/equipment-display";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
+import { formatHorometerForDisplay } from "@/app/utils/number-format";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import { chartBase, chartInk, seriesColor } from "@/app/config/chart-theme";
@@ -299,6 +309,40 @@ const equipmentCostRows = computed(()=>scopedEquipmentRows.value.slice().sort((a
 const totalEquipmentOrders = computed(()=>equipmentRows.value.reduce((sum,row)=>sum+row.workOrders,0));
 const totalEquipmentHours = computed(()=>equipmentRows.value.reduce((sum,row)=>sum+row.hours,0));
 const totalEquipmentCost = computed(()=>equipmentRows.value.reduce((sum,row)=>sum+row.maintenanceCost,0));
+// Ajustes directos de horómetro de los equipos de este informe. El servidor
+// devuelve los de todos los equipos; aquí quedan los del grupo consultado, que
+// son las filas del módulo, y de ellas sale también la etiqueta del equipo.
+type HorometerAdjustmentRow = { key: string; changedAt: string; equipmentLabel: string; previous: number | null; next: number | null; difference: number | null; reason: string; user: string };
+const horometerAdjustments = ref<AnyRow[]>([]);
+const horometerAdjustmentsLoading = ref(false);
+const horometerAdjustmentsError = ref("");
+let horometerAdjustmentsRequest = 0;
+function finiteOrNull(value:unknown){ if(value===null||value===undefined||value==="")return null; const parsed=Number(value); return Number.isFinite(parsed)?parsed:null; }
+const horometerAdjustmentRows = computed<HorometerAdjustmentRow[]>(()=>{
+  const equipmentById=new Map(props.rawRows.map(row=>[String(row.id||""),row]));
+  return horometerAdjustments.value.flatMap((row)=>{
+    const equipment=equipmentById.get(String(row.equipo_id||""));
+    if(!equipment)return [];
+    const previous=finiteOrNull(row.horometro_anterior);
+    const next=finiteOrNull(row.horometro_nuevo);
+    return [{key:String(row.id),changedAt:String(row.changed_at||""),equipmentLabel:buildEquipmentManagerLabel(equipment)||String(equipment.nombre||"Equipo"),previous,next,difference:previous!==null&&next!==null?next-previous:null,reason:String(row.motivo||"").trim(),user:String(row.changed_by||"").trim()}];
+  });
+});
+async function loadHorometerAdjustments(){
+  const request=++horometerAdjustmentsRequest;
+  horometerAdjustments.value=[];
+  horometerAdjustmentsError.value="";
+  horometerAdjustmentsLoading.value=isEquipment.value;
+  if(!isEquipment.value)return;
+  try{
+    const{data}=await api.get("/kpi_maintenance/equipos/horometro/ajustes",{params:{from:props.startDate,to:props.endDate},meta:{skipGlobalLoading:true}} as any);
+    if(request===horometerAdjustmentsRequest)horometerAdjustments.value=responseRows(data);
+  }catch{
+    if(request===horometerAdjustmentsRequest)horometerAdjustmentsError.value="No se pudieron cargar los ajustes directos de horómetro. El resto del informe sigue vigente.";
+  }finally{
+    if(request===horometerAdjustmentsRequest)horometerAdjustmentsLoading.value=false;
+  }
+}
 function linkedOrders(row:ReportingRelationshipRow){ const map=new Map<string,AnyRow>(); for(const source of row.sourceRows as AnyRow[]){ const details=Array.isArray(source.detalle_ordenes)?source.detalle_ordenes:[]; for(const detail of details){const key=String(detail.work_order_code||detail.work_order_id||""); if(key){const current=map.get(key)||{};map.set(key,{...current,...detail,work_order_id:detail.work_order_id||current.work_order_id,hours:detail.total_horas??detail.effective_duration_hours??detail.flow_duration_hours??current.hours});}} if(source.work_order_code){const key=String(source.work_order_code);const current=map.get(key)||{};map.set(key,{...current,...source,work_order_id:source.work_order_id||current.work_order_id,hours:source.total_horas??source.horas??current.hours});} } return [...map.values()]; }
 
 const lubricantRows = computed(()=>props.rawRows.filter(row=>!isAnnulled(row)));
@@ -432,6 +476,7 @@ function previewOrders(){const rows=orderSummaries.value;return preview("Órdene
 function previewEquipmentTrace(){const rows=equipmentTraceRows.value;return preview("Equipos y trazabilidad de horómetro",rows.map(r=>({equipo:r.label,ots:r.orders.length,inicial:r.initial,final:r.final,costo:r.cost})),[{key:"equipo",header:"Equipo",width:42},{key:"ots",header:"OT trabajadas",width:12},{key:"inicial",header:"Horómetro inicial",format:"horometer",width:13},{key:"final",header:"Horómetro final",format:"horometer",width:13},{key:"costo",header:"Costo",format:"currency",width:12}],[{label:"Equipos",value:rows.length},{label:"OT",value:rows.reduce((sum,r)=>sum+r.orders.length,0)},{label:"Costo de materiales",value:currency(rows.reduce((sum,r)=>sum+r.cost,0))}],true);}
 function previewEquipmentSummary(){return preview("Consolidado de equipos",equipmentRows.value.map(r=>({equipo:r.label,ots:r.workOrders,horas:r.hours,costo:r.maintenanceCost})),[{key:"equipo",header:"Equipo"},{key:"ots",header:"OT",format:"number"},{key:"horas",header:"Horas",format:"hours"},{key:"costo",header:"Costo",format:"currency"}]);}
 function previewEquipmentTable(type:"hours"|"cost"){ void type; return previewEquipmentSummary(); }
+function previewHorometerAdjustments(){const rows=horometerAdjustmentRows.value;return preview("Ajustes directos de horómetro",rows.map(r=>({equipo:r.equipmentLabel,fecha:r.changedAt,anterior:r.previous,corregido:r.next,diferencia:r.difference,motivo:r.reason||"Sin motivo registrado",usuario:r.user||"-"})),[{key:"equipo",header:"Equipo",width:34},{key:"fecha",header:"Fecha",format:"datetime",width:15},{key:"anterior",header:"Horómetro anterior",format:"horometer",width:12},{key:"corregido",header:"Corregido a",format:"horometer",width:12},{key:"diferencia",header:"Diferencia",format:"horometer",width:11},{key:"motivo",header:"Motivo",width:34},{key:"usuario",header:"Registrado por",width:18}],[{label:"Ajustes",value:rows.length},{label:"Equipos",value:new Set(rows.map(r=>r.equipmentLabel)).size},{label:"Horas corregidas",value:formatHorometerForDisplay(rows.reduce((sum,r)=>sum+Math.abs(r.difference??0),0))}],true);}
 function previewLubricant(){return preview("Diagnóstico de análisis de lubricante",lubricantRows.value.map(r=>({fecha:r.fecha_muestra,codigo:r.codigo,equipo:r.equipo_nombre,compartimento:r.compartimento_principal,diagnostico:r.estado_diagnostico||r.diagnostico,normal:summaryNumber(r,"normal"),precaucion:summaryNumber(r,"precaucion"),anormal:summaryNumber(r,"anormal")})),[{key:"fecha",header:"Fecha",format:"date"},{key:"codigo",header:"Análisis"},{key:"equipo",header:"Equipo"},{key:"compartimento",header:"Compartimento"},{key:"diagnostico",header:"Diagnóstico"},{key:"normal",header:"Normal",format:"number"},{key:"precaucion",header:"Precaución",format:"number"},{key:"anormal",header:"Anormal",format:"number"}]);}
 function previewLubricantParameters(){return preview("Parámetros de lubricante que requieren seguimiento",lubricantAlerts.value,[{key:"analysis",header:"Análisis"},{key:"equipment",header:"Equipo"},{key:"group",header:"Grupo"},{key:"parameter",header:"Parámetro"},{key:"result",header:"Resultado"},{key:"level",header:"Nivel"}]);}
 function previewMaterialSummary(){return preview("Resumen informativo de materiales",materialProducts.value.map(r=>({material:buildProductDisplayTitle(r),categoria:materialCategory(r),tipo:r.es_servicio?"Servicio":r.es_aceite?"Aceite":/REPUEST/.test(normalize(materialCategory(r)))?"Repuesto":"Material",costo:productUnitCost(r)})),[{key:"material",header:"Material"},{key:"categoria",header:"Categoría"},{key:"tipo",header:"Tipo"},{key:"costo",header:"Costo",format:"currency"}]);}
@@ -446,12 +491,12 @@ function previewOperationalDocuments(){
   return preview(documentTableTitle.value,activeDocumentRows.value.map(r=>({codigo:r.codigo||r.numero,fecha:r.fecha_emision,proveedor:r.proveedor_nombre,bodega:r.bodega_label||r.lugar_entrega,estado:r.estado,total:r.total??r.total_final,transferencia:r.transferencia_codigo})),[{key:"codigo",header:"Documento"},{key:"fecha",header:"Fecha",format:"date"},{key:"proveedor",header:"Proveedor"},{key:"bodega",header:"Bodega / lugar"},{key:"estado",header:"Estado"},{key:"total",header:"Total",format:"currency"},{key:"transferencia",header:"TB relacionada"}]);
 }
 
-watch(()=>[props.moduleKey,props.startDate,props.endDate],()=>{selectedMaterialId.value="";materialMovements.value=[];void loadMaterialSupport();void loadEquipmentCatalog();});onMounted(()=>{void loadMaterialSupport();void loadEquipmentCatalog();});
+watch(()=>[props.moduleKey,props.startDate,props.endDate],()=>{selectedMaterialId.value="";materialMovements.value=[];void loadMaterialSupport();void loadEquipmentCatalog();void loadHorometerAdjustments();});onMounted(()=>{void loadMaterialSupport();void loadEquipmentCatalog();void loadHorometerAdjustments();});
 </script>
 
 <style scoped>
 .domain-report,.domain-stack{display:grid;gap:16px}.metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.metric-card{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:12px;min-height:118px;padding:16px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:16px;background:rgb(var(--v-theme-surface))}.metric-card--interactive{cursor:pointer}.metric-card--interactive:focus-visible,.entity-link:focus-visible{outline:3px solid rgba(var(--v-theme-primary),.38);outline-offset:2px}.metric-card>div{display:grid;gap:3px}.metric-card span{color:rgba(var(--v-theme-on-surface),.66);font-size:.76rem;font-weight:750}.metric-card strong{font-size:1.45rem;font-variant-numeric:tabular-nums}.metric-card small{color:rgba(var(--v-theme-on-surface),.62)}.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.data-table{width:100%;border-collapse:collapse;font-size:.84rem}.data-table th,.data-table td{padding:10px 12px;border-bottom:1px solid rgba(var(--v-theme-on-surface),.08);text-align:left;vertical-align:middle}.data-table th{position:sticky;top:0;z-index:1;color:rgba(var(--v-theme-on-surface),.67);background:rgb(var(--v-theme-surface));font-size:.69rem;text-transform:uppercase;letter-spacing:.035em}.data-table td small{display:block;color:rgba(var(--v-theme-on-surface),.6)}.number{text-align:right!important;font-variant-numeric:tabular-nums}.positive{color:rgb(var(--v-theme-success))}.negative{color:rgb(var(--v-theme-error))}.entity-link{border:0;padding:2px 0;color:rgb(var(--v-theme-primary));background:transparent;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:3px;cursor:pointer}.material-selector{position:sticky;top:76px;z-index:8;padding:12px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:14px;background:rgb(var(--v-theme-surface));box-shadow:0 8px 22px rgba(0,0,0,.08)}.detail-loading{padding:24px}.dialog-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 24px}.dialog-title small{color:rgb(var(--v-theme-primary));font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.dialog-title h2{margin:2px 0;font-size:1.2rem}.modal-table-viewport{max-height:360px;overflow:auto;margin-top:12px;border:1px solid rgba(var(--v-theme-on-surface),.1);border-radius:12px}@media(max-width:1100px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-grid{grid-template-columns:1fr}}@media(max-width:640px){.metric-grid{grid-template-columns:1fr}.data-table--wide{min-width:920px}}
 .scope-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:10px 14px;border:1px solid rgba(var(--v-theme-on-surface),.12);border-radius:14px;background:rgb(var(--v-theme-surface))}.scope-bar__label{color:rgba(var(--v-theme-on-surface),.66);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.scope-bar small{color:rgba(var(--v-theme-on-surface),.66)}.scope-bar :deep(.v-btn){letter-spacing:0;text-transform:none}
 .data-table tfoot th,.data-table tfoot td{position:sticky;top:auto;bottom:0;z-index:1;border-top:2px solid rgba(var(--v-theme-on-surface),.16);border-bottom:0;color:rgb(var(--v-theme-on-surface));background:rgb(var(--v-theme-surface));font-size:.84rem;font-weight:800;letter-spacing:0;text-transform:none}.empty-cell{color:rgba(var(--v-theme-on-surface),.62);text-align:center!important}.scrap-yes{font-weight:800}
-.data-table--orders{min-width:1080px}.data-table--orders td:first-child{white-space:nowrap}.data-table--orders td:nth-child(2){min-width:240px}.data-table--anchored th:first-child,.data-table--anchored td:first-child:not([colspan]){position:sticky;left:0;z-index:2;background:rgb(var(--v-theme-surface))}.data-table--anchored thead th:first-child{z-index:3}
+.data-table--adjustments{min-width:1040px}.data-table--adjustments td:first-child{min-width:240px}.data-table--adjustments td:nth-child(6){min-width:260px}.data-table--orders{min-width:1080px}.data-table--orders td:first-child{white-space:nowrap}.data-table--orders td:nth-child(2){min-width:240px}.data-table--anchored th:first-child,.data-table--anchored td:first-child:not([colspan]){position:sticky;left:0;z-index:2;background:rgb(var(--v-theme-surface))}.data-table--anchored thead th:first-child{z-index:3}
 </style>
