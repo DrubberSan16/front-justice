@@ -33,8 +33,10 @@ const fullPerms: MenuPermissions = {
   reportsPermit: "{\"all\":true}",
 };
 
-function normalize(value: string): string {
-  return value
+// Una seccion guardada sin URL llega como null desde la API. Si esto lanzara, el
+// recorrido del menu romperia el login de todo rol que no sea Super Administrador.
+function normalize(value: string | null | undefined): string {
+  return String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
