@@ -24,28 +24,65 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
+import { isAxiosError } from "axios";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import type { LoginRequest, LoginResponse } from "@/app/types/auth.types";
 import { resolveAuthenticatedHomeRoute } from "@/app/utils/menu-permissions";
 
+// Cada fallo dice lo que paso de verdad. El 2026-09-25 un TypeError posterior a
+// un login correcto se mostro como "Credenciales invalidas", y con los servidores
+// sanos se busco el problema en la contrasena.
+const MSG_SIN_CONEXION = "No hubo respuesta del servidor. Revise su conexión e intente de nuevo.";
+const MSG_SISTEMA_NO_ABRE =
+  "Se inició sesión, pero no se pudo abrir el sistema. Recargue la página e ingrese de nuevo; si vuelve a ocurrir, avise a soporte.";
+const MSG_SESION_CERRADA =
+  "Su sesión se cerró porque no se pudo abrir el sistema. Ingrese de nuevo; si vuelve a ocurrir, avise a soporte.";
+
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
 const menu = useMenuStore();
-const nameUser = ref("");
+// El boton de limpiar del campo deja el modelo en null, no en "".
+const nameUser = ref<string | null>("");
 const passUser = ref("");
 const showPassword = ref(false);
 const loading = ref(false);
-const error = ref<string | null>(null);
+// El guard del router vuelve aqui con ?aviso=sesion cuando no pudo abrir el
+// sistema con la sesion guardada y la cerro.
+const error = ref<string | null>(route.query.aviso === "sesion" ? MSG_SESION_CERRADA : null);
+
+function mensajeDeFallo(e: any, loginAceptado: boolean): string {
+  // Sin respuesta HTTP: red caida, servidor inalcanzable o tiempo de espera agotado.
+  if (isAxiosError(e) && !e.response) return MSG_SIN_CONEXION;
+  // Con las credenciales ya aceptadas, lo que fallo fue cargar el menu o abrir la
+  // pantalla de inicio: no es un problema de usuario ni de contrasena.
+  if (loginAceptado) return MSG_SISTEMA_NO_ABRE;
+  const status = e?.response?.status;
+  if (status) {
+    // Un 401 trae "Credenciales inválidas" o "Usuario inactivo"; un 5xx, el
+    // ticket de soporte que arma el interceptor de api.ts.
+    const mensaje = e.response.data?.message;
+    if (typeof mensaje === "string" && mensaje.trim()) return mensaje;
+    return `No se pudo iniciar sesión: el servidor respondió con el error ${status}. Intente de nuevo; si vuelve a ocurrir, avise a soporte.`;
+  }
+  return "No se pudo iniciar sesión por un error inesperado. Recargue la página e intente de nuevo; si vuelve a ocurrir, avise a soporte.";
+}
 
 async function onSubmit() {
+  const usuario = (nameUser.value ?? "").trim();
+  if (!usuario || !passUser.value) {
+    error.value = "Ingrese usuario y contraseña.";
+    return;
+  }
   error.value = null;
   loading.value = true;
+  let loginAceptado = false;
   try {
-    const payload: LoginRequest = { nameUser: nameUser.value.trim(), passUser: passUser.value };
+    const payload: LoginRequest = { nameUser: usuario, passUser: passUser.value };
     const { data } = await api.post<LoginResponse>("/kpi_security/users/login", payload);
+    loginAceptado = true;
     auth.setSession(data);
     if (auth.userId) await menu.loadMenuTree(auth.userId);
     // La pantalla de inicio depende del tablero asignado al usuario. Se resuelve
@@ -60,9 +97,23 @@ async function onSubmit() {
       requestedRedirect !== fallbackRedirect;
     const redirect =
       requestedRedirect && !requestedEsOtroTablero ? requestedRedirect : fallbackRedirect;
-    router.replace(redirect);
+    // Se espera la navegacion para que su fallo (el chunk de la pantalla que no
+    // carga, por ejemplo) llegue a este catch en vez de perderse.
+    await router.replace(redirect);
+    // Si el guard no logra abrir el sistema, cierra la sesion y deja al usuario en
+    // el login; sin esto el formulario volveria sin ninguna explicacion.
+    if (!auth.isAuthenticated) error.value = MSG_SISTEMA_NO_ABRE;
   } catch (e: any) {
-    error.value = e?.response?.data?.message || "Credenciales inválidas o error de conexión.";
+    if (loginAceptado) {
+      console.error("[Login] El servidor aceptó el login, pero no se pudo abrir el sistema:", e);
+      // El token ya quedo guardado: si no se cierra la sesion, al recargar el guard
+      // vuelve a fallar con el mismo menu y deja la pantalla en blanco.
+      auth.logout();
+      menu.clear();
+    } else if (!isAxiosError(e)) {
+      console.error("[Login] Error inesperado al enviar el login:", e);
+    }
+    error.value = mensajeDeFallo(e, loginAceptado);
   } finally {
     loading.value = false;
   }
