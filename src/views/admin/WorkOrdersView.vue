@@ -1268,6 +1268,46 @@
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
+            <div v-if="canCreateConsumo" class="d-flex justify-end mb-3">
+              <v-btn
+                color="primary"
+                variant="tonal"
+                prepend-icon="mdi-playlist-plus"
+                :disabled="!effectiveConsumoWarehouseId"
+                @click="addConsumoDraftLine"
+              >
+                Agregar a la lista
+              </v-btn>
+            </div>
+            <div v-if="canCreateConsumo && consumoDraftLines.length" class="mb-3">
+              <div class="text-subtitle-2 mb-2">
+                Materiales por reservar ({{ consumoDraftLines.length }})
+              </div>
+              <!-- Sin paginación a propósito: son las líneas que se están
+                   armando y tienen que verse todas antes de reservar. -->
+              <v-data-table
+                :headers="consumoDraftHeaders"
+                :items="consumoDraftLines"
+                item-value="key"
+                density="comfortable"
+                class="table-enterprise enterprise-table"
+                :items-per-page="-1"
+              >
+                <template #bottom />
+                <template #item.cantidad="{ item }">{{ formatDecimalValue(asAny(item).cantidad) }}</template>
+                <template #item.observacion="{ item }">{{ asAny(item).observacion || "-" }}</template>
+                <template #item.actions="{ item }">
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    variant="text"
+                    color="error"
+                    size="small"
+                    :aria-label="`Quitar ${asAny(item).producto_label} de la lista`"
+                    @click="removeConsumoDraftLine(asAny(item).key)"
+                  />
+                </template>
+              </v-data-table>
+            </div>
             <div
               v-if="canCreateConsumo && procedureSuggestedMaterialRows.length"
               class="mb-3"
@@ -1280,7 +1320,6 @@
                 class="table-enterprise enterprise-table mb-2"
                 :items-per-page="5"
               >
-                <template #bottom />
                 <template #item.actions="{ item }">
                   <v-btn
                     color="primary"
@@ -1301,8 +1340,10 @@
               </v-data-table>
             </div>
             <div v-if="canCreateConsumo" class="d-flex justify-end mb-3">
-              <v-btn color="primary" :loading="!editingId && savingHeader" @click="reserveMaterials">
-                {{ editingId ? "Reservar materiales" : "Guardar OT y reservar materiales" }}
+              <v-btn class="wo-btn-wrap" color="primary" :loading="!editingId && savingHeader" @click="reserveMaterials">
+                {{ editingId ? "Reservar materiales" : "Guardar OT y reservar materiales" }}{{
+                  pendingConsumoCount ? ` (${pendingConsumoCount})` : ""
+                }}
               </v-btn>
             </div>
             <v-data-table
@@ -1364,6 +1405,22 @@
               <strong>Motivo de menor uso de material reservado:</strong>
               {{ headerForm.close_shortfall_reason }}
             </v-alert>
+            <div v-if="canIssueMaterials && !isReadOnlyWorkflow" class="d-flex justify-end mb-2">
+              <v-btn
+                class="wo-btn-wrap"
+                color="primary"
+                variant="tonal"
+                prepend-icon="mdi-package-variant-closed"
+                :disabled="
+                  !canRegisterRealIssue ||
+                  !pendingMaterialReservationRows.length ||
+                  issuingMaterials
+                "
+                @click="openMaterialIssueDialog()"
+              >
+                Registrar salida de varios materiales
+              </v-btn>
+            </div>
             <v-data-table
               :headers="materialReservationHeaders"
               :items="materialReservationRows"
@@ -1438,7 +1495,6 @@
               class="table-enterprise enterprise-table"
               :items-per-page="5"
             >
-              <template #bottom />
               <template #item.costo_unitario="{ item }">{{ formatDecimalValue((item.raw ?? item).costo_unitario || 0) }}</template>
               <template #item.subtotal="{ item }">{{ formatDecimalValue((item.raw ?? item).subtotal || 0) }}</template>
               <template #no-data>
@@ -1579,7 +1635,6 @@
               class="table-enterprise enterprise-table"
               :items-per-page="5"
             >
-              <template #bottom />
               <template #item.costo_unitario="{ item }">{{ formatDecimalValue((item.raw ?? item).costo_unitario || 0) }}</template>
               <template #item.subtotal="{ item }">{{ formatDecimalValue((item.raw ?? item).subtotal || 0) }}</template>
               <template #no-data>
@@ -1718,7 +1773,6 @@
           density="comfortable"
           :items-per-page="5"
         >
-          <template #bottom />
           <template #item.horas="{ item }">
             {{ formatTaskHours((item.raw ?? item).horas) }} h
           </template>
@@ -1756,115 +1810,70 @@
   <v-dialog
     v-model="materialIssueDialog"
     :fullscreen="isMaterialIssueDialogFullscreen"
-    :max-width="isMaterialIssueDialogFullscreen ? undefined : 640"
+    :max-width="isMaterialIssueDialogFullscreen ? undefined : 760"
     scrollable
   >
     <v-card rounded="xl">
       <v-toolbar color="primary" density="comfortable">
         <v-btn icon="mdi-close" @click="closeMaterialIssueDialog" />
-        <v-toolbar-title>Registrar salida real</v-toolbar-title>
+        <v-toolbar-title>{{ materialIssueLines.length > 1 ? "Registrar salida de materiales" : "Registrar salida real" }}</v-toolbar-title>
       </v-toolbar>
       <v-card-text>
-        <template v-if="materialIssueTarget">
-          <v-row dense class="mb-2">
-            <v-col cols="12" md="6">
-              <v-text-field
-                :model-value="materialIssueTarget.bodega_label || '-'"
-                label="Bodega"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field
-                :model-value="materialIssueTarget.producto_label || '-'"
-                label="Material"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field
-                :model-value="formatTaskHours(materialIssueTarget.cantidad_reservada)"
-                label="Reservado"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field
-                :model-value="formatTaskHours(materialIssueTarget.cantidad_emitida)"
-                label="Emitido"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field
-                :model-value="formatTaskHours(materialIssueTarget.cantidad_pendiente)"
-                label="Pendiente"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-          </v-row>
+        <div class="text-body-2 text-medium-emphasis mb-3">
+          Indica la cantidad que sale de cada material. Los que dejes en blanco no se registran.
+        </div>
+        <div
+          v-for="line in materialIssueLines"
+          :key="line.key"
+          class="material-issue-line mb-3"
+        >
+          <div class="d-flex align-start justify-space-between flex-wrap mb-2" style="gap: 8px;">
+            <div>
+              <div class="text-subtitle-2">{{ line.producto_label || "-" }}</div>
+              <div class="text-caption text-medium-emphasis">{{ line.bodega_label || "-" }}</div>
+            </div>
+            <div class="text-caption text-medium-emphasis text-right">
+              Reservado {{ formatDecimalValue(line.cantidad_reservada) }} ·
+              Emitido {{ formatDecimalValue(line.cantidad_emitida) }} ·
+              <strong>Pendiente {{ formatDecimalValue(line.cantidad_pendiente) }}</strong>
+            </div>
+          </div>
           <v-row dense>
-            <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
+            <v-col v-if="issueLineRequiresCondition(line)" cols="12" md="5">
               <v-select
-                v-model="materialIssueForm.condicion_material"
+                v-model="line.condicion_material"
                 :items="materialIssueConditionOptions"
                 item-title="title"
                 item-value="value"
-                label="Condicion"
+                label="Condición"
                 variant="outlined"
+                density="compact"
+                hide-details
               />
             </v-col>
-            <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
+            <v-col cols="12" :md="issueLineRequiresCondition(line) ? 7 : 12">
               <v-text-field
-                :model-value="formatTaskHours(materialIssueTarget.stock_nuevo)"
-                label="Stock nuevo"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col v-if="materialIssueUsesCritical" cols="12" md="4">
-              <v-text-field
-                :model-value="formatTaskHours(materialIssueTarget.stock_critico)"
-                label="Stock crítico disponible"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col v-if="materialIssueRequiresCondition" cols="12" md="4">
-              <v-text-field
-                :model-value="formatTaskHours(materialIssueTarget.stock_usado)"
-                label="Stock usado"
-                variant="outlined"
-                readonly
-              />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field
-                v-model="materialIssueForm.cantidad"
+                v-model="line.cantidad"
                 label="Cantidad de salida"
                 type="number"
                 min="0"
                 step="any"
                 variant="outlined"
-              />
-            </v-col>
-            <v-col cols="12" md="8">
-              <v-text-field
-                v-model="materialIssueForm.observacion"
-                label="Observación"
-                variant="outlined"
+                density="compact"
+                :hint="issueLineStockHint(line)"
+                persistent-hint
               />
             </v-col>
           </v-row>
-          <v-alert type="info" variant="tonal" class="mt-2">
-            Si este material ya tuvo una salida registrada, puedes volver a registrar otra cantidad siempre que aún exista reserva pendiente.
-          </v-alert>
-        </template>
+        </div>
+        <v-text-field
+          v-model="materialIssueForm.observacion"
+          label="Observación"
+          variant="outlined"
+        />
+        <v-alert type="info" variant="tonal" class="mt-2">
+          Si un material ya tuvo una salida registrada, puedes volver a registrar otra cantidad siempre que aún exista reserva pendiente.
+        </v-alert>
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -2393,22 +2402,21 @@ const taskResponsibleForm = reactive({
   horas: "",
 });
 const taskResponsibleEditUserId = ref("");
-const materialIssueTarget = ref<any | null>(null);
+// Una línea por material reservado. Desde la fila se abre con ese material; desde
+// "Registrar salida de varios materiales", con todos los que tienen pendiente.
+// Lo que queda en blanco no sale.
+const materialIssueLines = ref<any[]>([]);
 const materialIssueForm = reactive({
-  cantidad: "",
-  condicion_material: "NUEVO",
   observacion: "",
 });
 const materialIssueConditionOptions = [
   { title: "Nuevo", value: "NUEVO" },
   { title: "Usado", value: "USADO" },
 ];
-const materialIssueRequiresCondition = computed(() =>
-  targetManagesUsedStock(materialIssueTarget.value) &&
-  !usesCriticalStockFallback(materialIssueTarget.value),
-);
-const materialIssueUsesCritical = computed(() =>
-  usesCriticalStockFallback(materialIssueTarget.value),
+const pendingMaterialReservationRows = computed(() =>
+  materialReservationRows.value.filter(
+    (row: any) => toPositiveNumber(row?.cantidad_pendiente) > 0,
+  ),
 );
 const taskRows = ref<any[]>([]);
 const attachmentRows = ref<any[]>([]);
@@ -2525,6 +2533,18 @@ const consumoForm = reactive<any>({
   costo_unitario: "",
   observacion: "",
 });
+// Materiales armados en Consumos que todavía no se reservan. Se reservan todos
+// juntos: al crear la OT viajan en el mismo guardado, y en una OT existente van
+// en una sola llamada que reserva todos o ninguno.
+const consumoDraftLines = ref<any[]>([]);
+const consumoDraftHeaders = [
+  { title: "Material", key: "producto_label" },
+  { title: "Bodega", key: "bodega_label" },
+  { title: "Cantidad", key: "cantidad", align: "end" as const },
+  { title: "Observación", key: "observacion" },
+  { title: "", key: "actions", sortable: false, align: "end" as const },
+];
+const pendingConsumoCount = computed(() => collectConsumoLines().length);
 const scrapForm = reactive<any>({
   bodega_origen_id: "",
   observacion: "",
@@ -4190,6 +4210,101 @@ function resetConsumoDraft(options?: { preserveWarehouse?: boolean; clearOptions
   }
 }
 
+/** La fila del formulario como material listo para reservar, o null si está incompleta. */
+function buildConsumoLineFromForm() {
+  const warehouseId = String(effectiveConsumoWarehouseId.value || "").trim();
+  const productId = String(consumoForm.producto_id || "").trim();
+  const quantity = Number(consumoForm.cantidad);
+  if (!warehouseId || !productId || !Number.isFinite(quantity) || quantity <= 0) {
+    return null;
+  }
+  const unitCost = Number(consumoForm.costo_unitario);
+  return {
+    key: `${warehouseId}|${productId}`,
+    producto_id: productId,
+    bodega_id: warehouseId,
+    // `label` y no `title`: el título lleva el stock del momento, que en la
+    // lista quedaría viejo.
+    producto_label:
+      String(getSelectedConsumoProductOption()?.label || "").trim() ||
+      resolveProductLabel(productId, productNameMap.value[productId] || productId),
+    bodega_label:
+      warehouseNameMap.value[warehouseId] || selectedProcedureWarehouseLabel.value || warehouseId,
+    cantidad: quantity,
+    costo_unitario: Number.isFinite(unitCost) && unitCost > 0 ? unitCost : null,
+    observacion: String(consumoForm.observacion || "").trim(),
+  };
+}
+
+/**
+ * La bodega sola no cuenta: se conserva a propósito entre material y material,
+ * y no es una fila a medio llenar.
+ */
+function hasIncompleteConsumoForm() {
+  const touched = Boolean(
+    String(consumoForm.producto_id || "").trim() ||
+      String(consumoForm.cantidad ?? "").trim() ||
+      String(consumoForm.observacion || "").trim(),
+  );
+  return touched && !buildConsumoLineFromForm();
+}
+
+/** Mismo material y bodega dos veces es una sola línea con la cantidad sumada. */
+function mergeConsumoLine(lines: any[], line: any) {
+  const existing = lines.find((row) => row.key === line.key);
+  if (!existing) return [...lines, line];
+  return lines.map((row) => {
+    if (row !== existing) return row;
+    const observations = [row.observacion, line.observacion].filter(Boolean);
+    return {
+      ...row,
+      cantidad: Number((Number(row.cantidad) + Number(line.cantidad)).toFixed(6)),
+      observacion: [...new Set(observations)].join(" | "),
+    };
+  });
+}
+
+function addConsumoDraftLine() {
+  const line = buildConsumoLineFromForm();
+  if (!line) {
+    ui.error("Para agregar el material a la lista completa bodega, material y una cantidad mayor a 0.");
+    return;
+  }
+  consumoDraftLines.value = mergeConsumoLine(consumoDraftLines.value, line);
+  resetConsumoDraft({
+    preserveWarehouse: !selectedProcedureWarehouseId.value && Boolean(consumoForm.bodega_id),
+  });
+}
+
+function removeConsumoDraftLine(key: string) {
+  consumoDraftLines.value = consumoDraftLines.value.filter((row) => row.key !== key);
+}
+
+/** Lo que se va a reservar: la lista y, si quedó completa, la fila del formulario. */
+function collectConsumoLines() {
+  const formLine = buildConsumoLineFromForm();
+  return formLine
+    ? mergeConsumoLine(consumoDraftLines.value, formLine)
+    : [...consumoDraftLines.value];
+}
+
+function toConsumoPayload(line: any) {
+  return {
+    producto_id: line.producto_id,
+    bodega_id: line.bodega_id,
+    cantidad: Number(line.cantidad),
+    ...(line.costo_unitario ? { costo_unitario: Number(line.costo_unitario) } : {}),
+    observacion: line.observacion || null,
+  };
+}
+
+function clearConsumoDrafts() {
+  consumoDraftLines.value = [];
+  resetConsumoDraft({
+    preserveWarehouse: !selectedProcedureWarehouseId.value && Boolean(consumoForm.bodega_id),
+  });
+}
+
 function useProcedureSuggestedMaterial(item: any) {
   if (isReadOnlyWorkflow.value) {
     ui.error(readOnlyWorkflowMessage());
@@ -5730,8 +5845,7 @@ function validateProjectHeader(): string | null {
 
 function buildWorkOrderSaveBundlePayload() {
   const { generatedTitle, generatedType } = buildAutoHeaderValues();
-  const consumoWarehouseId = effectiveConsumoWarehouseId.value;
-  const hasCompleteConsumo = !!(consumoWarehouseId && consumoForm.producto_id && consumoForm.cantidad);
+  const consumoLines = collectConsumoLines();
 
   const payload: Record<string, any> = {
     header: {
@@ -5802,16 +5916,8 @@ function buildWorkOrderSaveBundlePayload() {
     payload.tareas_nuevas = newTasks;
   }
 
-  if (hasCompleteConsumo) {
-    payload.consumo_pendiente = {
-      producto_id: consumoForm.producto_id,
-      bodega_id: consumoWarehouseId,
-      cantidad: Number(consumoForm.cantidad),
-      ...(consumoForm.costo_unitario
-        ? { costo_unitario: Number(consumoForm.costo_unitario) }
-        : {}),
-      observacion: consumoForm.observacion || null,
-    };
+  if (consumoLines.length) {
+    payload.consumos_pendientes = consumoLines.map(toConsumoPayload);
   }
 
   return payload;
@@ -7146,9 +7252,8 @@ function resetAllForms() {
   attachmentPreviewUrl.value = null;
 
   resetConsumoDraft({ preserveWarehouse: false, clearOptions: true });
-  materialIssueTarget.value = null;
-  materialIssueForm.cantidad = "";
-  materialIssueForm.condicion_material = "NUEVO";
+  consumoDraftLines.value = [];
+  materialIssueLines.value = [];
   materialIssueForm.observacion = "";
   materialIssueDialog.value = false;
 
@@ -7765,25 +7870,18 @@ async function saveAll() {
       await createAttachment(false);
     }
 
-    const hasCompleteConsumo = !!(effectiveConsumoWarehouseId.value && consumoForm.producto_id && consumoForm.cantidad);
-    const hasConsumoDraft = !!(
-      consumoForm.producto_id ||
-      (consumoForm.bodega_id && !selectedProcedureWarehouseId.value) ||
-      consumoForm.cantidad ||
-      consumoForm.costo_unitario ||
-      consumoForm.observacion
-    );
-    if (hasConsumoDraft && !hasCompleteConsumo) {
+    if (hasIncompleteConsumoForm()) {
       ui.error("Para registrar un consumo debes completar bodega, material y cantidad.");
       return;
     }
+    const pendingConsumoLines = collectConsumoLines();
 
     if (editingId.value) {
       const headerChanged = hasWorkOrderHeaderChanges();
       const hasDraftAttachments = attachmentRows.value.some((row) => row?._isDraft);
       const hasEditedTasks = taskRows.value.some((row) => !row?._isDraft && row?._dirty);
       const hasDraftTasks = taskRows.value.some((row) => row?._isDraft);
-      const hasPendingConsumo = hasCompleteConsumo;
+      const hasPendingConsumo = pendingConsumoLines.length > 0;
       const hasAnyChange =
         headerChanged ||
         hasDraftAttachments ||
@@ -7810,7 +7908,7 @@ async function saveAll() {
         await persistDraftTasks(false, true);
       }
       if (hasPendingConsumo) {
-        await createConsumo({
+        await createConsumos(pendingConsumoLines, {
           refreshAfterSave: false,
           showToast: false,
           throwOnError: true,
@@ -7841,10 +7939,8 @@ async function saveAll() {
       await loadTaskOptionsByPlan(String(headerForm.plan_id));
     }
 
-    if (payload.consumo_pendiente) {
-      resetConsumoDraft({
-        preserveWarehouse: !selectedProcedureWarehouseId.value && Boolean(consumoForm.bodega_id),
-      });
+    if (payload.consumos_pendientes?.length) {
+      clearConsumoDrafts();
     }
     await fetchWorkOrders();
     await loadDetailData();
@@ -8053,53 +8149,52 @@ async function reserveMaterials() {
       "Las reservas de materiales solo se pueden registrar mientras la orden está en Planificación o En proceso.",
     );
   }
+  if (hasIncompleteConsumoForm()) {
+    return ui.error("Completa bodega, material y cantidad de la fila, o límpiala, antes de reservar.");
+  }
+  const lines = collectConsumoLines();
+  if (!lines.length) {
+    return ui.error("Agrega al menos un material con su cantidad para reservar.");
+  }
   if (!editingId.value) {
-    const warehouseId = effectiveConsumoWarehouseId.value;
-    if (!warehouseId || !consumoForm.producto_id || !consumoForm.cantidad) {
-      return ui.error("Bodega, material y cantidad son obligatorios para reservar materiales.");
-    }
     return saveAll();
   }
-  return createConsumo();
+  return createConsumos(lines);
 }
 
-async function createConsumo(options?: {
-  refreshAfterSave?: boolean;
-  showToast?: boolean;
-  throwOnError?: boolean;
-}) {
+async function createConsumos(
+  lines: any[],
+  options?: {
+    refreshAfterSave?: boolean;
+    showToast?: boolean;
+    throwOnError?: boolean;
+  },
+) {
   if (!canCreateConsumo.value) {
     return ui.error(
       "Las reservas de materiales solo se pueden registrar mientras la orden está en Planificación o En proceso.",
     );
   }
   if (!editingId.value) return ui.error("Guarda primero la cabecera de la OT para registrar consumos.");
-  const warehouseId = effectiveConsumoWarehouseId.value;
-  if (!warehouseId || !consumoForm.producto_id || !consumoForm.cantidad) {
-    return ui.error("Bodega, material y cantidad son obligatorios.");
-  }
+  if (!lines.length) return;
   const refreshAfterSave = options?.refreshAfterSave ?? true;
   const showToast = options?.showToast ?? true;
   const throwOnError = options?.throwOnError ?? false;
 
-  const payload = {
-    producto_id: consumoForm.producto_id,
-    bodega_id: warehouseId,
-    cantidad: Number(consumoForm.cantidad),
-    ...(consumoForm.costo_unitario ? { costo_unitario: Number(consumoForm.costo_unitario) } : {}),
-    observacion: consumoForm.observacion || null,
-  };
-
   try {
-    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos`, payload);
-    resetConsumoDraft({
-      preserveWarehouse: !selectedProcedureWarehouseId.value && Boolean(consumoForm.bodega_id),
+    await api.post(`/kpi_maintenance/work-orders/${editingId.value}/consumos/batch`, {
+      items: lines.map(toConsumoPayload),
     });
+    clearConsumoDrafts();
     if (refreshAfterSave) {
       await loadDetailData();
     }
     if (showToast) {
-      ui.success("Consumo registrado.");
+      ui.success(
+        lines.length === 1
+          ? "Material reservado."
+          : `${lines.length} materiales reservados.`,
+      );
     }
   } catch (e: any) {
     const errorMessage =
@@ -8160,7 +8255,21 @@ async function removeOrReduceConsumo(item: any) {
   }
 }
 
-function openMaterialIssueDialog(item: any) {
+function issueLineRequiresCondition(line: any) {
+  return targetManagesUsedStock(line) && !usesCriticalStockFallback(line);
+}
+
+function issueLineStockHint(line: any) {
+  if (usesCriticalStockFallback(line)) {
+    return `Stock crítico disponible: ${formatDecimalValue(toPositiveNumber(line?.stock_critico))}`;
+  }
+  if (targetManagesUsedStock(line)) {
+    return `Disponible: nuevo ${formatDecimalValue(toPositiveNumber(line?.stock_nuevo))} · usado ${formatDecimalValue(toPositiveNumber(line?.stock_usado))}`;
+  }
+  return `Disponible: ${formatDecimalValue(issueConditionAvailable(line, "NUEVO"))}`;
+}
+
+function openMaterialIssueDialog(item?: any) {
   if (!canRegisterRealIssue.value) {
     ui.error(
       hasPendingInProcessSave.value
@@ -8169,22 +8278,28 @@ function openMaterialIssueDialog(item: any) {
     );
     return;
   }
-  materialIssueTarget.value = item;
-  materialIssueForm.cantidad = "";
-  materialIssueForm.condicion_material = usesCriticalStockFallback(item)
-    ? "CRITICO"
-    : targetManagesUsedStock(item)
-      ? ""
-      : "NUEVO";
+  const rows = item ? [item] : pendingMaterialReservationRows.value;
+  if (!rows.length) {
+    ui.error("No hay materiales con reserva pendiente para registrar la salida.");
+    return;
+  }
+  materialIssueLines.value = rows.map((row: any) => ({
+    ...row,
+    key: String(row?.id || `${row?.bodega_id}|${row?.producto_id}`),
+    cantidad: "",
+    condicion_material: usesCriticalStockFallback(row)
+      ? "CRITICO"
+      : targetManagesUsedStock(row)
+        ? ""
+        : "NUEVO",
+  }));
   materialIssueForm.observacion = "";
   materialIssueDialog.value = true;
 }
 
 function closeMaterialIssueDialog() {
   materialIssueDialog.value = false;
-  materialIssueTarget.value = null;
-  materialIssueForm.cantidad = "";
-  materialIssueForm.condicion_material = "NUEVO";
+  materialIssueLines.value = [];
   materialIssueForm.observacion = "";
 }
 
@@ -8233,47 +8348,55 @@ async function submitMaterialIssue() {
   if (!editingId.value) {
     return ui.error("Guarda primero la cabecera de la OT para registrar salida de materiales.");
   }
-  const target = materialIssueTarget.value;
-  if (!target?.producto_id || !target?.bodega_id) {
-    return ui.error("No se encontró el consumo reservado seleccionado.");
+  const filledLines = materialIssueLines.value.filter(
+    (line: any) => String(line?.cantidad ?? "").trim() !== "",
+  );
+  if (!filledLines.length) {
+    return ui.error("Indica la cantidad de salida de al menos un material.");
   }
 
-  const quantity = Number(materialIssueForm.cantidad || 0);
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return ui.error("La cantidad de salida debe ser mayor a 0.");
-  }
-
-  const pending = toPositiveNumber(target?.cantidad_pendiente);
-  if (quantity > pending) {
-    return ui.error(`La salida real no puede superar lo reservado pendiente (${pending}).`);
-  }
-
-  const criticalFallback = usesCriticalStockFallback(target);
-  const conditionRequired = targetManagesUsedStock(target) && !criticalFallback;
-  const condition = criticalFallback
-    ? "CRITICO"
-    : conditionRequired
-      ? normalizeIssueCondition(materialIssueForm.condicion_material)
-      : "NUEVO";
-  if (conditionRequired && !String(materialIssueForm.condicion_material || "").trim()) {
-    return ui.error("Selecciona si la salida corresponde a material nuevo o usado.");
-  }
-  const conditionAvailable = issueConditionAvailable(target, condition);
-  if (quantity > conditionAvailable) {
-    return ui.error(
-      `Stock ${condition === "USADO" ? "usado" : condition === "CRITICO" ? "crítico" : "nuevo"} insuficiente. Disponible ${conditionAvailable}.`,
-    );
+  const items: Array<Record<string, unknown>> = [];
+  for (const line of filledLines) {
+    const label = line?.producto_label || "el material";
+    if (!line?.producto_id || !line?.bodega_id) {
+      return ui.error(`No se encontró la reserva de ${label}.`);
+    }
+    const quantity = Number(line.cantidad);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return ui.error(`La cantidad de salida de ${label} debe ser mayor a 0.`);
+    }
+    const pending = toPositiveNumber(line?.cantidad_pendiente);
+    if (quantity > pending) {
+      return ui.error(
+        `La salida de ${label} no puede superar lo reservado pendiente (${formatDecimalValue(pending)}).`,
+      );
+    }
+    const criticalFallback = usesCriticalStockFallback(line);
+    const conditionRequired = issueLineRequiresCondition(line);
+    if (conditionRequired && !String(line?.condicion_material || "").trim()) {
+      return ui.error(`Selecciona si la salida de ${label} es material nuevo o usado.`);
+    }
+    const condition = criticalFallback
+      ? "CRITICO"
+      : conditionRequired
+        ? normalizeIssueCondition(line.condicion_material)
+        : "NUEVO";
+    const conditionAvailable = issueConditionAvailable(line, condition);
+    if (quantity > conditionAvailable) {
+      return ui.error(
+        `Stock ${condition === "USADO" ? "usado" : condition === "CRITICO" ? "crítico" : "nuevo"} insuficiente para ${label}. Disponible ${formatDecimalValue(conditionAvailable)}.`,
+      );
+    }
+    items.push({
+      producto_id: line.producto_id,
+      bodega_id: line.bodega_id,
+      cantidad: quantity,
+      condicion_material: condition,
+    });
   }
 
   const payload = {
-    items: [
-      {
-        producto_id: target.producto_id,
-        bodega_id: target.bodega_id,
-        cantidad: quantity,
-        condicion_material: condition,
-      },
-    ],
+    items,
     observacion: materialIssueForm.observacion || null,
   };
 
@@ -8283,7 +8406,11 @@ async function submitMaterialIssue() {
     closingFlow.value = false;
     closeMaterialIssueDialog();
     await loadDetailData();
-    ui.success("Salida de materiales registrada.");
+    ui.success(
+      items.length === 1
+        ? "Salida de materiales registrada."
+        : `Salida de ${items.length} materiales registrada.`,
+    );
   } catch (e: any) {
     ui.error(e?.response?.data?.message || "No se pudo emitir materiales.");
   } finally {
@@ -8690,6 +8817,28 @@ watch(
   border-radius: 12px;
   border: 1px solid var(--surface-border);
   overflow: hidden;
+  background: var(--surface-base);
+}
+
+/* Una tarjeta por material en el diálogo de salida: con varios materiales, el
+   borde separa qué cantidad corresponde a cuál. */
+/* Botones con etiqueta larga o contador: en pantalla angosta parten la
+   etiqueta en dos líneas en vez de empujar un scroll horizontal. */
+.wo-btn-wrap.v-btn {
+  height: auto;
+  min-height: 36px;
+  padding-block: 6px;
+}
+
+.wo-btn-wrap :deep(.v-btn__content) {
+  white-space: normal;
+  text-align: center;
+}
+
+.material-issue-line {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--surface-border);
   background: var(--surface-base);
 }
 
