@@ -2265,7 +2265,9 @@ import {
   type MaterialIssueWorkOrderLike,
 } from "@/app/utils/material-issue-documents";
 import {
-  buildProjectWorkOrderReportPdfBlob,
+  buildProjectWorkOrdersExcelBlob,
+  buildProjectWorkOrdersPdfBlob,
+  projectWorkOrderExcelFileName,
   projectWorkOrderReportFileName,
   type ProjectWorkOrderReportData,
 } from "@/app/utils/project-work-order-documents";
@@ -3820,7 +3822,9 @@ const projectReportData = computed<ProjectWorkOrderReportData>(() => {
       getWorkOrderOperationalDateLabel(currentWorkOrderRecord.value) ||
       formatDateOnly(audit?.created_at, "") ||
       "",
-    statusLabel: workflowLabel(headerForm.status_workflow),
+    statusLabel: isAnnulledWorkOrder(audit)
+      ? "Anulada"
+      : workflowLabel(headerForm.status_workflow),
     plantilla: selectedProcedureLabel.value || "",
     objetivoGeneral: headerForm.proyecto_objetivo_general || "",
     objetivosEspecificos: [...headerForm.proyecto_objetivos_especificos],
@@ -3843,12 +3847,7 @@ const projectReportData = computed<ProjectWorkOrderReportData>(() => {
         fecha: row.fecha ? formatDateOnly(row.fecha, "-") : "",
         observacion: row.observacion,
       })),
-    materiales: issueRows.value.map((row: any) => ({
-      descripcion: String(row?.producto_label || ""),
-      cantidad: Number(row?.cantidad) || 0,
-      unidad: "",
-      marca: String(row?.condicion_material || ""),
-    })),
+    materiales: projectMaterialsFromIssueRows(issueRows.value),
     mostrarCostos: canViewCosts.value,
     createdBy: String(
       audit?.created_by_label || audit?.created_by || "",
@@ -3868,14 +3867,138 @@ function getProjectOptionLabel(options: any[], id: unknown) {
   return String(match?.title || key);
 }
 
-async function openProjectWorkOrderPdfPreview() {
-  const data = projectReportData.value;
+/**
+ * Materiales del informe de proyecto, a partir de las filas de salidas de
+ * bodega. En este formato la columna "Marca" lleva la condicion del material
+ * (nuevo, usado, critico).
+ */
+function projectMaterialsFromIssueRows(rows: any[]) {
+  return rows.map((row: any) => ({
+    descripcion: String(row?.producto_label || ""),
+    cantidad: Number(row?.cantidad) || 0,
+    unidad: "",
+    marca: String(row?.condicion_material || ""),
+  }));
+}
+
+/**
+ * Datos del informe de proyecto de una OT que no esta abierta en el dialogo
+ * (menu de la fila y reporte consolidado), armados con lo que devuelve la API.
+ *
+ * Dice lo mismo que `projectReportData`, que sale del formulario: cualquier
+ * campo que se agregue a uno tiene que agregarse al otro. Las etiquetas de
+ * ubicaciones, bodegas y personal ya vienen resueltas por el backend.
+ */
+function buildProjectReportDataFromRecord(
+  record: any,
+  issues: any[],
+): ProjectWorkOrderReportData {
+  const valorJson = parseValorJson(record?.valor_json);
+  const proyecto: Record<string, any> =
+    valorJson?.proyecto && typeof valorJson.proyecto === "object"
+      ? valorJson.proyecto
+      : {};
+  const siteLabels = (items: unknown) =>
+    (Array.isArray(items) ? items : [])
+      .map((item: any) =>
+        String(item?.label || item?.nombre || item?.id || "").trim(),
+      )
+      .filter(Boolean);
+  const procedureLabel = [record?.procedimiento_codigo, record?.procedimiento_nombre]
+    .filter(Boolean)
+    .join(" - ");
+  return {
+    code: String(record?.code || ""),
+    projectName: String(record?.title || procedureLabel || ""),
+    empresa: String(proyecto.empresa ?? ""),
+    fecha:
+      getWorkOrderOperationalDateLabel(record) ||
+      formatDateOnly(record?.created_at, "") ||
+      "",
+    statusLabel: isAnnulledWorkOrder(record)
+      ? "Anulada"
+      : workflowLabel(record?.status_workflow),
+    plantilla: procedureLabel || "Sin plantilla",
+    objetivoGeneral: String(proyecto.objetivo_general ?? ""),
+    objetivosEspecificos: toStringList(proyecto.objetivos_especificos),
+    metodologia: String(proyecto.metodologia ?? ""),
+    alcance: toStringList(proyecto.alcance),
+    ubicaciones: siteLabels(record?.proyecto_ubicaciones),
+    bodegas: siteLabels(record?.proyecto_bodegas),
+    personal: (Array.isArray(record?.proyecto_personal)
+      ? record.proyecto_personal
+      : []
+    )
+      .filter((row: any) => String(row?.rol || "").trim())
+      .map((row: any) => ({
+        rol: String(row?.rol ?? ""),
+        nombre: String(row?.nombre ?? ""),
+        diasLaborados: Number(row?.dias_laborados) || 0,
+        ubicacion: String(row?.ubicacion_label || row?.ubicacion_texto || ""),
+        valorDia: Number(row?.valor_dia) || 0,
+        fecha: row?.fecha ? formatDateOnly(row.fecha, "-") : "",
+        observacion: String(row?.observacion ?? ""),
+      })),
+    materiales: projectMaterialsFromIssueRows(buildIssueDisplayRows(issues)),
+    mostrarCostos: canViewCosts.value,
+    createdBy: String(record?.created_by_label || record?.created_by || ""),
+    processedBy: String(record?.processed_by_label || record?.updated_by || ""),
+    updatedBy: String(record?.updated_by || ""),
+  };
+}
+
+/** Datos de proyecto de una OT del listado: pide su cabecera y sus salidas. */
+async function fetchProjectExportData(order: any) {
+  const workOrderId = String(order?.id || order?._raw?.id || "").trim();
+  if (!workOrderId) {
+    throw new Error("No se pudo identificar la orden de trabajo a exportar.");
+  }
+  const [headerRes, issues] = await Promise.all([
+    api.get(`/kpi_maintenance/work-orders/${workOrderId}`),
+    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/issue-materials`),
+  ]);
+  const record = {
+    ...(order?._raw ?? order),
+    ...(unwrapData(headerRes.data) ?? {}),
+  };
+  return buildProjectReportDataFromRecord(record, issues);
+}
+
+/**
+ * Una OT de Proyecto se exporta con el formato de proyecto, en PDF y en Excel,
+ * sea una sola (dialogo, fila) o varias (consolidado: un bloque por OT).
+ */
+async function openProjectWorkOrdersPreview(
+  orders: ProjectWorkOrderReportData[],
+  format: "excel" | "pdf",
+  options: { title?: string; subtitle?: string; fileName?: string } = {},
+) {
+  const single = orders.length === 1 ? orders[0] : null;
+  const subtitle = options.subtitle ?? single?.projectName ?? "";
+  if (format === "excel") {
+    await workOrderExcelPreview.open({
+      title: options.title ?? "Previsualización del Excel del proyecto",
+      subtitle,
+      fileName:
+        options.fileName ??
+        (single ? projectWorkOrderExcelFileName(single) : "ot_proyecto.xlsx"),
+      build: () => buildProjectWorkOrdersExcelBlob(orders),
+    });
+    return;
+  }
   await workOrderPdfPreview.open({
-    title: "Previsualización del proyecto",
-    subtitle: data.projectName,
-    fileName: projectWorkOrderReportFileName(data),
-    build: () => buildProjectWorkOrderReportPdfBlob(data),
+    title: options.title ?? "Previsualización del proyecto",
+    subtitle,
+    fileName:
+      options.fileName ??
+      (single ? projectWorkOrderReportFileName(single) : "ot_proyecto.pdf"),
+    build: () => buildProjectWorkOrdersPdfBlob(orders),
   });
+}
+
+/** Si la OT (o la pantalla) es de Proyecto, sus documentos usan ese formato. */
+function usesProjectFormat(record?: any) {
+  return isProjectMode.value || isProjectWorkOrderRecord(record);
 }
 
 async function openWorkOrderPdfPreview(report: ReportDefinition) {
@@ -3896,10 +4019,10 @@ async function exportWorkOrder(format: "excel" | "pdf") {
   exportState[key] = true;
   error.value = null;
   try {
-    if (format === "excel") {
+    if (isProjectMode.value) {
+      await openProjectWorkOrdersPreview([projectReportData.value], format);
+    } else if (format === "excel") {
       await openWorkOrderExcelPreview(workOrderReportDefinition.value);
-    } else if (isProjectMode.value) {
-      await openProjectWorkOrderPdfPreview();
     } else {
       await openWorkOrderPdfPreview(workOrderReportDefinition.value);
     }
@@ -4665,24 +4788,29 @@ const shortfallDialogRows = computed(() => {
   return workOrderMaterialShortfallRows.value;
 });
 
-const issueRows = computed(() => localIssues.value.flatMap((issue: any) => {
-  const rawItems = Array.isArray(issue?.items) ? issue.items : [];
-  return rawItems.map((detail: any, index: number) => ({
-    id: `${issue?.id || issue?.entrega_id || 'issue'}-${detail?.id || index}`,
-    entrega_code: issue?.code || issue?.codigo || "Sin código",
-    fecha_label: issue?.fecha ? formatDateTime(issue.fecha, "-") : "-",
-    producto_label: resolveProductLabel(
-      detail?.producto_id,
-      detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
-    ),
-    bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
-    condicion_material: normalizeIssueCondition(detail?.condicion_material),
-    cantidad: toPositiveNumber(detail?.cantidad),
-    costo_unitario: toPositiveNumber(detail?.costo_unitario),
-    subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
-    observacion: issue?.observacion || "-",
-  }));
-}));
+/** Una fila por material entregado, con las etiquetas ya resueltas. */
+function buildIssueDisplayRows(issues: any[]) {
+  return issues.flatMap((issue: any) => {
+    const rawItems = Array.isArray(issue?.items) ? issue.items : [];
+    return rawItems.map((detail: any, index: number) => ({
+      id: `${issue?.id || issue?.entrega_id || 'issue'}-${detail?.id || index}`,
+      entrega_code: issue?.code || issue?.codigo || "Sin código",
+      fecha_label: issue?.fecha ? formatDateTime(issue.fecha, "-") : "-",
+      producto_label: resolveProductLabel(
+        detail?.producto_id,
+        detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
+      ),
+      bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
+      condicion_material: normalizeIssueCondition(detail?.condicion_material),
+      cantidad: toPositiveNumber(detail?.cantidad),
+      costo_unitario: toPositiveNumber(detail?.costo_unitario),
+      subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
+      observacion: issue?.observacion || "-",
+    }));
+  });
+}
+
+const issueRows = computed(() => buildIssueDisplayRows(localIssues.value));
 
 const scrapRows = computed(() => localScraps.value.flatMap((scrap: any) => {
   const rawItems = Array.isArray(scrap?.items) ? scrap.items : [];
@@ -6977,6 +7105,11 @@ async function exportWorkOrderRow(item: any, format: "excel" | "pdf") {
   error.value = null;
   try {
     await ensureCatalogsLoaded();
+    if (usesProjectFormat(item?._raw ?? item)) {
+      const data = await fetchProjectExportData(item);
+      await openProjectWorkOrdersPreview([data], format);
+      return;
+    }
     const bundle = await fetchWorkOrderExportBundle(item);
     const report = buildSingleWorkOrderReportFromBundle(bundle);
     if (format === "excel") {
@@ -7030,6 +7163,22 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
 
   try {
     await ensureCatalogsLoaded();
+    if (isProjectMode.value) {
+      // En OT Proyecto cada orden va con el formato de proyecto, un bloque por
+      // orden: una seccion en el PDF y una hoja en el Excel.
+      const projectOrders = await Promise.all(
+        visibleRows.map((row: any) => fetchProjectExportData(row)),
+      );
+      const rangeLabel = getAppliedDateRangeLabel();
+      await openProjectWorkOrdersPreview(projectOrders, format, {
+        title: "Informe consolidado de OT Proyecto",
+        subtitle: rangeLabel
+          ? `Órdenes vigentes según filtros aplicados (excluye anuladas). Rango: ${rangeLabel}`
+          : "Órdenes vigentes en el módulo al momento de la exportación (excluye anuladas).",
+        fileName: `ot_proyecto_${currentDateInputValue()}`,
+      });
+      return;
+    }
     // Cada orden se exporta como un bloque independiente: una sección en el PDF
     // y una pestaña propia en el Excel.
     const orders: WorkOrdersListingOrder[] = [];
