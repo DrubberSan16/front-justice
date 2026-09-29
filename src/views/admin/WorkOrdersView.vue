@@ -439,6 +439,26 @@
               persistent-hint
             />
           </v-col>
+          <!--
+            El proyecto al que pertenece la OT: un equipo de tipo Proyectos de
+            las ubicaciones elegidas. Se elige al crear y luego queda fijo, como
+            el equipo de una OT normal.
+          -->
+          <v-col v-if="isProjectMode" cols="12" md="6">
+            <v-autocomplete
+              v-model="headerForm.equipment_id"
+              :items="projectEquipmentOptions"
+              item-title="title"
+              item-value="value"
+              label="Proyecto"
+              variant="outlined"
+              :loading="loadingProjectEquipment"
+              :disabled="isReadOnlyWorkflow || isEditingLockedFields || !headerForm.proyecto_ubicacion_ids.length"
+              :hint="projectEquipmentHint"
+              persistent-hint
+              no-data-text="No hay proyectos en las ubicaciones elegidas"
+            />
+          </v-col>
           <v-col v-if="isProjectMode" cols="12" md="6">
             <v-autocomplete
               v-model="headerForm.proyecto_bodega_ids"
@@ -2369,6 +2389,9 @@ const locationCatalogRows = ref<any[]>([]);
 const equipmentOptions = ref<any[]>([]);
 const equipmentCatalogRows = ref<any[]>([]);
 const loadingEquipmentCatalog = ref(false);
+/** Proyectos registrados (equipos de tipo Proyectos), para la OT de Proyecto. */
+const projectEquipmentRows = ref<any[]>([]);
+const loadingProjectEquipment = ref(false);
 const equipmentComponentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
@@ -3437,6 +3460,16 @@ const workOrderPreviewMainInfo = computed(() => {
     return [
       { label: "Código", value: headerForm.code },
       { label: "Proyecto", value: headerForm.title },
+      // Las OT guardadas antes de asociar un proyecto no lo tienen: no se
+      // enseña una fila vacia.
+      ...(selectedProjectEquipmentLabel.value
+        ? [
+            {
+              label: "Proyecto registrado",
+              value: selectedProjectEquipmentLabel.value,
+            },
+          ]
+        : []),
       { label: "Empresa", value: headerForm.proyecto_empresa },
       { label: "Descripción", value: headerForm.description },
       { label: "Lugar de ejecución", value: projectPreviewSitesLabel.value },
@@ -4779,6 +4812,82 @@ async function loadEquipmentCatalog() {
   }
 }
 
+/**
+ * Proyectos registrados en su modulo, para asociar uno a la OT de Proyecto.
+ *
+ * Se piden aparte del catalogo de equipos porque el grupo lo resuelve el
+ * backend por el nombre del tipo, y sin cache: un proyecto recien registrado
+ * tiene que aparecer al abrir la OT.
+ */
+async function loadProjectEquipment() {
+  if (!isProjectMode.value) return;
+  loadingProjectEquipment.value = true;
+  try {
+    projectEquipmentRows.value = await listAllPages("/kpi_maintenance/equipos", {
+      grupo: "PROYECTOS",
+    });
+  } catch (requestError: any) {
+    projectEquipmentRows.value = [];
+    ui.error(
+      requestError?.response?.data?.message ||
+        "No se pudieron cargar los proyectos registrados.",
+    );
+  } finally {
+    loadingProjectEquipment.value = false;
+  }
+}
+
+/** Los proyectos que se pueden elegir son los de las ubicaciones de la OT. */
+const projectEquipmentByLocation = computed(() => {
+  const locationIds = new Set(
+    headerForm.proyecto_ubicacion_ids.map((id: string) => String(id)),
+  );
+  return projectEquipmentRows.value.filter((row: any) =>
+    locationIds.has(String(row?.location_id || "")),
+  );
+});
+
+const projectEquipmentOptions = computed(() => {
+  const options = projectEquipmentByLocation.value.map((row: any) => ({
+    value: row.id,
+    title: buildEquipmentDisplayTitle(row),
+  }));
+  // Una OT guardada conserva su proyecto aunque despues cambien sus ubicaciones.
+  const current = String(headerForm.equipment_id || "").trim();
+  if (current && !options.some((option) => String(option.value) === current)) {
+    options.push({
+      value: current,
+      title: equipmentLabelById.value.get(current) || current,
+    });
+  }
+  return options;
+});
+
+const projectEquipmentHint = computed(() => {
+  if (editingId.value) {
+    return headerForm.equipment_id
+      ? "El proyecto se elige al crear la OT y queda fijo."
+      : "Esta OT se creó sin proyecto asociado.";
+  }
+  if (!headerForm.proyecto_ubicacion_ids.length) {
+    return "Obligatorio. Selecciona primero la ubicación donde se ejecuta.";
+  }
+  if (!projectEquipmentByLocation.value.length) {
+    return "No hay proyectos registrados en las ubicaciones elegidas. Regístralos en Configuración > Proyectos.";
+  }
+  return "Obligatorio. Proyectos registrados en las ubicaciones elegidas.";
+});
+
+const selectedProjectEquipmentLabel = computed(() => {
+  const current = String(headerForm.equipment_id || "").trim();
+  if (!current) return "";
+  return (
+    projectEquipmentOptions.value.find(
+      (option) => String(option.value) === current,
+    )?.title || ""
+  );
+});
+
 async function ensureEquipmentCatalogLoaded(force = false) {
   if (equipmentOptions.value.length && !force) return;
   if (equipmentCatalogPromise && !force) {
@@ -5824,6 +5933,10 @@ function validateProjectHeader(): string | null {
   ) {
     return "Debes indicar al menos una ubicación o una bodega donde se ejecuta el proyecto.";
   }
+  // Una OT guardada antes de esta regla se sigue editando sin proyecto.
+  if (!editingId.value && !String(headerForm.equipment_id || "").trim()) {
+    return "Debes seleccionar el proyecto al que pertenece la OT. Elige primero la ubicación donde se ejecuta.";
+  }
   if (!String(headerForm.proyecto_objetivo_general || "").trim()) {
     return "Objetivo general es obligatorio.";
   }
@@ -6181,6 +6294,9 @@ const resolvedHorometroAnterior = computed(() => {
 });
 
 const resolvedHorometroActual = computed(() => {
+  // La OT de Proyecto lleva un proyecto, no una maquina: no hay lectura que
+  // registrar, ni siquiera la del proyecto asociado.
+  if (isProjectMode.value) return null;
   const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
   if (persistedSnapshot != null) return Math.round(persistedSnapshot);
   const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
@@ -6262,9 +6378,10 @@ function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
   const persistedHorometer = options?.preserveCurrent
     ? parseNullableNumber(headerForm.horometro_actual)
     : null;
-  const equipmentHorometer = parseNullableNumber(
-    selectedEquipmentRecord.value?.horometro_actual,
-  );
+  // El proyecto asociado a una OT de Proyecto no aporta horometro.
+  const equipmentHorometer = isProjectMode.value
+    ? null
+    : parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
   headerForm.horometro_actual = formatHorometerForInput(
     persistedHorometer ?? equipmentHorometer,
   );
@@ -7288,6 +7405,7 @@ async function openCreate() {
   await ensureCatalogsLoaded();
   if (isProjectMode.value) {
     headerForm.maintenance_kind = PROJECT_MAINTENANCE_KIND;
+    await loadProjectEquipment();
   } else if (isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
@@ -7375,7 +7493,11 @@ async function openEdit(item: any) {
     : [];
   dialog.value = true;
   await ensureCatalogsLoaded();
-  await loadEquipmentComponents(String(headerForm.equipment_id || ""));
+  if (isProjectMode.value) {
+    await loadProjectEquipment();
+  } else {
+    await loadEquipmentComponents(String(headerForm.equipment_id || ""));
+  }
   syncWorkOrderHorometerFields({ preserveCurrent: true });
   await loadDetailData();
   if (!isReadOnlyWorkflow.value) {
@@ -8639,6 +8761,9 @@ watch(
     const nextEquipmentId = String(equipmentId || "");
     const previous = String(previousEquipmentId || "");
     if (nextEquipmentId === previous) return;
+    // La OT de Proyecto asocia un proyecto, no una maquina: no hay partes que
+    // cargar ni horometro que copiar.
+    if (isProjectMode.value) return;
     await loadEquipmentComponents(nextEquipmentId);
     if (editingId.value) return;
     const validComponentIds = new Set(
@@ -8662,6 +8787,22 @@ watch(
       headerForm.horometro_actual = toEditableNumber(selectedEquipmentRecord.value?.horometro_actual);
     }
     syncWorkOrderHorometerFields({ preserveCurrent: true });
+  },
+);
+
+// El proyecto se elige entre los de las ubicaciones de la OT: si al crearla se
+// quita la ubicacion del proyecto ya elegido, la seleccion deja de valer. Una OT
+// guardada conserva el suyo, que queda fijo.
+watch(
+  () => [...headerForm.proyecto_ubicacion_ids],
+  () => {
+    if (!isProjectMode.value || editingId.value) return;
+    const current = String(headerForm.equipment_id || "").trim();
+    if (!current) return;
+    const stillAvailable = projectEquipmentByLocation.value.some(
+      (row: any) => String(row?.id || "") === current,
+    );
+    if (!stillAvailable) headerForm.equipment_id = "";
   },
 );
 
