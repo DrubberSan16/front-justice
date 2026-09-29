@@ -697,7 +697,7 @@ function defaultJsonValue(field: EnhancedMaintenanceField) {
 }
 
 function getAutoCodeEndpoint() {
-  if (moduleConfig.value?.key === "equipos") {
+  if (moduleConfig.value?.key === "equipos" || isGenerationUnitsModule.value) {
     return "/kpi_maintenance/equipos/next-code";
   }
   if (isProjectsModule.value) {

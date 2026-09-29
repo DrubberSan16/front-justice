@@ -386,7 +386,9 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
     return replaceFields(config, buildProjectFields(config.fields));
   }
 
-  if (["equipos", "componentes-equipo", "tipo-equipo", "locations", "planes"].includes(key)) {
+  // Unidades de generacion es Equipos con otro grupo: el codigo lo asigna el
+  // sistema igual que en Equipos (serie EQ) y no se teclea.
+  if (["equipos", "unidades-generacion", "componentes-equipo", "tipo-equipo", "locations", "planes"].includes(key)) {
     return replaceFields(
       config,
       cloneFields(config.fields).map((field) =>
