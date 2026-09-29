@@ -1,6 +1,7 @@
 <template>
   <v-app>
     <AppSnackbar />
+    <AppUpdateNotice />
     <div v-show="ui.globalLoading" class="app-global-loader">
       <v-progress-linear indeterminate color="primary" height="4" />
     </div>
@@ -21,6 +22,7 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
 
 import AppSnackbar from "@/components/ui/AppSnackbar.vue";
+import AppUpdateNotice from "@/components/ui/AppUpdateNotice.vue";
 import AppBootLoader from "@/components/loading/AppBootLoader.vue";
 import AuthLayout from "@/layouts/AuthLayout.vue";
 import AppLayout from "@/layouts/AppLayout.vue";
