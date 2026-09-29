@@ -31,23 +31,37 @@ import { computed, ref } from "vue";
 import { useMenuStore } from "@/app/stores/menu.store";
 import type { MenuNode } from "@/app/types/menu.types";
 import SidebarMenuItem from "@/components/menu/SidebarMenuItem.vue";
+import { withReportingSubmenu } from "@/app/utils/reporting-menu";
 
 defineProps<{ collapsed?: boolean }>();
 const menu = useMenuStore();
 const search = ref("");
 
+/** Un rotulo de grupo sin ninguna opcion debajo no dice nada: se descarta. */
+function dropEmptyHeaders(nodes: MenuNode[]): MenuNode[] {
+  return nodes.filter((node, index) => {
+    if (!node.header) return true;
+    const next = nodes[index + 1];
+    return Boolean(next) && !next?.header;
+  });
+}
+
 function filterNodes(nodes: MenuNode[], term: string): MenuNode[] {
-  return nodes.flatMap((node) => {
+  const kept = nodes.flatMap((node) => {
     const children = filterNodes(node.children ?? [], term);
     const haystack = `${node.nombre || ""} ${node.descripcion || ""}`.toLocaleLowerCase("es");
     if (haystack.includes(term) || children.length) return [{ ...node, children }];
     return [];
   });
+  return dropEmptyHeaders(kept);
 }
+
+// Los informes de Reporteria cuelgan de su opcion como cualquier otro submenu.
+const fullTree = computed(() => withReportingSubmenu(menu.tree));
 
 const filteredTree = computed(() => {
   const term = search.value.trim().toLocaleLowerCase("es");
-  return term ? filterNodes(menu.tree, term) : menu.tree;
+  return term ? filterNodes(fullTree.value, term) : fullTree.value;
 });
 </script>
 

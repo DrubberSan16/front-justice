@@ -35,15 +35,14 @@
       </header>
 
       <div v-if="!rail || isMobile" class="app-drawer__context">
-        <v-icon :icon="isReportsMode ? 'mdi-chart-box-multiple-outline' : 'mdi-office-building-cog-outline'" size="18" />
+        <v-icon icon="mdi-office-building-cog-outline" size="18" />
         <div>
-          <span>{{ isReportsMode ? "Análisis de la operación" : "Panel empresarial" }}</span>
-          <strong>{{ isReportsMode ? "Menú de reportería" : pageTitle }}</strong>
+          <span>Panel empresarial</span>
+          <strong>{{ pageTitle }}</strong>
         </div>
       </div>
 
-      <ReportsSidebarMenu v-if="isReportsMode" :collapsed="rail && !isMobile" />
-      <SidebarMenu v-else :collapsed="rail && !isMobile" />
+      <SidebarMenu :collapsed="rail && !isMobile" />
 
       <template #append>
         <div class="app-account" :class="{ 'app-account--compact': rail && !isMobile }">
@@ -109,7 +108,6 @@ import { useMenuStore } from "@/app/stores/menu.store";
 import compactLogo from "@/assets/logo-justice.png";
 import companyLogo from "@/assets/logo-emp.png";
 import SidebarMenu from "@/components/menu/SidebarMenu.vue";
-import ReportsSidebarMenu from "@/components/menu/ReportsSidebarMenu.vue";
 import NotificationBell from "@/components/ui/NotificationBell.vue";
 import ThemeToggle from "@/components/ui/ThemeToggle.vue";
 import { useNotificationsStore } from "@/app/stores/notifications.store";
@@ -123,7 +121,6 @@ const notifications = useNotificationsStore();
 const { mdAndDown } = useDisplay();
 
 const isMobile = computed(() => mdAndDown.value);
-const isReportsMode = computed(() => route.name === "reporteria");
 const pageTitle = computed(() => String(route.meta.title ?? "Panel principal"));
 const userDisplay = computed(() => auth.user?.nameSurname || auth.user?.email || "Sesión activa");
 const userEmail = computed(() => auth.user?.email || "Sin correo registrado");

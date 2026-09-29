@@ -12,9 +12,10 @@ export type MenuPermissions = {
 /**
  * Nodo del menu. Casi siempre viene de `kpi_security.tb_menu`, pero el arbol
  * admite ademas nodos "virtuales" que no estan en la base: se calculan en el
- * cliente a partir de un catalogo (por ejemplo, un hijo por tipo de equipo).
- * Esos llevan `routeLocation` porque no navegan por `urlComponent`, sino a una
- * ruta con parametros; y `virtual` para distinguirlos al pintarlos.
+ * cliente a partir de un catalogo (por ejemplo, un hijo por informe de
+ * Reporteria). Esos llevan `routeLocation` porque no navegan por
+ * `urlComponent`, sino a una ruta con parametros; y `virtual` para distinguirlos
+ * al pintarlos.
  */
 export type MenuNode = {
   id: string;
@@ -29,4 +30,18 @@ export type MenuNode = {
   children: MenuNode[];
   virtual?: boolean;
   routeLocation?: RouteLocationRaw;
+  /** Rotulo de agrupacion dentro de un submenu: se pinta, no navega ni se abre. */
+  header?: boolean;
+  /**
+   * Parametros de la URL actual que se conservan al navegar a este nodo. Un
+   * informe de Reporteria mantiene el rango de fechas aplicado al cambiar de
+   * informe.
+   */
+  preserveQuery?: string[];
+  /**
+   * Parametros de `routeLocation` que se dan por cumplidos cuando la URL no los
+   * trae: al entrar a Reporteria sin `?modulo=` se muestra el primer informe, y
+   * el menu tiene que resaltarlo.
+   */
+  defaultWhenMissing?: string[];
 };
