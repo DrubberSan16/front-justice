@@ -119,8 +119,33 @@ export const useMenuStore = defineStore("menu", {
               normalizeText(node.urlComponent) === normalizeText(componentName) ||
               hasComponent(node.children ?? [], componentName),
           );
+        // Una opcion que el cliente agrega por su cuenta va dentro de Informes
+        // cuando el usuario tiene esa seccion; sin ella, queda en la raiz.
+        const findSectionByName = (nodes: MenuNode[], name: string): MenuNode | null => {
+          for (const node of nodes) {
+            if (normalizeText(node.nombre) === name) return node;
+            const nested = findSectionByName(node.children ?? [], name);
+            if (nested) return nested;
+          }
+          return null;
+        };
+        const addUnderInformes = (node: MenuNode, positionInsideInformes?: string) => {
+          const informes = findSectionByName(visibleTree, "INFORMES");
+          if (informes) {
+            informes.children = [
+              ...(informes.children ?? []),
+              {
+                ...node,
+                parentId: informes.id,
+                menuPosition: positionInsideInformes ?? node.menuPosition,
+              },
+            ];
+            return;
+          }
+          visibleTree.push(node);
+        };
         if (canUseReports && !hasComponent(visibleTree, "reporteria")) {
-          visibleTree.push({
+          addUnderInformes({
             id: "system-reporteria",
             parentId: null,
             nombre: "Reportería",
@@ -175,18 +200,24 @@ export const useMenuStore = defineStore("menu", {
           if (administration) {
             administration.children = [...(administration.children ?? []), reportNode];
           } else {
-            visibleTree.push({
-              id: administrationId,
-              parentId: null,
-              nombre: "Administración",
-              descripcion: "Opciones administrativas",
-              icon: "mdi-shield-crown-outline",
-              urlComponent: "",
-              menuPosition: "90",
-              status: "ACTIVE",
-              permissions: fullPermissions,
-              children: [reportNode],
-            });
+            // Administracion vive dentro de Informes: sin ella, la que se agrega
+            // aqui tambien.
+            addUnderInformes(
+              {
+                id: administrationId,
+                parentId: null,
+                nombre: "Administración",
+                descripcion: "Opciones administrativas",
+                icon: "mdi-shield-crown-outline",
+                urlComponent: "",
+                menuPosition: "90",
+                status: "ACTIVE",
+                permissions: fullPermissions,
+                children: [reportNode],
+              },
+              // Dentro de Informes va antes de Reporteria, que se despliega al final.
+              "3",
+            );
           }
         }
         this.tree = sortTree(visibleTree);
