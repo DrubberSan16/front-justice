@@ -458,6 +458,31 @@
               persistent-hint
               no-data-text="No hay proyectos en las ubicaciones elegidas"
             />
+            <!--
+              Sin proyectos en las ubicaciones elegidas no se puede crear la OT:
+              se registra en su modulo, en otra pestana para no perder lo que ya
+              se escribio aqui, y se vuelve a pedir la lista.
+            -->
+            <div v-if="showProjectRegisterHelp" class="project-register-help">
+              <v-btn
+                v-if="canOpenProjectsModule"
+                size="small"
+                variant="text"
+                prepend-icon="mdi-open-in-new"
+                @click="openProjectsModule"
+              >
+                Registrar proyecto
+              </v-btn>
+              <v-btn
+                size="small"
+                variant="text"
+                prepend-icon="mdi-refresh"
+                :loading="loadingProjectEquipment"
+                @click="loadProjectEquipment"
+              >
+                Actualizar lista
+              </v-btn>
+            </div>
           </v-col>
           <v-col v-if="isProjectMode" cols="12" md="6">
             <v-autocomplete
@@ -2224,6 +2249,7 @@ import {
   formatNumberForDisplay,
 } from "@/app/utils/number-format";
 import { useDisplay } from "vuetify";
+import { useRouter } from "vue-router";
 import { api } from "@/app/http/api";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -2330,6 +2356,7 @@ const workOrderExcelPreview = useExcelPreview({
   title: "Previsualización del Excel de la orden",
 });
 const { smAndDown } = useDisplay();
+const router = useRouter();
 const auth = useAuthStore();
 const menuStore = useMenuStore();
 const loading = ref(false);
@@ -5005,6 +5032,28 @@ const projectEquipmentHint = computed(() => {
   }
   return "Obligatorio. Proyectos registrados en las ubicaciones elegidas.";
 });
+
+/**
+ * Al crear una OT de Proyecto, con ubicaciones elegidas y ningun proyecto
+ * registrado en ellas, hay que poder ir a registrarlo sin salir del formulario.
+ */
+const showProjectRegisterHelp = computed(
+  () =>
+    isProjectMode.value &&
+    !editingId.value &&
+    !isReadOnlyWorkflow.value &&
+    headerForm.proyecto_ubicacion_ids.length > 0 &&
+    !projectEquipmentByLocation.value.length &&
+    !loadingProjectEquipment.value,
+);
+
+const canOpenProjectsModule = computed(
+  () => getPermissionsForAnyComponent(menuStore.tree, ["proyectos", "Proyectos"]).isReaded,
+);
+
+function openProjectsModule() {
+  window.open(router.resolve({ name: "proyectos" }).href, "_blank", "noopener");
+}
 
 const selectedProjectEquipmentLabel = computed(() => {
   const current = String(headerForm.equipment_id || "").trim();
@@ -9130,6 +9179,14 @@ watch(
   border-radius: 12px;
   border: 1px solid var(--surface-border);
   background: var(--surface-base);
+}
+
+/* Accesos bajo el selector de proyecto cuando no hay ninguno que elegir. */
+.project-register-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
 }
 
 .work-orders-list-table :deep(.v-table__wrapper) {
