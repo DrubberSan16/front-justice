@@ -159,7 +159,7 @@ function onGroupClick(event: Event, toggleHandler: unknown, isOpen: boolean) {
    solo un escalon corto de sangria. Vuetify suma por nivel el ancho del icono
    (40 px) mas 16 px: en el tercer nivel eran 120 px de relleno y al titulo le
    quedaban 99 px, asi que "Transferencia Bodega" se partia en dos lineas. */
-.sidebar-group .sidebar-group { --list-indent-size: 2px; --prepend-width: 10px; }
+.sidebar-group .sidebar-group { --list-indent-size: 0px; --prepend-width: 6px; }
 /* Rotulo de grupo dentro de un submenu (Mantenimiento / Inventario en Reporteria). */
 .sidebar-subheader { min-height: 30px; padding-inline: 12px; color: var(--nav-muted); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
 /* Los hijos calculados (informes de Reporteria) y los de tercer nivel pesan
@@ -183,17 +183,25 @@ function onGroupClick(event: Event, toggleHandler: unknown, isOpen: boolean) {
   padding-block: 3px;
 }
 
-/* El icono repetido en cada entrada se comia ancho justo donde falta; un punto
-   marca la jerarquia igual de bien y devuelve esos pixeles al nombre. */
+/* Cada entrada conserva su icono, en el mismo recuadro que el resto del menu:
+   solo un poco mas pequeno (28 px en vez de 32) para no quitarle ancho al
+   nombre. Antes el recuadro bajaba a 16 px y el icono, de 19, se salia de el:
+   sin fondo y pisando el texto, se perdia. */
 .sidebar-item--virtual .sidebar-item__icon,
 .sidebar-item--deep .sidebar-item__icon {
-  width: 16px;
-  height: 16px;
-  background: none;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
 }
+.sidebar-item--virtual .sidebar-item__icon :deep(.v-icon),
+.sidebar-item--deep .sidebar-item__icon :deep(.v-icon) { width: 18px; height: 18px; font-size: 18px; }
+/* El hueco entre icono y nombre vive dentro del mismo contenedor que el icono
+   (Vuetify lo pinta como `.v-list-item__spacer`): el contenedor mide icono mas
+   hueco, o el icono se encoge para hacerle sitio. */
 .sidebar-item--virtual :deep(.v-list-item__prepend),
-.sidebar-item--deep :deep(.v-list-item__prepend) { width: 22px; min-width: 22px; }
+.sidebar-item--deep :deep(.v-list-item__prepend) { width: 36px; min-width: 36px; }
 .sidebar-item--virtual :deep(.v-list-item__spacer),
-.sidebar-item--deep :deep(.v-list-item__spacer) { width: 6px; }
+.sidebar-item--deep :deep(.v-list-item__spacer) { flex: none; width: 8px; }
 @media (prefers-reduced-motion: reduce) { .sidebar-item { transition: none; } }
 </style>
