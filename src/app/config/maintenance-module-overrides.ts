@@ -10,7 +10,45 @@ export type EnhancedMaintenanceField = MaintenanceField & {
    * oculto por aqui tampoco se valida como obligatorio.
    */
   visibleWhen?: (form: Record<string, any>) => boolean;
+  /**
+   * Valor con el que arranca un alta nueva en un campo de opciones fijas
+   * (`options`). Un alta nueva lo pone; editar un registro no lo toca, para no
+   * escribir por encima de lo que ya tenia guardado.
+   */
+  defaultValue?: string;
+  /**
+   * Lo mismo para un campo que sale de un catalogo (`relation`). Se resuelve
+   * contra el NOMBRE de la opcion ya cargada, nunca contra un id: los ids
+   * cambian de una base a otra y el catalogo se edita desde su propia pantalla.
+   * Recibe el titulo normalizado (mayusculas, sin tildes ni espacios sobrantes).
+   */
+  defaultMatch?: (normalizedTitle: string) => boolean;
 };
+
+/** Mayusculas, sin tildes y con los espacios colapsados: para comparar nombres. */
+export function normalizeOptionTitle(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * Valor de la opcion que corresponde al `defaultMatch` del campo, o `null` si
+ * el catalogo no tiene ninguna que lo cumpla.
+ */
+export function pickDefaultOptionValue(
+  field: Pick<EnhancedMaintenanceField, "defaultMatch">,
+  options: Array<{ value: any; title: string }>,
+): string | null {
+  if (!field.defaultMatch) return null;
+  const match = options.find((option) =>
+    field.defaultMatch!(normalizeOptionTitle(option.title)),
+  );
+  return match ? String(match.value) : null;
+}
 
 /** Normaliza un tipo de proceso de plantilla (`PROCEDIMIENTO DE TRABAJO` -> `PROCEDIMIENTO_DE_TRABAJO`). */
 function normalizeTipoProceso(value: unknown): string {
@@ -44,6 +82,57 @@ function replaceFields(
     ...config,
     fields,
   };
+}
+
+/**
+ * Como arranca cada campo de Proyectos. Tipo, marca, criticidad y estados
+ * quedan bloqueados con su valor de proyecto; la ubicacion arranca puesta pero
+ * se puede cambiar, porque un proyecto se ejecuta donde corresponda.
+ *
+ * El tipo se reconoce con la misma regla con que el listado separa los
+ * proyectos del resto de equipos (el nombre contiene PROYECTO), no por un id.
+ */
+const PROJECT_FIELD_POLICY: Record<
+  string,
+  Pick<EnhancedMaintenanceField, "readonly" | "defaultValue" | "defaultMatch">
+> = {
+  equipo_tipo_id: {
+    readonly: true,
+    defaultMatch: (title) => title.includes("PROYECTO"),
+  },
+  location_id: {
+    defaultMatch: (title) => title.includes("PROYECTOS EN CAMPAMENTO BASE"),
+  },
+  marca_id: {
+    readonly: true,
+    defaultMatch: (title) => title === "DESARROLLO PROPIO",
+  },
+  criticidad: { readonly: true, defaultValue: "MEDIA" },
+  estado_operativo: { readonly: true, defaultValue: "OPERATIVO" },
+  estado_funcionamiento: { readonly: true, defaultValue: "FUNCIONAMIENTO" },
+};
+
+/** En Proyectos el registro se llama proyecto: "equipo" no se entendia ahi. */
+function renameEquipoToProyecto(label: string) {
+  return label.replace(/\bequipo\b/g, "proyecto").replace(/\bEquipo\b/g, "Proyecto");
+}
+
+/**
+ * Proyectos comparte el registro de Equipos, pero se captura distinto: el
+ * codigo lo asigna el sistema (serie PRY) y no se toca, y lo que un proyecto
+ * siempre es -tipo, marca, criticidad y estados- ya viene puesto y bloqueado.
+ */
+function buildProjectFields(fields: MaintenanceField[]): EnhancedMaintenanceField[] {
+  return cloneFields(fields).map((field) => {
+    if (field.key === "codigo") {
+      return { ...field, label: "Codigo autogenerado", readonly: true, required: false };
+    }
+    return {
+      ...field,
+      label: renameEquipoToProyecto(field.label),
+      ...PROJECT_FIELD_POLICY[field.key],
+    };
+  });
 }
 
 export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceModuleConfig | null {
@@ -291,6 +380,10 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         fullWidth: true,
       },
     ]);
+  }
+
+  if (key === "proyectos") {
+    return replaceFields(config, buildProjectFields(config.fields));
   }
 
   if (["equipos", "componentes-equipo", "tipo-equipo", "locations", "planes"].includes(key)) {

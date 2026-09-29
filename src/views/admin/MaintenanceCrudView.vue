@@ -248,7 +248,7 @@
 
         <div v-if="isEquipmentModule" class="mt-4">
           <div class="d-flex align-center justify-space-between mb-2" style="gap: 12px; flex-wrap: wrap;">
-            <div class="text-subtitle-2 font-weight-bold">Compartimientos oficiales del equipo</div>
+            <div class="text-subtitle-2 font-weight-bold">Compartimientos oficiales del {{ equipmentNoun }}</div>
             <v-btn color="secondary" variant="tonal" prepend-icon="mdi-plus" @click="addEquipmentComponentDraft">
               Agregar compartimiento
             </v-btn>
@@ -379,7 +379,11 @@ import { useDisplay } from "vuetify";
 import { api } from "@/app/http/api";
 import MaintenanceStructuredField from "@/components/maintenance/MaintenanceStructuredField.vue";
 import { equipoComponenteCategoriaOptions } from "@/app/config/maintenance-modules";
-import { getEnhancedMaintenanceModule, type EnhancedMaintenanceField } from "@/app/config/maintenance-module-overrides";
+import {
+  getEnhancedMaintenanceModule,
+  pickDefaultOptionValue,
+  type EnhancedMaintenanceField,
+} from "@/app/config/maintenance-module-overrides";
 import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
@@ -447,6 +451,8 @@ const isGenerationUnitsModule = computed(
   () => props.moduleKey === "unidades-generacion",
 );
 const isProjectsModule = computed(() => props.moduleKey === "proyectos");
+/** En Proyectos el registro se llama proyecto: "equipo" no se entendia ahi. */
+const equipmentNoun = computed(() => (isProjectsModule.value ? "proyecto" : "equipo"));
 
 const moduleConfig = computed(() => getEnhancedMaintenanceModule(props.moduleKey));
 const modulePermissionAliases = computed(() => {
@@ -693,6 +699,10 @@ function defaultJsonValue(field: EnhancedMaintenanceField) {
 function getAutoCodeEndpoint() {
   if (moduleConfig.value?.key === "equipos") {
     return "/kpi_maintenance/equipos/next-code";
+  }
+  if (isProjectsModule.value) {
+    // Los proyectos llevan su propia serie (PRY), no la de equipos.
+    return "/kpi_maintenance/equipos/next-code?grupo=PROYECTOS";
   }
   if (moduleConfig.value?.key === "componentes-equipo") {
     return "/kpi_maintenance/componentes/code/next";
@@ -1801,16 +1811,16 @@ function validateForm() {
     if (form.es_servicio) {
       const intervalValue = Number(form.intervalo_mantenimiento_valor || 0);
       if (!(intervalValue > 0)) {
-        ui.error("Debes indicar un intervalo de mantenimiento valido para el equipo de servicio.");
+        ui.error(`Debes indicar un intervalo de mantenimiento valido para el ${equipmentNoun.value} de servicio.`);
         return false;
       }
       if (!String(form.intervalo_mantenimiento_unidad || "").trim()) {
-        ui.error("Debes seleccionar la unidad del intervalo para el equipo de servicio.");
+        ui.error(`Debes seleccionar la unidad del intervalo para el ${equipmentNoun.value} de servicio.`);
         return false;
       }
     }
     if (!selectedEquipmentComponentRows.value.length) {
-      ui.error("Debes registrar al menos un compartimiento oficial para el equipo.");
+      ui.error(`Debes registrar al menos un compartimiento oficial para el ${equipmentNoun.value}.`);
       return false;
     }
 
@@ -1833,15 +1843,42 @@ function validateForm() {
   return true;
 }
 
+/**
+ * Valores con los que arranca un alta nueva en los campos de opciones fijas
+ * (la criticidad y los estados de un proyecto). Editar no pasa por aqui: no se
+ * escribe por encima de lo que el registro ya tenia guardado.
+ */
+function applyStaticCreateDefaults() {
+  for (const field of moduleConfig.value?.fields ?? []) {
+    if (field.defaultValue !== undefined) form[field.key] = field.defaultValue;
+  }
+}
+
+/**
+ * Lo mismo para los campos que salen de un catalogo: hay que esperar a que sus
+ * opciones esten cargadas para saber cual es. Un campo bloqueado toma siempre
+ * su valor por defecto; uno editable solo si nadie eligio nada todavia.
+ */
+function applyRelationCreateDefaults() {
+  // El dialogo pudo cerrarse, o pasar a edicion, mientras cargaba el catalogo.
+  if (!dialog.value || editingId.value) return;
+  for (const field of moduleConfig.value?.fields ?? []) {
+    if (!field.defaultMatch) continue;
+    const value = pickDefaultOptionValue(field, relationOptions.value[field.key] ?? []);
+    if (value && (field.readonly || !form[field.key])) form[field.key] = value;
+  }
+}
+
 async function openCreate() {
   editingId.value = null;
   resetForm();
+  applyStaticCreateDefaults();
   // Si se esta viendo un tipo concreto, el alta arranca con ese tipo puesto:
   // es el que se acaba de elegir en el menu.
   if (equipmentTypeFilterId.value) {
     form.equipo_tipo_id = equipmentTypeFilterId.value;
   }
-  void ensureFormRelationsLoaded();
+  void ensureFormRelationsLoaded().then(applyRelationCreateDefaults);
   dialog.value = true;
   await assignAutoGeneratedCode();
 }
