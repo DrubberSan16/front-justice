@@ -286,7 +286,7 @@ const fieldGuidanceByKey: Record<string, { note: string; example?: string }> = {
     example: "Soldador estructural · 2 personas · $45 por día",
   },
   responsabilidades: {
-    note: "Selecciona a las personas que deben coordinar, ejecutar, revisar o aprobar este proceso.",
+    note: "Selecciona a los empleados que deben coordinar, ejecutar, revisar o aprobar este proceso. Salen de Configuración > Empleados.",
     example: "Supervisor de mantenimiento",
   },
   precauciones: {
@@ -1062,10 +1062,11 @@ const manualOverrides: Record<string, ManualOverride> = {
         id: "tareas-evidencias",
         title: "Completa tareas y evidencias",
         description:
-          "Responde el checklist de la plantilla, asigna responsables y carga dentro de cada tarea los documentos, imágenes o videos que se hayan marcado como obligatorios.",
+          "Responde el checklist de la plantilla, asigna responsables (se eligen de Configuración > Empleados) y carga dentro de cada tarea los documentos, imágenes o videos que se hayan marcado como obligatorios.",
         fields: ["Tareas ejecutadas", "Responsables", "Observación", "Evidencias", "Adjuntos"],
         checks: [
           "Cada tarea obligatoria tiene una respuesta del tipo solicitado.",
+          "El costo de la hora de cada responsable se toma solo del empleado al asignarlo y queda fijo en la OT: si después cambia su valor por hora, las OT anteriores no se recalculan.",
           "Los archivos obligatorios están dentro de la tarea; los adjuntos generales no los reemplazan.",
         ],
       },

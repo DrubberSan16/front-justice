@@ -322,11 +322,12 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
       },
       {
         key: "responsabilidades",
-        label: "Responsabilidades",
+        label: "Responsables",
         type: "json",
         jsonMode: "array",
         editor: "relation-multi-select",
-        relation: { endpoint: "/kpi_security/users" },
+        // Empleados activos, sin sueldos: es la lista que ve cualquier rol.
+        relation: { endpoint: "/kpi_maintenance/empleados/responsables" },
         fullWidth: true,
       },
       {

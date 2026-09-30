@@ -107,10 +107,20 @@ function issueConditionLabel(value: unknown) {
 }
 
 /**
- * Horas reportadas por cada responsable de las tareas de la orden.
+ * Horas reportadas por cada responsable de las tareas de la orden, con lo que
+ * costo su trabajo.
+ *
+ * La persona es su empleado y, en lo guardado antes por usuario, su usuario. El
+ * costo de la hora es el que quedo congelado en cada tarea al asignarla; si la
+ * misma persona tiene tareas con costos distintos, el costo por hora es el
+ * promedio ponderado por horas. Sin permiso de costos el servidor no manda
+ * `costo_hora` y los importes quedan en cero: quien los muestra decide si mirarlos.
  */
 export function buildResponsibleHours(tasks: Record<string, any>[]) {
-  const byUser = new Map<string, { label: string; hours: number }>();
+  const byPerson = new Map<
+    string,
+    { label: string; hours: number; cost: number }
+  >();
   for (const task of tasks) {
     const responsables = Array.isArray(task?.responsables)
       ? task.responsables
@@ -118,21 +128,77 @@ export function buildResponsibleHours(tasks: Record<string, any>[]) {
     for (const responsable of responsables) {
       const hours = toNumber(responsable?.horas);
       if (hours <= 0) continue;
-      const key = String(
-        responsable?.user_id || responsable?.username || responsable?.id || "",
-      );
       const label = String(
         responsable?.display_name ||
           responsable?.nameSurname ||
           responsable?.username ||
           "Responsable",
       );
-      const current = byUser.get(key) ?? { label, hours: 0 };
+      const key = String(
+        responsable?.empleado_id
+          ? `E:${responsable.empleado_id}`
+          : responsable?.user_id ||
+              responsable?.username ||
+              responsable?.id ||
+              label,
+      );
+      const current = byPerson.get(key) ?? { label, hours: 0, cost: 0 };
       current.hours += hours;
-      byUser.set(key, current);
+      current.cost += hours * toNumber(responsable?.costo_hora);
+      byPerson.set(key, current);
     }
   }
-  return [...byUser.values()].sort((a, b) => b.hours - a.hours);
+  return [...byPerson.values()]
+    .map((row) => ({
+      ...row,
+      hourlyCost: row.hours > 0 ? row.cost / row.hours : 0,
+    }))
+    .sort((a, b) => b.hours - a.hours);
+}
+
+/**
+ * Costo de los materiales de la orden, con la regla del informe de Reporteria
+ * para que la pantalla, el PDF y el tablero no cuenten cosas distintas: lo que
+ * la orden consumio (cantidad de cada linea de consumo) por lo que costo. Si esa
+ * linea ya salio de bodega, cuenta el costo con el que salio (FIFO); si todavia no,
+ * el costo con el que se registro el consumo.
+ *
+ * Antes se sumaban solo las salidas de bodega: una orden con el consumo registrado
+ * y ninguna salida (una de cebado, por ejemplo) mostraba cero de materiales.
+ */
+export function buildMaterialsCost(
+  consumptions: Record<string, any>[],
+  issues: Record<string, any>[],
+) {
+  const issued = new Map<string, { quantity: number; amount: number }>();
+  for (const line of flattenDetailLines(issues)) {
+    const key = `${line?.producto_id}::${line?.bodega_id}`;
+    const current = issued.get(key) ?? { quantity: 0, amount: 0 };
+    const quantity = toNumber(line?.cantidad);
+    current.quantity += quantity;
+    current.amount += quantity * toNumber(line?.costo_unitario);
+    issued.set(key, current);
+  }
+  return flattenDetailLines(consumptions).reduce((sum, line) => {
+    const delivered = issued.get(`${line?.producto_id}::${line?.bodega_id}`);
+    const unitCost =
+      delivered && delivered.quantity > 0
+        ? delivered.amount / delivered.quantity
+        : toNumber(line?.costo_unitario);
+    return sum + toNumber(line?.cantidad) * unitCost;
+  }, 0);
+}
+
+/** Costo del personal contratado de una OT de proyecto: dias por valor del dia. */
+export function contractedLaborCost(header: Record<string, any> | null) {
+  const personal = Array.isArray(header?.proyecto_personal)
+    ? header.proyecto_personal
+    : [];
+  return personal.reduce(
+    (sum: number, row: Record<string, any>) =>
+      sum + toNumber(row?.dias_laborados) * toNumber(row?.valor_dia),
+    0,
+  );
 }
 
 /**
@@ -253,10 +319,10 @@ export function buildWorkOrderReportPayload(
   );
   const consumos = flattenDetailLines(detail.consumptions);
   const oilRows = consumos.filter((row) => row?.es_aceite === true);
-  const totalCost = flattenDetailLines(detail.issues).reduce(
-    (sum, row) => sum + toNumber(row?.costo_unitario) * toNumber(row?.cantidad),
-    0,
-  );
+  const materialsCost = buildMaterialsCost(detail.consumptions, detail.issues);
+  const laborCost = responsables.reduce((sum, row) => sum + row.cost, 0);
+  const contractedCost = contractedLaborCost(header);
+  const totalCost = materialsCost + laborCost + contractedCost;
 
   return {
     code: String(header?.code || header?.codigo || "-"),
@@ -274,7 +340,18 @@ export function buildWorkOrderReportPayload(
     }),
     totalHours: responsables.reduce((sum, row) => sum + row.hours, 0),
     totalCost: context.showCosts ? context.formatCurrency(totalCost) : "-",
-    responsables,
+    showCosts: context.showCosts,
+    materialsCost: context.formatCurrency(materialsCost),
+    laborCost: context.formatCurrency(laborCost),
+    ...(contractedCost > 0
+      ? { contractedCost: context.formatCurrency(contractedCost) }
+      : {}),
+    responsables: responsables.map((row) => ({
+      label: row.label,
+      hours: row.hours,
+      hourlyCost: context.formatCurrency(row.hourlyCost),
+      cost: context.formatCurrency(row.cost),
+    })),
     materiales: materiales.map((row) => ({
       label: row.label,
       delivered: row.delivered,

@@ -12,6 +12,9 @@ import { formatNumberForDisplay } from "@/app/utils/number-format";
 export type WorkOrderReportResponsible = {
   label: string;
   hours: number;
+  /** Costo de la hora y de lo trabajado, ya formateados. Solo con `showCosts`. */
+  hourlyCost?: string;
+  cost?: string;
 };
 
 export type WorkOrderReportMaterial = {
@@ -33,7 +36,14 @@ export type WorkOrderReportData = {
   horometroAnterior: string;
   horometroActual: string;
   totalHours: number;
+  /** Costo total de la orden: materiales + mano de obra (+ personal contratado). */
   totalCost: string;
+  /** Solo se imprime el costo de la mano de obra cuando el usuario puede ver importes. */
+  showCosts?: boolean;
+  materialsCost?: string;
+  laborCost?: string;
+  /** Personal contratado de una OT de proyecto; ausente en el resto. */
+  contractedCost?: string;
   responsables: WorkOrderReportResponsible[];
   materiales: WorkOrderReportMaterial[];
   oilQuantity: number;
@@ -141,6 +151,7 @@ export async function buildWorkOrderReportPdfBlob(
   doc.setFontSize(10);
   doc.text("Responsables", marginLeft, cursorY);
   cursorY += 6;
+  const showCosts = data.showCosts === true;
   autoTable(doc, {
     startY: cursorY,
     margin: { left: marginLeft, right: marginRight },
@@ -148,16 +159,81 @@ export async function buildWorkOrderReportPdfBlob(
     theme: "striped",
     styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
-    head: [["Responsable", "Horas"]],
+    footStyles: { fillColor: [226, 232, 240], textColor: 20, fontStyle: "bold" },
+    head: [
+      showCosts
+        ? ["Responsable", "Horas", "Costo por hora", "Costo"]
+        : ["Responsable", "Horas"],
+    ],
     body: data.responsables.length
-      ? data.responsables.map((row) => [
-          safeText(row.label),
-          `${formatNumber(row.hours)} h`,
-        ])
-      : [["No hay horas registradas.", "-"]],
-    columnStyles: { 1: { halign: "right", cellWidth: 90 } },
+      ? data.responsables.map((row) =>
+          showCosts
+            ? [
+                safeText(row.label),
+                `${formatNumber(row.hours)} h`,
+                safeText(row.hourlyCost),
+                safeText(row.cost),
+              ]
+            : [safeText(row.label), `${formatNumber(row.hours)} h`],
+        )
+      : [
+          showCosts
+            ? ["No hay horas registradas.", "-", "-", "-"]
+            : ["No hay horas registradas.", "-"],
+        ],
+    // El totalizado de la mano de obra cierra la tabla: cada persona costo su hora
+    // por lo que trabajo y aqui se suma.
+    foot:
+      showCosts && data.responsables.length
+        ? [
+            [
+              "Total mano de obra",
+              `${formatNumber(data.totalHours)} h`,
+              "",
+              safeText(data.laborCost),
+            ],
+          ]
+        : undefined,
+    columnStyles: showCosts
+      ? {
+          1: { halign: "right", cellWidth: 70 },
+          2: { halign: "right", cellWidth: 90 },
+          3: { halign: "right", cellWidth: 90 },
+        }
+      : { 1: { halign: "right", cellWidth: 90 } },
   });
-  cursorY = (doc as any).lastAutoTable.finalY + 18;
+  cursorY = (doc as any).lastAutoTable.finalY + 12;
+
+  if (showCosts) {
+    const hasContracted = Boolean(data.contractedCost);
+    autoTable(doc, {
+      startY: cursorY,
+      margin: { left: marginLeft, right: marginRight },
+      tableWidth: usableWidth,
+      theme: "grid",
+      styles: { fontSize: 8.5, cellPadding: 4 },
+      headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
+      head: [
+        [
+          "Costo de materiales",
+          "Total mano de obra",
+          ...(hasContracted ? ["Personal contratado"] : []),
+          "Costo total de la OT",
+        ],
+      ],
+      body: [
+        [
+          safeText(data.materialsCost),
+          safeText(data.laborCost),
+          ...(hasContracted ? [safeText(data.contractedCost)] : []),
+          safeText(data.totalCost),
+        ],
+      ],
+      bodyStyles: { fontStyle: "bold" },
+    });
+    cursorY = (doc as any).lastAutoTable.finalY + 6;
+  }
+  cursorY += 12;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);

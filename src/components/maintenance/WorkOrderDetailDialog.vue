@@ -42,7 +42,16 @@
             <h4>Responsables</h4>
             <div v-for="row in responsables" :key="row.label" class="wo-line">
               <span>{{ row.label }}</span>
-              <strong>{{ formatNumber(row.hours) }} h</strong>
+              <strong>
+                {{ formatNumber(row.hours) }} h
+                <template v-if="showCosts">
+                  · {{ formatCurrency(row.hourlyCost) }} por hora · {{ formatCurrency(row.cost) }}
+                </template>
+              </strong>
+            </div>
+            <div v-if="showCosts" class="wo-line wo-line--total">
+              <span>Total mano de obra</span>
+              <strong>{{ formatNumber(totalHours) }} h · {{ formatCurrency(laborCost) }}</strong>
             </div>
           </div>
 
@@ -124,8 +133,10 @@ import { usePdfPreview } from "@/app/utils/pdf-preview";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import {
   buildMaterialSummary,
+  buildMaterialsCost,
   buildResponsibleHours,
   buildWorkOrderReportPayload,
+  contractedLaborCost,
   fetchWorkOrderDetail,
   materialConditionLabel,
   type WorkOrderDetailPayload,
@@ -170,6 +181,15 @@ const detail = ref<WorkOrderDetailPayload>({
 const showCosts = computed(() => canViewMaterialCosts(auth.user));
 const header = computed<Record<string, any>>(() => detail.value.header ?? {});
 const responsables = computed(() => buildResponsibleHours(detail.value.tasks));
+const totalHours = computed(() =>
+  responsables.value.reduce((sum, item) => sum + item.hours, 0),
+);
+// Lo que costo el trabajo de los responsables: horas por el costo de la hora que
+// quedo congelado al asignar cada tarea.
+const laborCost = computed(() =>
+  responsables.value.reduce((sum, item) => sum + item.cost, 0),
+);
+const contractedCost = computed(() => contractedLaborCost(detail.value.header));
 const materiales = computed(() =>
   buildMaterialSummary(
     detail.value.issues,
@@ -203,9 +223,7 @@ const facts = computed(() => {
     },
     {
       label: "Horas registradas",
-      value: `${formatNumber(
-        responsables.value.reduce((sum, item) => sum + item.hours, 0),
-      )} h`,
+      value: `${formatNumber(totalHours.value)} h`,
     },
     { label: "Registrada por", value: String(row?.created_by_label || row?.created_by || "-") },
     { label: "Iniciada por", value: String(row?.processed_by_label || row?.processed_by || historyActor(/IN.?PROGRESS|EN.?PROCESO|INICI/)) },
@@ -215,17 +233,21 @@ const facts = computed(() => {
   return [
     ...base,
     { label: "Costo de materiales", value: formatCurrency(totalMaterialCost.value) },
+    { label: "Mano de obra", value: formatCurrency(laborCost.value) },
+    ...(contractedCost.value > 0
+      ? [{ label: "Personal contratado", value: formatCurrency(contractedCost.value) }]
+      : []),
+    {
+      label: "Costo total de la OT",
+      value: formatCurrency(
+        totalMaterialCost.value + laborCost.value + contractedCost.value,
+      ),
+    },
   ];
 });
 
 const totalMaterialCost = computed(() =>
-  detail.value.issues
-    .flatMap((row: any) => (Array.isArray(row?.items) ? row.items : [row]))
-    .reduce(
-      (sum: number, row: any) =>
-        sum + Number(row?.costo_unitario || 0) * Number(row?.cantidad || 0),
-      0,
-    ),
+  buildMaterialsCost(detail.value.consumptions, detail.value.issues),
 );
 
 const equipmentLabel = computed(() => {
@@ -368,6 +390,11 @@ watch(
   padding: 7px 0;
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
   font-size: 0.92rem;
+}
+
+.wo-line--total {
+  border-top: 2px solid rgba(var(--v-theme-on-surface), 0.2);
+  font-weight: 600;
 }
 
 .wo-line--material {

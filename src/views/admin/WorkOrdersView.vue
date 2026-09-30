@@ -1766,11 +1766,14 @@
         <v-row v-if="!isReadOnlyWorkflow && taskResponsiblesTarget" dense class="mb-2">
           <v-col cols="12" md="6">
             <v-select
-              v-model="taskResponsibleForm.user_id"
-              :items="userOptions"
+              v-model="taskResponsibleForm.responsible"
+              :items="responsibleOptions"
               item-title="title"
               item-value="value"
               label="Responsable"
+              hint="Se eligen de Configuración > Empleados."
+              persistent-hint
+              no-data-text="No hay empleados registrados."
               variant="outlined"
               density="comfortable"
             />
@@ -1792,7 +1795,7 @@
                 Agregar horas
               </v-btn>
               <v-btn variant="text" @click="submitTaskResponsible('set')">
-                {{ taskResponsibleEditUserId ? "Actualizar total" : "Fijar total" }}
+                {{ taskResponsibleEditKey ? "Actualizar total" : "Fijar total" }}
               </v-btn>
             </div>
           </v-col>
@@ -1804,7 +1807,7 @@
           variant="tonal"
           class="mb-3"
         >
-          Si un usuario ya tiene horas registradas, al usar "Agregar horas" se acumulan automáticamente.
+          Si un empleado ya tiene horas registradas, al usar "Agregar horas" se acumulan automáticamente.
         </v-alert>
 
         <v-data-table
@@ -2255,6 +2258,17 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
+import { fetchEmployeeResponsibles } from "@/app/services/employees.service";
+import {
+  buildResponsibleCatalog,
+  buildResponsibleOptions,
+  defaultTaskResponsibles,
+  normalizeTaskResponsibles as normalizeResponsibles,
+  removeTaskResponsible as removeResponsible,
+  responsibleKey,
+  toResponsiblesPayload,
+  upsertTaskResponsible as upsertResponsible,
+} from "@/app/utils/task-responsibles";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { hasReportAccess } from "@/app/config/report-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
@@ -2443,17 +2457,22 @@ const taskLabelCacheByPlan = ref<Record<string, Record<string, string>>>({});
 const planTaskCatalogByPlan = ref<Record<string, any[]>>({});
 const procedureCatalog = ref<any[]>([]);
 const userCatalogRows = ref<any[]>([]);
+// Los responsables de una tarea se eligen de Empleados; los usuarios quedan para
+// ponerle nombre a lo que se guardo antes por usuario y a la auditoria.
+const employeeCatalogRows = ref<any[]>([]);
 const taskEvidenceInputKeys = ref<Record<string, number>>({});
 let catalogsPromise: Promise<void> | null = null;
 let equipmentCatalogPromise: Promise<void> | null = null;
 let consumoSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let consumoProductsRequestId = 0;
 const taskResponsiblesTargetId = ref("");
+// `responsible` es la clave de la persona: E:<empleado> o, para lo guardado antes
+// por usuario y sin empleado, U:<usuario>.
 const taskResponsibleForm = reactive({
-  user_id: "",
+  responsible: "",
   horas: "",
 });
-const taskResponsibleEditUserId = ref("");
+const taskResponsibleEditKey = ref("");
 // Una línea por material reservado. Desde la fila se abre con ese material; desde
 // "Registrar salida de varios materiales", con todos los que tienen pendiente.
 // Lo que queda en blanco no sale.
@@ -3137,39 +3156,9 @@ function isAdditionalTask(task: any) {
   return Boolean(task?.es_adicional);
 }
 
-function normalizeTaskResponsibles(values: any) {
-  const rawItems = Array.isArray(values) ? values : [];
-  const grouped = new Map<string, any>();
-
-  for (const item of rawItems) {
-    const userId = String(item?.user_id || item?.id || "").trim();
-    if (!userId) continue;
-    const catalogUser = userCatalogMap.value.get(userId);
-    const previous = grouped.get(userId);
-    const nextHoursRaw = Number(item?.horas ?? 0);
-    const nextHours =
-      Number.isFinite(nextHoursRaw) && nextHoursRaw >= 0 ? nextHoursRaw : 0;
-    const catalogDisplayName = buildUserDisplayName(catalogUser);
-    const itemDisplayName = String(item?.display_name || "").trim();
-    const previousDisplayName = String(previous?.display_name || "").trim();
-    const resolvedDisplayName =
-      catalogDisplayName ||
-      (itemDisplayName && itemDisplayName !== userId ? itemDisplayName : "") ||
-      (previousDisplayName && previousDisplayName !== userId ? previousDisplayName : "") ||
-      buildUserDisplayName(item) ||
-      "Usuario asignado";
-    grouped.set(userId, {
-      user_id: userId,
-      username:
-        String(item?.username || catalogUser?.nameUser || previous?.username || "").trim() || null,
-      display_name: resolvedDisplayName,
-      horas: Number((((previous?.horas ?? 0) as number) + nextHours).toFixed(4)),
-    });
-  }
-
-  return [...grouped.values()].sort((a, b) =>
-    String(a?.display_name || "").localeCompare(String(b?.display_name || "")),
-  );
+// Tipado `any[]` a proposito: la tabla del dialogo lee `item.raw ?? item`.
+function normalizeTaskResponsibles(values: any): any[] {
+  return normalizeResponsibles(values, responsibleCatalog.value);
 }
 
 function getTaskResponsibles(task: any) {
@@ -3217,15 +3206,7 @@ function buildTaskReportRows(task: any) {
 }
 
 function getTaskDefaultResponsibles() {
-  const selectedIds = Array.isArray(selectedProcedure.value?.responsabilidades)
-    ? selectedProcedure.value.responsabilidades
-    : [];
-  return normalizeTaskResponsibles(
-    selectedIds.map((userId: string) => ({
-      user_id: userId,
-      horas: 0,
-    })),
-  );
+  return defaultTaskResponsibles(selectedProcedure.value, responsibleCatalog.value);
 }
 
 const taskResponsiblesTarget = computed(
@@ -3238,6 +3219,10 @@ const taskResponsiblesTarget = computed(
 
 const activeTaskResponsibles = computed(() =>
   taskResponsiblesTarget.value ? getTaskResponsibles(taskResponsiblesTarget.value) : [],
+);
+
+const responsibleOptions = computed(() =>
+  buildResponsibleOptions(employeeCatalogRows.value, activeTaskResponsibles.value),
 );
 
 function parseValorJson(valorJson: unknown) {
@@ -4172,13 +4157,8 @@ function resolveUserDisplayLabel(...values: unknown[]) {
   return "";
 }
 
-const userOptions = computed(() =>
-  userCatalogRows.value
-    .filter((item: any) => !item?.isDeleted && String(item?.status || "ACTIVE").toUpperCase() === "ACTIVE")
-    .map((item: any) => ({
-      value: String(item?.id || ""),
-      title: buildUserDisplayName(item),
-    })),
+const responsibleCatalog = computed(() =>
+  buildResponsibleCatalog(employeeCatalogRows.value, userCatalogRows.value),
 );
 
 const productNameMap = computed(() => {
@@ -5082,7 +5062,7 @@ async function ensureEquipmentCatalogLoaded(force = false) {
 async function loadCatalogs() {
   loadingCatalogs.value = true;
   try {
-    const [, planes, procedimientos, bodegas, usuarios, ubicaciones] =
+    const [, planes, procedimientos, bodegas, usuarios, ubicaciones, empleados] =
       await Promise.all([
         ensureEquipmentCatalogLoaded(),
         listAll("/kpi_maintenance/planes"),
@@ -5092,6 +5072,12 @@ async function loadCatalogs() {
         isProjectMode.value
           ? listAll("/kpi_maintenance/locaciones")
           : Promise.resolve([] as any[]),
+        // Sin la lista de empleados solo falla la asignacion de responsables:
+        // el resto de la pantalla no debe quedarse sin catalogos por eso.
+        fetchEmployeeResponsibles().catch(() => {
+          ui.error("No se pudo cargar la lista de empleados para elegir responsables.");
+          return [] as any[];
+        }),
       ]);
     planOptions.value = planes.map(normalize);
     // En OT Proyecto solo se ofrecen las plantillas de formato proyecto; en el
@@ -5120,6 +5106,7 @@ async function loadCatalogs() {
     */
     productCatalogRows.value = [];
     userCatalogRows.value = usuarios;
+    employeeCatalogRows.value = empleados;
     warehouseCatalogRows.value = bodegas;
     warehouseOptions.value = bodegas
       .filter((item: any) => !item?.es_chatarra)
@@ -5654,9 +5641,9 @@ function markTaskDirty(task: any) {
 }
 
 function resetTaskResponsibleForm() {
-  taskResponsibleForm.user_id = "";
+  taskResponsibleForm.responsible = "";
   taskResponsibleForm.horas = "";
-  taskResponsibleEditUserId.value = "";
+  taskResponsibleEditKey.value = "";
 }
 
 function openTaskResponsibles(task: any) {
@@ -5672,28 +5659,15 @@ function closeTaskResponsiblesDialog() {
   resetTaskResponsibleForm();
 }
 
-function upsertTaskResponsible(task: any, userId: string, hours: number, mode: "add" | "set") {
-  const normalizedUserId = String(userId || "").trim();
-  if (!normalizedUserId) return;
-  const catalogUser = userCatalogMap.value.get(normalizedUserId);
-  const current = getTaskResponsibles(task);
-  const existing = current.find((item: any) => String(item?.user_id || "") === normalizedUserId);
-  const nextHours = mode === "set"
-    ? hours
-    : Number((Number(existing?.horas || 0) + hours).toFixed(4));
-
-  task.responsables = normalizeTaskResponsibles([
-    ...current.filter((item: any) => String(item?.user_id || "") !== normalizedUserId),
-    {
-      user_id: normalizedUserId,
-      username: catalogUser?.nameUser || existing?.username || null,
-      display_name:
-        existing?.display_name ||
-        buildUserDisplayName(catalogUser) ||
-        "Usuario asignado",
-      horas: nextHours,
-    },
-  ]);
+function upsertTaskResponsible(task: any, key: string, hours: number, mode: "add" | "set") {
+  if (!String(key || "").trim()) return;
+  task.responsables = upsertResponsible(
+    getTaskResponsibles(task),
+    key,
+    hours,
+    mode,
+    responsibleCatalog.value,
+  );
   markTaskDirty(task);
 }
 
@@ -5704,9 +5678,9 @@ function submitTaskResponsible(mode: "add" | "set") {
     ui.error(readOnlyWorkflowMessage());
     return;
   }
-  const userId = String(taskResponsibleForm.user_id || "").trim();
+  const selectedKey = String(taskResponsibleForm.responsible || "").trim();
   const hours = Number(taskResponsibleForm.horas || 0);
-  if (!userId) {
+  if (!selectedKey) {
     ui.error("Selecciona un responsable.");
     return;
   }
@@ -5714,14 +5688,15 @@ function submitTaskResponsible(mode: "add" | "set") {
     ui.error("Las horas deben ser mayores a 0.");
     return;
   }
-  upsertTaskResponsible(task, userId, hours, mode);
+  upsertTaskResponsible(task, selectedKey, hours, mode);
   resetTaskResponsibleForm();
   ui.success(mode === "set" ? "Horas actualizadas." : "Horas agregadas.");
 }
 
 function editTaskResponsible(item: any) {
-  taskResponsibleEditUserId.value = String(item?.user_id || "");
-  taskResponsibleForm.user_id = String(item?.user_id || "");
+  const key = responsibleKey(item);
+  taskResponsibleEditKey.value = key;
+  taskResponsibleForm.responsible = key;
   taskResponsibleForm.horas = formatTaskHours(item?.horas);
 }
 
@@ -5732,12 +5707,10 @@ function removeTaskResponsible(item: any) {
     ui.error(readOnlyWorkflowMessage());
     return;
   }
-  const userId = String(item?.user_id || "").trim();
-  task.responsables = getTaskResponsibles(task).filter(
-    (entry: any) => String(entry?.user_id || "") !== userId,
-  );
+  const key = responsibleKey(item);
+  task.responsables = removeResponsible(getTaskResponsibles(task), key);
   markTaskDirty(task);
-  if (taskResponsibleEditUserId.value === userId) {
+  if (taskResponsibleEditKey.value === key) {
     resetTaskResponsibleForm();
   }
 }
@@ -6046,7 +6019,7 @@ function buildTaskPersistencePayload(
     valor_numeric,
     valor_text,
     valor_json,
-    responsables: responsibles,
+    responsables: toResponsiblesPayload(responsibles),
     observacion: String(task.observacion ?? "").trim() || null,
   };
 }

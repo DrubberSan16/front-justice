@@ -1,7 +1,7 @@
 import { api } from "@/app/http/api";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
-import { invalidateRequestCache } from "@/app/utils/request-cache";
+import { DEFAULT_CATALOG_CACHE_TTL_MS, invalidateRequestCache } from "@/app/utils/request-cache";
 
 export const EMPLOYEES_ENDPOINT = "/kpi_maintenance/empleados";
 
@@ -90,6 +90,27 @@ export async function fetchEmployees(
 /** Todos los empleados: sirve para saber qué usuarios y qué cédulas ya están usados. */
 export async function fetchAllEmployees(): Promise<Employee[]> {
   return (await listAllPages(EMPLOYEES_ENDPOINT, {}, { limit: 100 })) as Employee[];
+}
+
+/** Empleado que se puede elegir como responsable: sin sueldo ni valor por hora. */
+export type EmployeeResponsible = {
+  id: string;
+  user_id: string | null;
+  nombres_apellidos: string;
+  cargo: string;
+};
+
+/**
+ * Empleados activos para elegir como responsables de una tarea de OT o de una
+ * plantilla. Los pide cualquier rol que arma una OT, por eso el servidor no
+ * manda sueldos.
+ */
+export async function fetchEmployeeResponsibles(): Promise<EmployeeResponsible[]> {
+  return (await listAllPages(
+    `${EMPLOYEES_ENDPOINT}/responsables`,
+    {},
+    { limit: 100, cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS },
+  )) as EmployeeResponsible[];
 }
 
 /** Cargos ya registrados, sin repetir. */

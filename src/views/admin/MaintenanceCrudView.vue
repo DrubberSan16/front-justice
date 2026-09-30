@@ -1049,7 +1049,7 @@ function normalizeLabel(item: any) {
   if (item && Object.prototype.hasOwnProperty.call(item, "es_aceite")) {
     return resolveProductDisplayName(item);
   }
-  return item?.nameSurname ?? item?.nameUser ?? item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
+  return item?.nameSurname ?? item?.nameUser ?? item?.nombres_apellidos ?? item?.nombre ?? item?.razon_social ?? item?.codigo ?? item?.id;
 }
 
 function getRelationFields(mode: "table" | "form" = "table") {
@@ -1924,6 +1924,12 @@ async function openEdit(item: any) {
     form[field.key] = field.type === "json"
       ? serializeJsonValue(item[field.key], field)
       : item[field.key] ?? form[field.key];
+  }
+  // Los responsables de una plantilla pueden ser empleados dados de baja o usuarios
+  // sin empleado, que el selector no ofrece: se lleva su detalle para poder
+  // ponerles nombre. No es un campo del formulario y no viaja al guardar.
+  if (Array.isArray(item?.responsabilidades_detalle)) {
+    form.responsabilidades_detalle = item.responsabilidades_detalle;
   }
   if (isEquipmentModule.value) {
     await loadSelectedEquipmentComponents(item.id);

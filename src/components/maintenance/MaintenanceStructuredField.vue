@@ -485,8 +485,29 @@ const selectedWarehouseId = computed(() =>
 
 const requiresWarehouseSelection = computed(() => props.field.key === "materiales");
 
+/**
+ * Un responsable guardado en la plantilla puede ser un empleado dado de baja o un
+ * usuario sin empleado: el selector solo ofrece empleados activos y ese responsable
+ * se veria como un codigo. Se agrega con su nombre y una nota de por que ya no es
+ * elegible.
+ */
+function withStoredResponsibles(options: SelectOption[]) {
+  const stored: AnyRow[] = Array.isArray(props.formState?.responsabilidades_detalle)
+    ? props.formState.responsabilidades_detalle
+    : [];
+  const known = new Set(options.map((option) => String(option.value)));
+  const extra = stored
+    .filter((item) => item?.id && !known.has(String(item.id)))
+    .map((item) => ({
+      value: item.id,
+      title: `${String(item.label || "Responsable")} (${item.empleado_id ? "empleado inactivo" : "usuario sin empleado"})`,
+    }));
+  return extra.length ? [...options, ...extra] : options;
+}
+
 const filteredRelationMultiSelectOptions = computed(() => {
   const options = relationOptions.value[props.field.key] ?? [];
+  if (props.field.key === "responsabilidades") return withStoredResponsibles(options);
   if (!requiresWarehouseSelection.value) return options;
   if (!selectedWarehouseId.value) return [];
   return options.filter(

@@ -1370,7 +1370,19 @@
               <div v-if="responsibleRows.length" class="responsible-list">
                 <div v-for="row in responsibleRows" :key="row.key">
                   <span>{{ row.label }}</span
-                  ><strong>{{ formatNumber(row.hours) }} h</strong>
+                  ><strong
+                    >{{ formatNumber(row.hours) }} h<template v-if="muestraCostos">
+                      · {{ formatCurrency(row.hourlyCost) }} por hora ·
+                      {{ formatCurrency(row.cost) }}</template
+                    ></strong
+                  >
+                </div>
+                <div v-if="muestraCostos">
+                  <span>Total mano de obra</span
+                  ><strong
+                    >{{ formatNumber(totalResponsibleHours) }} h ·
+                    {{ formatCurrency(laborCost) }}</strong
+                  >
                 </div>
               </div>
               <p v-else class="muted-empty">No hay horas registradas.</p>
@@ -2716,17 +2728,22 @@ function detailLines(rows: AnyRow[]) {
   });
 }
 const responsibleRows = computed(() => {
-  const rows = new Map<string, { key: string; label: string; hours: number }>();
+  const rows = new Map<
+    string,
+    { key: string; label: string; hours: number; cost: number }
+  >();
   for (const task of detailTasks.value)
     for (const responsible of Array.isArray(task?.responsables)
       ? task.responsables
       : []) {
       const key = String(
-        responsible?.user_id ||
-          responsible?.id ||
-          responsible?.username ||
-          responsible?.display_name ||
-          "SIN_USUARIO",
+        responsible?.empleado_id
+          ? `E:${responsible.empleado_id}`
+          : responsible?.user_id ||
+              responsible?.id ||
+              responsible?.username ||
+              responsible?.display_name ||
+              "SIN_USUARIO",
       );
       const current = rows.get(key) ?? {
         key,
@@ -2737,11 +2754,19 @@ const responsibleRows = computed(() => {
             "Responsable",
         ),
         hours: 0,
+        cost: 0,
       };
-      current.hours += Number(responsible?.horas || 0);
+      const hours = Number(responsible?.horas || 0);
+      current.hours += hours;
+      current.cost += hours * Number(responsible?.costo_hora || 0);
       rows.set(key, current);
     }
-  return [...rows.values()].sort((a, b) => b.hours - a.hours);
+  return [...rows.values()]
+    .map((row) => ({
+      ...row,
+      hourlyCost: row.hours > 0 ? row.cost / row.hours : 0,
+    }))
+    .sort((a, b) => b.hours - a.hours);
 });
 const totalResponsibleHours = computed(() =>
   responsibleRows.value.reduce((sum, row) => sum + row.hours, 0),
@@ -2753,14 +2778,21 @@ const materialCost = computed(() =>
   ),
 );
 const laborCost = computed(() =>
-  detailTasks.value.reduce(
-    (sum, row) =>
-      sum +
-      Number(row?.costo_mano_obra || row?.costo_total || row?.subtotal || 0),
+  responsibleRows.value.reduce((sum, row) => sum + row.cost, 0),
+);
+const contractedCost = computed(() =>
+  (Array.isArray(detailHeader.value?.proyecto_personal)
+    ? detailHeader.value.proyecto_personal
+    : []
+  ).reduce(
+    (sum: number, row: AnyRow) =>
+      sum + Number(row?.dias_laborados || 0) * Number(row?.valor_dia || 0),
     0,
   ),
 );
-const totalWorkCost = computed(() => materialCost.value + laborCost.value);
+const totalWorkCost = computed(
+  () => materialCost.value + laborCost.value + contractedCost.value,
+);
 function isOil(row: AnyRow) {
   return (
     row?.es_aceite === true ||
@@ -3751,9 +3783,17 @@ function buildWorkOrderReportData(): WorkOrderReportData {
     horometroActual: formatHorometro(detailHeader.value?.horometro_actual),
     totalHours: totalResponsibleHours.value,
     totalCost: formatCurrency(totalWorkCost.value),
+    showCosts: muestraCostos.value,
+    materialsCost: formatCurrency(materialCost.value),
+    laborCost: formatCurrency(laborCost.value),
+    ...(contractedCost.value > 0
+      ? { contractedCost: formatCurrency(contractedCost.value) }
+      : {}),
     responsables: responsibleRows.value.map((row) => ({
       label: row.label,
       hours: row.hours,
+      hourlyCost: formatCurrency(row.hourlyCost),
+      cost: formatCurrency(row.cost),
     })),
     materiales: materialRows.value.map((row) => ({
       label: row.label,
