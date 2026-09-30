@@ -55,8 +55,8 @@ const itemClasses = computed(() => [
   "sidebar-item",
   {
     "sidebar-item--virtual": props.node.virtual,
-    // Del tercer nivel en adelante (Inventario > Materiales > Kardex) el ancho
-    // util ya no alcanza para el estilo completo.
+    // Del tercer nivel en adelante (Mantenimiento/Transacciones > Inventario >
+    // Kardex) el ancho util ya no alcanza para el estilo completo.
     "sidebar-item--deep": props.depth >= 2,
   },
 ]);
@@ -129,7 +129,7 @@ function withoutToggle(activatorProps: Record<string, any>) {
  * Clic en una opcion que tiene hijos.
  *
  * Una seccion (Inventario) solo se pliega o se despliega. Una opcion que es a la
- * vez pantalla (Materiales) abre su pantalla Y despliega sus hijos; si ya se
+ * vez pantalla (Reporteria) abre su pantalla Y despliega sus hijos; si ya se
  * esta en ella, el clic solo pliega o despliega, para poder cerrarla. Sin
  * permiso de lectura no hay pantalla que abrir: se comporta como una seccion.
  */
@@ -155,7 +155,7 @@ function onGroupClick(event: Event, toggleHandler: unknown, isOpen: boolean) {
 .sidebar-item__icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; color: var(--nav-muted); background: var(--nav-surface); }
 .sidebar-item.v-list-item--active .sidebar-item__icon { color: var(--nav-accent); background: color-mix(in srgb, var(--nav-accent) 14%, transparent); }
 .sidebar-group :deep(.v-list-group__items) { padding-left: 10px; }
-/* Un grupo dentro de otro (Inventario > Materiales, Informes > Reporteria) suma
+/* Un grupo dentro de otro (Mantenimiento/Transacciones > Inventario, Informes > Reporteria) suma
    solo un escalon corto de sangria. Vuetify suma por nivel el ancho del icono
    (40 px) mas 16 px: en el tercer nivel eran 120 px de relleno y al titulo le
    quedaban 99 px, asi que "Transferencia Bodega" se partia en dos lineas. */
