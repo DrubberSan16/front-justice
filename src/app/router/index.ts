@@ -195,6 +195,16 @@ export const router = createRouter({
           meta: { title: "Terceros", viewFile: "views/admin/InventoryCrudView.vue" },
         },
         {
+          path: "empleados",
+          name: "empleados",
+          component: () => import("@/views/admin/EmployeesView.vue"),
+          meta: {
+            title: "Empleados",
+            permissionComponent: "empleados",
+            viewFile: "views/admin/EmployeesView.vue",
+          },
+        },
+        {
           path: "equipos",
           name: "equipos",
           component: () => import("@/views/admin/MaintenanceCrudView.vue"),

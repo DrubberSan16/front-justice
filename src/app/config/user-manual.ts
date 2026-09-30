@@ -89,6 +89,7 @@ const routeCategoryMap = new Map<string, string>([
   ["usuarios", "Administración"],
   ["roles", "Administración"],
   ["menu", "Administración"],
+  ["empleados", "Administración"],
   ["dashboard", "Control operativo"],
   ["inteligencia-mantenimiento", "Control operativo"],
   ["alertas", "Control operativo"],
@@ -1654,6 +1655,92 @@ const manualOverrides: Record<string, ManualOverride> = {
       "Confirme que la alerta cambie de estado luego del recalcado.",
     ],
     relatedRoutes: ["dashboard", "work-orders", "stock-bodega", "programaciones"],
+  },
+  empleados: {
+    routeName: "empleados",
+    title: "Empleados",
+    category: "Administración",
+    summary:
+      "Catálogo del personal de la empresa con su cédula, cargo, sueldo y valor por hora.",
+    purpose:
+      "Sirve para registrar a cada persona de la empresa, tenga o no usuario en el sistema, junto con lo que se le paga: el sueldo mensual y el valor de su hora de trabajo.",
+    prerequisites: [
+      "Ten a mano la cédula, el cargo y el sueldo mensual de cada persona.",
+      "Si el empleado también entra al sistema, su usuario se crea antes en Usuarios; aquí solo se vincula.",
+    ],
+    flow: [
+      {
+        id: "registro",
+        title: "Registra un empleado",
+        description:
+          "Pulsa Nuevo empleado. Si la persona ya tiene usuario, selecciónalo y se completan sus nombres; si no tiene, deja el usuario vacío y llena los datos completos.",
+        fields: ["Usuario del sistema", "Nombres y apellidos", "Cédula", "Sueldo mensual", "Cargo"],
+        checks: [
+          "La cédula tiene 10 dígitos y no está registrada para otra persona.",
+          "Un usuario solo puede vincularse a un empleado.",
+          "Los nombres completados desde el usuario se pueden corregir si el nombre legal es otro.",
+        ],
+      },
+      {
+        id: "valor-hora",
+        title: "Revisa el valor por hora",
+        description:
+          "Se calcula solo con el sueldo: sueldo ÷ 240 horas (30 días × 8 horas), la base del Código del Trabajo. Si a la persona se le paga otro valor, escríbelo: queda marcado como Manual y no se recalcula al cambiar el sueldo. El botón Recalcular vuelve al cálculo.",
+        fields: ["Valor por hora"],
+        checks: [
+          "El valor por hora coincide con lo que realmente se le paga a la persona.",
+          "Un valor Manual sigue igual aunque cambie el sueldo, hasta que pulses Recalcular.",
+        ],
+      },
+      {
+        id: "cargo",
+        title: "Elige o escribe el cargo",
+        description:
+          "El campo sugiere los cargos ya registrados, sin repetirlos. Si escribes uno nuevo se guarda y queda disponible para los siguientes; un cargo escrito con otras mayúsculas, tildes o espacios se guarda con la escritura que ya existe.",
+        fields: ["Cargo"],
+        checks: ["Antes de escribir un cargo nuevo, busca si ya existe con otro nombre."],
+      },
+      {
+        id: "importar",
+        title: "Carga el personal desde Excel",
+        description:
+          "Importar Excel lee las columnas NOMBRES, CEDULA, SUELDO y CARGO, calcula el valor por hora con el sueldo y muestra cada fila antes de guardar. Si la cédula ya está registrada se actualiza esa persona; si no, se crea. Con Descargar el formato en blanco obtienes el archivo de partida.",
+        fields: ["NOMBRES", "CEDULA", "SUELDO", "CARGO"],
+        checks: [
+          "Las filas con error no se importan y la vista previa dice el motivo de cada una.",
+          "Quien tiene el valor por hora fijado a mano lo conserva aunque el Excel traiga otro sueldo.",
+          "El vínculo con el usuario se propone solo cuando el nombre coincide con un único usuario libre.",
+        ],
+      },
+    ],
+    tips: [
+      "Excel suele quitar el cero inicial de la cédula (0604621326 queda 604621326): al importar se repone solo.",
+      "Un aviso amarillo bajo la cédula significa que el dígito verificador no coincide: revisa que esté bien escrita; se puede guardar igual.",
+    ],
+    warnings: [
+      "Este módulo contiene sueldos: asígnalo solo a los roles que deban verlos, desde Roles.",
+      "Eliminar a un empleado lo da de baja: su cédula y su usuario quedan libres para volver a registrarse.",
+    ],
+    commonErrors: [
+      {
+        title: "Ya existe un empleado con esa cédula",
+        whatHappens: "Al guardar aparece el nombre de la persona que ya tiene la cédula.",
+        why: "Cada cédula pertenece a un solo empleado vivo.",
+        howToResolve: "Busca a esa persona y edítala en lugar de crearla otra vez; si la cédula estaba mal escrita, corrígela.",
+      },
+      {
+        title: "El usuario no aparece en la lista",
+        whatHappens: "Al registrar un empleado no encuentras a su usuario.",
+        why: "El usuario está inactivo, fue eliminado o ya está vinculado a otro empleado.",
+        howToResolve: "Revísalo en Usuarios; si ya está vinculado, quita ese vínculo en el otro empleado antes de usarlo aquí.",
+      },
+    ],
+    checklist: [
+      "Cada empleado tiene cédula de 10 dígitos, cargo y sueldo.",
+      "El valor por hora coincide con lo que se le paga.",
+      "Los empleados con usuario están vinculados a él.",
+    ],
+    relatedRoutes: [],
   },
 };
 
