@@ -1,4 +1,5 @@
 import { api } from "@/app/http/api";
+import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { formatHorometerForDisplay } from "@/app/utils/number-format";
 import type { WorkOrderReportData } from "@/app/utils/work-order-report-documents";
 
@@ -249,17 +250,19 @@ export function buildMaterialSummary(
 
   for (const item of flattenDetailLines(consumptions)) {
     const label = labelOf(item);
-    const current = rows.get(label) ?? emptyRow(label);
+    const key = String(item?.producto_id || label);
+    const current = rows.get(key) ?? emptyRow(label);
     current.requested += toNumber(
       item?.cantidad_solicitada ?? item?.cantidad_reservada ?? item?.cantidad,
     );
     classify(current, item);
-    rows.set(label, current);
+    rows.set(key, current);
   }
 
   for (const item of flattenDetailLines(issues)) {
     const label = labelOf(item);
-    const current = rows.get(label) ?? emptyRow(label);
+    const key = String(item?.producto_id || label);
+    const current = rows.get(key) ?? emptyRow(label);
     const cantidad = toNumber(item?.cantidad);
     classify(current, item);
     current.delivered += cantidad;
@@ -268,15 +271,16 @@ export function buildMaterialSummary(
     } else {
       current.deliveredNuevo += cantidad;
     }
-    rows.set(label, current);
+    rows.set(key, current);
   }
 
   for (const item of flattenDetailLines(scraps)) {
     const label = labelOf(item);
-    const current = rows.get(label) ?? emptyRow(label);
+    const key = String(item?.producto_id || label);
+    const current = rows.get(key) ?? emptyRow(label);
     classify(current, item);
     current.scrapped += toNumber(item?.cantidad);
-    rows.set(label, current);
+    rows.set(key, current);
   }
 
   return [...rows.values()].sort((a, b) => a.label.localeCompare(b.label, "es"));
@@ -365,12 +369,6 @@ export function buildWorkOrderReportPayload(
         )
       : "-",
     oilDelivered: oilRows.length > 0,
-    createdBy: String(header?.created_by || ""),
-    processedBy: String(detail.history[0]?.changed_by || ""),
-    updatedBy: String(
-      detail.history[detail.history.length - 1]?.changed_by ||
-        header?.updated_by ||
-        "",
-    ),
+    ...resolveWorkOrderReportActors(header, detail.history),
   };
 }

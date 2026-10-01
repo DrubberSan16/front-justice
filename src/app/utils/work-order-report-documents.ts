@@ -1,4 +1,5 @@
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 
 /**
@@ -55,7 +56,7 @@ export type WorkOrderReportData = {
 };
 
 function safeText(value: unknown, fallback = "-") {
-  const text = String(value ?? "").trim();
+  const text = reportDisplayLabel(value);
   return text || fallback;
 }
 

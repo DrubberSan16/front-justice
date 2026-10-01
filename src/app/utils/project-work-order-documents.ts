@@ -1,4 +1,5 @@
 import type { Border, Worksheet } from "exceljs";
+import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import {
   drawPdfCompanyLogo,
   getCompanyLogoAsset,
@@ -61,7 +62,7 @@ export type ProjectWorkOrderReportData = {
 };
 
 function safeText(value: unknown, fallback = "-") {
-  const text = String(value ?? "").trim();
+  const text = reportDisplayLabel(value);
   return text || fallback;
 }
 

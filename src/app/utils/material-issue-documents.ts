@@ -1,4 +1,5 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
+import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 
@@ -40,8 +41,10 @@ export type MaterialIssueDocumentLike = {
   total_cantidad?: string | number | null;
   total_costos?: string | number | null;
   created_by?: string | null;
+  created_by_label?: string | null;
   created_at?: string | Date | null;
   updated_by?: string | null;
+  updated_by_label?: string | null;
   updated_at?: string | Date | null;
   detalles?: MaterialIssueDocumentDetailLike[] | null;
 };
@@ -77,7 +80,7 @@ const COLORS = {
 };
 
 function text(value: unknown, fallback = "-") {
-  const normalized = String(value ?? "").trim();
+  const normalized = reportDisplayLabel(value);
   return normalized || fallback;
 }
 
@@ -119,7 +122,7 @@ function conditionLabel(value: unknown) {
 function materialLabel(detail: MaterialIssueDocumentDetailLike) {
   const nombre = String(detail.producto_nombre ?? "").trim();
   if (nombre) return nombre;
-  const label = String(detail.producto_label ?? "").trim();
+  const label = reportDisplayLabel(detail.producto_label);
   if (!label) return "-";
   // `producto_label` llega como `codigo - nombre (descripcion)`; el codigo ya
   // tiene su propia columna, repetirlo solo roba ancho a la descripcion.
@@ -269,9 +272,9 @@ export async function buildMaterialIssuePdfBlob(
   );
 
   const lastIssue = issues.length ? issues[issues.length - 1] : null;
-  const registeredBy = text(issues[0]?.created_by, generatedBy);
+  const registeredBy = reportDisplayLabel(issues[0]?.created_by_label, issues[0]?.created_by) || "Sin registro";
   const registeredAt = formatDateTime(issues[0]?.created_at ?? firstDate, dateLabel);
-  const updatedBy = text(lastIssue?.updated_by || lastIssue?.created_by, generatedBy);
+  const updatedBy = reportDisplayLabel(lastIssue?.updated_by_label, lastIssue?.updated_by, lastIssue?.created_by_label, lastIssue?.created_by) || "Sin registro";
   const updatedAt = formatDateTime(
     lastIssue?.updated_at ?? lastIssue?.created_at ?? lastDate,
     dateLabel,

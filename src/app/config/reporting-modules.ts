@@ -57,7 +57,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     statusFields: ["status", "estado_workflow", "estado"],
     categoryFields: ["maintenance_kind", "tipo_mantenimiento", "prioridad"],
     valueFields: ["costo_total", "total"],
-    ownerFields: ["responsable_nombre", "created_by", "updated_by"],
+    ownerFields: ["responsable_nombre", "created_by_label", "updated_by_label"],
     valueLabel: "Costo registrado",
   },
   {
@@ -76,7 +76,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     statusFields: ["status", "estado_workflow", "estado"],
     categoryFields: ["maintenance_kind", "proyecto_empresa", "prioridad"],
     valueFields: ["costo_total", "total_mano_obra", "total"],
-    ownerFields: ["responsable_nombre", "created_by", "updated_by"],
+    ownerFields: ["responsable_nombre", "created_by_label", "updated_by_label"],
     valueLabel: "Valor registrado",
   },
   {

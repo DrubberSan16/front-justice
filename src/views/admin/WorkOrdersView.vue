@@ -2245,6 +2245,7 @@
 </template>
 
 <script setup lang="ts">
+import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
   formatHorometerForDisplay,
@@ -3262,14 +3263,11 @@ function isAnnulledWorkOrder(item: any) {
 function workOrderAnnulledBy(item: any) {
   const row = item?._raw ?? item;
   const payload = workOrderAuditPayload(row);
-  return String(
-    row?.approved_by_label ||
-      row?.approved_by_username ||
-      payload?.approved_by_name ||
-      payload?.approved_by_username ||
-      row?.updated_by ||
-      "SYSTEM",
-  ).trim();
+  return resolveUserDisplayLabel(
+    row?.approved_by_label, row?.approved_by_user_id, row?.approved_by,
+    row?.approved_by_username, payload?.approved_by_name,
+    payload?.approved_by_username, row?.updated_by_label, row?.updated_by,
+  ) || "Sin registro";
 }
 
 function workOrderAnnulledAt(item: any) {
@@ -3528,7 +3526,7 @@ const workOrderPreviewTraceability = computed(() => [
   { label: "Fecha creación", value: currentWorkOrderAudit.value?.created_at || "" },
   { label: "Realizado por", value: resolveUserDisplayLabel(currentWorkOrderAudit.value?.processed_by_label, currentWorkOrderAudit.value?.updated_by) },
   { label: "Fecha realización", value: currentWorkOrderAudit.value?.processed_at || currentWorkOrderAudit.value?.updated_at || "" },
-  { label: "Aprobado por", value: resolveUserDisplayLabel(currentWorkOrderAudit.value?.approved_by_label) },
+  { label: "Aprobado por", value: resolveUserDisplayLabel(currentWorkOrderAudit.value?.approved_by_label, currentWorkOrderAudit.value?.approved_by_user_id, currentWorkOrderAudit.value?.approved_by) },
   { label: "Fecha aprobación", value: currentWorkOrderAudit.value?.approved_at || "" },
   { label: "Acción final", value: currentWorkOrderAudit.value?.approval_action || "" },
   { label: "OT bloqueante", value: selectedBlockingOrderLabel.value },
@@ -3687,6 +3685,7 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
     creado_por:
       resolveUserDisplayLabel(
         header?.created_by_label,
+        header?.created_by_user_id,
         header?.created_by_name,
         header?.created_by_username,
         header?.created_by,
@@ -3700,11 +3699,12 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
     realizado_por:
       resolveUserDisplayLabel(
         header?.processed_by_label,
+        header?.processed_by_user_id,
         header?.processed_by_name,
         header?.processed_by_username,
       ) ||
       getHistoryUser(processedHistory) ||
-      resolveUserDisplayLabel(header?.updated_by) ||
+      resolveUserDisplayLabel(header?.updated_by_label, header?.updated_by) ||
       "",
     fecha_realizacion:
       header?.processed_at ||
@@ -3714,6 +3714,8 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
     aprobado_por:
       resolveUserDisplayLabel(
         header?.approved_by_label,
+        header?.approved_by_user_id,
+        header?.approved_by,
         header?.approved_by_name,
         header?.approved_by_username,
       ) ||
@@ -3843,10 +3845,10 @@ const projectReportData = computed<ProjectWorkOrderReportData>(() => {
     metodologia: headerForm.proyecto_metodologia || "",
     alcance: [...headerForm.proyecto_alcance],
     ubicaciones: headerForm.proyecto_ubicacion_ids
-      .map((id: string) => getProjectOptionLabel(locationOptions.value, id))
+      .map((id: string) => getProjectOptionLabel(locationOptions.value, id, audit?.proyecto_ubicaciones))
       .filter(Boolean),
     bodegas: headerForm.proyecto_bodega_ids
-      .map((id: string) => getProjectOptionLabel(warehouseOptions.value, id))
+      .map((id: string) => getProjectOptionLabel(warehouseOptions.value, id, audit?.proyecto_bodegas))
       .filter(Boolean),
     personal: projectPersonnelRows.value
       .filter((row) => String(row.rol || "").trim())
@@ -3854,29 +3856,26 @@ const projectReportData = computed<ProjectWorkOrderReportData>(() => {
         rol: row.rol,
         nombre: row.nombre,
         diasLaborados: Number(row.dias_laborados) || 0,
-        ubicacion: getProjectOptionLabel(locationOptions.value, row.location_id),
+        ubicacion: getProjectOptionLabel(locationOptions.value, row.location_id, audit?.proyecto_ubicaciones),
         valorDia: Number(row.valor_dia) || 0,
         fecha: row.fecha ? formatDateOnly(row.fecha, "-") : "",
         observacion: row.observacion,
       })),
     materiales: projectMaterialsFromIssueRows(issueRows.value),
     mostrarCostos: canViewCosts.value,
-    createdBy: String(
-      audit?.created_by_label || audit?.created_by || "",
-    ),
-    processedBy: String(
-      audit?.processed_by_label || audit?.updated_by || "",
-    ),
-    updatedBy: String(audit?.updated_by || ""),
+    createdBy: resolveWorkOrderTraceability(audit, localHistory.value).creado_por,
+    processedBy: resolveWorkOrderTraceability(audit, localHistory.value).realizado_por,
+    updatedBy: resolveUserDisplayLabel(audit?.updated_by_label, audit?.updated_by),
   };
 });
 
 /** Etiqueta de un id dentro de una lista de opciones `{ value, title }`. */
-function getProjectOptionLabel(options: any[], id: unknown) {
+function getProjectOptionLabel(options: any[], id: unknown, storedRows: any[] = []) {
   const key = String(id || "").trim();
   if (!key) return "";
   const match = options.find((item: any) => String(item?.value || "") === key);
-  return String(match?.title || key);
+  const stored = (storedRows || []).find((item: any) => String(item?.id || "") === key);
+  return reportDisplayLabel(match?.title, stored?.label, stored?.nombre, "Sin registro");
 }
 
 /**
@@ -3886,7 +3885,7 @@ function getProjectOptionLabel(options: any[], id: unknown) {
  */
 function projectMaterialsFromIssueRows(rows: any[]) {
   return rows.map((row: any) => ({
-    descripcion: String(row?.producto_label || ""),
+    descripcion: reportDisplayLabel(row?.producto_label, "Material sin registro"),
     cantidad: Number(row?.cantidad) || 0,
     unidad: "",
     marca: String(row?.condicion_material || ""),
@@ -3904,6 +3903,7 @@ function projectMaterialsFromIssueRows(rows: any[]) {
 function buildProjectReportDataFromRecord(
   record: any,
   issues: any[],
+  history: any[] = [],
 ): ProjectWorkOrderReportData {
   const valorJson = parseValorJson(record?.valor_json);
   const proyecto: Record<string, any> =
@@ -3913,7 +3913,7 @@ function buildProjectReportDataFromRecord(
   const siteLabels = (items: unknown) =>
     (Array.isArray(items) ? items : [])
       .map((item: any) =>
-        String(item?.label || item?.nombre || item?.id || "").trim(),
+        reportDisplayLabel(item?.label, item?.nombre, "Sin registro"),
       )
       .filter(Boolean);
   const procedureLabel = [record?.procedimiento_codigo, record?.procedimiento_nombre]
@@ -3953,9 +3953,9 @@ function buildProjectReportDataFromRecord(
       })),
     materiales: projectMaterialsFromIssueRows(buildIssueDisplayRows(issues)),
     mostrarCostos: canViewCosts.value,
-    createdBy: String(record?.created_by_label || record?.created_by || ""),
-    processedBy: String(record?.processed_by_label || record?.updated_by || ""),
-    updatedBy: String(record?.updated_by || ""),
+    createdBy: resolveWorkOrderTraceability(record, history).creado_por,
+    processedBy: resolveWorkOrderTraceability(record, history).realizado_por,
+    updatedBy: resolveUserDisplayLabel(record?.updated_by_label, record?.updated_by),
   };
 }
 
@@ -3965,15 +3965,16 @@ async function fetchProjectExportData(order: any) {
   if (!workOrderId) {
     throw new Error("No se pudo identificar la orden de trabajo a exportar.");
   }
-  const [headerRes, issues] = await Promise.all([
+  const [headerRes, issues, history] = await Promise.all([
     api.get(`/kpi_maintenance/work-orders/${workOrderId}`),
     safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/issue-materials`),
+    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/history`),
   ]);
   const record = {
     ...(order?._raw ?? order),
     ...(unwrapData(headerRes.data) ?? {}),
   };
-  return buildProjectReportDataFromRecord(record, issues);
+  return buildProjectReportDataFromRecord(record, issues, history);
 }
 
 /**
@@ -4131,12 +4132,6 @@ const userCatalogByUsername = computed(() => {
   return out;
 });
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isUuidLike(value: unknown) {
-  return UUID_PATTERN.test(String(value ?? "").trim());
-}
-
 /**
  * Nombre legible de un usuario a partir de lo que llegue: id, usuario o el
  * nombre ya resuelto, en ese orden de preferencia.
@@ -4149,10 +4144,11 @@ function resolveUserDisplayLabel(...values: unknown[]) {
     const raw = String(value ?? "").trim();
     if (!raw) continue;
     const byId = userCatalogMap.value.get(raw);
-    if (byId) return buildUserDisplayName(byId);
+    if (byId && buildUserDisplayName(byId)) return buildUserDisplayName(byId);
     const byUsername = userCatalogByUsername.value.get(raw.toLowerCase());
-    if (byUsername) return buildUserDisplayName(byUsername);
-    if (!isUuidLike(raw)) return raw;
+    if (byUsername && buildUserDisplayName(byUsername)) return buildUserDisplayName(byUsername);
+    const label = reportDisplayLabel(raw);
+    if (label) return label;
   }
   return "";
 }
@@ -4208,12 +4204,18 @@ function resolveProductLabel(productId: unknown, fallbackLabel?: unknown) {
   const key = String(productId || "").trim();
   const product = key ? productCatalogMap.value.get(key) : null;
   if (product) {
-    const label = String(fallbackLabel ?? "").trim();
+    const label = reportDisplayLabel(fallbackLabel);
     return label
       ? appendOilIndicator(label, product?.es_aceite)
       : buildProductDisplayTitle(product, { includeCode: false });
   }
-  return String(fallbackLabel || key || "-");
+  return reportDisplayLabel(fallbackLabel, "Material sin registro");
+}
+
+function resolveWarehouseLabel(id: unknown, ...labels: unknown[]) {
+  return reportDisplayLabel(
+    ...labels, warehouseNameMap.value[String(id || "")], "Bodega sin registro",
+  );
 }
 
 const warehouseNameMap = computed(() => warehouseCatalogRows.value.reduce((acc: Record<string, string>, item: any) => {
@@ -4665,7 +4667,7 @@ const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
     item?.producto_id,
     item?.producto_label || item?.producto_nombre || productNameMap.value[String(item?.producto_id || "")] || item?.producto_id || "-",
   ),
-  bodega_label: item?.bodega_label || item?.bodega_nombre || warehouseNameMap.value[String(item?.bodega_id || "")] || item?.bodega_id || "-",
+  bodega_label: resolveWarehouseLabel(item?.bodega_id, item?.bodega_label, item?.bodega_nombre),
   cantidad: toPositiveNumber(item?.cantidad),
   cantidad_reservada: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
   cantidad_emitida: toPositiveNumber(item?.cantidad_emitida),
@@ -4807,7 +4809,7 @@ function buildIssueDisplayRows(issues: any[]) {
         detail?.producto_id,
         detail?.producto_label || detail?.producto_nombre || productNameMap.value[String(detail?.producto_id || "")] || detail?.producto_id || "-",
       ),
-      bodega_label: detail?.bodega_label || detail?.bodega_nombre || warehouseNameMap.value[String(detail?.bodega_id || "")] || detail?.bodega_id || "-",
+      bodega_label: resolveWarehouseLabel(detail?.bodega_id, detail?.bodega_label, detail?.bodega_nombre),
       condicion_material: normalizeIssueCondition(detail?.condicion_material),
       cantidad: toPositiveNumber(detail?.cantidad),
       costo_unitario: toPositiveNumber(detail?.costo_unitario),
@@ -4826,16 +4828,8 @@ const scrapRows = computed(() => localScraps.value.flatMap((scrap: any) => {
     transferencia_codigo:
       scrap?.transferencia_codigo || scrap?.code || scrap?.codigo || "Sin código",
     fecha_label: scrap?.fecha ? formatDateTime(scrap.fecha, "-") : "-",
-    bodega_origen_label:
-      scrap?.bodega_origen_label ||
-      warehouseNameMap.value[String(scrap?.bodega_origen_id || "")] ||
-      scrap?.bodega_origen_id ||
-      "-",
-    bodega_chatarra_label:
-      scrap?.bodega_chatarra_label ||
-      warehouseNameMap.value[String(scrap?.bodega_chatarra_id || "")] ||
-      scrap?.bodega_chatarra_id ||
-      "-",
+    bodega_origen_label: resolveWarehouseLabel(scrap?.bodega_origen_id, scrap?.bodega_origen_label),
+    bodega_chatarra_label: resolveWarehouseLabel(scrap?.bodega_chatarra_id, scrap?.bodega_chatarra_label),
     producto_label: resolveProductLabel(
       detail?.producto_id,
       detail?.producto_label ||
@@ -4919,7 +4913,7 @@ function getEquipmentLabel(item: any) {
     || (item?.equipment_nombre || item?.equipo_nombre
       ? buildEquipmentDisplayTitle(item)
       : "")
-    || item?.equipment_id
+    || "Equipo sin registro"
     || ""
   );
 }
@@ -5306,7 +5300,7 @@ function getSelectedPlanLabel(planId: string) {
   if (fromProcedure?.plan_codigo || fromProcedure?.plan_nombre) {
     return [fromProcedure.plan_codigo, fromProcedure.plan_nombre].filter(Boolean).join(" - ");
   }
-  return planId;
+  return "Plan sin registro";
 }
 
 function getSelectedTaskLabel(planId: string, taskId: string) {
@@ -5314,7 +5308,7 @@ function getSelectedTaskLabel(planId: string, taskId: string) {
   const planKey = String(planId || "");
   const taskKey = String(taskId);
   const planCache = taskLabelCacheByPlan.value[planKey] || {};
-  return planCache[taskKey] || taskId;
+  return reportDisplayLabel(planCache[taskKey], "Tarea sin registro");
 }
 
 function getPlanLabelForTask(task: any) {
@@ -6860,12 +6854,7 @@ function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
 
 function buildListedConsumoRows(_order: any, consumos: any[]) {
   return consumos.map((item: any) => ({
-    bodega:
-      item?.bodega_label ||
-      item?.bodega_nombre ||
-      warehouseNameMap.value[String(item?.bodega_id || "")] ||
-      item?.bodega_id ||
-      "-",
+    bodega: resolveWarehouseLabel(item?.bodega_id, item?.bodega_label, item?.bodega_nombre),
     material: resolveProductLabel(
       item?.producto_id,
       item?.producto_label ||
@@ -6892,12 +6881,7 @@ function buildListedIssueRows(_order: any, issues: any[]) {
     return rawItems.map((detail: any) => ({
       salida: issue?.code || issue?.codigo || "Sin codigo",
       fecha: issue?.fecha || "",
-      bodega:
-        detail?.bodega_label ||
-        detail?.bodega_nombre ||
-        warehouseNameMap.value[String(detail?.bodega_id || "")] ||
-        detail?.bodega_id ||
-        "-",
+      bodega: resolveWarehouseLabel(detail?.bodega_id, detail?.bodega_label, detail?.bodega_nombre),
       material: resolveProductLabel(
         detail?.producto_id,
         detail?.producto_label ||
@@ -6921,16 +6905,8 @@ function buildListedScrapRows(_order: any, scraps: any[]) {
       transferencia:
         scrap?.transferencia_codigo || scrap?.code || scrap?.codigo || "Sin codigo",
       fecha: scrap?.fecha || "",
-      bodega_origen:
-        scrap?.bodega_origen_label ||
-        warehouseNameMap.value[String(scrap?.bodega_origen_id || "")] ||
-        scrap?.bodega_origen_id ||
-        "-",
-      bodega_chatarra:
-        scrap?.bodega_chatarra_label ||
-        warehouseNameMap.value[String(scrap?.bodega_chatarra_id || "")] ||
-        scrap?.bodega_chatarra_id ||
-        "-",
+      bodega_origen: resolveWarehouseLabel(scrap?.bodega_origen_id, scrap?.bodega_origen_label),
+      bodega_chatarra: resolveWarehouseLabel(scrap?.bodega_chatarra_id, scrap?.bodega_chatarra_label),
       material: resolveProductLabel(
         detail?.producto_id,
         detail?.producto_label ||
@@ -7050,11 +7026,11 @@ function buildIssueDocumentsWorkOrderContext(item: any): MaterialIssueWorkOrderL
     equipment_label: getEquipmentLabel(raw),
     equipment_component_label: getEquipmentComponentLabel(raw),
     maintenance_kind_label: getMaintenanceKindLabel(raw?.maintenance_kind),
-    created_by_label: raw?.created_by_label || raw?.created_by || "",
+    created_by_label: resolveUserDisplayLabel(raw?.created_by_label, raw?.created_by_user_id, raw?.created_by),
     created_at: raw?.created_at || "",
-    processed_by_label: raw?.processed_by_label || raw?.updated_by || "",
+    processed_by_label: resolveUserDisplayLabel(raw?.processed_by_label, raw?.processed_by_user_id),
     processed_at: raw?.processed_at || raw?.updated_at || "",
-    approved_by_label: raw?.approved_by_label || "",
+    approved_by_label: resolveUserDisplayLabel(raw?.approved_by_label, raw?.approved_by_user_id, raw?.approved_by),
     approved_at: raw?.approved_at || "",
   };
 }

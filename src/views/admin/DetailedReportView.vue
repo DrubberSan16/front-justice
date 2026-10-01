@@ -1445,20 +1445,17 @@
               <div class="audit-grid">
                 <span
                   >Creada por<strong>{{
-                    detailHeader.created_by_label ||
-                    detailHeader.created_by ||
+                    detailActors.createdBy ||
                     "Sin registro"
                   }}</strong></span
                 ><span
                   >Iniciada o procesada por<strong>{{
-                    detailHeader.processed_by_label ||
-                    firstHistoryActor ||
+                    detailActors.processedBy ||
                     "Sin registro"
                   }}</strong></span
                 ><span
                   >Última edición por<strong>{{
-                    detailHeader.updated_by ||
-                    lastHistoryActor ||
+                    detailActors.updatedBy ||
                     "Sin registro"
                   }}</strong></span
                 >
@@ -1670,6 +1667,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import EChart from "@/components/charts/EChart.vue";
@@ -2906,11 +2904,8 @@ function formatHorometro(value: unknown) {
   return formatHorometerForDisplay(value);
 }
 
-const firstHistoryActor = computed(
-  () => detailHistory.value[0]?.changed_by || null,
-);
-const lastHistoryActor = computed(
-  () => detailHistory.value[detailHistory.value.length - 1]?.changed_by || null,
+const detailActors = computed(
+  () => resolveWorkOrderReportActors(detailHeader.value || {}, detailHistory.value),
 );
 async function safeGetList(url: string) {
   try {
@@ -3804,17 +3799,7 @@ function buildWorkOrderReportData(): WorkOrderReportData {
     oilQuantity: orderOilQuantity.value,
     oilCost: formatCurrency(orderOilCost.value),
     oilDelivered: oilDelivered.value,
-    createdBy: String(
-      detailHeader.value?.created_by_label ||
-        detailHeader.value?.created_by ||
-        "",
-    ),
-    processedBy: String(
-      detailHeader.value?.processed_by_label || firstHistoryActor.value || "",
-    ),
-    updatedBy: String(
-      detailHeader.value?.updated_by || lastHistoryActor.value || "",
-    ),
+    ...detailActors.value,
   };
 }
 

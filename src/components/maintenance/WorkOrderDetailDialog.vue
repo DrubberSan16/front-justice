@@ -125,6 +125,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { reportDisplayLabel, resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
@@ -200,15 +201,9 @@ const materiales = computed(() =>
 );
 const evidences = computed(() => detail.value.attachments || []);
 
-function historyActor(pattern: RegExp) {
-  const hit = detail.value.history.find((row: any) =>
-    pattern.test(String(row?.new_status || row?.estado_nuevo || row?.status || row?.accion || "").toUpperCase()),
-  );
-  return String(hit?.changed_by_label || hit?.changed_by_username || hit?.changed_by || "-");
-}
-
 const facts = computed(() => {
   const row = header.value;
+  const actors = resolveWorkOrderReportActors(row || {}, detail.value.history);
   const base = [
     { label: "Equipo", value: equipmentLabel.value },
     { label: "Estado", value: statusLabel.value },
@@ -225,9 +220,9 @@ const facts = computed(() => {
       label: "Horas registradas",
       value: `${formatNumber(totalHours.value)} h`,
     },
-    { label: "Registrada por", value: String(row?.created_by_label || row?.created_by || "-") },
-    { label: "Iniciada por", value: String(row?.processed_by_label || row?.processed_by || historyActor(/IN.?PROGRESS|EN.?PROCESO|INICI/)) },
-    { label: "Finalizada por", value: String(row?.approved_by_label || row?.approved_by || historyActor(/CLOSED|FINALIZ|CERRAD/)) },
+    { label: "Registrada por", value: actors.createdBy || "Sin registro" },
+    { label: "Iniciada por", value: actors.processedBy || "Sin registro" },
+    { label: "Finalizada por", value: actors.approvedBy || "Sin registro" },
   ];
   if (!showCosts.value) return base;
   return [
@@ -278,7 +273,7 @@ function materialLabel(row: Record<string, any>) {
       nombre: row?.producto_nombre,
       descripcion: row?.producto_descripcion,
     }) ||
-    String(row?.producto_label || row?.producto_nombre || row?.producto_id || "Material")
+    reportDisplayLabel(row?.producto_label, row?.producto_nombre, "Material sin registro")
   );
 }
 

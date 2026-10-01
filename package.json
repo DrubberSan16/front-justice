@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "test:reports": "node scripts/test-work-order-report-labels.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

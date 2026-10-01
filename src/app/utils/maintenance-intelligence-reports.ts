@@ -6,6 +6,7 @@ import {
   looksLikeDateValue,
 } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
+import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import {
   formatHorometerForDisplay,
   formatNumberForDisplay,
@@ -2266,7 +2267,7 @@ function buildWorkOrderSectionSheets(
   const code = String(header.codigo || header.code || `OT-${position}`).trim();
   const title = String(header.titulo || header.title || "").trim();
   const formatActor = (user: unknown, date: unknown) =>
-    [String(user || "").trim(), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
+    [reportDisplayLabel(user), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
   // El horometro es un contador de horas enteras: `formatValue` le pondria los
   // dos decimales que lleva toda cifra de este informe, y ahi no pintan nada.
   const formatHorometer = (value: unknown) =>
