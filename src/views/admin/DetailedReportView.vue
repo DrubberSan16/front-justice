@@ -482,7 +482,9 @@
           :items-per-page="10"
           density="comfortable"
           class="manager-table"
-          no-data-text="Sin consumo de aceite registrado en cebado"
+          :no-data-text="primingCentral
+            ? `Sin consumo de aceite en ${primingCentral} durante el período seleccionado. Prueba con otras fechas o limpia el filtro.`
+            : 'Sin consumo de aceite registrado en cebado durante el período seleccionado. Prueba con otras fechas.'"
         >
           <template #item.equipo_nombre="{ item }">
             <button type="button" class="order-link"
@@ -1673,6 +1675,7 @@
 <script setup lang="ts">
 import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
 import { buildReportPdfBlob } from "@/app/utils/maintenance-intelligence-reports";
+import { buildPrimingCentralOptions, filterPrimingRows } from "@/app/utils/priming-central-filter";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useTheme } from "vuetify";
@@ -1784,9 +1787,10 @@ const inventoryTotals = ref<AnyRow>({
 });
 const generationEquipments = ref<AnyRow[]>([]);
 const rawPrimingRows = ref<AnyRow[]>([]);
+const primingLocations = ref<AnyRow[]>([]);
 const primingCentral = ref<string | null>(null);
-const primingCentralOptions = computed(() => [...new Set(rawPrimingRows.value.map(row => String(row.central || "Sin ubicación")))].sort());
-const primingRows = computed(() => rawPrimingRows.value.filter(row => !primingCentral.value || String(row.central || "Sin ubicación") === primingCentral.value));
+const primingCentralOptions = computed(() => buildPrimingCentralOptions(primingLocations.value, rawPrimingRows.value));
+const primingRows = computed(() => filterPrimingRows(rawPrimingRows.value, primingCentral.value));
 const primingLoading = ref(false);
 const primingDetailDialog = ref(false);
 const primingDetailLoading = ref(false);
@@ -2664,6 +2668,11 @@ async function loadPrimingReport() {
     primingLoading.value = false;
   }
 }
+async function loadPrimingLocations() {
+  primingLocations.value = await listAllPages(
+    "/kpi_maintenance/locaciones",
+  );
+}
 async function openPrimingDetail(equipment: AnyRow) {
   primingDetailEquipment.value = equipment;
   primingDetailRows.value = [];
@@ -2718,6 +2727,7 @@ async function loadReport() {
       loadInventoryReport(),
       loadOilReport(),
       loadPrimingReport(),
+      loadPrimingLocations(),
     ]);
   } catch (requestError: any) {
     const message = requestError?.response?.data?.message;

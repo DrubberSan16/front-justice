@@ -17,6 +17,7 @@ const { outputFiles } = await build({
       export * from "@/app/utils/maintenance-intelligence-reports";
       export * from "@/app/utils/canonical-work-order-report";
       export * from "@/app/utils/date-time";
+      export * from "@/app/utils/priming-central-filter";
     `,
     resolveDir: root,
   },
@@ -133,6 +134,9 @@ const canonicalDetail = {
 const canonical = reports.buildCanonicalWorkOrderReport(canonicalDetail, true);
 const info = canonical.sheets[0].section.info;
 assert.equal(info.find(row => row.label === "Costo total").value.includes("22"), true);
+assert.ok(!info.some(row => ["Costo materiales", "Mano de obra", "Personal contratado"].includes(row.label)));
+assert.deepEqual(canonical.sheets[0].columns.slice(-2).map(column => column.header), ["Cantidad de horas", "Costo total"]);
+assert.ok(!canonical.sheets[0].columns.some(column => column.key === "costo_hora"));
 assert.equal(canonical.sheets[0].rows[0].costo_total, 10);
 const consumptionSheet = canonical.sheets.find(sheet => sheet.name === "Consumos");
 assert.equal(consumptionSheet.rows[0].subtotal, 12);
@@ -143,10 +147,11 @@ if (process.env.REPORT_OUTPUT_DIR) {
   await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "informe_ot_verificacion.xlsx"), Buffer.from(await (await reports.buildReportExcelBlob(canonical)).arrayBuffer()));
 }
 await assertPdf(canonicalPdf, ["UG21", "CPT", "Costo total", "Costo", "hora", "Aceite Gulf"]);
-await assertExcel(await reports.buildReportExcelBlob(canonical), ["UG21", "CPT", "Costo total", "Costo por hora", "Aceite Gulf"], 1);
+await assertExcel(await reports.buildReportExcelBlob(canonical), ["UG21", "CPT", "Costo total", "Cantidad de horas", "Aceite Gulf"], 1);
 const withoutCosts = reports.buildCanonicalWorkOrderReport(canonicalDetail, false);
 assert.ok(!withoutCosts.sheets[0].section.info.some(row => row.label === "Costo total"));
 assert.ok(!withoutCosts.sheets[0].columns.some(row => row.key === "costo_hora"));
+assert.ok(!withoutCosts.sheets[0].columns.some(row => row.key === "costo_total"));
 const projectCanonical = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: { ...canonicalDetail.header, maintenance_kind: "PROYECTO" } }, true);
 assert.ok(!projectCanonical.sheets[0].section.info.some(row => /Horómetro/.test(row.label)));
 const projectDetail = { ...canonicalDetail, header: { ...canonicalDetail.header, maintenance_kind: "PROYECTO", valor_json: { proyecto: { empresa: "Justice", objetivo_general: "Instalar tuberías", metodologia: "Montaje" } }, proyecto_personal: [{ rol: "Soldador", nombre: "Luis", dias_laborados: 2, valor_dia: 30 }] } };
@@ -154,13 +159,29 @@ const projectReport = reports.buildCanonicalWorkOrderReport(projectDetail, true)
 assert.ok(projectReport.sheets[0].section.info.some(row => row.value === "Instalar tuberías"));
 assert.equal(projectReport.sheets.find(row => row.name === "Personal contratado").rows[0].subtotal, 60);
 assert.ok(projectReport.sheets[0].section.info.find(row => row.label === "Costo total").value.includes("82"));
+assert.ok(!projectReport.sheets[0].section.info.some(row => ["Costo materiales", "Mano de obra", "Personal contratado"].includes(row.label)));
+const fractionalTaskReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, tasks: [{ tarea_nombre: "Cebar motor", responsables: [{ display_name: "Ana Perez", horas: 0.25, costo_hora: 3.75 }] }] }, true);
+assert.equal(fractionalTaskReport.sheets[0].rows[0].horas, 0.25);
+assert.equal(fractionalTaskReport.sheets[0].rows[0].costo_total, 0.9375);
+await assertPdf(await reports.buildReportPdfBlob(fractionalTaskReport), ["Cantidad", "horas", new Intl.NumberFormat("es-EC", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(0.94)]);
 const secondCanonical = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: { ...canonicalDetail.header, code: "OT-CEBADO-2" } }, true);
 const consolidated = reports.consolidateCanonicalWorkOrderReports([canonical, secondCanonical], { title: "Consolidado", subtitle: "CPT", fileName: "consolidado" });
 assert.equal(consolidated.sheets[0], canonical.sheets[0], "La OT consolidada conserva el mismo informe individual");
 assert.equal(consolidated.sheets[canonical.sheets.length], secondCanonical.sheets[0]);
 await assertPdf(await reports.buildReportPdfBlob(consolidated), ["OT-CEBADO-2", "Costo total", "UG21", "CPT"]);
-await assertExcel(await reports.buildReportExcelBlob(consolidated), ["OT-CEBADO-2", "Costo total", "Costo por hora"], 2);
+await assertExcel(await reports.buildReportExcelBlob(consolidated), ["OT-CEBADO-2", "Costo total", "Cantidad de horas"], 2);
 console.log("PASS: informe único OT, costos conciliados, UG/central, permisos y proyecto sin horómetro");
+const locations = [{ codigo: "UBI-A00003", nombre: "CENTRAL CPT" }, { codigo: "UBI-A00004", nombre: "CENTRAL TPTA" }];
+const tptaOnly = [{ central: "UBI-A00004 - CENTRAL TPTA", galones_periodo: 2 }];
+assert.deepEqual(reports.buildPrimingCentralOptions(locations, tptaOnly), ["UBI-A00003 - CENTRAL CPT", "UBI-A00004 - CENTRAL TPTA"]);
+assert.deepEqual(reports.buildPrimingCentralOptions(locations, []), ["UBI-A00003 - CENTRAL CPT", "UBI-A00004 - CENTRAL TPTA"]);
+assert.deepEqual(reports.filterPrimingRows(tptaOnly, "UBI-A00003 - CENTRAL CPT"), []);
+assert.deepEqual(reports.filterPrimingRows(tptaOnly, null), tptaOnly);
+const bothCentrals = [...tptaOnly, { central: "UBI-A00003 - CENTRAL CPT", galones_periodo: 5 }];
+assert.equal(reports.filterPrimingRows(bothCentrals, "UBI-A00003 - CENTRAL CPT")[0].galones_periodo, 5);
+assert.deepEqual(reports.buildPrimingCentralOptions([locations[1]], tptaOnly), ["UBI-A00004 - CENTRAL TPTA"], "Respeta el catálogo del ámbito recibido");
+assert.deepEqual(reports.filterPrimingRows([{ central: "" }], "Sin ubicación"), [{ central: "" }]);
+console.log("PASS: CPT disponible sin consumo, cambio de período, filtro por central y catálogo del ámbito recibido");
 
 const ssaDetail = { ...canonicalDetail, header: { ...canonicalDetail.header, code: "OT-SSA", title: "Mantenimiento SSA", maintenance_kind: "SSA", procedimiento_nombre: "Plantilla SSA" } };
 const ssaReport = reports.buildCanonicalWorkOrderReport(ssaDetail, true);

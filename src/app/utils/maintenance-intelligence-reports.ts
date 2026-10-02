@@ -2241,9 +2241,9 @@ const WORK_ORDER_DETAIL_COLUMNS = {
     { key: "responsable", header: "Responsable", width: 22 },
     { key: "tarea", header: "Trabajo realizado", width: 32 },
     { key: "valor_registrado", header: "Resultado", width: 26 },
-    { key: "horas", header: "Horas", width: 10, format: "number" },
     { key: "observacion", header: "Novedad", width: 28 },
     { key: "plan", header: "Plan", width: 18 },
+    { key: "horas", header: "Cantidad de horas", width: 14, format: "number" },
   ] satisfies ReportColumn[],
   attachments: [
     { key: "vista_previa", header: "Vista", width: 18 },
@@ -2340,9 +2340,6 @@ function buildWorkOrderSectionSheets(
   }
   if (showCosts) {
     info.push(
-      { label: "Costo materiales", value: formatCurrencyForDisplay(header.costo_materiales) },
-      { label: "Mano de obra", value: formatCurrencyForDisplay(header.costo_mano_obra) },
-      ...(isProject ? [{ label: "Personal contratado", value: formatCurrencyForDisplay(header.costo_contratado) }] : []),
       { label: "Costo total", value: formatCurrencyForDisplay(header.costo_total) },
     );
   }
@@ -2375,8 +2372,7 @@ function buildWorkOrderSectionSheets(
       columns: [
         ...WORK_ORDER_DETAIL_COLUMNS.tasks,
         ...(showCosts ? [
-          { key: "costo_hora", header: "Costo por hora", width: 12, format: "currency" as const },
-          { key: "costo_total", header: "Costo", width: 12, format: "currency" as const },
+          { key: "costo_total", header: "Costo total", width: 12, format: "currency" as const },
         ] : []),
       ],
     },
