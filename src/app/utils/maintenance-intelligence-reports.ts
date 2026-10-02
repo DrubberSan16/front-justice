@@ -2372,6 +2372,7 @@ function buildWorkOrderSectionSheets(
       columns: [
         ...WORK_ORDER_DETAIL_COLUMNS.tasks,
         ...(showCosts ? [
+          { key: "costo_hora", header: "Costo por hora", width: 12, format: "currency" as const },
           { key: "costo_total", header: "Costo total", width: 12, format: "currency" as const },
         ] : []),
       ],
