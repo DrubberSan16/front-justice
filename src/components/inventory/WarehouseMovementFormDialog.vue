@@ -108,7 +108,8 @@
                 </td>
                 <td v-if="showUnitCost" class="price-col">
                   <v-text-field v-model="detail.costoUnitario" type="number" min="0" step="0.0001"
-                    label="Precio unitario" prefix="$" variant="outlined" density="comfortable" :disabled="saving" />
+                    label="Precio unitario" prefix="$" variant="outlined" density="comfortable" :disabled="saving"
+                    :loading="incomePrices.states.value[detail.localId]?.loading" :hint="incomePriceHint(detail)" persistent-hint />
                 </td>
                 <td v-if="showUnitCost" class="discount-col">
                   <v-text-field v-model="detail.descuento" type="number" min="0" step="0.0001" label="Descuento"
@@ -160,7 +161,7 @@
       <v-divider />
       <v-card-actions class="px-5 py-4 d-flex justify-end flex-wrap" style="gap:12px">
         <v-btn variant="text" :disabled="saving" @click="close">Cancelar</v-btn>
-        <v-btn color="primary" :loading="saving" @click="save">
+        <v-btn color="primary" :loading="saving" :disabled="incomePrices.loading.value" @click="save">
           Guardar {{ isIncome ? "Ingreso" : "Egreso" }}
         </v-btn>
       </v-card-actions>
@@ -169,7 +170,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useUiStore } from "@/app/stores/ui.store";
@@ -177,7 +178,8 @@ import { fetchProductsWithStock } from "@/app/services/products-inventory.servic
 import { formatDateForInput } from "@/app/utils/date-time";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
-import { canSetIncomeUnitCost } from "@/app/utils/role-access";
+import { canSetIncomeUnitCost, isWarehouseKeeper } from "@/app/utils/role-access";
+import { useIncomePriceReference } from "@/app/composables/use-income-price-reference";
 import { formatCurrencyForDisplay } from "@/app/utils/number-format";
 
 /**
@@ -256,6 +258,29 @@ const dialogTitle = computed(() =>
 const showUnitCost = computed(
   () => isIncome.value && canSetIncomeUnitCost(auth.user),
 );
+const incomePrices = useIncomePriceReference({
+  rows: () => details.value,
+  warehouseId: () => form.bodegaId,
+  date: () => form.fecha,
+  enabled: () => showUnitCost.value && props.modelValue,
+});
+onBeforeUnmount(incomePrices.stop);
+
+function incomePriceHint(detail: DetailForm) {
+  const state = incomePrices.states.value[detail.localId];
+  if (state?.loading) return "Consultando precio de referencia…";
+  if (state?.error) return state.error;
+  if (!detail.productoId) return "Se precarga al seleccionar un material.";
+  const sources: Record<string, string> = {
+    PROMEDIO_MATERIAL: "Promedio del material", ULTIMO_COSTO_MATERIAL: "Último costo del material",
+    INGRESO: "Último ingreso de bodega", ORDEN_COMPRA: "Última orden de compra", COSTO_BODEGA: "Costo de la bodega",
+  };
+  if (sources[state?.source || ""]) return `Referencia: ${sources[state!.source]}`;
+  if (parsePositive(detail.costoUnitario) > 0) return "Precio ingresado para este documento.";
+  return isWarehouseKeeper(auth.user)
+    ? "Sin precio registrado; puedes guardar el ingreso."
+    : "Sin precio registrado; ingresa un precio mayor a cero.";
+}
 
 const warehouseOptions = computed(() =>
   warehouses.value.map((bodega) => ({
@@ -610,11 +635,15 @@ async function save() {
     if (
       showUnitCost.value &&
       String(detail.costoUnitario || "").trim() &&
-      !precio
+      (!Number.isFinite(Number(detail.costoUnitario)) || Number(detail.costoUnitario) < 0)
     ) {
       return ui.error(
-        `El precio unitario de la fila ${index + 1} debe ser mayor a cero.`,
+        `El precio unitario de la fila ${index + 1} no puede ser negativo ni inválido.`,
       );
+    }
+    if (showUnitCost.value && !isWarehouseKeeper(auth.user) && !precio &&
+        incomePrices.states.value[detail.localId]?.source === "SIN_PRECIO") {
+      return ui.error(`Ingresa el precio unitario de la fila ${index + 1}: no existe un precio de referencia.`);
     }
     const descuento = showUnitCost.value ? parsePositive(detail.descuento) : 0;
     const porcentajeDescuento = showUnitCost.value

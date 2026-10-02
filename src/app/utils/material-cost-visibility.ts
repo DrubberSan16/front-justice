@@ -10,7 +10,12 @@ export function isMaterialCostKey(key: unknown): boolean {
  * Defensa adicional del cliente: aunque un servicio nuevo olvide aplicar el
  * filtro, los importes no quedan disponibles en el estado de la aplicación.
  */
-export function stripMaterialCosts<T>(payload: T): T {
+export function isIncomePriceReferenceRequest(method: unknown, url: unknown): boolean {
+  return String(method || "GET").toUpperCase() === "GET" &&
+    /\/kardex\/precios-ingreso(?:\?|$)/.test(String(url || ""));
+}
+
+export function stripMaterialCosts<T>(payload: T, allowIncomeUnitCost = false): T {
   const seen = new WeakMap<object, unknown>();
 
   const clean = (value: any): any => {
@@ -35,7 +40,7 @@ export function stripMaterialCosts<T>(payload: T): T {
     const monetaryObject = Object.keys(value).some((key) => isMaterialCostKey(key));
     for (const [key, item] of Object.entries(value)) {
       if (
-        !isMaterialCostKey(key) &&
+        (!isMaterialCostKey(key) || (allowIncomeUnitCost && key === "costo_unitario")) &&
         !(monetaryObject && CONTEXTUAL_MATERIAL_COST_KEY.test(key))
       )
         copy[key] = clean(item);
