@@ -187,6 +187,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
         required: true,
         options: [
           { value: "MPG", title: "MPG" },
+          { value: "SSA", title: "SSA" },
           { value: "PROCEDIMIENTO_TRABAJO", title: "Procedimiento de trabajo" },
           { value: "INSPECCION", title: "Inspeccion" },
           { value: "LUBRICACION", title: "Lubricacion" },
@@ -223,6 +224,7 @@ export function getEnhancedMaintenanceModule(key: string): EnhancedMaintenanceMo
           { value: "PREDICTIVO", title: "Predictivo" },
           { value: "CORRECTIVO", title: "Correctivo" },
           { value: "CEBADO", title: "Cebado" },
+          { value: "SSA", title: "SSA" },
           { value: "RUTINARIO", title: "Rutinario" },
         ],
         visibleWhen: isNotProyectoTemplate,

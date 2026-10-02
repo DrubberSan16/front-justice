@@ -161,3 +161,31 @@ assert.equal(consolidated.sheets[canonical.sheets.length], secondCanonical.sheet
 await assertPdf(await reports.buildReportPdfBlob(consolidated), ["OT-CEBADO-2", "Costo total", "UG21", "CPT"]);
 await assertExcel(await reports.buildReportExcelBlob(consolidated), ["OT-CEBADO-2", "Costo total", "Costo por hora"], 2);
 console.log("PASS: informe único OT, costos conciliados, UG/central, permisos y proyecto sin horómetro");
+
+const ssaDetail = { ...canonicalDetail, header: { ...canonicalDetail.header, code: "OT-SSA", title: "Mantenimiento SSA", maintenance_kind: "SSA", procedimiento_nombre: "Plantilla SSA" } };
+const ssaReport = reports.buildCanonicalWorkOrderReport(ssaDetail, true);
+await assertPdf(await reports.buildReportPdfBlob(ssaReport), ["OT-SSA", "SSA", "Plantilla SSA", "UG21", "CPT", "Costo total"]);
+await assertExcel(await reports.buildReportExcelBlob(ssaReport), ["OT-SSA", "SSA", "Plantilla SSA", "Costo total"], 1);
+const ssaConsolidated = reports.consolidateCanonicalWorkOrderReports([canonical, ssaReport], { title: "Consolidado SSA", fileName: "consolidado_ssa" });
+await assertPdf(await reports.buildReportPdfBlob(ssaConsolidated), ["OT-CEBADO", "OT-SSA", "Plantilla SSA"]);
+await assertExcel(await reports.buildReportExcelBlob(ssaConsolidated), ["OT-CEBADO", "OT-SSA", "SSA"], 2);
+const ssaWithoutCosts = reports.buildCanonicalWorkOrderReport(ssaDetail, false);
+assert.ok(!ssaWithoutCosts.sheets[0].section.info.some(row => row.label === "Costo total"));
+assert.ok(!ssaWithoutCosts.sheets.some(sheet => sheet.columns.some(column => /costo|subtotal/.test(column.key))));
+console.log("PASS: SSA en PDF y Excel individual/consolidado, plantilla, UG/central y permisos de costos");
+
+const ssaTemplates = reports.buildProceduresReport([{
+  codigo: "PMP-SSA", nombre: "Plantilla SSA", tipo_proceso: "SSA", clase_mantenimiento: "SSA",
+  actividades: [{ orden: 1, actividad: "Verificar condiciones de seguridad", requiere_permiso: true, requiere_epp: true, requiere_bloqueo: true, requiere_evidencia: true }],
+}]);
+assert.equal(ssaTemplates.sheets[0].rows[0].tipo_proceso, "SSA");
+assert.equal(ssaTemplates.sheets[1].rows[0].requiere_bloqueo, true);
+await assertPdf(await reports.buildReportPdfBlob(ssaTemplates), ["SSA", "Plantilla SSA", "Verificar condiciones de seguridad"]);
+await assertExcel(await reports.buildReportExcelBlob(ssaTemplates), ["SSA", "Plantilla SSA", "Verificar condiciones de seguridad"], 2);
+if (process.env.REPORT_OUTPUT_DIR) {
+  for (const [name, report] of [["ot_ssa", ssaReport], ["plantilla_ssa", ssaTemplates]]) {
+    await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, `${name}.pdf`), Buffer.from(await (await reports.buildReportPdfBlob(report)).arrayBuffer()));
+    await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, `${name}.xlsx`), Buffer.from(await (await reports.buildReportExcelBlob(report)).arrayBuffer()));
+  }
+}
+console.log("PASS: exportacion PDF/Excel de plantillas SSA y controles del checklist");

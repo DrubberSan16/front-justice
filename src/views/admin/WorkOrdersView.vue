@@ -2739,6 +2739,7 @@ const maintenanceKindOptions = [
   { title: "Preventivo", value: "PREVENTIVO" },
   { title: "Predictivo", value: "PREDICTIVO" },
   { title: "Cebado", value: "CEBADO" },
+  { title: "SSA", value: "SSA" },
   { title: "Inspección", value: "INSPECCION" },
 ];
 const maintenanceKindFilterOptions = [

@@ -1627,15 +1627,15 @@ export function buildProceduresReport(procedures: AnyRow[]) {
   );
 
   return {
-    fileName: `procedimientos_mpg_${formatDateForInput(new Date())}`,
+    fileName: `plantillas_mantenimiento_${formatDateForInput(new Date())}`,
     title: "Reporte de procedimientos y plantillas",
-    subtitle: "Procedimientos preventivos, actividades y controles derivados de las plantillas documentales.",
+    subtitle: "Tipos de mantenimiento, actividades y controles de las plantillas documentales.",
     summary: [
       { label: "Plantillas activas", value: procedureRows.length },
       { label: "Actividades documentadas", value: activityRows.length },
     ],
     sheets: [
-      { name: "Procedimientos", rows: procedureRows, note: "Base documental activa para mantenimiento preventivo." },
+      { name: "Procedimientos", rows: procedureRows, note: "Base documental activa para los tipos de mantenimiento, incluido SSA." },
       { name: "Actividades", rows: activityRows },
     ],
   } satisfies ReportDefinition;
