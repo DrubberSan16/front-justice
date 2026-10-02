@@ -1287,7 +1287,18 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     const noteLines = sheet.note
       ? doc.splitTextToSize(repairText(sheet.note), pageWidth - marginX * 2 - 20)
       : [];
-    const minimumSectionHeight = 34 + (noteLines.length ? 28 + noteLines.length * 10 : 0) + 62;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    const sectionTitleLines = sheet.section
+      ? doc.splitTextToSize(repairText(sheet.section.title), availableTableWidth - 24)
+      : [];
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    const sectionSubtitleLines = sheet.section?.subtitle
+      ? doc.splitTextToSize(repairText(sheet.section.subtitle), availableTableWidth - 24)
+      : [];
+    const sectionBandHeight = 26 + Math.max(0, sectionTitleLines.length - 1) * 14 + sectionSubtitleLines.length * 11;
+    const minimumSectionHeight = sectionBandHeight + 8 + (noteLines.length ? 28 + noteLines.length * 10 : 0) + 62;
     const needsNewPage = cursorY + minimumSectionHeight > pageHeight - 36;
     const sectionId = sheet.section?.id ?? null;
     const startsNewSection = Boolean(sectionId) && sectionId !== currentSectionId;
@@ -1312,24 +1323,24 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
     if (startsNewSection && sheet.section) {
       currentSectionId = sectionId;
       doc.setFillColor(31, 78, 120);
-      doc.roundedRect(marginX, cursorY - 2, pageWidth - marginX * 2, 26, 6, 6, "F");
+      doc.roundedRect(marginX, cursorY - 2, pageWidth - marginX * 2, sectionBandHeight, 6, 6, "F");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
       doc.setTextColor(255, 255, 255);
-      doc.text(repairText(sheet.section.title), marginX + 12, cursorY + 15);
+      doc.text(sectionTitleLines, marginX + 12, cursorY + 15, { lineHeightFactor: 14 / 12 });
       if (sheet.section.subtitle) {
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
         doc.text(
-          repairText(sheet.section.subtitle),
-          pageWidth - marginX - 12,
-          cursorY + 15,
-          { align: "right" },
+          sectionSubtitleLines,
+          marginX + 12,
+          cursorY + 29 + Math.max(0, sectionTitleLines.length - 1) * 14,
+          { lineHeightFactor: 11 / 8.5 },
         );
       }
       doc.setTextColor(31, 41, 55);
       doc.setFont("helvetica", "normal");
-      cursorY += 34;
+      cursorY += sectionBandHeight + 8;
 
       const info = sheet.section.info ?? [];
       if (info.length) {
@@ -2243,10 +2254,10 @@ const WORK_ORDER_DETAIL_COLUMNS = {
   consumos: [
     { key: "material", header: "Material", width: 34 },
     { key: "bodega", header: "Bodega", width: 24 },
-    { key: "reservado", header: "Solicitado", width: 13, format: "number" },
-    { key: "emitido", header: "Entregado", width: 13, format: "number" },
-    { key: "pendiente", header: "Pendiente", width: 13, format: "number" },
-    { key: "observacion", header: "Observación", width: 26 },
+    { key: "reservado", header: "Solicitado", width: 17, format: "number" },
+    { key: "emitido", header: "Entregado", width: 17, format: "number" },
+    { key: "pendiente", header: "Pendiente", width: 17, format: "number" },
+    { key: "observacion", header: "Observación", width: 20 },
   ] satisfies ReportColumn[],
   issues: [
     { key: "salida", header: "Salida", width: 16 },

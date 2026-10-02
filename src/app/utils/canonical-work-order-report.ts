@@ -75,7 +75,7 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
     }),
     issues: flattenDetailLines(detail.issues).map(row => ({ salida: row.codigo || row.code, fecha: row.fecha || row.created_at, material: label(row), cantidad: row.cantidad, bodega: row.bodega_label || row.bodega_nombre })),
     scraps: flattenDetailLines(detail.scraps).map(row => ({ transferencia: row.transferencia_codigo || row.codigo, fecha: row.fecha, material: label(row), cantidad: row.cantidad, bodega_chatarra: row.bodega_chatarra_label })),
-    history: detail.history.map(row => ({ hacia: workflow[row.to_status] || row.to_status, usuario: row.changed_by_label || row.changed_by || row.user_label || row.username || "-", fecha: row.changed_at, nota: row.note })),
+    history: detail.history.map(row => ({ hacia: workflow[row.to_status] || row.to_status, usuario: row.changed_by_label || row.changed_by || row.user_label || row.username || "-", fecha: row.changed_at, nota: typeof row.note === "string" ? row.note.replace(/→/g, " -> ") : row.note })),
   });
   if (isProject) {
     const project = audit.proyecto || {};

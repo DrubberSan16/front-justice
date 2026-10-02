@@ -545,7 +545,7 @@ import {
   relationshipMetaForModule,
   type ReportingRelationshipRow,
 } from "@/app/utils/reporting-relations";
-import { currentDateInputValue, formatDateOnly, formatDateForInput } from "@/app/utils/date-time";
+import { currentDateInputValue, formatDateOnly, formatDateForInput, parseAppDate } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { canAccessReporting } from "@/app/utils/role-access";
 import EChart from "@/components/charts/EChart.vue";
@@ -808,7 +808,7 @@ function findDateValue(row: AnyRow, module: ReportingModule) {
 }
 
 function toDateKey(value: unknown) {
-  return value ? formatDateForInput(value) : "";
+  return parseAppDate(value) ? formatDateForInput(value) : "";
 }
 
 function numericValue(row: AnyRow, fields: string[]) {
