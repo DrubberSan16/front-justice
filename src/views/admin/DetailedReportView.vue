@@ -474,6 +474,7 @@
             crítico</span
           >
         </div>
+        <v-select v-model="primingCentral" :items="primingCentralOptions" label="Filtrar por central / ubicación" clearable hide-details class="mb-4" variant="outlined" />
         <v-data-table
           :headers="primingHeaders"
           :items="primingRows"
@@ -507,6 +508,7 @@
           <template #item.horometro_inicial="{ item }">{{
             formatHorometro(item.horometro_inicial)
           }}</template>
+          <template #item.costo_aceite="{ item }">{{ formatCurrency(item.costo_aceite) }}</template>
           <template #item.horometro_final="{ item }">{{
             formatHorometro(item.horometro_final)
           }}</template>
@@ -1307,6 +1309,7 @@
             @click="closeModal('detail')"
           />
           <div class="dialog-header__cta">
+            <v-btn variant="tonal" color="success" prepend-icon="mdi-file-excel" :disabled="detailLoading" @click="downloadOrderReport">Descargar Excel</v-btn>
             <v-btn
               variant="tonal"
               color="primary"
@@ -1633,8 +1636,8 @@
               color="primary"
               prepend-icon="mdi-download"
               :disabled="pdfLoading"
-              @click="downloadOrderReport"
-              >Descargar</v-btn
+              @click="downloadCanonicalPdf"
+              >Descargar PDF</v-btn
             >
           </div>
         </v-card-title>
@@ -1666,6 +1669,8 @@
 </template>
 
 <script setup lang="ts">
+import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
+import { buildReportPdfBlob } from "@/app/utils/maintenance-intelligence-reports";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useTheme } from "vuetify";
@@ -1692,11 +1697,6 @@ import {
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { DEFAULT_CONTEXT_CACHE_TTL_MS } from "@/app/utils/request-cache";
-import {
-  buildWorkOrderReportPdfBlob,
-  downloadWorkOrderReportPdf,
-  type WorkOrderReportData,
-} from "@/app/utils/work-order-report-documents";
 import {
   formatCountForDisplay,
   formatCurrencyForDisplay,
@@ -1781,7 +1781,10 @@ const inventoryTotals = ref<AnyRow>({
   costo_total: 0,
 });
 const generationEquipments = ref<AnyRow[]>([]);
-const primingRows = ref<AnyRow[]>([]);
+const rawPrimingRows = ref<AnyRow[]>([]);
+const primingCentral = ref<string | null>(null);
+const primingCentralOptions = computed(() => [...new Set(rawPrimingRows.value.map(row => String(row.central || "Sin ubicación")))].sort());
+const primingRows = computed(() => rawPrimingRows.value.filter(row => !primingCentral.value || String(row.central || "Sin ubicación") === primingCentral.value));
 const primingLoading = ref(false);
 const primingDetailDialog = ref(false);
 const primingDetailLoading = ref(false);
@@ -1860,11 +1863,12 @@ const sectionPreview = useReportPreview({
   title: "Previsualización de la sección",
 });
 const primingExportColumns = computed(() =>
-  primingHeaders
+  primingHeaders.value
     .filter((header: any) => PRIMING_REPORT_KEYS.includes(String(header.key)))
     .map((header: any) => ({
       key: String(header.key),
       title: String(header.title || header.key),
+      format: header.key === "costo_aceite" ? "currency" as const : undefined,
     })),
 );
 
@@ -1889,6 +1893,8 @@ const primingReportRows = computed(() => {
     ...filas,
     {
       equipo_nombre: "TOTAL",
+      central: "",
+      costo_aceite: suma("costo_aceite"),
       ots_cebado: suma("ots_cebado"),
       galones_periodo: suma("galones_periodo"),
       galones_semana: suma("galones_semana"),
@@ -1930,18 +1936,20 @@ const inventoryReportRows = computed(() =>
  * periodo y con el que quedo tras el ultimo, que es lo que permite leer el
  * consumo contra el recorrido.
  */
-const primingHeaders = [
+const primingHeaders = computed(() => [
   { title: "Equipo", key: "equipo_nombre" },
-  { title: "Cebados", key: "ots_cebado", align: "end" as const },
+  { title: "Central / ubicación", key: "central" },
   { title: "Total galones", key: "galones_periodo", align: "end" as const },
+  { title: "Cebados", key: "ots_cebado", align: "end" as const },
   { title: "Gal x Semana", key: "galones_semana", align: "end" as const },
   { title: "Gal x Mes", key: "galones_mes", align: "end" as const },
-  { title: "Horóm. inicial", key: "horometro_inicial", align: "end" as const },
-  { title: "Horóm. final", key: "horometro_final", align: "end" as const },
+  { title: "Horómetro inicial (h)", key: "horometro_inicial", align: "end" as const },
+  { title: "Horómetro final (h)", key: "horometro_final", align: "end" as const },
+  ...(canViewCosts.value ? [{ title: "Costo aceite", key: "costo_aceite", align: "end" as const }] : []),
   { title: "Mayor orden", key: "galones_max_orden", align: "end" as const },
   { title: "Órdenes por nivel", key: "niveles", sortable: false },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
-];
+]);
 
 /**
  * Columnas del reporte del control de cebado.
@@ -1952,6 +1960,8 @@ const primingHeaders = [
  */
 const PRIMING_REPORT_KEYS = [
   "equipo_nombre",
+  "central",
+  "costo_aceite",
   "ots_cebado",
   "galones_periodo",
   "galones_semana",
@@ -2647,7 +2657,7 @@ async function loadPrimingReport() {
       { params: { desde: startDate.value, hasta: endDate.value } },
     );
     const payload = unwrap(data);
-    primingRows.value = Array.isArray(payload?.cebado) ? payload.cebado : [];
+    rawPrimingRows.value = Array.isArray(payload?.cebado) ? payload.cebado : [];
   } finally {
     primingLoading.value = false;
   }
@@ -3395,6 +3405,22 @@ const MAINTENANCE_COST_GENERATION_TAB = "__GENERACION__";
 const MAINTENANCE_COST_OTHER_TAB = "__OTROS_EQUIPOS__";
 
 const maintenanceCostPayload = ref<AnyRow | null>(null);
+const orderCostsPayload = ref<AnyRow | null>(null);
+const managerOrderCosts = computed(() => {
+  const result = new Map<string, number>();
+  const reports = orderCostsPayload.value?.reports || {};
+  for (const row of reports.costo_mantenimiento?.rows || []) {
+    const id = String(row.work_order_id || "");
+    result.set(id, (result.get(id) || 0) + Number(row.total_costo || 0));
+  }
+  for (const row of reports.horas_trabajadas?.rows || []) {
+    const id = String(row.work_order_id || "");
+    const labor = (row.responsables_meta || []).reduce((sum: number, person: AnyRow) => sum + Number(person.costo_total ?? Number(person.horas || 0) * Number(person.costo_hora || 0)), 0);
+    result.set(id, (result.get(id) || 0) + labor + Number(row.costo_personal_contratado || 0));
+  }
+  return result;
+});
+const managerTotalOrderCost = computed(() => orders.value.filter(row => orderStatus(row) !== "annulled").reduce((sum, row) => sum + (managerOrderCosts.value.get(String(row.id)) || 0), 0));
 const maintenanceCostLoading = ref(false);
 const maintenanceCostError = ref<string | null>(null);
 const maintenanceCostStart = ref(startDate.value);
@@ -3557,6 +3583,7 @@ async function loadMaintenanceCostReport() {
       },
     );
     maintenanceCostPayload.value = unwrap(data);
+    if (!maintenanceCostWarehouseId.value && maintenanceCostStart.value === startDate.value && maintenanceCostEnd.value === endDate.value) orderCostsPayload.value = maintenanceCostPayload.value;
   } catch (requestError: any) {
     maintenanceCostError.value =
       requestError?.response?.data?.message ||
@@ -3755,54 +3782,6 @@ const pdfLoading = ref(false);
 const pdfError = ref<string | null>(null);
 const pdfUrl = ref<string | null>(null);
 
-function buildWorkOrderReportData(): WorkOrderReportData {
-  return {
-    code: orderCode(selectedOrder.value || detailHeader.value || {}),
-    title: orderTitle(selectedOrder.value || detailHeader.value || {}),
-    equipmentLabel: equipmentLabel(
-      detailHeader.value || selectedOrder.value || {},
-    ),
-    statusLabel: String(
-      detailHeader.value?.status_workflow || detailHeader.value?.status || "",
-    ),
-    maintenanceKindLabel: String(
-      detailHeader.value?.maintenance_kind_label ||
-        detailHeader.value?.maintenance_kind ||
-        "",
-    ),
-    openedAt: formatDateTime(
-      detailHeader.value?.started_at || detailHeader.value?.created_at,
-    ),
-    closedAt: formatDateTime(detailHeader.value?.closed_at),
-    horometroAnterior: formatHorometro(detailHeader.value?.horometro_anterior),
-    horometroActual: formatHorometro(detailHeader.value?.horometro_actual),
-    totalHours: totalResponsibleHours.value,
-    totalCost: formatCurrency(totalWorkCost.value),
-    showCosts: muestraCostos.value,
-    materialsCost: formatCurrency(materialCost.value),
-    laborCost: formatCurrency(laborCost.value),
-    ...(contractedCost.value > 0
-      ? { contractedCost: formatCurrency(contractedCost.value) }
-      : {}),
-    responsables: responsibleRows.value.map((row) => ({
-      label: row.label,
-      hours: row.hours,
-      hourlyCost: formatCurrency(row.hourlyCost),
-      cost: formatCurrency(row.cost),
-    })),
-    materiales: materialRows.value.map((row) => ({
-      label: row.label,
-      delivered: row.delivered,
-      condicion: materialConditionSummary(row),
-      scrapped: row.scrapped,
-    })),
-    oilQuantity: orderOilQuantity.value,
-    oilCost: formatCurrency(orderOilCost.value),
-    oilDelivered: oilDelivered.value,
-    ...detailActors.value,
-  };
-}
-
 function releasePdfUrl() {
   if (pdfUrl.value) URL.revokeObjectURL(pdfUrl.value);
   pdfUrl.value = null;
@@ -3818,7 +3797,8 @@ async function openPdfPreview() {
   pdfError.value = null;
   releasePdfUrl();
   try {
-    const blob = await buildWorkOrderReportPdfBlob(buildWorkOrderReportData());
+    const report = await fetchCanonicalWorkOrderReport(String(detailHeader.value?.id || selectedOrder.value?.id), muestraCostos.value);
+    const blob = await buildReportPdfBlob(report);
     pdfUrl.value = URL.createObjectURL(blob);
   } catch (requestError: any) {
     pdfError.value =
@@ -3833,12 +3813,19 @@ function closePdfPreview() {
   releasePdfUrl();
 }
 
+function downloadCanonicalPdf() {
+  if (!pdfUrl.value) return;
+  const link = document.createElement("a");
+  link.href = pdfUrl.value;
+  link.download = `informe_ot_${detailHeader.value?.code || selectedOrder.value?.code || "detalle"}.pdf`;
+  link.click();
+}
 async function downloadOrderReport() {
   try {
-    await downloadWorkOrderReportPdf(buildWorkOrderReportData());
+    await sectionPreview.open("excel", await fetchCanonicalWorkOrderReport(String(detailHeader.value?.id || selectedOrder.value?.id), muestraCostos.value));
   } catch (requestError: any) {
     pdfError.value =
-      requestError?.message || "No se pudo descargar el informe en PDF.";
+      requestError?.message || "No se pudo descargar el informe en Excel.";
   }
 }
 
@@ -4248,9 +4235,10 @@ const primingTotals = computed(() =>
       acc.good += Math.max(0, cebados - criticas - seguimiento);
       acc.orders += cebados;
       acc.gallons += Number(row?.galones_periodo || 0);
+      acc.cost += Number(row?.costo_aceite || 0);
       return acc;
     },
-    { good: 0, warning: 0, critical: 0, orders: 0, gallons: 0 },
+    { good: 0, warning: 0, critical: 0, orders: 0, gallons: 0, cost: 0 },
   ),
 );
 
@@ -4371,6 +4359,12 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
   };
 
   if (section === "orders") {
+    if (canViewCosts.value) {
+      const { data } = await api.get("/kpi_maintenance/inteligencia/reportes-sistema", {
+        params: { from: startDate.value, to: endDate.value, group_by: "OT" },
+      });
+      orderCostsPayload.value = unwrap(data);
+    }
     await sectionPreview.open(
       "pdf",
       buildSectionReport({
@@ -4379,12 +4373,14 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
         columns: [
           { key: "estado", title: "Estado" },
           { key: "cantidad", title: "Órdenes", format: "number" },
+          ...(canViewCosts.value ? [{ key: "costo", title: "Costo total", format: "currency" as const }] : []),
         ],
         rows: statusRailCards.value.map((status) => ({
           estado: status.label,
           cantidad: status.count,
+          costo: status.key === "annulled" ? 0 : groupedOrders.value[status.key].reduce((sum, row) => sum + (managerOrderCosts.value.get(String(row.id)) || 0), 0),
         })),
-        summary: [{ label: "Total de órdenes", value: totalOrders.value }],
+        summary: [{ label: "Total de órdenes", value: totalOrders.value }, ...(canViewCosts.value ? [{ label: "Costo total", value: formatCurrency(managerTotalOrderCost.value) }] : [])],
         charts: [
           {
             title: "Órdenes por estado",
@@ -4447,6 +4443,8 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
         summary: [
           { label: "Cebados", value: primingTotals.value.orders },
           { label: "Galones", value: formatNumber(primingTotals.value.gallons) },
+          ...(canViewCosts.value ? [{ label: "Costo total", value: formatCurrency(primingTotals.value.cost) }] : []),
+          { label: "Central / ubicación", value: primingCentral.value || "Todas" },
         ],
         charts: [
           {

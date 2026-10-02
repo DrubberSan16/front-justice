@@ -56,11 +56,12 @@ export function flattenDetailLines(rows: Record<string, any>[]) {
   return out;
 }
 
-async function safeList(url: string) {
+async function safeList(url: string, strict = false) {
   try {
     const { data } = await api.get(url);
     return asList(data?.data ?? data);
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     // Un bloque que falla no puede tumbar el detalle completo: la cabecera y
     // el resto siguen siendo utiles.
     return [];
@@ -69,6 +70,7 @@ async function safeList(url: string) {
 
 export async function fetchWorkOrderDetail(
   workOrderId: string,
+  options: { strict?: boolean } = {},
 ): Promise<WorkOrderDetailPayload> {
   const id = String(workOrderId || "").trim();
   if (!id) return { ...EMPTY_DETAIL };
@@ -76,12 +78,12 @@ export async function fetchWorkOrderDetail(
   const [headerResponse, tasks, consumptions, issues, scraps, history, attachments] =
     await Promise.all([
       api.get(`/kpi_maintenance/work-orders/${id}`),
-      safeList(`/kpi_maintenance/work-orders/${id}/tareas`),
-      safeList(`/kpi_maintenance/work-orders/${id}/consumos`),
-      safeList(`/kpi_maintenance/work-orders/${id}/issue-materials`),
-      safeList(`/kpi_maintenance/work-orders/${id}/scrap-materials`),
-      safeList(`/kpi_maintenance/work-orders/${id}/history`),
-      safeList(`/kpi_maintenance/work-orders/${id}/adjuntos`),
+      safeList(`/kpi_maintenance/work-orders/${id}/tareas`, options.strict),
+      safeList(`/kpi_maintenance/work-orders/${id}/consumos`, options.strict),
+      safeList(`/kpi_maintenance/work-orders/${id}/issue-materials`, options.strict),
+      safeList(`/kpi_maintenance/work-orders/${id}/scrap-materials`, options.strict),
+      safeList(`/kpi_maintenance/work-orders/${id}/history`, options.strict),
+      safeList(`/kpi_maintenance/work-orders/${id}/adjuntos`, options.strict),
     ]);
 
   return {

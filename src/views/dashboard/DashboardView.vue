@@ -1177,6 +1177,9 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
     estado_funcionamiento: item?.estado_funcionamiento || null,
     estado_funcionamiento_actualizado_en: item?.estado_funcionamiento_actualizado_en || null,
     horometro_actual: item?.horometro_actual ?? null,
+    horometro_operativo_base: item?.horometro_operativo_base ?? item?.horometro_actual ?? null,
+    horometro_operativo_desde: item?.horometro_operativo_desde ?? null,
+    equipment_location_label: item?.equipment_location_label ?? null,
     fecha_ultima_lectura: item?.fecha_ultima_lectura || null,
   })),
 );
@@ -1185,11 +1188,15 @@ function handleEquipmentFuncionamientoUpdated(payload: {
   id: string | number;
   estado_funcionamiento: string;
   estado_funcionamiento_actualizado_en: string | null;
+  horometro_operativo_base: number;
+  horometro_operativo_desde: string | null;
 }) {
   const target = equipos.value.find((item) => String(item.id) === String(payload.id));
   if (target) {
     target.estado_funcionamiento = payload.estado_funcionamiento;
     target.estado_funcionamiento_actualizado_en = payload.estado_funcionamiento_actualizado_en;
+    target.horometro_operativo_base = payload.horometro_operativo_base;
+    target.horometro_operativo_desde = payload.horometro_operativo_desde;
   }
 }
 
@@ -1197,10 +1204,13 @@ function handleEquipmentHorometerUpdated(payload: {
   id: string | number;
   horometro_actual: number;
   fecha_ultima_lectura: string | null;
+  horometro_operativo_desde?: string | null;
 }) {
   const target = equipos.value.find((item) => String(item.id) === String(payload.id));
   if (target) {
     target.horometro_actual = payload.horometro_actual;
+    target.horometro_operativo_base = payload.horometro_actual;
+    if ('horometro_operativo_desde' in payload) target.horometro_operativo_desde = payload.horometro_operativo_desde;
     target.fecha_ultima_lectura = payload.fecha_ultima_lectura;
   }
 }

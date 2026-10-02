@@ -101,6 +101,7 @@
       <v-divider />
       <v-card-actions class="px-5 py-4 d-flex justify-end flex-wrap" style="gap:12px">
         <v-btn variant="text" @click="emit('update:modelValue', false)">Cerrar</v-btn>
+        <v-btn color="success" prepend-icon="mdi-file-excel" :disabled="loading || !header.code" @click="previewExcel">Descargar Excel</v-btn>
         <v-btn
           color="primary"
           prepend-icon="mdi-file-pdf-box"
@@ -113,40 +114,29 @@
     </v-card>
   </v-dialog>
 
-  <PdfPreviewDialog
-    :state="pdfPreview.state"
-    :url="pdfPreview.url.value"
-    @close="pdfPreview.close"
-    @download="pdfPreview.download"
-    @print="pdfPreview.openInNewTab"
-    @update:visible="pdfPreview.handleVisibility"
-  />
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
+import { buildCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { computed, ref, watch } from "vue";
 import { reportDisplayLabel, resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { formatDateTime } from "@/app/utils/date-time";
-import { usePdfPreview } from "@/app/utils/pdf-preview";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import {
   buildMaterialSummary,
   buildMaterialsCost,
   buildResponsibleHours,
-  buildWorkOrderReportPayload,
   contractedLaborCost,
   fetchWorkOrderDetail,
   materialConditionLabel,
   type WorkOrderDetailPayload,
 } from "@/app/utils/work-order-detail";
-import {
-  buildWorkOrderReportPdfBlob,
-  workOrderReportFileName,
-} from "@/app/utils/work-order-report-documents";
-import PdfPreviewDialog from "@/components/ui/PdfPreviewDialog.vue";
 import {
   formatCurrencyForDisplay,
   formatHorometerForDisplay,
@@ -165,7 +155,7 @@ const props = defineProps<{ modelValue: boolean; workOrderId: string | null }>()
 const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void }>();
 
 const auth = useAuthStore();
-const pdfPreview = usePdfPreview({ title: "Informe de la orden de trabajo" });
+const reportPreview = useReportPreview({ title: "Informe de la orden de trabajo" });
 
 const loading = ref(false);
 const error = ref("");
@@ -224,9 +214,11 @@ const facts = computed(() => {
     { label: "Iniciada por", value: actors.processedBy || "Sin registro" },
     { label: "Finalizada por", value: actors.approvedBy || "Sin registro" },
   ];
-  if (!showCosts.value) return base;
+  const visible = String(row?.maintenance_kind || "").toUpperCase() === "PROYECTO"
+    ? base.filter(item => item.label !== "Horómetro") : base;
+  if (!showCosts.value) return visible;
   return [
-    ...base,
+    ...visible,
     { label: "Costo de materiales", value: formatCurrency(totalMaterialCost.value) },
     { label: "Mano de obra", value: formatCurrency(laborCost.value) },
     ...(contractedCost.value > 0
@@ -297,7 +289,7 @@ async function load(workOrderId: string) {
   loading.value = true;
   error.value = "";
   try {
-    detail.value = await fetchWorkOrderDetail(workOrderId);
+    detail.value = await fetchWorkOrderDetail(workOrderId, { strict: true });
     if (!detail.value.header) {
       error.value = "No se encontró la orden de trabajo.";
     }
@@ -312,21 +304,10 @@ async function load(workOrderId: string) {
 }
 
 async function previewPdf() {
-  const payload = buildWorkOrderReportPayload(detail.value, {
-    equipmentLabel: equipmentLabel.value,
-    statusLabel: statusLabel.value,
-    maintenanceKindLabel: maintenanceKindLabel.value,
-    materialLabel,
-    formatDate,
-    formatCurrency,
-    showCosts: showCosts.value,
-  });
-  await pdfPreview.open({
-    title: `Orden ${payload.code}`,
-    subtitle: payload.title,
-    fileName: workOrderReportFileName(payload),
-    build: () => buildWorkOrderReportPdfBlob(payload),
-  });
+  await reportPreview.open("pdf", buildCanonicalWorkOrderReport(detail.value, showCosts.value));
+}
+async function previewExcel() {
+  await reportPreview.open("excel", buildCanonicalWorkOrderReport(detail.value, showCosts.value));
 }
 
 watch(

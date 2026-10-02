@@ -545,7 +545,7 @@ import {
   relationshipMetaForModule,
   type ReportingRelationshipRow,
 } from "@/app/utils/reporting-relations";
-import { currentDateInputValue, formatDateOnly } from "@/app/utils/date-time";
+import { currentDateInputValue, formatDateOnly, formatDateForInput } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { canAccessReporting } from "@/app/utils/role-access";
 import EChart from "@/components/charts/EChart.vue";
@@ -808,12 +808,7 @@ function findDateValue(row: AnyRow, module: ReportingModule) {
 }
 
 function toDateKey(value: unknown) {
-  if (!value) return "";
-  const direct = String(value).slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct;
-  const parsed = new Date(String(value));
-  if (Number.isNaN(parsed.getTime())) return "";
-  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+  return value ? formatDateForInput(value) : "";
 }
 
 function numericValue(row: AnyRow, fields: string[]) {

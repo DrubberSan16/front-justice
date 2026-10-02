@@ -22,8 +22,10 @@ export type ReportPreviewFormat = "pdf" | "excel";
 export function useReportPreview(defaults?: { title?: string }) {
   const pdf = usePdfPreview({ title: defaults?.title });
   const excel = useExcelPreview({ title: defaults?.title });
+  let currentReport: ReportDefinition | null = null;
 
   async function open(format: ReportPreviewFormat, report: ReportDefinition) {
+    currentReport = report;
     const options = {
       title: report.title,
       subtitle: report.subtitle || "",
@@ -46,7 +48,11 @@ export function useReportPreview(defaults?: { title?: string }) {
     excel.close();
   }
 
-  return { pdf, excel, open, close, isPdf };
+  async function openExcel() {
+    if (currentReport) await open("excel", currentReport);
+  }
+
+  return { pdf, excel, open, openExcel, close, isPdf };
 }
 
 export type ReportPreview = ReturnType<typeof useReportPreview>;

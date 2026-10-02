@@ -7,7 +7,9 @@ import {
 } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 import { reportDisplayLabel } from "@/app/utils/work-order-audit";
+import { buildEquipmentDisplayTitle, resolveEquipmentLocation } from "@/app/utils/equipment-display";
 import {
+  formatCurrencyForDisplay,
   formatHorometerForDisplay,
   formatNumberForDisplay,
   roundForDisplay,
@@ -1632,6 +1634,8 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   const analysisRows = analyses.map((item) => ({
     codigo: item.codigo,
     cliente: item.cliente ?? "",
+    unidad_generacion: buildEquipmentDisplayTitle(item),
+    central: resolveEquipmentLocation(item) || "Sin ubicación",
     lubricante: item.lubricante ?? item.equipo_codigo ?? "",
     marca_lubricante: item.marca_lubricante ?? item.equipo_nombre ?? "",
     compartimento_principal: item.compartimento_principal ?? "",
@@ -1644,6 +1648,8 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   const detailRows = analyses.flatMap((item) =>
     (item.detalles ?? []).map((detail: AnyRow) => ({
       analisis_codigo: item.codigo,
+      unidad_generacion: buildEquipmentDisplayTitle(item),
+      central: resolveEquipmentLocation(item) || "Sin ubicación",
       lubricante: item.lubricante ?? item.equipo_codigo ?? "",
       marca_lubricante: item.marca_lubricante ?? item.equipo_nombre ?? "",
       compartimento: detail.compartimento ?? "",
@@ -2139,6 +2145,12 @@ export function buildWorkOrderReport(payload: {
       titulo: header.title || header.titulo || "",
       estado: header.status_workflow || "",
       equipo: header.equipment_label || header.equipo_nombre || header.equipment_id || "",
+      central: header.central || header.equipment_location_label || "Sin ubicación",
+      show_costs: header.show_costs === true,
+      costo_materiales: header.costo_materiales,
+      costo_mano_obra: header.costo_mano_obra,
+      costo_contratado: header.costo_contratado,
+      costo_total: header.costo_total,
       compartimiento:
         header.equipment_component_label ||
         header.equipo_componente_nombre_oficial ||
@@ -2266,6 +2278,8 @@ function buildWorkOrderSectionSheets(
   const header = order.header ?? {};
   const code = String(header.codigo || header.code || `OT-${position}`).trim();
   const title = String(header.titulo || header.title || "").trim();
+  const isProject = /PROYECTO/i.test(String(header.tipo_mantenimiento || ""));
+  const showCosts = header.show_costs === true;
   const formatActor = (user: unknown, date: unknown) =>
     [reportDisplayLabel(user), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
   // El horometro es un contador de horas enteras: `formatValue` le pondria los
@@ -2276,6 +2290,7 @@ function buildWorkOrderSectionSheets(
     { label: "Orden", value: [code, title && title !== code ? title : ""].filter(Boolean).join(" - ") || "-" },
     { label: "Estado", value: header.estado || "-" },
     { label: "Equipo", value: header.equipo || "-" },
+    { label: "Central / ubicación", value: header.central || "Sin ubicación" },
     {
       label: "Compartimientos",
       value: String(header.compartimiento || "").trim() || "Sin compartimientos",
@@ -2307,6 +2322,19 @@ function buildWorkOrderSectionSheets(
     { label: "Acción", value: header.accion || "-" },
     { label: "Prevención", value: header.prevencion || "-" },
   ];
+  if (isProject) {
+    for (let index = info.length - 1; index >= 0; index--) {
+      if (/Horómetro/.test(info[index]!.label)) info.splice(index, 1);
+    }
+  }
+  if (showCosts) {
+    info.push(
+      { label: "Costo materiales", value: formatCurrencyForDisplay(header.costo_materiales) },
+      { label: "Mano de obra", value: formatCurrencyForDisplay(header.costo_mano_obra) },
+      ...(isProject ? [{ label: "Personal contratado", value: formatCurrencyForDisplay(header.costo_contratado) }] : []),
+      { label: "Costo total", value: formatCurrencyForDisplay(header.costo_total) },
+    );
+  }
   if (header.motivo_emergencia) {
     info.push({ label: "Motivo emergencia", value: header.motivo_emergencia });
   }
@@ -2333,7 +2361,13 @@ function buildWorkOrderSectionSheets(
       section,
       rows: order.tasks,
       fitColumnsToPage: true,
-      columns: WORK_ORDER_DETAIL_COLUMNS.tasks,
+      columns: [
+        ...WORK_ORDER_DETAIL_COLUMNS.tasks,
+        ...(showCosts ? [
+          { key: "costo_hora", header: "Costo por hora", width: 12, format: "currency" as const },
+          { key: "costo_total", header: "Costo", width: 12, format: "currency" as const },
+        ] : []),
+      ],
     },
     {
       name: "Evidencias",
@@ -2355,7 +2389,13 @@ function buildWorkOrderSectionSheets(
       section,
       rows: order.consumos,
       fitColumnsToPage: true,
-      columns: WORK_ORDER_DETAIL_COLUMNS.consumos,
+      columns: [
+        ...WORK_ORDER_DETAIL_COLUMNS.consumos,
+        ...(showCosts ? [
+          { key: "costo_unitario", header: "Costo unitario", width: 12, format: "currency" as const },
+          { key: "subtotal", header: "Costo material", width: 12, format: "currency" as const },
+        ] : []),
+      ],
     },
     {
       name: "Salidas de material",

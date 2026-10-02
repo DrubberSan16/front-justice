@@ -47,7 +47,14 @@ export function buildEquipmentDisplayTitle(item: EquipmentLike) {
   const name = resolveEquipmentName(item) || "Equipo sin nombre";
   const model = resolveEquipmentModel(item);
   const base = `${brand} - ${name}`;
-  return model ? `${base} (${model})` : base;
+  const title = model ? `${base} (${model})` : base;
+  const location = resolveEquipmentLocation(item);
+  return location ? `${title} · ${location}` : title;
+}
+
+export function resolveEquipmentLocation(item: EquipmentLike) {
+  return firstText(item?.equipment_location_label, item?.ubicacion_label, item?.location_label,
+    item?.central, item?.location?.nombre, item?.sample_info?.equipo_ubicacion);
 }
 
 /**
@@ -65,5 +72,7 @@ export function buildEquipmentManagerLabel(item: EquipmentLike) {
     .join(" - ");
   if (!identity) return realName || brand;
   const withBrand = brand ? `${brand} | ${identity}` : identity;
-  return realName ? `${withBrand} (${realName})` : withBrand;
+  const title = realName ? `${withBrand} (${realName})` : withBrand;
+  const location = resolveEquipmentLocation(item);
+  return location ? `${title} · ${location}` : title;
 }

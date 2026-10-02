@@ -2245,6 +2245,7 @@
 </template>
 
 <script setup lang="ts">
+import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
 import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
@@ -4009,11 +4010,6 @@ async function openProjectWorkOrdersPreview(
   });
 }
 
-/** Si la OT (o la pantalla) es de Proyecto, sus documentos usan ese formato. */
-function usesProjectFormat(record?: any) {
-  return isProjectMode.value || isProjectWorkOrderRecord(record);
-}
-
 async function openWorkOrderPdfPreview(report: ReportDefinition) {
   await workOrderPdfPreview.open({
     title: report.title,
@@ -4032,12 +4028,14 @@ async function exportWorkOrder(format: "excel" | "pdf") {
   exportState[key] = true;
   error.value = null;
   try {
-    if (isProjectMode.value) {
+    if (isProjectMode.value && !editingId.value) {
       await openProjectWorkOrdersPreview([projectReportData.value], format);
-    } else if (format === "excel") {
-      await openWorkOrderExcelPreview(workOrderReportDefinition.value);
     } else {
-      await openWorkOrderPdfPreview(workOrderReportDefinition.value);
+      const report = editingId.value
+        ? await fetchCanonicalWorkOrderReport(String(editingId.value), canViewCosts.value)
+        : workOrderReportDefinition.value;
+      if (format === "excel") await openWorkOrderExcelPreview(report);
+      else await openWorkOrderPdfPreview(report);
     }
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte de la orden de trabajo.";
@@ -6970,51 +6968,7 @@ async function fetchWorkOrderExportBundle(order: any) {
   };
 }
 
-function buildSingleWorkOrderReportFromBundle(bundle: WorkOrdersListingOrder) {
-  const header = bundle.header ?? {};
-  return buildWorkOrderReport({
-    header: {
-      code: header.codigo || header.code || "",
-      title: header.titulo || header.title || "",
-      status_workflow: header.estado || "",
-      equipment_label: header.equipo || "",
-      equipment_component_label: header.compartimiento || "",
-      maintenance_kind: header.tipo_mantenimiento || "",
-      emergency_label: header.clase_orden || "",
-      emergency_reason: header.motivo_emergencia || "",
-      procedimiento: header.procedimiento || "",
-      plan_operativo: header.plan_operativo || "",
-      fecha_programacion: header.fecha_programacion || "",
-      fecha_operativa: header.fecha_operativa || "",
-      horometro_anterior: header.horometro_anterior ?? "",
-      horometro_actual: header.horometro_actual ?? "",
-      horas_a_realizar: header.horas_a_realizar ?? "",
-      causa: header.causa || "",
-      accion: header.accion || "",
-      prevencion: header.prevencion || "",
-      creado_por: header.creado_por || "",
-      fecha_creacion: header.fecha_creacion || "",
-      realizado_por: header.realizado_por || "",
-      fecha_realizacion: header.fecha_realizacion || "",
-      aprobado_por: header.aprobado_por || "",
-      fecha_aprobacion: header.fecha_aprobacion || "",
-    },
-    tasks: bundle.tasks,
-    attachments: bundle.attachments,
-    consumos: bundle.consumos,
-    issues: bundle.issues,
-    scraps: bundle.scraps,
-    history: bundle.history,
-  });
-}
 
-/**
- * Cabecera de la OT tal como la necesita la constancia de bodega.
- *
- * Las etiquetas de equipo, compartimiento y tipo de mantenimiento se resuelven
- * en la pantalla, no en el backend: el PDF las toma de aqui para no contar algo
- * distinto de lo que muestra la tabla.
- */
 function buildIssueDocumentsWorkOrderContext(item: any): MaterialIssueWorkOrderLike {
   const raw = item?._raw ?? item ?? {};
   return {
@@ -7103,13 +7057,7 @@ async function exportWorkOrderRow(item: any, format: "excel" | "pdf") {
   error.value = null;
   try {
     await ensureCatalogsLoaded();
-    if (usesProjectFormat(item?._raw ?? item)) {
-      const data = await fetchProjectExportData(item);
-      await openProjectWorkOrdersPreview([data], format);
-      return;
-    }
-    const bundle = await fetchWorkOrderExportBundle(item);
-    const report = buildSingleWorkOrderReportFromBundle(bundle);
+    const report = await fetchCanonicalWorkOrderReport(String(item?.id || item?._raw?.id), canViewCosts.value);
     if (format === "excel") {
       await openWorkOrderExcelPreview(report);
     } else {

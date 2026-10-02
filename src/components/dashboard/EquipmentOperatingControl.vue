@@ -137,6 +137,7 @@
             </p>
 
             <div class="equipment-card__horometer">
+              <span class="equipment-card__horometer-date">Horómetro operativo: {{ operationalReading(item) }} h · {{ stateFor(item).value === 'FUNCIONAMIENTO' ? 'Acumulando horas' : 'Unidad parada' }}</span>
               <div class="equipment-card__horometer-control">
                 <v-text-field
                   v-model="stateFor(item).horometerInput"
@@ -253,6 +254,9 @@ export type EquipmentControlItem = {
   estado_funcionamiento?: string | null;
   estado_funcionamiento_actualizado_en?: string | null;
   horometro_actual?: number | string | null;
+  horometro_operativo_base?: number | string | null;
+  horometro_operativo_desde?: string | null;
+  equipment_location_label?: string | null;
   fecha_ultima_lectura?: string | null;
 };
 
@@ -266,6 +270,8 @@ type CardState = {
   horometerSaving: boolean;
   horometerError: string | null;
   horometerUpdatedAt: string | null;
+  operatingBase: number;
+  operatingSince: string | null;
 };
 
 const props = withDefaults(
@@ -287,6 +293,8 @@ const emit = defineEmits<{
       id: string | number;
       estado_funcionamiento: "FUNCIONAMIENTO" | "PARADO";
       estado_funcionamiento_actualizado_en: string | null;
+      horometro_operativo_base: number;
+      horometro_operativo_desde: string | null;
     },
   ): void;
   (
@@ -295,6 +303,7 @@ const emit = defineEmits<{
       id: string | number;
       horometro_actual: number;
       fecha_ultima_lectura: string | null;
+      horometro_operativo_desde?: string | null;
     },
   ): void;
 }>();
@@ -316,6 +325,14 @@ const canLowerHorometer = computed(
 
 const states = reactive<Record<string, CardState>>({});
 const liveMessage = ref("");
+const clockNow = ref(Date.now());
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+function operationalReading(item: EquipmentControlItem) {
+  const state = stateFor(item);
+  const since = state.operatingSince ? new Date(state.operatingSince).getTime() : NaN;
+  const elapsed = state.value === 'FUNCIONAMIENTO' && Number.isFinite(since) ? Math.max(0, clockNow.value - since) / 3600000 : 0;
+  return (state.operatingBase + elapsed).toFixed(2);
+}
 
 /** Diálogo que pide el motivo antes de bajar una lectura. */
 const lowerHorometer = reactive({
@@ -378,6 +395,8 @@ function stateFor(item: EquipmentControlItem): CardState {
       horometerSaving: false,
       horometerError: null,
       horometerUpdatedAt: item.fecha_ultima_lectura ?? null,
+      operatingBase: Number(item.horometro_operativo_base ?? item.horometro_actual ?? 0),
+      operatingSince: item.horometro_operativo_desde ?? null,
     };
   }
   return states[key];
@@ -422,8 +441,14 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
       updated?.estado_funcionamiento_actualizado_en || updated?.updated_at || state.updatedAt;
     state.value = next;
     state.updatedAt = updatedAt;
+    state.operatingBase = Number(updated.horometro_actual ?? state.operatingBase);
+    state.operatingSince = updated.horometro_operativo_desde ?? null;
+    state.savedHorometer = parseHorometer(updated.horometro_actual);
+    state.horometerInput = formatHorometerInput(updated.horometro_actual);
+    state.horometerUpdatedAt = updated.fecha_ultima_lectura ?? state.horometerUpdatedAt;
+    emit("horometer-updated", { id: item.id, horometro_actual: Number(updated.horometro_actual), fecha_ultima_lectura: state.horometerUpdatedAt });
     liveMessage.value = `${label} actualizado a ${next === "FUNCIONAMIENTO" ? "Activo" : "Desactive"}.`;
-    emit("updated", { id: item.id, estado_funcionamiento: next, estado_funcionamiento_actualizado_en: updatedAt });
+    emit("updated", { id: item.id, estado_funcionamiento: next, estado_funcionamiento_actualizado_en: updatedAt, horometro_operativo_base: state.operatingBase, horometro_operativo_desde: state.operatingSince });
   } catch (e: any) {
     state.error = e?.response?.data?.message || "No se pudo actualizar el estado de funcionamiento.";
     liveMessage.value = `No se pudo actualizar ${label}: ${state.error}`;
@@ -521,12 +546,15 @@ async function persistHorometer(
     state.savedHorometer = savedValue;
     state.horometerInput = formatHorometerInput(savedValue);
     state.horometerUpdatedAt = updatedAt;
+    state.operatingBase = Number(updated.horometro_actual ?? savedValue);
+    state.operatingSince = updated.horometro_operativo_desde ?? null;
     liveMessage.value = motivo
       ? `Horómetro de ${label} ajustado a ${savedValue}. Queda registrado como ajuste directo.`
       : `Horómetro de ${label} actualizado a ${savedValue}.`;
     emit("horometer-updated", {
       id: item.id,
       horometro_actual: savedValue,
+      horometro_operativo_desde: state.operatingSince,
       fecha_ultima_lectura: updatedAt,
     });
     return true;
@@ -574,6 +602,8 @@ watch(
         horometerSaving: false,
         horometerError: null,
         horometerUpdatedAt: item.fecha_ultima_lectura ?? null,
+        operatingBase: Number(item.horometro_operativo_base ?? item.horometro_actual ?? 0),
+        operatingSince: item.horometro_operativo_desde ?? null,
       };
     }
     nextTick(updateScrollState);
@@ -586,6 +616,7 @@ function handleResize() {
 }
 
 onMounted(() => {
+  clockTimer = setInterval(() => { clockNow.value = Date.now(); }, 1000);
   nextTick(updateScrollState);
   window.addEventListener("resize", handleResize);
 
@@ -596,6 +627,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (clockTimer) clearInterval(clockTimer);
   window.removeEventListener("resize", handleResize);
   resizeObserver?.disconnect();
   resizeObserver = null;

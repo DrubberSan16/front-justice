@@ -6,7 +6,11 @@
     @download="preview.pdf.download"
     @print="preview.pdf.openInNewTab"
     @update:visible="preview.pdf.handleVisibility"
-  />
+  >
+    <template #opciones>
+      <v-btn color="success" variant="tonal" prepend-icon="mdi-file-excel" :disabled="preview.pdf.state.loading" @click="preview.openExcel">Descargar Excel</v-btn>
+    </template>
+  </PdfPreviewDialog>
   <ExcelPreviewDialog
     :state="preview.excel.state"
     @close="preview.excel.close"

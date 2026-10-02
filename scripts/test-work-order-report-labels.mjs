@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import Module from "node:module";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -14,6 +15,8 @@ const { outputFiles } = await build({
       export * from "@/app/utils/work-order-report-documents";
       export * from "@/app/utils/project-work-order-documents";
       export * from "@/app/utils/maintenance-intelligence-reports";
+      export * from "@/app/utils/canonical-work-order-report";
+      export * from "@/app/utils/date-time";
     `,
     resolveDir: root,
   },
@@ -43,6 +46,9 @@ fixtureModule.paths = Module._nodeModulePaths(root);
 fixtureModule._compile(outputFiles[0].text, fixtureModule.filename);
 const reports = fixtureModule.exports;
 const uuid = "11111111-1111-4111-8111-111111111111";
+assert.equal(reports.formatDateForInput('2026-10-02T00:50:09Z'), '2026-10-01');
+assert.equal(reports.formatDateForInput('2026-10-01T20:00:00'), '2026-10-01');
+assert.equal(reports.formatDateForInput('2026-10-01'), '2026-10-01');
 const history = [
   { to_status: "CLOSED", changed_at: "2026-09-03", changed_by: uuid, changed_by_label: "Maria Lopez" },
   { to_status: "IN_PROGRESS", changed_at: "2026-09-02", changed_by: uuid, changed_by_label: "Luis Torres" },
@@ -117,3 +123,35 @@ const listing = reports.buildWorkOrdersListingReport({ orders: [order] });
 await assertPdf(await reports.buildReportPdfBlob(listing), expected);
 await assertExcel(await reports.buildReportExcelBlob(listing), expected, 2);
 console.log("PASS: auditoria, materiales, PDF y Excel individuales y consolidados de OT/OT Proyecto");
+
+const canonicalDetail = {
+  header: { code: "OT-CEBADO", title: "Cebado de unidad", maintenance_kind: "CEBADO", status_workflow: "CLOSED", equipment_nombre: "JC - UG21", equipment_brand_name: "CATERPILLAR", equipment_modelo: "3512 B", equipment_location_label: "CPT", horometro_anterior: 23000, horometro_actual: 23078 },
+  tasks: [{ tarea_nombre: "Colocar aceite", responsables: [{ display_name: "Ana Perez", horas: 2, costo_hora: 5 }] }],
+  consumptions: [{ producto_id: "oil", bodega_id: "cpt", producto_label: "Aceite Gulf", bodega_label: "CPT", cantidad: 3, costo_unitario: 4 }],
+  issues: [], scraps: [], history: [], attachments: [],
+};
+const canonical = reports.buildCanonicalWorkOrderReport(canonicalDetail, true);
+const info = canonical.sheets[0].section.info;
+assert.equal(info.find(row => row.label === "Costo total").value.includes("22"), true);
+assert.equal(canonical.sheets[0].rows[0].costo_total, 10);
+const consumptionSheet = canonical.sheets.find(sheet => sheet.name === "Consumos");
+assert.equal(consumptionSheet.rows[0].subtotal, 12);
+const canonicalPdf = await reports.buildReportPdfBlob(canonical);
+if (process.env.REPORT_OUTPUT_DIR) {
+  await mkdir(process.env.REPORT_OUTPUT_DIR, { recursive: true });
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "informe_ot_verificacion.pdf"), Buffer.from(await canonicalPdf.arrayBuffer()));
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "informe_ot_verificacion.xlsx"), Buffer.from(await (await reports.buildReportExcelBlob(canonical)).arrayBuffer()));
+}
+await assertPdf(canonicalPdf, ["UG21", "CPT", "Costo total", "Costo", "hora", "Aceite Gulf"]);
+await assertExcel(await reports.buildReportExcelBlob(canonical), ["UG21", "CPT", "Costo total", "Costo por hora", "Aceite Gulf"], 1);
+const withoutCosts = reports.buildCanonicalWorkOrderReport(canonicalDetail, false);
+assert.ok(!withoutCosts.sheets[0].section.info.some(row => row.label === "Costo total"));
+assert.ok(!withoutCosts.sheets[0].columns.some(row => row.key === "costo_hora"));
+const projectCanonical = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: { ...canonicalDetail.header, maintenance_kind: "PROYECTO" } }, true);
+assert.ok(!projectCanonical.sheets[0].section.info.some(row => /Horómetro/.test(row.label)));
+const projectDetail = { ...canonicalDetail, header: { ...canonicalDetail.header, maintenance_kind: "PROYECTO", valor_json: { proyecto: { empresa: "Justice", objetivo_general: "Instalar tuberías", metodologia: "Montaje" } }, proyecto_personal: [{ rol: "Soldador", nombre: "Luis", dias_laborados: 2, valor_dia: 30 }] } };
+const projectReport = reports.buildCanonicalWorkOrderReport(projectDetail, true);
+assert.ok(projectReport.sheets[0].section.info.some(row => row.value === "Instalar tuberías"));
+assert.equal(projectReport.sheets.find(row => row.name === "Personal contratado").rows[0].subtotal, 60);
+assert.ok(projectReport.sheets[0].section.info.find(row => row.label === "Costo total").value.includes("82"));
+console.log("PASS: informe único OT, costos conciliados, UG/central, permisos y proyecto sin horómetro");
