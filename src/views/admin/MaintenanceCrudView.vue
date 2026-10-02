@@ -240,7 +240,7 @@
               persistent-hint
               variant="outlined"
               :readonly="Boolean(field.readonly)"
-              :loading="isAutoCodeField(field) && autoCodeLoading"
+              :loading="(isAutoCodeField(field) && autoCodeLoading) || (isConsumoModule && field.key === 'costo_unitario' && consumoCostReference.loading.value)"
               :step="field.type === 'number' ? (field.integer ? '1' : 'any') : undefined"
             />
           </v-col>
@@ -394,7 +394,8 @@ import RowActionsMenu from "@/components/ui/RowActionsMenu.vue";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { buildProductDisplayTitle, resolveProductDisplayName } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
-import { isSuperAdministrator } from "@/app/utils/role-access";
+import { isSuperAdministrator, canViewMaterialCosts } from "@/app/utils/role-access";
+import { useInventoryCostReference } from "@/app/composables/use-inventory-cost-reference";
 import { formatHorometerForInput } from "@/app/utils/number-format";
 
 const props = defineProps<{ moduleKey: string }>();
@@ -500,6 +501,14 @@ const deletingId = ref<string | null>(null);
 const purgeConfirmation = ref("");
 const purging = ref(false);
 const form = reactive<Record<string, any>>({});
+const isConsumoModule = computed(() => props.moduleKey === "work-order-consumos");
+const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
+const consumoCostReference = useInventoryCostReference({
+  productId: () => form.producto_id,
+  warehouseId: () => form.bodega_id,
+  enabled: () => dialog.value && isConsumoModule.value && canViewCosts.value,
+});
+watch(consumoCostReference.cost, value => { form.costo_unitario = value ?? ""; });
 const jsonTextFields = reactive<Record<string, string>>({});
 const tableLoading = computed(() => loading.value || initialLoading.value);
 const isPurgeConfirmationValid = computed(
@@ -851,6 +860,10 @@ function syncEquipmentNextServiceDate() {
 }
 
 function getFieldHint(field: EnhancedMaintenanceField) {
+  if (isConsumoModule.value && field.key === "costo_unitario") {
+    return consumoCostReference.loading.value ? "Consultando Inventario..."
+      : consumoCostReference.error.value || "Se obtiene automáticamente de Inventario; no requiere ingresar un costo.";
+  }
   if (isAutoCodeField(field)) {
     return autoCodeLoading.value && !String(form[field.key] ?? "").trim()
       ? "Generando codigo..."
@@ -1525,6 +1538,7 @@ function pruneWarehouseDependentSelections() {
  * usuario pueda verlo ni llenarlo.
  */
 function isFieldVisible(field: EnhancedMaintenanceField) {
+  if (isConsumoModule.value && field.key === "costo_unitario" && !canViewCosts.value) return false;
   if (field.hidden) return false;
   if (field.visibleWhen && !field.visibleWhen(form)) return false;
   if (!isEquipmentModule.value) return true;

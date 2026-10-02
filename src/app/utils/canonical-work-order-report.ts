@@ -100,3 +100,13 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
 export async function fetchCanonicalWorkOrderReport(id: string, showCosts: boolean) {
   return buildCanonicalWorkOrderReport(await fetchWorkOrderDetail(id, { strict: true }), showCosts);
 }
+
+/** Cada OT conserva exactamente sus secciones, costos y permisos al consolidar. */
+export function consolidateCanonicalWorkOrderReports(
+  reports: ReportDefinition[],
+  options: Pick<ReportDefinition, "title" | "subtitle" | "fileName">,
+): ReportDefinition {
+  return { ...reports[0], ...options, orientation: "portrait", continuousSections: false,
+    sheets: reports.flatMap(report => report.sheets),
+  };
+}

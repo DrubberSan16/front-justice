@@ -154,4 +154,10 @@ const projectReport = reports.buildCanonicalWorkOrderReport(projectDetail, true)
 assert.ok(projectReport.sheets[0].section.info.some(row => row.value === "Instalar tuberías"));
 assert.equal(projectReport.sheets.find(row => row.name === "Personal contratado").rows[0].subtotal, 60);
 assert.ok(projectReport.sheets[0].section.info.find(row => row.label === "Costo total").value.includes("82"));
+const secondCanonical = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: { ...canonicalDetail.header, code: "OT-CEBADO-2" } }, true);
+const consolidated = reports.consolidateCanonicalWorkOrderReports([canonical, secondCanonical], { title: "Consolidado", subtitle: "CPT", fileName: "consolidado" });
+assert.equal(consolidated.sheets[0], canonical.sheets[0], "La OT consolidada conserva el mismo informe individual");
+assert.equal(consolidated.sheets[canonical.sheets.length], secondCanonical.sheets[0]);
+await assertPdf(await reports.buildReportPdfBlob(consolidated), ["OT-CEBADO-2", "Costo total", "UG21", "CPT"]);
+await assertExcel(await reports.buildReportExcelBlob(consolidated), ["OT-CEBADO-2", "Costo total", "Costo por hora"], 2);
 console.log("PASS: informe único OT, costos conciliados, UG/central, permisos y proyecto sin horómetro");

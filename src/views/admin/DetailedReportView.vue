@@ -485,7 +485,9 @@
           no-data-text="Sin consumo de aceite registrado en cebado"
         >
           <template #item.equipo_nombre="{ item }">
-            <strong>{{ equipmentLabel(item) }}</strong>
+            <button type="button" class="order-link"
+              :aria-label="`Ver órdenes de cebado de ${equipmentLabel(item)}`"
+              @click="openPrimingDetail(item)">{{ equipmentLabel(item) }}</button>
             <div v-if="item.equipo_descripcion" class="material-attrs">
               {{ item.equipo_descripcion }}
             </div>

@@ -1311,6 +1311,11 @@
                 </div>
               </v-col>
               <v-col cols="12" md="2"><v-text-field v-model="consumoForm.cantidad" label="Cantidad" type="number" variant="outlined" /></v-col>
+              <v-col v-if="canViewCosts" cols="12" md="2">
+                <v-text-field v-model="consumoForm.costo_unitario" label="Costo de Inventario"
+                  variant="outlined" readonly :loading="consumoCostReference.loading.value"
+                  :hint="consumoCostReference.error.value || 'Automático al guardar'" persistent-hint />
+              </v-col>
               <v-col cols="12" md="12"><v-text-field v-model="consumoForm.observacion" label="Observación" variant="outlined" /></v-col>
             </v-row>
             <div v-if="canCreateConsumo" class="d-flex justify-end mb-3">
@@ -2245,7 +2250,7 @@
 </template>
 
 <script setup lang="ts">
-import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
+import { fetchCanonicalWorkOrderReport, consolidateCanonicalWorkOrderReports } from "@/app/utils/canonical-work-order-report";
 import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
@@ -2275,9 +2280,7 @@ import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { hasReportAccess } from "@/app/config/report-access";
 import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import {
-  buildWorkOrdersListingReport,
   buildWorkOrderReport,
-  type WorkOrdersListingOrder,
   type ReportDefinition,
   buildReportPdfBlob,
   buildReportExcelBlob,
@@ -2300,6 +2303,7 @@ import {
   buildProductDisplayTitle,
 } from "@/app/utils/product-display";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
+import { useInventoryCostReference } from "@/app/composables/use-inventory-cost-reference";
 import {
   buildMaterialIssuePdfBlob,
   materialIssuePdfFileName,
@@ -3901,83 +3905,6 @@ function projectMaterialsFromIssueRows(rows: any[]) {
  * campo que se agregue a uno tiene que agregarse al otro. Las etiquetas de
  * ubicaciones, bodegas y personal ya vienen resueltas por el backend.
  */
-function buildProjectReportDataFromRecord(
-  record: any,
-  issues: any[],
-  history: any[] = [],
-): ProjectWorkOrderReportData {
-  const valorJson = parseValorJson(record?.valor_json);
-  const proyecto: Record<string, any> =
-    valorJson?.proyecto && typeof valorJson.proyecto === "object"
-      ? valorJson.proyecto
-      : {};
-  const siteLabels = (items: unknown) =>
-    (Array.isArray(items) ? items : [])
-      .map((item: any) =>
-        reportDisplayLabel(item?.label, item?.nombre, "Sin registro"),
-      )
-      .filter(Boolean);
-  const procedureLabel = [record?.procedimiento_codigo, record?.procedimiento_nombre]
-    .filter(Boolean)
-    .join(" - ");
-  return {
-    code: String(record?.code || ""),
-    projectName: String(record?.title || procedureLabel || ""),
-    empresa: String(proyecto.empresa ?? ""),
-    fecha:
-      getWorkOrderOperationalDateLabel(record) ||
-      formatDateOnly(record?.created_at, "") ||
-      "",
-    statusLabel: isAnnulledWorkOrder(record)
-      ? "Anulada"
-      : workflowLabel(record?.status_workflow),
-    plantilla: procedureLabel || "Sin plantilla",
-    objetivoGeneral: String(proyecto.objetivo_general ?? ""),
-    objetivosEspecificos: toStringList(proyecto.objetivos_especificos),
-    metodologia: String(proyecto.metodologia ?? ""),
-    alcance: toStringList(proyecto.alcance),
-    ubicaciones: siteLabels(record?.proyecto_ubicaciones),
-    bodegas: siteLabels(record?.proyecto_bodegas),
-    personal: (Array.isArray(record?.proyecto_personal)
-      ? record.proyecto_personal
-      : []
-    )
-      .filter((row: any) => String(row?.rol || "").trim())
-      .map((row: any) => ({
-        rol: String(row?.rol ?? ""),
-        nombre: String(row?.nombre ?? ""),
-        diasLaborados: Number(row?.dias_laborados) || 0,
-        ubicacion: String(row?.ubicacion_label || row?.ubicacion_texto || ""),
-        valorDia: Number(row?.valor_dia) || 0,
-        fecha: row?.fecha ? formatDateOnly(row.fecha, "-") : "",
-        observacion: String(row?.observacion ?? ""),
-      })),
-    materiales: projectMaterialsFromIssueRows(buildIssueDisplayRows(issues)),
-    mostrarCostos: canViewCosts.value,
-    createdBy: resolveWorkOrderTraceability(record, history).creado_por,
-    processedBy: resolveWorkOrderTraceability(record, history).realizado_por,
-    updatedBy: resolveUserDisplayLabel(record?.updated_by_label, record?.updated_by),
-  };
-}
-
-/** Datos de proyecto de una OT del listado: pide su cabecera y sus salidas. */
-async function fetchProjectExportData(order: any) {
-  const workOrderId = String(order?.id || order?._raw?.id || "").trim();
-  if (!workOrderId) {
-    throw new Error("No se pudo identificar la orden de trabajo a exportar.");
-  }
-  const [headerRes, issues, history] = await Promise.all([
-    api.get(`/kpi_maintenance/work-orders/${workOrderId}`),
-    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/issue-materials`),
-    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/history`),
-  ]);
-  const record = {
-    ...(order?._raw ?? order),
-    ...(unwrapData(headerRes.data) ?? {}),
-  };
-  return buildProjectReportDataFromRecord(record, issues, history);
-}
-
 /**
  * Una OT de Proyecto se exporta con el formato de proyecto, en PDF y en Excel,
  * sea una sola (dialogo, fila) o varias (consolidado: un bloque por OT).
@@ -4456,7 +4383,6 @@ function toConsumoPayload(line: any) {
     producto_id: line.producto_id,
     bodega_id: line.bodega_id,
     cantidad: Number(line.cantidad),
-    ...(line.costo_unitario ? { costo_unitario: Number(line.costo_unitario) } : {}),
     observacion: line.observacion || null,
   };
 }
@@ -4485,7 +4411,6 @@ function useProcedureSuggestedMaterial(item: any) {
   }
   ensureConsumoProductOption(item);
   consumoForm.producto_id = String(item?.producto_id || item?.id || "").trim();
-  void syncConsumoUnitCost();
 }
 
 function getSelectedConsumoProductOption() {
@@ -4867,31 +4792,12 @@ function resetScrapProductIfInvalid(index: number) {
   if (!exists) current.producto_id = "";
 }
 
-async function syncConsumoUnitCost() {
-  const warehouseId = effectiveConsumoWarehouseId.value;
-  if (!consumoForm.producto_id || !warehouseId) {
-    consumoForm.costo_unitario = "";
-    return;
-  }
-  try {
-    const { data } = await api.get("/kpi_maintenance/inventory/cost-reference", {
-      params: {
-        producto_id: consumoForm.producto_id,
-        bodega_id: warehouseId,
-      },
-    });
-    const resolved = unwrapData(data);
-    const nextCost = Number(
-      resolved?.costo_unitario
-      ?? resolved?.saldo_costo_promedio
-      ?? resolved?.ultimo_costo
-      ?? 0,
-    );
-    consumoForm.costo_unitario = nextCost > 0 ? String(nextCost) : "";
-  } catch {
-    consumoForm.costo_unitario = "";
-  }
-}
+const consumoCostReference = useInventoryCostReference({
+  productId: () => consumoForm.producto_id,
+  warehouseId: () => effectiveConsumoWarehouseId.value,
+  enabled: () => canViewCosts.value,
+});
+watch(consumoCostReference.cost, value => { consumoForm.costo_unitario = value == null ? "" : String(value); });
 const equipmentLabelById = computed(
   () =>
     new Map(
@@ -6767,18 +6673,6 @@ async function safeGetList(url: string, fallbackMessage: string) {
   }
 }
 
-async function safeGetExportList(url: string) {
-  try {
-    const { data } = await api.get(url);
-    return asArray(data);
-  } catch (e: any) {
-    if (hasApiNotImplemented(e)) {
-      return [];
-    }
-    throw e;
-  }
-}
-
 const hasActiveListFilters = computed(() =>
   Boolean(
     search.value.trim() ||
@@ -6801,173 +6695,6 @@ const currentPagedRows = computed(() => {
   const start = (currentPage - 1) * perPage;
   return totalRows.slice(start, start + perPage);
 });
-
-function getWorkOrderExportTitle(item: any) {
-  return String(
-    item?.title ||
-      item?.titulo ||
-      item?.procedimiento_nombre ||
-      item?.plan_nombre ||
-      item?.code ||
-      item?.id ||
-      "Orden de trabajo",
-  ).trim();
-}
-
-function buildListedWorkOrderHeaderRow(item: any, historyRows: any[] = []) {
-  const traceability = resolveWorkOrderTraceability(item, historyRows);
-  return {
-    codigo: item?.code || item?.codigo || item?.id || "",
-    titulo: getWorkOrderExportTitle(item),
-    estado: workflowLabel(item?.status_workflow),
-    tipo_mantenimiento: getMaintenanceKindLabel(item?.maintenance_kind),
-    clase_orden: parseBooleanFlag(item?.is_emergency) ? "Orden emergente" : "Orden normal",
-    motivo_emergencia: item?.emergency_reason || "",
-    equipo: getEquipmentLabel(item) || "-",
-    compartimiento: getWorkOrderComponentLabels(item).join("\n") || "-",
-    procedimiento:
-      [item?.procedimiento_codigo, item?.procedimiento_nombre].filter(Boolean).join(" - ") || "-",
-    plan_operativo: [item?.plan_codigo, item?.plan_nombre].filter(Boolean).join(" - ") || "-",
-    fecha_operativa: getWorkOrderOperationalDate(item) || "",
-    fecha_programacion: getWorkOrderScheduledProgramDateLabel(item),
-    horometro_anterior:
-      item?.horometro_anterior ?? item?.valor_json?.horometro_anterior ?? "",
-    horometro_actual: item?.horometro_actual ?? item?.valor_json?.horometro_actual ?? "",
-    horas_a_realizar:
-      item?.horas_a_realizar ??
-      item?.valor_json?.horas_a_realizar ??
-      item?.valor_json?.horas_plantilla ??
-      "",
-    creado_por: traceability.creado_por,
-    fecha_creacion: traceability.fecha_creacion,
-    realizado_por: traceability.realizado_por,
-    fecha_realizacion: traceability.fecha_realizacion,
-    aprobado_por: traceability.aprobado_por,
-    fecha_aprobacion: traceability.fecha_aprobacion,
-    causa: item?.causa || "",
-    accion: item?.accion || "",
-    prevencion: item?.prevencion || "",
-  };
-}
-
-function buildListedConsumoRows(_order: any, consumos: any[]) {
-  return consumos.map((item: any) => ({
-    bodega: resolveWarehouseLabel(item?.bodega_id, item?.bodega_label, item?.bodega_nombre),
-    material: resolveProductLabel(
-      item?.producto_id,
-      item?.producto_label ||
-        item?.producto_nombre ||
-        productNameMap.value[String(item?.producto_id || "")] ||
-        item?.producto_id ||
-        "-",
-    ),
-    reservado: toPositiveNumber(item?.cantidad_reservada ?? item?.cantidad),
-    emitido: toPositiveNumber(item?.cantidad_emitida),
-    pendiente: toPositiveNumber(item?.cantidad_pendiente ?? item?.cantidad),
-    costo_unitario: toPositiveNumber(item?.costo_unitario),
-    subtotal: toPositiveNumber(
-      item?.subtotal ??
-        toPositiveNumber(item?.cantidad ?? item?.cantidad_reservada) * toPositiveNumber(item?.costo_unitario),
-    ),
-    observacion: item?.observacion || "-",
-  }));
-}
-
-function buildListedIssueRows(_order: any, issues: any[]) {
-  return issues.flatMap((issue: any) => {
-    const rawItems = Array.isArray(issue?.items) ? issue.items : [];
-    return rawItems.map((detail: any) => ({
-      salida: issue?.code || issue?.codigo || "Sin codigo",
-      fecha: issue?.fecha || "",
-      bodega: resolveWarehouseLabel(detail?.bodega_id, detail?.bodega_label, detail?.bodega_nombre),
-      material: resolveProductLabel(
-        detail?.producto_id,
-        detail?.producto_label ||
-          detail?.producto_nombre ||
-          productNameMap.value[String(detail?.producto_id || "")] ||
-          detail?.producto_id ||
-          "-",
-      ),
-      cantidad: toPositiveNumber(detail?.cantidad),
-      costo_unitario: toPositiveNumber(detail?.costo_unitario),
-      subtotal: toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
-      observacion: issue?.observacion || "-",
-    }));
-  });
-}
-
-function buildListedScrapRows(_order: any, scraps: any[]) {
-  return scraps.flatMap((scrap: any) => {
-    const rawItems = Array.isArray(scrap?.items) ? scrap.items : [];
-    return rawItems.map((detail: any) => ({
-      transferencia:
-        scrap?.transferencia_codigo || scrap?.code || scrap?.codigo || "Sin codigo",
-      fecha: scrap?.fecha || "",
-      bodega_origen: resolveWarehouseLabel(scrap?.bodega_origen_id, scrap?.bodega_origen_label),
-      bodega_chatarra: resolveWarehouseLabel(scrap?.bodega_chatarra_id, scrap?.bodega_chatarra_label),
-      material: resolveProductLabel(
-        detail?.producto_id,
-        detail?.producto_label ||
-          detail?.producto_nombre ||
-          productNameMap.value[String(detail?.producto_id || "")] ||
-          detail?.producto_id ||
-          "-",
-      ),
-      cantidad: toPositiveNumber(detail?.cantidad),
-      costo_unitario: toPositiveNumber(detail?.costo_unitario),
-      subtotal:
-        toPositiveNumber(detail?.subtotal) ||
-        toPositiveNumber(detail?.cantidad) * toPositiveNumber(detail?.costo_unitario),
-      observacion: detail?.observacion || scrap?.observacion || "-",
-    }));
-  });
-}
-
-async function fetchWorkOrderExportBundle(order: any) {
-  const workOrderId = String(order?.id || order?._raw?.id || "").trim();
-  if (!workOrderId) {
-    throw new Error("No se pudo identificar la orden de trabajo a exportar.");
-  }
-
-  const [headerRes, tasksRes, attachmentsRes, consumos, issues, scraps, history] = await Promise.all([
-    api.get(`/kpi_maintenance/work-orders/${workOrderId}`),
-    api.get(`/kpi_maintenance/work-orders/${workOrderId}/tareas`),
-    api.get(`/kpi_maintenance/work-orders/${workOrderId}/adjuntos`),
-    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/consumos`),
-    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/issue-materials`),
-    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/scrap-materials`),
-    safeGetExportList(`/kpi_maintenance/work-orders/${workOrderId}/history`),
-  ]);
-
-  const header = { ...(order?._raw ?? order), ...(unwrapData(headerRes.data) ?? {}) };
-  const normalizedTasks = asArray(tasksRes.data).map((task: any) => ({
-    ...task,
-    _json_text:
-      task?.valor_json && typeof task.valor_json === "object"
-        ? JSON.stringify(task.valor_json, null, 2)
-        : "",
-  }));
-  await ensureTaskLabelCacheForRows(normalizedTasks);
-
-  return {
-    header: buildListedWorkOrderHeaderRow(header, history),
-    tasks: normalizedTasks.flatMap((item: any) => buildTaskReportRows(item)),
-    attachments: asArray(attachmentsRes.data).map((item: any) =>
-      buildWorkOrderAttachmentReportRow(item),
-    ),
-    consumos: buildListedConsumoRows(header, consumos),
-    issues: buildListedIssueRows(header, issues),
-    scraps: buildListedScrapRows(header, scraps),
-    history: history.map((item: any) => ({
-      desde: workflowLabel(item?.from_status),
-      hacia: workflowLabel(item?.to_status),
-      usuario: getHistoryUser(item),
-      fecha: item?.changed_at || "",
-      nota: item?.note || "",
-    })),
-  };
-}
-
 
 function buildIssueDocumentsWorkOrderContext(item: any): MaterialIssueWorkOrderLike {
   const raw = item?._raw ?? item ?? {};
@@ -7109,35 +6836,18 @@ async function exportListedWorkOrders(format: "excel" | "pdf") {
 
   try {
     await ensureCatalogsLoaded();
-    if (isProjectMode.value) {
-      // En OT Proyecto cada orden va con el formato de proyecto, un bloque por
-      // orden: una seccion en el PDF y una hoja en el Excel.
-      const projectOrders = await Promise.all(
-        visibleRows.map((row: any) => fetchProjectExportData(row)),
-      );
-      const rangeLabel = getAppliedDateRangeLabel();
-      await openProjectWorkOrdersPreview(projectOrders, format, {
-        title: "Informe consolidado de OT Proyecto",
-        subtitle: rangeLabel
-          ? `Órdenes vigentes según filtros aplicados (excluye anuladas). Rango: ${rangeLabel}`
-          : "Órdenes vigentes en el módulo al momento de la exportación (excluye anuladas).",
-        fileName: `ot_proyecto_${currentDateInputValue()}`,
-      });
-      return;
-    }
     // Cada orden se exporta como un bloque independiente: una sección en el PDF
     // y una pestaña propia en el Excel.
-    const orders: WorkOrdersListingOrder[] = [];
+    const orders: ReportDefinition[] = [];
     for (const row of visibleRows) {
-      orders.push(await fetchWorkOrderExportBundle(row));
+      const id = String(row?.id || row?._raw?.id || "");
+      orders.push(await fetchCanonicalWorkOrderReport(id, canViewCosts.value));
     }
 
-    const report = buildWorkOrdersListingReport({
-      periodLabel: getAppliedDateRangeLabel(),
-      maintenanceKindLabel: appliedMaintenanceKindFilter.value
-        ? getMaintenanceKindLabel(appliedMaintenanceKindFilter.value)
-        : "",
-      orders,
+    const report = consolidateCanonicalWorkOrderReports(orders, {
+      title: isProjectMode.value ? "Informe consolidado de OT Proyecto" : "Informe consolidado de órdenes de trabajo",
+      subtitle: getAppliedDateRangeLabel() || "Órdenes vigentes según filtros aplicados (excluye anuladas).",
+      fileName: `${isProjectMode.value ? "ot_proyecto" : "ordenes_trabajo"}_${currentDateInputValue()}`,
     });
 
     if (format === "excel") {
@@ -8939,7 +8649,6 @@ watch(
       consumoProductSearch.value = "";
       await loadConsumoProducts({ reset: true, search: "" });
       resetConsumoProductIfInvalid();
-      await syncConsumoUnitCost();
     }
   },
 );
@@ -8961,14 +8670,6 @@ watch(
     consumoProductSearch.value = "";
     await loadConsumoProducts({ reset: true, search: "" });
     resetConsumoProductIfInvalid();
-    await syncConsumoUnitCost();
-  },
-);
-
-watch(
-  () => consumoForm.producto_id,
-  async () => {
-    await syncConsumoUnitCost();
   },
 );
 
