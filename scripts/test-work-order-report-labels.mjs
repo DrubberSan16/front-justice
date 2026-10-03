@@ -18,6 +18,8 @@ const { outputFiles } = await build({
       export * from "@/app/utils/canonical-work-order-report";
       export * from "@/app/utils/date-time";
       export * from "@/app/utils/priming-central-filter";
+      export * from "@/app/utils/equipment-summary-report";
+      export * from "@/app/utils/reporting-relations";
     `,
     resolveDir: root,
   },
@@ -212,3 +214,44 @@ if (process.env.REPORT_OUTPUT_DIR) {
   }
 }
 console.log("PASS: exportacion PDF/Excel de plantillas SSA y controles del checklist");
+
+const equipmentLabel = "MTU | JC - UG07 · UBI-A00004 - CENTRAL TPTA";
+const equipmentSource = { equipment_label: equipmentLabel, total_horas: 7, total_ordenes: 1,
+  bodegas: "BOD-002 - TPTA", detalle_ordenes: [{ equipment_id: "ug07", work_order_id: "ot-ug07", work_order_code: "OT-UG07" }] };
+const equipmentRelationships = reports.buildReportingRelationshipRows("generation-units", {
+  reports: { horas_trabajadas: { rows: [equipmentSource] },
+    costo_mantenimiento: { rows: [{ ...equipmentSource, total_costo: 1623.4 }] } },
+});
+const equipmentSummary = reports.buildEquipmentSummaryRows(equipmentRelationships, [
+  { id: "ug07", nombre: "JC - UG07", location_nombre: "CENTRAL CPT" },
+]);
+assert.equal(equipmentSummary[0].central, "CENTRAL CPT", "Resuelve por el ID del equipo de la OT, sin confundirlo con el ID de la OT ni la bodega");
+assert.equal(equipmentSummary[0].label, equipmentLabel);
+assert.equal(equipmentSummary[0].workOrders, 1);
+assert.equal(equipmentSummary[0].hours, 7);
+assert.equal(equipmentSummary[0].maintenanceCost, 1623.4);
+assert.equal(reports.buildEquipmentSummaryRows(equipmentRelationships, [])[0].central, "CENTRAL TPTA", "Recupera ubicación de etiquetas históricas cuando falta el catálogo");
+const withoutLocation = { ...equipmentRelationships[0], label: "Generador sin ubicación", entityId: "", sourceRows: [] };
+assert.equal(reports.buildEquipmentSummaryRows([withoutLocation], [])[0].central, "Sin ubicación");
+assert.equal(reports.buildEquipmentSummaryRows([{ ...withoutLocation, sourceRows: [{ location_label: uuid }] }], [])[0].central, "Sin ubicación", "No imprime UUID como central");
+assert.equal(reports.buildEquipmentSummaryRows([{ ...withoutLocation, sourceRows: [{ central: "UBI-A00003 - CENTRAL CPT" }] }], [])[0].central, "CENTRAL CPT");
+const sameName = reports.buildEquipmentSummaryRows([
+  { ...withoutLocation, sourceRows: [{ equipment_id: "first" }] },
+  { ...withoutLocation, sourceRows: [{ equipment_id: "second" }] },
+], [{ id: "first", nombre: "Generador", location_nombre: "CENTRAL CPT" },
+  { id: "second", nombre: "Generador", location_nombre: "CENTRAL TPTA" }]);
+assert.deepEqual(sameName.map(row => row.central), ["CENTRAL CPT", "CENTRAL TPTA"]);
+for (const moduleKey of ["generation-units", "equipment"]) {
+  const summaryReport = { title: "Consolidado de equipos", fileName: `reporteria-${moduleKey}`, compactPdf: true,
+    sheets: [{ name: "Detalle", rows: reports.equipmentSummaryExportRows(equipmentSummary), columns: reports.EQUIPMENT_SUMMARY_COLUMNS, fitColumnsToPage: true }] };
+  await assertPdf(await reports.buildReportPdfBlob(summaryReport), ["CENTRAL CPT", "JC - UG07", "central"]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await (await reports.buildReportExcelBlob(summaryReport)).arrayBuffer());
+  const worksheet = workbook.worksheets[0];
+  const headerRow = worksheet.getRows(1, worksheet.rowCount).find(row => row.getCell(2).value === "Ubicación o central");
+  assert.ok(headerRow);
+  assert.deepEqual(headerRow.values.slice(1), ["Equipo", "Ubicación o central", "OT", "Horas", "Costo"]);
+  const dataRow = worksheet.getRow(headerRow.number + 1);
+  assert.deepEqual(dataRow.values.slice(1), [equipmentLabel, "CENTRAL CPT", 1, 7, 1623.4]);
+}
+console.log("PASS: ubicación por equipo en PDF/Excel de UG y equipos, identidad, históricos, UUID y totales conservados");
