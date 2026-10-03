@@ -670,7 +670,9 @@
                 type="date"
                 label="Fecha programada"
                 variant="outlined"
-                :min="currentDateInputValue()"
+                :min="isEmergencySchedulingWorkOrder(form.work_order_id) ? undefined : currentDateInputValue()"
+                hint="Solo las OT emergentes permiten fechas anteriores a hoy."
+                persistent-hint
               />
             </v-col>
             <v-col cols="12" md="6">
@@ -794,7 +796,7 @@
                 type="date"
                 :label="monthlyCellIsReprogramming ? 'Nueva fecha de la orden' : 'Fecha programada'"
                 variant="outlined"
-                :min="currentDateInputValue()"
+                :min="isEmergencySchedulingWorkOrder(monthlyCell.work_order_id) ? undefined : currentDateInputValue()"
                 :disabled="monthlyCellDateLocked"
                 :hint="canReprogramMonthlyCell ? 'Al cambiar la fecha, el bloque se registrará como reprogramado.' : undefined"
                 persistent-hint
@@ -1031,7 +1033,6 @@
                 type="date"
                 label="Semana a programar"
                 variant="outlined"
-                :min="currentDateInputValue()"
                 @update:model-value="handleWeeklyAnchorChange"
               />
             </v-col>
@@ -1966,20 +1967,29 @@ function isPastSchedulingDate(value: unknown) {
   return Boolean(normalized && normalized < currentDateInputValue());
 }
 
+function isEmergencySchedulingWorkOrder(workOrderId: unknown) {
+  const id = String(workOrderId || "").trim();
+  return Boolean(id && workOrderCatalog.value.some(
+    (item: any) => String(item?.id || "").trim() === id && item.is_emergency === true,
+  ));
+}
+
 function validateSchedulingDate(
   value: unknown,
   label: string,
   previous?: unknown,
+  workOrderId?: unknown,
 ) {
   const normalized = normalizeDateOnly(value);
   const previousNormalized = normalizeDateOnly(previous);
   if (
+    isEmergencySchedulingWorkOrder(workOrderId) ||
     !isPastSchedulingDate(normalized) ||
     (previousNormalized && previousNormalized === normalized)
   ) {
     return true;
   }
-  ui.error(`${label} debe ser hoy o una fecha futura.`);
+  ui.error(`${label} debe ser hoy o una fecha futura. Solo las OT emergentes permiten fechas anteriores.`);
   return false;
 }
 
@@ -3575,7 +3585,6 @@ function resetForm() {
 
 function openCreateForDate(date: string) {
   if (!canCreate.value) return;
-  if (!validateSchedulingDate(date, "La fecha programada")) return;
   resetForm();
   form.sucursal_id = resolveSucursalId() || "";
   form.proxima_fecha = date;
@@ -3634,7 +3643,6 @@ async function refreshMonthlyPlanningViews() {
 
 function openMonthlyCellCreate(date: string, row?: any) {
   if (!canCreate.value) return;
-  if (!validateSchedulingDate(date, "La fecha programada")) return;
   if (!selectedMonthly.value?.id) {
     resetForm();
     form.sucursal_id = selectedMonthly.value?.sucursal_id || resolveSucursalId() || "";
@@ -3789,6 +3797,7 @@ async function saveMonthlyCell() {
       monthlyCell.fecha_programada,
       "La fecha del bloque mensual",
       monthlyCell.id ? monthlyCell.original_fecha_programada : undefined,
+      monthlyCell.work_order_id,
     )
   ) {
     return;
@@ -4124,6 +4133,7 @@ async function save() {
       form.proxima_fecha,
       "La fecha programada",
       editingId.value ? originalProgramacionDate.value : undefined,
+      form.work_order_id,
     )
   ) {
     return;
@@ -4442,9 +4452,6 @@ function calculateWeeklySlotHours(slotKey: string) {
 
 function openWeeklyCell(slotKey: string, date: string, item?: any) {
   if (item ? !canEdit.value : !canCreate.value) return;
-  if (!item && !validateSchedulingDate(date, "La fecha de la actividad semanal")) {
-    return;
-  }
   weeklyCell.local_id = item?.local_id || "";
   weeklyCell.slot_key = slotKey;
   weeklyCell.fecha_actividad = date;
@@ -4497,6 +4504,12 @@ async function saveWeeklyCell() {
     ui.error("Debes seleccionar la orden de trabajo que se ejecutará.");
     return;
   }
+  if (!validateSchedulingDate(
+    weeklyCell.fecha_actividad,
+    "La fecha de la actividad semanal",
+    weeklyOriginalDatesByLocalId.value[weeklyCell.local_id],
+    weeklyCell.include_work_order ? weeklyCell.work_order_id : undefined,
+  )) return;
   const payload = {
     local_id: weeklyCell.local_id || createLocalId(),
     slot_key: weeklyCell.slot_key,
@@ -4622,6 +4635,7 @@ async function saveWeeklyEditor() {
     return;
   }
   const invalidPastDetail = weeklyEditorItems.value.find((item) => {
+    if (isEmergencySchedulingWorkOrder(item.work_order_id)) return false;
     if (!isPastSchedulingDate(item.fecha_actividad)) return false;
     return (
       weeklyOriginalDatesByLocalId.value[item.local_id] !==
@@ -4629,7 +4643,7 @@ async function saveWeeklyEditor() {
     );
   });
   if (invalidPastDetail) {
-    ui.error("Las actividades del cronograma semanal deben programarse para hoy o una fecha futura.");
+    ui.error("Las actividades del cronograma semanal deben programarse para hoy o una fecha futura. Solo las OT emergentes permiten fechas anteriores.");
     return;
   }
   const sucursalId = ensureSucursalId(weeklyEditor.sucursal_id, "guardar el cronograma semanal");
