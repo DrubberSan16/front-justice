@@ -326,6 +326,47 @@ const trackingPdf = await reports.buildReportPdfBlob(trackingReport);
 const trackingExcel = await reports.buildReportExcelBlob(trackingReport);
 await assertPdf(trackingPdf, ["Bodega inicio", "Bodega retorno", "Creador OT", "EB-42", "03-10-2026"]);
 await assertExcel(trackingExcel, ["Bodega inicio", "Bodega retorno", "Creador OT", "En revisión a En proceso", "En proceso a En revisión", "Fecha y hora"], 1);
+const timelineWorkbook = new ExcelJS.Workbook();
+await timelineWorkbook.xlsx.load(await trackingExcel.arrayBuffer());
+const timelineWorksheet = timelineWorkbook.worksheets[0];
+assert.equal(timelineWorksheet.getImages().length, tracking.length * 3, "Cada evento conserva icono de estado, usuario y conexión de la línea de tiempo");
+assert.ok(timelineWorksheet.getImages().every(image => image.range.ext.width > 0 && image.range.ext.height > 0));
+const editableActors = [];
+timelineWorksheet.eachRow(row => row.eachCell(cell => {
+  if (!cell.isMerged || cell.address === cell.master.address) {
+    const text = typeof cell.value === "string" ? cell.value.trim() : "";
+    if (text === "Bodega retorno" || text === "Bodega inicio") editableActors.push(text);
+  }
+}));
+assert.deepEqual(editableActors, ["Bodega retorno", "Bodega inicio"], "Los nombres siguen editables y los eventos aparecen del más reciente al más antiguo");
+const longNote = "Detalle de seguimiento con materiales adicionales, comprobaciones y observaciones completas. ".repeat(95) + "FIN_DEL_EVENTO_EXTENSO";
+const extendedTimeline = {
+  ...trackingReport, orientation: "portrait", continuousSections: true,
+  sheets: [{ ...trackingSheet, section: undefined, rows: [
+    { hacia: "Anulada", transicion: "En proceso a Anulada", usuario: "Creador anulación", fecha: "2026-10-04T18:00:00Z", nota: "Orden anulada con seguimiento conservado" },
+    { hacia: "Finalizada", transicion: "En proceso a Finalizada", usuario: "Creador cierre", fecha: "2026-10-04T17:00:00Z", nota: "Orden finalizada" },
+    { hacia: "Bloqueada", transicion: "En proceso a Bloqueada", usuario: "Usuario bloqueo", fecha: "2026-10-04T16:00:00Z", nota: "Equipo ocupado por otra orden" },
+    ...trackingSheet.rows.map((event, index) => ({ ...event, nota: index === 0 ? longNote : event.nota })),
+  ] }],
+};
+const extendedPdf = await reports.buildReportPdfBlob(extendedTimeline);
+const extendedExcel = await reports.buildReportExcelBlob(extendedTimeline);
+await assertPdf(extendedPdf, ["FIN_DEL_EVENTO_EXTENSO", "Bodega inicio", "Creador cierre", "Usuario bloqueo"]);
+const extendedPdfText = Buffer.from(await extendedPdf.arrayBuffer()).toString("latin1");
+assert.ok((extendedPdfText.match(/\/Type \/Page\b/g) || []).length >= 3, "Un evento extenso continúa en otras páginas sin perder el final ni los eventos siguientes");
+const extendedWorkbook = new ExcelJS.Workbook();
+await extendedWorkbook.xlsx.load(await extendedExcel.arrayBuffer());
+assert.equal(extendedWorkbook.worksheets[0].getImages().length, 21);
+extendedWorkbook.worksheets[0].eachRow(row => assert.ok((row.height ?? 15) <= 409, "El detalle no excede la altura máxima de una fila de Excel"));
+await assertExcel(extendedExcel, ["FIN_DEL_EVENTO_EXTENSO", "Bodega inicio", "Creador cierre", "Usuario bloqueo"], 1);
+if (process.env.HISTORY_OUTPUT_DIR) {
+  await mkdir(process.env.HISTORY_OUTPUT_DIR, { recursive: true });
+  for (const [name, pdf, excel] of [["historico-linea-tiempo", trackingPdf, trackingExcel], ["historico-extenso", extendedPdf, extendedExcel]]) {
+    await writeFile(path.join(process.env.HISTORY_OUTPUT_DIR, `${name}.pdf`), Buffer.from(await pdf.arrayBuffer()));
+    await writeFile(path.join(process.env.HISTORY_OUTPUT_DIR, `${name}.xlsx`), Buffer.from(await excel.arrayBuffer()));
+  }
+}
+console.log("PASS: línea de tiempo con iconos, texto editable en Excel, estados y detalle extenso sin recortes en PDF/Excel");
 const annulHeader = { ...lifecycleHeader, status: "ANULADA", status_workflow: "CLOSED", closed_at: "2026-10-03T19:00:00Z", valor_json: { approval_action: "ANULADA", approved_by_name: "Creador OT", approved_at: "2026-10-03T19:00:00Z", annulment: { annulled_at: "2026-10-03T19:00:00Z", annulled_by: "Creador OT" } } };
 const annulLifecycle = reports.resolveWorkOrderLifecycle(annulHeader, tracking);
 assert.equal(annulLifecycle.finished.at, null);

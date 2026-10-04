@@ -15,6 +15,7 @@ import {
   roundForDisplay,
 } from "@/app/utils/number-format";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { drawExcelHistoryTimeline, drawPdfHistoryTimeline } from "@/app/utils/work-order-history-timeline";
 
 type AnyRow = Record<string, any>;
 
@@ -82,6 +83,8 @@ export type ReportSheet = {
   section?: ReportSheetSection;
   /** Alto mínimo de fila en el PDF, en puntos. */
   minRowHeight?: number;
+  /** Histórico de OT con línea de tiempo e iconos, en ambos archivos exportados. */
+  timeline?: boolean;
 };
 
 export type ReportDefinition = {
@@ -875,6 +878,11 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
         cursorRow += 2;
       }
 
+      if (sheet.timeline) {
+        cursorRow = drawExcelHistoryTimeline(workbook, worksheet, sheet.rows, cursorRow, lastColumnIndex);
+        continue;
+      }
+
       const headerRowIndex = cursorRow;
       if (!firstHeaderRowIndex) firstHeaderRowIndex = headerRowIndex;
       const headerRow = worksheet.getRow(headerRowIndex);
@@ -1418,6 +1426,14 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       doc.setFont("helvetica", "normal");
       doc.setTextColor(31, 41, 55);
       cursorY += noteHeight + 10;
+    }
+
+    if (sheet.timeline) {
+      cursorY = drawPdfHistoryTimeline(doc, sheet.rows, cursorY, marginX, () => {
+        doc.addPage(resolveReportOrientation(report));
+        drawPageHeader(report.title, report.subtitle, repairText(sheet.section?.title || sheet.name));
+      });
+      continue;
     }
 
     autoTable(doc, {
@@ -2431,6 +2447,7 @@ function buildWorkOrderSectionSheets(
     {
       name: "Histórico",
       section,
+      timeline: true,
       rows: [...order.history].sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime()).map(row => ({
         ...row, transicion: row.desde && row.desde !== row.hacia ? `${row.desde} a ${row.hacia}` : row.hacia,
         nota: formatWorkOrderHistoryNote(row.nota), usuario: reportDisplayLabel(row.usuario) || "Usuario sin registro",
