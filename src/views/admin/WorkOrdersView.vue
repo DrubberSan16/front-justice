@@ -644,14 +644,11 @@
           </v-col>
           <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-text-field
-              v-model="headerForm.horometro_actual"
-              label="Horometro actual"
-              type="number"
-              :min="minHorometroParaOT"
-              step="1"
+              :model-value="resolvedHorometroActual == null ? 'Se calculará al guardar' : formatHorometerForDisplay(resolvedHorometroActual)"
+              label="Horómetro automático"
+              readonly
               variant="outlined"
-              :disabled="isReadOnlyWorkflow || isEditingLockedFields"
-              :hint="selectedEquipmentHorometroHint"
+              hint="El sistema toma la lectura del equipo al guardar y la congela al iniciar la ejecución."
               persistent-hint
             />
           </v-col>
@@ -661,7 +658,7 @@
               label="Horas a realizar (horas-hombre)"
               variant="outlined"
               readonly
-              hint="Horas de trabajo humano definidas por la plantilla; no modifican el horómetro del equipo."
+              :hint="headerForm.maintenance_kind === 'CEBADO' ? 'Estas horas se añaden al horómetro al volver a encender el equipo tras finalizar la OT.' : 'Horas de trabajo humano definidas por la plantilla.'"
               persistent-hint
             />
           </v-col>
@@ -6033,7 +6030,6 @@ function buildWorkOrderSaveBundlePayload() {
         causa: headerForm.causa || "",
         accion: headerForm.accion || "",
         prevencion: headerForm.prevencion || "",
-        horometro_actual: resolvedHorometroActual.value,
         horas_a_realizar: resolvedHorasARealizar.value,
         observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
         ...buildProgramacionDatePayload(),
@@ -6342,84 +6338,24 @@ const resolvedHorometroAnterior = computed(() => {
   const stored = parseNullableNumber(
     audit?.horometro_anterior ?? valorJson?.horometro_anterior,
   );
-  return stored != null ? Math.round(stored) : null;
+  return stored;
 });
 
 const resolvedHorometroActual = computed(() => {
   // La OT de Proyecto lleva un proyecto, no una maquina: no hay lectura que
   // registrar, ni siquiera la del proyecto asociado.
   if (isProjectMode.value) return null;
-  const persistedSnapshot = parseNullableNumber(headerForm.horometro_actual);
-  if (persistedSnapshot != null) return Math.round(persistedSnapshot);
+  const audit = currentWorkOrderAudit.value;
+  const persistedSnapshot = editingId.value ? parseNullableNumber(audit?.horometro_actual ?? parseValorJson(audit?.valor_json)?.horometro_actual) : null;
+  if (persistedSnapshot != null) return persistedSnapshot;
   const fromEquipment = parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual);
-  return fromEquipment != null ? Math.round(fromEquipment) : null;
+  return fromEquipment;
 });
 
 const resolvedHorasARealizarLabel = computed(() =>
   resolvedHorasARealizar.value != null
     ? formatHoursDurationLabel(resolvedHorasARealizar.value)
     : "Sin horas configuradas",
-);
-
-/** Lectura viva del equipo seleccionado. */
-const equipmentCurrentHorometer = computed(() =>
-  parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual),
-);
-
-/**
- * Mínimo admisible al crear la OT: la lectura tiene que avanzar.
- *
- * Es lo que hace que el par "anterior → actual" del informe signifique algo: el
- * anterior es la lectura con la que llegó la máquina y el actual el que se
- * anota al abrir la orden. Con la OT ya guardada el campo está bloqueado, así
- * que no hay mínimo que imponer.
- */
-const minHorometroParaOT = computed(() => {
-  if (editingId.value) return 0;
-  if (headerForm.is_emergency) return 0;
-  const vigente = equipmentCurrentHorometer.value;
-  return vigente != null ? vigente + 1 : 0;
-});
-
-const selectedEquipmentHorometroHint = computed(() => {
-  if (editingId.value) {
-    return "El horómetro se registra al crear la OT y queda fijo: es la lectura con la que entró la máquina.";
-  }
-  const equipmentHorometro = equipmentCurrentHorometer.value;
-  if (equipmentHorometro != null) {
-    if (headerForm.is_emergency) {
-      return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. Al guardarse como emergente puede registrar un horómetro anterior.`;
-    }
-    return `Lectura vigente del equipo: ${formatHorometerForDisplay(equipmentHorometro, { suffix: "" })}. Debe ser MAYOR. Al guardar se actualizará también el equipo.`;
-  }
-  return "Ingresa el horometro de la OT; al guardar se actualizará también el equipo.";
-});
-
-/**
- * Mensaje de rechazo cuando la lectura no avanza, o `null` si está bien.
- *
- * Solo aplica al crear: en una OT guardada el campo ya no se puede tocar, y el
- * equipo pudo avanzar con órdenes posteriores.
- */
-function validateHorometroAvanza(): string | null {
-  if (isProjectMode.value) return null;
-  if (editingId.value) return null;
-  if (headerForm.is_emergency) return null;
-  const vigente = equipmentCurrentHorometer.value;
-  const capturado = resolvedHorometroActual.value;
-  if (vigente == null || capturado == null) return null;
-  if (capturado > vigente) return null;
-  return `El horómetro debe ser mayor que la lectura vigente del equipo (${formatHorometerForDisplay(
-    vigente,
-    { suffix: "" },
-  )}). Ingresaste ${formatHorometerForDisplay(capturado, { suffix: "" })}.`;
-}
-
-// Una OT de Proyecto no toca ningun horometro: no hay equipo al que medirle.
-const requiresHorometroCapture = computed(() =>
-  isProjectMode.value
-    ? false
-    : parseNullableNumber(selectedEquipmentRecord.value?.horometro_actual) != null,
 );
 
 function syncWorkOrderHorometerFields(options?: { preserveCurrent?: boolean }) {
@@ -7548,19 +7484,6 @@ async function saveHeader(
     ui.error(emergencyHoursError);
     return false;
   }
-  if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
-    ui.error("Debes ingresar el horometro actual para calcular la OT.");
-    return false;
-  }
-  if (resolvedHorometroActual.value != null && resolvedHorometroActual.value < 0) {
-    ui.error("El horometro actual no puede ser negativo.");
-    return false;
-  }
-  const horometroNoAvanza = validateHorometroAvanza();
-  if (horometroNoAvanza) {
-    ui.error(horometroNoAvanza);
-    return false;
-  }
   if (isOperatorRole.value) {
     headerForm.maintenance_kind = "CEBADO";
   }
@@ -7597,7 +7520,6 @@ async function saveHeader(
       causa: headerForm.causa || "",
       accion: headerForm.accion || "",
       prevencion: headerForm.prevencion || "",
-      horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
@@ -7709,7 +7631,6 @@ function buildWorkOrderHeaderComparableState() {
       causa: headerForm.causa || "",
       accion: headerForm.accion || "",
       prevencion: headerForm.prevencion || "",
-      horometro_actual: resolvedHorometroActual.value,
       horas_a_realizar: resolvedHorasARealizar.value,
       observacion_menor_uso_reserva: headerForm.close_shortfall_reason || "",
       ...buildProgramacionDatePayload(),
@@ -7772,19 +7693,6 @@ async function saveAll() {
     const emergencyHoursError = validateEmergencyWorkOrderHours();
     if (emergencyHoursError) {
       ui.error(emergencyHoursError);
-      return;
-    }
-    if (requiresHorometroCapture.value && resolvedHorometroActual.value == null) {
-      ui.error("Debes ingresar el horometro actual para calcular la OT.");
-      return;
-    }
-    if (resolvedHorometroActual.value != null && resolvedHorometroActual.value < 0) {
-      ui.error("El horometro actual no puede ser negativo.");
-      return;
-    }
-    const horometroSinAvance = validateHorometroAvanza();
-    if (horometroSinAvance) {
-      ui.error(horometroSinAvance);
       return;
     }
     if (!validateRequiredWorkOrderOutcomeFields()) {

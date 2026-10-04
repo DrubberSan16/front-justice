@@ -4,14 +4,14 @@
       <div class="equipment-panel__heading">
         <div class="equipment-panel__icon"><v-icon icon="mdi-toggle-switch-outline" size="21" /></div>
         <div>
-          <div class="text-subtitle-1 font-weight-bold">Control operativo de equipos</div>
+          <div class="text-subtitle-1 font-weight-bold">Control de Unidades de Generación</div>
           <div class="text-body-2 text-medium-emphasis">
             Indicador rojo: estado operativo (solo lectura). Palanca verde: estado de funcionamiento.
           </div>
         </div>
       </div>
       <div class="equipment-panel__header-actions">
-        <v-chip label color="primary" variant="tonal">{{ equipos.length }} equipos</v-chip>
+        <v-chip label color="primary" variant="tonal">{{ equipos.length }} unidades</v-chip>
         <span v-if="canScrollPrev || canScrollNext" class="equipment-panel__scroll-hint">
           <v-icon icon="mdi-gesture-swipe-horizontal" size="14" />
           Desliza o usa la barra
@@ -53,7 +53,7 @@
 
         <template v-else-if="!equipos.length">
           <div class="equipment-panel__empty text-body-2 text-medium-emphasis">
-            No hay equipos registrados para mostrar en el panel operativo.
+            No hay Unidades de Generación registradas para mostrar.
           </div>
         </template>
 
@@ -63,7 +63,7 @@
             :key="item.id"
             class="equipment-card"
             :class="{
-              'equipment-card--saving': stateFor(item).saving || stateFor(item).horometerSaving,
+              'equipment-card--saving': stateFor(item).saving,
             }"
           >
             <header class="equipment-card__head">
@@ -126,7 +126,7 @@
                 <div class="equipment-control__text">
                   <span class="equipment-control__label">Funcionamiento</span>
                   <span class="equipment-control__value equipment-control__value--state">
-                    {{ stateFor(item).value === "FUNCIONAMIENTO" ? "Activo" : "Desactive" }}
+                    {{ stateFor(item).value === "FUNCIONAMIENTO" ? "En funcionamiento" : "Parada" }}
                   </span>
                 </div>
               </div>
@@ -137,38 +137,16 @@
             </p>
 
             <div class="equipment-card__horometer">
-              <span class="equipment-card__horometer-date">Horómetro operativo: {{ operationalReading(item) }} h · {{ stateFor(item).value === 'FUNCIONAMIENTO' ? 'Acumulando horas' : 'Unidad parada' }}</span>
-              <div class="equipment-card__horometer-control">
-                <v-text-field
-                  v-model="stateFor(item).horometerInput"
-                  label="Horómetro actual"
-                  type="number"
-                  :min="minHorometroFor(item)"
-                  step="1"
-                  density="compact"
-                  variant="outlined"
-                  hide-details="auto"
-                  :disabled="!canEdit || stateFor(item).horometerSaving"
-                  :loading="stateFor(item).horometerSaving"
-                  :error-messages="stateFor(item).horometerError || undefined"
-                  @keydown.enter.prevent="saveHorometer(item)"
-                />
-                <v-btn
-                  icon="mdi-content-save-outline"
-                  size="small"
-                  color="primary"
-                  variant="tonal"
-                  title="Guardar horómetro"
-                  aria-label="Guardar horómetro actual"
-                  :disabled="!canEdit || stateFor(item).horometerSaving"
-                  :loading="stateFor(item).horometerSaving"
-                  @click="saveHorometer(item)"
-                />
+              <span class="equipment-card__horometer-date">Horómetro automático</span>
+              <div class="equipment-card__clock" role="timer" aria-live="off"
+                :aria-label="`Horómetro automático de ${equipmentHeaderLabel(item)}: ${clockReading(item)}, horas, minutos y segundos`">
+                <v-icon icon="mdi-timer-outline" size="22" aria-hidden="true" />
+                <span>{{ clockReading(item) }}</span>
               </div>
-              <span class="equipment-card__horometer-date">
-                Última lectura: {{ formatDateTime(stateFor(item).horometerUpdatedAt, "Sin lectura registrada") }}
-                {{ horometerHintFor(item) }}
-              </span>
+              <span class="equipment-card__horometer-date">Horas · minutos · segundos</span>
+              <v-chip size="small" :color="stateFor(item).value === 'FUNCIONAMIENTO' ? 'success' : 'secondary'" variant="tonal">
+                {{ stateFor(item).value === 'FUNCIONAMIENTO' ? 'Contador en marcha' : 'Contador detenido' }}
+              </v-chip>
             </div>
 
             <p v-if="stateFor(item).error" class="equipment-card__error">{{ stateFor(item).error }}</p>
@@ -189,60 +167,16 @@
 
     <div class="equipment-panel__sr-live" aria-live="polite">{{ liveMessage }}</div>
 
-    <v-dialog v-model="lowerHorometer.open" max-width="520" persistent>
-      <v-card rounded="xl">
-        <v-card-title class="text-subtitle-1 font-weight-bold">
-          Registrar un horómetro menor
-        </v-card-title>
-        <v-card-text>
-          <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
-            El horómetro pasaría de {{ lowerHorometer.current }} a {{ lowerHorometer.next }}.
-            Es una corrección administrativa: queda en el histórico del equipo marcada
-            como ajuste directo, con tu nombre y este motivo.
-          </v-alert>
-          <v-textarea
-            v-model="lowerHorometer.motivo"
-            label="¿Por qué se registra una lectura menor?"
-            variant="outlined"
-            rows="3"
-            auto-grow
-            counter="300"
-            maxlength="300"
-            autofocus
-            :disabled="lowerHorometer.saving"
-            :error-messages="lowerHorometer.error || undefined"
-          />
-        </v-card-text>
-        <v-card-actions class="justify-end">
-          <v-btn variant="text" :disabled="lowerHorometer.saving" @click="cancelLowerHorometer">
-            Cancelar
-          </v-btn>
-          <v-btn
-            color="primary"
-            variant="tonal"
-            :loading="lowerHorometer.saving"
-            :disabled="lowerHorometer.saving"
-            @click="confirmLowerHorometer"
-          >
-            Guardar ajuste
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { api } from "@/app/http/api";
-import { useAuthStore } from "@/app/stores/auth.store";
-import { isAdministrator, isSuperAdministrator } from "@/app/utils/role-access";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
-import {
-  formatHorometerForInput,
-  parseHorometerInput,
-} from "@/app/utils/number-format";
+import { operationalClock } from "@/app/utils/operational-horometer";
 
 export type EquipmentControlItem = {
   id: string | number;
@@ -265,10 +199,6 @@ type CardState = {
   saving: boolean;
   error: string | null;
   updatedAt: string | null;
-  horometerInput: string;
-  savedHorometer: number | null;
-  horometerSaving: boolean;
-  horometerError: string | null;
   horometerUpdatedAt: string | null;
   operatingBase: number;
   operatingSince: string | null;
@@ -308,42 +238,15 @@ const emit = defineEmits<{
   ): void;
 }>();
 
-const auth = useAuthStore();
-
-/**
- * Bajar el horómetro es una corrección administrativa, no una lectura del día.
- *
- * El contador solo avanza: que baje casi siempre significa que alguien tecleó
- * mal, y ese error se propaga al par "anterior → actual" de todos los informes.
- * Por eso solo Administrador y Súper Administrador pueden hacerlo, y tienen que
- * decir por qué. El servidor vuelve a comprobarlo: esconder el control no
- * protege el endpoint.
- */
-const canLowerHorometer = computed(
-  () => isAdministrator(auth.user) || isSuperAdministrator(auth.user),
-);
-
 const states = reactive<Record<string, CardState>>({});
 const liveMessage = ref("");
 const clockNow = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
-function operationalReading(item: EquipmentControlItem) {
+function clockReading(item: EquipmentControlItem) {
   const state = stateFor(item);
-  const since = state.operatingSince ? new Date(state.operatingSince).getTime() : NaN;
-  const elapsed = state.value === 'FUNCIONAMIENTO' && Number.isFinite(since) ? Math.max(0, clockNow.value - since) / 3600000 : 0;
-  return (state.operatingBase + elapsed).toFixed(2);
+  return operationalClock(state.operatingBase, state.value, state.operatingSince, clockNow.value);
 }
 
-/** Diálogo que pide el motivo antes de bajar una lectura. */
-const lowerHorometer = reactive({
-  open: false,
-  item: null as EquipmentControlItem | null,
-  next: 0,
-  current: 0,
-  motivo: "",
-  saving: false,
-  error: "",
-});
 const scrollerRef = ref<HTMLElement | null>(null);
 const canScrollPrev = ref(false);
 const canScrollNext = ref(false);
@@ -351,31 +254,6 @@ let resizeObserver: ResizeObserver | null = null;
 
 function normalizeFuncionamiento(value: unknown): "FUNCIONAMIENTO" | "PARADO" {
   return String(value || "").trim().toUpperCase() === "FUNCIONAMIENTO" ? "FUNCIONAMIENTO" : "PARADO";
-}
-
-// El horometro es un contador de horas enteras. Antes se redondeaba a dos
-// decimales y el campo aceptaba medias horas; ahora entra y sale entero.
-const parseHorometer = parseHorometerInput;
-const formatHorometerInput = formatHorometerForInput;
-
-/**
- * Primera lectura admisible: la vigente más uno.
- *
- * Da la pista nativa del navegador con las flechas del campo; el rechazo de
- * verdad lo hace `saveHorometer` y, por encima, el servidor.
- */
-function minHorometroFor(item: EquipmentControlItem) {
-  if (canLowerHorometer.value) return 0;
-  const saved = stateFor(item).savedHorometer;
-  return saved === null ? 0 : saved + 1;
-}
-
-function horometerHintFor(item: EquipmentControlItem) {
-  const saved = stateFor(item).savedHorometer;
-  if (saved === null) return "";
-  return canLowerHorometer.value
-    ? `· lectura vigente ${saved}; bajarla pide motivo`
-    : `· debe ser mayor a ${saved}`;
 }
 
 function isOperativo(item: EquipmentControlItem) {
@@ -390,10 +268,6 @@ function stateFor(item: EquipmentControlItem): CardState {
       saving: false,
       error: null,
       updatedAt: item.estado_funcionamiento_actualizado_en ?? null,
-      horometerInput: formatHorometerInput(item.horometro_actual),
-      savedHorometer: parseHorometer(item.horometro_actual),
-      horometerSaving: false,
-      horometerError: null,
       horometerUpdatedAt: item.fecha_ultima_lectura ?? null,
       operatingBase: Number(item.horometro_operativo_base ?? item.horometro_actual ?? 0),
       operatingSince: item.horometro_operativo_desde ?? null,
@@ -413,7 +287,7 @@ function equipmentHeaderLabel(item: EquipmentControlItem) {
 function leverAriaLabel(item: EquipmentControlItem) {
   const name = equipmentHeaderLabel(item);
   const state = stateFor(item);
-  const current = state.value === "FUNCIONAMIENTO" ? "Activo" : "Desactive";
+  const current = state.value === "FUNCIONAMIENTO" ? "En funcionamiento" : "Parada";
   return `Estado de funcionamiento de ${name}: ${current}.${canEditLabel()}`;
 }
 
@@ -443,127 +317,15 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
     state.updatedAt = updatedAt;
     state.operatingBase = Number(updated.horometro_actual ?? state.operatingBase);
     state.operatingSince = updated.horometro_operativo_desde ?? null;
-    state.savedHorometer = parseHorometer(updated.horometro_actual);
-    state.horometerInput = formatHorometerInput(updated.horometro_actual);
     state.horometerUpdatedAt = updated.fecha_ultima_lectura ?? state.horometerUpdatedAt;
-    emit("horometer-updated", { id: item.id, horometro_actual: Number(updated.horometro_actual), fecha_ultima_lectura: state.horometerUpdatedAt });
-    liveMessage.value = `${label} actualizado a ${next === "FUNCIONAMIENTO" ? "Activo" : "Desactive"}.`;
+    emit("horometer-updated", { id: item.id, horometro_actual: Number(updated.horometro_actual), fecha_ultima_lectura: state.horometerUpdatedAt, horometro_operativo_desde: state.operatingSince });
+    liveMessage.value = `${label} actualizado a ${next === "FUNCIONAMIENTO" ? "En funcionamiento" : "Parada"}.`;
     emit("updated", { id: item.id, estado_funcionamiento: next, estado_funcionamiento_actualizado_en: updatedAt, horometro_operativo_base: state.operatingBase, horometro_operativo_desde: state.operatingSince });
   } catch (e: any) {
     state.error = e?.response?.data?.message || "No se pudo actualizar el estado de funcionamiento.";
     liveMessage.value = `No se pudo actualizar ${label}: ${state.error}`;
   } finally {
     state.saving = false;
-  }
-}
-
-async function saveHorometer(item: EquipmentControlItem) {
-  if (!props.canEdit) return;
-  const state = stateFor(item);
-  if (state.horometerSaving) return;
-
-  const next = parseHorometer(state.horometerInput);
-  if (next === null || next < 0) {
-    state.horometerError = "Ingresa un horómetro válido mayor o igual a cero.";
-    return;
-  }
-  if (state.savedHorometer !== null && next === state.savedHorometer) {
-    state.horometerError = `El horómetro ya está en ${state.savedHorometer}.`;
-    return;
-  }
-  if (state.savedHorometer !== null && next < state.savedHorometer) {
-    if (!canLowerHorometer.value) {
-      state.horometerError = `Debe ser mayor que la lectura vigente (${state.savedHorometer}). Solo Administrador y Súper Administrador pueden registrar una lectura menor.`;
-      return;
-    }
-    // Se pide el motivo antes de tocar nada: queda en el histórico marcado como
-    // ajuste directo y es lo único que explica el salto meses después.
-    state.horometerError = null;
-    lowerHorometer.item = item;
-    lowerHorometer.next = next;
-    lowerHorometer.current = state.savedHorometer;
-    lowerHorometer.motivo = "";
-    lowerHorometer.error = "";
-    lowerHorometer.saving = false;
-    lowerHorometer.open = true;
-    return;
-  }
-
-  await persistHorometer(item, next);
-}
-
-async function confirmLowerHorometer() {
-  const item = lowerHorometer.item;
-  if (!item || lowerHorometer.saving) return;
-  const motivo = lowerHorometer.motivo.trim();
-  if (!motivo) {
-    lowerHorometer.error = "Indica por qué se registra una lectura menor.";
-    return;
-  }
-  lowerHorometer.saving = true;
-  lowerHorometer.error = "";
-  const ok = await persistHorometer(item, lowerHorometer.next, motivo);
-  lowerHorometer.saving = false;
-  if (ok) {
-    lowerHorometer.open = false;
-    lowerHorometer.item = null;
-  } else {
-    lowerHorometer.error = stateFor(item).horometerError || "No se pudo actualizar el horómetro.";
-  }
-}
-
-function cancelLowerHorometer() {
-  const item = lowerHorometer.item;
-  lowerHorometer.open = false;
-  lowerHorometer.item = null;
-  // Se devuelve el campo a la lectura vigente: si no, queda en pantalla un
-  // número que nadie guardó.
-  if (item) {
-    const state = stateFor(item);
-    state.horometerInput = formatHorometerInput(state.savedHorometer);
-  }
-}
-
-async function persistHorometer(
-  item: EquipmentControlItem,
-  next: number,
-  motivo?: string,
-) {
-  const state = stateFor(item);
-  const label = equipmentHeaderLabel(item);
-  state.horometerSaving = true;
-  state.horometerError = null;
-  liveMessage.value = `Actualizando horómetro de ${label}...`;
-
-  try {
-    const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/horometro`, {
-      horometro_actual: next,
-      ...(motivo ? { motivo } : {}),
-    });
-    const updated = data?.data ?? data ?? {};
-    const savedValue = parseHorometer(updated?.horometro_actual) ?? next;
-    const updatedAt: string | null = updated?.fecha_ultima_lectura || state.horometerUpdatedAt;
-    state.savedHorometer = savedValue;
-    state.horometerInput = formatHorometerInput(savedValue);
-    state.horometerUpdatedAt = updatedAt;
-    state.operatingBase = Number(updated.horometro_actual ?? savedValue);
-    state.operatingSince = updated.horometro_operativo_desde ?? null;
-    liveMessage.value = motivo
-      ? `Horómetro de ${label} ajustado a ${savedValue}. Queda registrado como ajuste directo.`
-      : `Horómetro de ${label} actualizado a ${savedValue}.`;
-    emit("horometer-updated", {
-      id: item.id,
-      horometro_actual: savedValue,
-      horometro_operativo_desde: state.operatingSince,
-      fecha_ultima_lectura: updatedAt,
-    });
-    return true;
-  } catch (e: any) {
-    state.horometerError = e?.response?.data?.message || "No se pudo actualizar el horómetro.";
-    liveMessage.value = `No se pudo actualizar el horómetro de ${label}: ${state.horometerError}`;
-    return false;
-  } finally {
-    state.horometerSaving = false;
   }
 }
 
@@ -591,16 +353,12 @@ watch(
     for (const item of items) {
       const key = String(item.id);
       const current = states[key];
-      if (current?.saving || current?.horometerSaving) continue;
+      if (current?.saving) continue;
       states[key] = {
         value: normalizeFuncionamiento(item.estado_funcionamiento),
         saving: false,
         error: null,
         updatedAt: item.estado_funcionamiento_actualizado_en ?? null,
-        horometerInput: formatHorometerInput(item.horometro_actual),
-        savedHorometer: parseHorometer(item.horometro_actual),
-        horometerSaving: false,
-        horometerError: null,
         horometerUpdatedAt: item.fecha_ultima_lectura ?? null,
         operatingBase: Number(item.horometro_operativo_base ?? item.horometro_actual ?? 0),
         operatingSince: item.horometro_operativo_desde ?? null,
@@ -1094,5 +852,18 @@ onBeforeUnmount(() => {
     width: auto;
     flex: 0 0 calc(100% - 4px);
   }
+}
+</style>
+
+<style scoped>
+.equipment-card__clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.65rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  color: rgb(var(--v-theme-primary));
 }
 </style>

@@ -742,7 +742,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import EnterprisePageMotion from "@/components/ui/EnterprisePageMotion.vue";
 import { useRevealMotion } from "@/app/motion";
@@ -798,6 +798,9 @@ const canEditEquiposFuncionamiento = computed(
 const users = ref<AnyRow[]>([]);
 const roles = ref<AnyRow[]>([]);
 const equipos = ref<AnyRow[]>([]);
+const generationUnits = ref<AnyRow[]>([]);
+let equipmentRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let refreshingEquipment = false;
 const planes = ref<AnyRow[]>([]);
 const bodegas = ref<AnyRow[]>([]);
 const alertas = ref<AnyRow[]>([]);
@@ -1019,6 +1022,7 @@ async function loadDashboard() {
       usersRows,
       rolesRows,
       equiposRows,
+      generationUnitsRows,
       planesRows,
       bodegasRows,
       alertasRows,
@@ -1032,6 +1036,7 @@ async function loadDashboard() {
       listAll("/kpi_security/users", { includeDeleted: false }),
       listAll("/kpi_security/roles", { includeDeleted: false }),
       listAll("/kpi_maintenance/equipos"),
+      listAll("/kpi_maintenance/equipos", { grupo: "GENERACION" }),
       listAll("/kpi_maintenance/planes"),
       listAll("/kpi_inventory/bodegas"),
       listAll("/kpi_maintenance/alertas"),
@@ -1048,6 +1053,7 @@ async function loadDashboard() {
     users.value = usersRows;
     roles.value = rolesRows;
     equipos.value = equiposRows;
+    generationUnits.value = generationUnitsRows;
     planes.value = planesRows;
     bodegas.value = bodegasRows;
     alertas.value = alertasRows;
@@ -1167,7 +1173,7 @@ const activeEquipmentCount = computed(
 );
 
 const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
-  equipos.value.map((item) => ({
+  generationUnits.value.map((item) => ({
     id: item.id,
     codigo: item?.codigo || null,
     nombre: item?.nombre || null,
@@ -1191,8 +1197,7 @@ function handleEquipmentFuncionamientoUpdated(payload: {
   horometro_operativo_base: number;
   horometro_operativo_desde: string | null;
 }) {
-  const target = equipos.value.find((item) => String(item.id) === String(payload.id));
-  if (target) {
+  for (const target of [...equipos.value, ...generationUnits.value].filter(item => String(item.id) === String(payload.id))) {
     target.estado_funcionamiento = payload.estado_funcionamiento;
     target.estado_funcionamiento_actualizado_en = payload.estado_funcionamiento_actualizado_en;
     target.horometro_operativo_base = payload.horometro_operativo_base;
@@ -1206,8 +1211,7 @@ function handleEquipmentHorometerUpdated(payload: {
   fecha_ultima_lectura: string | null;
   horometro_operativo_desde?: string | null;
 }) {
-  const target = equipos.value.find((item) => String(item.id) === String(payload.id));
-  if (target) {
+  for (const target of [...equipos.value, ...generationUnits.value].filter(item => String(item.id) === String(payload.id))) {
     target.horometro_actual = payload.horometro_actual;
     target.horometro_operativo_base = payload.horometro_actual;
     if ('horometro_operativo_desde' in payload) target.horometro_operativo_desde = payload.horometro_operativo_desde;
@@ -2088,8 +2092,30 @@ const lastUpdatedLabel = computed(() => {
   return formatDateTime(lastUpdatedAt.value, "Sin datos");
 });
 
+async function refreshGenerationUnits() {
+  if (!canAccessDashboardReports.value || document.hidden || loading.value || refreshingEquipment) return;
+  refreshingEquipment = true;
+  try {
+    const rows = await listAll("/kpi_maintenance/equipos", { grupo: "GENERACION" });
+    generationUnits.value = rows;
+    const updates = new Map(rows.map(row => [String(row.id), row]));
+    equipos.value = equipos.value.map(row => updates.get(String(row.id)) ?? row);
+  } catch {
+    // Preserve the last snapshot and retry on the next refresh.
+  } finally {
+    refreshingEquipment = false;
+  }
+}
+
 onMounted(() => {
   loadDashboard();
+  equipmentRefreshTimer = setInterval(refreshGenerationUnits, 15000);
+  document.addEventListener("visibilitychange", refreshGenerationUnits);
+});
+
+onBeforeUnmount(() => {
+  if (equipmentRefreshTimer) clearInterval(equipmentRefreshTimer);
+  document.removeEventListener("visibilitychange", refreshGenerationUnits);
 });
 
 watch([selectedYear, selectedMonth], () => {
