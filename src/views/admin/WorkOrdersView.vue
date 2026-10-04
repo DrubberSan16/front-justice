@@ -899,7 +899,7 @@
 
         <v-divider class="my-4" />
 
-        <v-tabs v-model="tab" color="primary">
+        <v-tabs v-model="tab" color="primary" show-arrows>
           <v-tab value="tareas">Tareas ejecutadas</v-tab>
           <v-tab value="adjuntos">Adjuntos</v-tab>
           <v-tab v-if="showConsumosTab" value="consumos">Consumos</v-tab>
@@ -4795,12 +4795,6 @@ function resetScrapProductIfInvalid(index: number) {
   if (!exists) current.producto_id = "";
 }
 
-const consumoCostReference = useInventoryCostReference({
-  productId: () => consumoForm.producto_id,
-  warehouseId: () => effectiveConsumoWarehouseId.value,
-  enabled: () => canViewCosts.value,
-});
-watch(consumoCostReference.cost, value => { consumoForm.costo_unitario = value == null ? "" : String(value); });
 const equipmentLabelById = computed(
   () =>
     new Map(
@@ -6313,6 +6307,13 @@ const selectedProcedureWarehouseLabel = computed(() => {
 const effectiveConsumoWarehouseId = computed(() =>
   selectedProcedureWarehouseId.value || String(consumoForm.bodega_id || "").trim(),
 );
+
+const consumoCostReference = useInventoryCostReference({
+  productId: () => consumoForm.producto_id,
+  warehouseId: () => effectiveConsumoWarehouseId.value,
+  enabled: () => canViewCosts.value,
+});
+watch(consumoCostReference.cost, value => { consumoForm.costo_unitario = value == null ? "" : String(value); });
 
 const selectedEquipmentRecord = computed(
   () =>
