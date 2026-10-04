@@ -11,7 +11,7 @@ const { outputFiles } = await build({ stdin: { contents: 'export * from "@/app/c
     plugin.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: 'export const api = {get(){throw new Error("Unexpected request")}};' })); } }], });
 const filename = path.join(root, 'scripts/cost-fixture.cjs');
 const module = new Module(filename); module.filename = filename; module.paths = Module._nodeModulePaths(root); module._compile(outputFiles[0].text, filename);
-const { useInventoryCostReference, useIncomePriceReference, stripMaterialCosts, isIncomePriceReferenceRequest, isWarehouseKeeper, canSetIncomeUnitCost, getMaintenanceModule } = module.exports;
+const { useInventoryCostReference, useIncomePriceReference, stripMaterialCosts, isIncomePriceReferenceRequest, isWarehouseKeeper, canSetIncomeUnitCost, canRegisterMaterialIssue, getMaintenanceModule } = module.exports;
 const product = ref('A'); const warehouse = ref('CPT'); const enabled = ref(true); const pending = [];
 const state = useInventoryCostReference({ productId: () => product.value, warehouseId: () => warehouse.value, enabled: () => enabled.value },
   (productId, warehouseId) => new Promise((resolve, reject) => pending.push({ productId, warehouseId, resolve, reject })));
@@ -67,6 +67,13 @@ for (const role of ['BODEGA', 'BODEGUERO']) {
   assert.equal(canSetIncomeUnitCost({ role: { nombre: role } }), true);
 }
 for (const role of ['ADMINISTRADOR', 'SUPER ADMINISTRADOR', 'GERENTE GENERAL']) assert.equal(isWarehouseKeeper({ role: { nombre: role } }), false);
+for (const role of ['BODEGA', 'BODEGUERO', 'Súper Administrador', 'SUPERADMINISTRADOR', 'SUPER_ADMINISTRADOR', 'SUPER ADMIN', 'SUPER_ADMIN']) {
+  assert.equal(canRegisterMaterialIssue({ role: { nombre: role } }), true, `Salida de materiales autorizada para ${role}`);
+}
+for (const role of ['ADMINISTRADOR', 'GERENTE GENERAL', 'OPERADOR', 'SUPERVISOR', 'TECNICO', '']) {
+  assert.equal(canRegisterMaterialIssue({ role: { nombre: role } }), false, `Salida de materiales restringida para ${role}`);
+}
+assert.equal(canRegisterMaterialIssue(null), false);
 assert.deepEqual(stripMaterialCosts({ data: { costo_unitario: 7, costo_promedio: 9, precio_venta: 12, total_costos: 50, fuente: 'INGRESO' } }, true), { data: { costo_unitario: 7, fuente: 'INGRESO' } });
 assert.equal(isIncomePriceReferenceRequest('GET', '/kpi_inventory/kardex/precios-ingreso?producto_id=1'), true);
 assert.equal(isIncomePriceReferenceRequest('POST', '/kpi_inventory/kardex/precios-ingreso'), false);

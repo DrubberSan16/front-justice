@@ -6727,7 +6727,7 @@ function buildIssueDocumentsWorkOrderContext(item: any): MaterialIssueWorkOrderL
  * un solo documento. Confirmar la impresión inicia o reanuda la ejecución.
  */
 async function printWorkOrderIssueDocuments(item: any) {
-  if (!canIssueMaterials.value) return ui.error("Solo Bodega puede confirmar e imprimir el egreso de la OT.");
+  if (!canIssueMaterials.value) return ui.error("Solo Bodega o Super Administrador pueden confirmar e imprimir el egreso de la OT.");
   const workOrderId = String(item?.id || item?._raw?.id || "").trim();
   if (!workOrderId) {
     ui.error("No se pudo identificar la orden de trabajo del egreso.");
@@ -8254,7 +8254,7 @@ async function submitMaterialIssue() {
     return ui.error(
       equipmentExecutionBlocker.value
         ? `El equipo tiene la OT ${equipmentExecutionBlocker.value.code} en ejecución.`
-        : "Las salidas de materiales se registran en Planificada o En revisión por el perfil Bodega.",
+        : "Las salidas de materiales se registran en Planificada o En revisión por Bodega o Super Administrador.",
     );
   }
   if (!editingId.value) {

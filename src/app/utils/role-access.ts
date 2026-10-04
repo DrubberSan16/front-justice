@@ -89,7 +89,7 @@ export function canSetIncomeUnitCost(user: AuthUser): boolean {
 /**
  * Quién puede registrar la salida REAL de material de una orden de trabajo.
  *
- * La salida mueve stock y genera kardex: es un acto de bodega. Operadores,
+ * Bodega y Super Administrador pueden mover stock y generar kardex. Operadores,
  * supervisores y técnicos reservan el material en la OT, pero no lo sacan —
  * ellos piden, bodega entrega.
  *
@@ -97,7 +97,7 @@ export function canSetIncomeUnitCost(user: AuthUser): boolean {
  * `POST /work-orders/:id/issue-materials`.
  */
 export function canRegisterMaterialIssue(user: AuthUser): boolean {
-  return isWarehouseKeeper(user);
+  return isWarehouseKeeper(user) || isSuperAdministrator(user);
 }
 
 export function canManageAdministrativeOperations(user: AuthUser): boolean {
