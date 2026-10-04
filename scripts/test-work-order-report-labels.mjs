@@ -303,3 +303,37 @@ for (const moduleKey of ["generation-units", "equipment"]) {
   assert.deepEqual(dataRow.values.slice(1), [equipmentLabel, "CENTRAL CPT", 1, 7, 1623.4]);
 }
 console.log("PASS: ubicación por equipo en PDF/Excel de UG y equipos, identidad, históricos, UUID y totales conservados");
+
+const tracking = [
+  { from_status: "REVIEW", to_status: "IN_PROGRESS", changed_at: "2026-10-03T17:30:00Z", changed_by_label: "Bodega retorno", note: "Ejecución reanudada al imprimir el egreso EB-42." },
+  { from_status: "IN_PROGRESS", to_status: "REVIEW", changed_at: "2026-10-03T17:00:00Z", changed_by_label: "Creador OT", note: "Cambio de estado IN_PROGRESS -> REVIEW\nMaterial adicional | Filtro de aceite" },
+  { from_status: "PLANNED", to_status: "IN_PROGRESS", changed_at: "2026-10-03T15:00:00Z", changed_by_label: "Bodega inicio", note: "Ejecución iniciada al imprimir el egreso EB-42." },
+  { from_status: null, to_status: "PLANNED", changed_at: "2026-10-03T14:00:00Z", changed_by_label: "Creador OT", note: "Orden de trabajo creada" },
+];
+const lifecycleHeader = { ...canonicalDetail.header, status_workflow: "IN_PROGRESS", created_at: "2026-10-03T14:00:00Z", started_at: "2026-10-03T15:00:00Z", valor_json: { processed_by_name: "Editor posterior", processed_at: "2026-10-03T18:00:00Z" } };
+const lifecycle = reports.resolveWorkOrderLifecycle(lifecycleHeader, tracking);
+assert.equal(lifecycle.started.by, "Bodega inicio");
+assert.equal(lifecycle.started.at, "2026-10-03T15:00:00Z");
+assert.equal(lifecycle.finished.at, null);
+assert.equal(reports.formatWorkOrderHistoryNote(tracking[1].note), "Cambio de estado En proceso a En revisión; Material adicional; Filtro de aceite");
+const trackingReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: lifecycleHeader, history: tracking }, true);
+const trackingSheet = trackingReport.sheets.find(sheet => sheet.name === "Histórico");
+assert.equal(trackingSheet.rows.length, 4);
+assert.equal(trackingSheet.rows[0].transicion, "En revisión a En proceso");
+assert.equal(trackingSheet.rows[1].transicion, "En proceso a En revisión");
+assert.ok(!trackingReport.sheets[0].section.info.find(row => row.label.startsWith("Finalizada por")).value.includes("Editor posterior"));
+const trackingPdf = await reports.buildReportPdfBlob(trackingReport);
+const trackingExcel = await reports.buildReportExcelBlob(trackingReport);
+await assertPdf(trackingPdf, ["Bodega inicio", "Bodega retorno", "Creador OT", "EB-42", "03-10-2026"]);
+await assertExcel(trackingExcel, ["Bodega inicio", "Bodega retorno", "Creador OT", "En revisión a En proceso", "En proceso a En revisión", "Fecha y hora"], 1);
+const annulHeader = { ...lifecycleHeader, status: "ANULADA", status_workflow: "CLOSED", closed_at: "2026-10-03T19:00:00Z", valor_json: { approval_action: "ANULADA", approved_by_name: "Creador OT", approved_at: "2026-10-03T19:00:00Z", annulment: { annulled_at: "2026-10-03T19:00:00Z", annulled_by: "Creador OT" } } };
+const annulLifecycle = reports.resolveWorkOrderLifecycle(annulHeader, tracking);
+assert.equal(annulLifecycle.finished.at, null);
+assert.equal(annulLifecycle.annulled.at, "2026-10-03T19:00:00Z");
+const annulReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: annulHeader, history: tracking }, true);
+assert.ok(!annulReport.sheets[0].section.info.find(row => row.label.startsWith("Finalizada por")).value.includes("Creador OT"));
+if (process.env.REPORT_OUTPUT_DIR) {
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_flujo_historico.pdf"), Buffer.from(await trackingPdf.arrayBuffer()));
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_flujo_historico.xlsx"), Buffer.from(await trackingExcel.arrayBuffer()));
+}
+console.log("PASS: ciclo de revisión completo, inicio original, anulación independiente e histórico descriptivo en PDF/Excel");

@@ -97,12 +97,7 @@ export function canSetIncomeUnitCost(user: AuthUser): boolean {
  * `POST /work-orders/:id/issue-materials`.
  */
 export function canRegisterMaterialIssue(user: AuthUser): boolean {
-  return (
-    isWarehouseKeeper(user) ||
-    isAdministrator(user) ||
-    isSuperAdministrator(user) ||
-    isGeneralManager(user)
-  );
+  return isWarehouseKeeper(user);
 }
 
 export function canManageAdministrativeOperations(user: AuthUser): boolean {

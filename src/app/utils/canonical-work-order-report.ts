@@ -1,11 +1,11 @@
 import { buildWorkOrderReport, type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 import { buildEquipmentDisplayTitle, resolveEquipmentLocation } from "@/app/utils/equipment-display";
-import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
+import { resolveWorkOrderReportActors, resolveWorkOrderLifecycle, workOrderHistoryActor, formatWorkOrderHistoryNote } from "@/app/utils/work-order-audit";
 import { buildMaterialsCost, buildResponsibleHours, contractedLaborCost, fetchWorkOrderDetail, flattenDetailLines, type WorkOrderDetailPayload } from "@/app/utils/work-order-detail";
 
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const label = (row: Record<string, any>) => row.producto_label || row.producto_nombre || row.material || row.producto_id || "Material";
-const workflow: Record<string, string> = { PLANNED: "Planificada", OPEN: "Abierta", IN_PROGRESS: "En proceso", REVIEW: "En revisión", BLOCKED: "Bloqueada", CLOSED: "Cerrada" };
+const workflow: Record<string, string> = { PLANNED: "Planificada", OPEN: "Abierta", IN_PROGRESS: "En proceso", REVIEW: "En revisión", BLOCKED: "Bloqueada", CLOSED: "Finalizada" };
 const evidenceUrl = (value: unknown) => {
   const url = String(value || "").trim();
   return !url || /^(https?:|blob:|data:)/i.test(url) ? url : `https://justicecompany-ec.com/${url.replace(/^\//, "")}`;
@@ -17,6 +17,7 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
   const audit = h.valor_json || {};
   const isProject = String(h.maintenance_kind || "").toUpperCase() === "PROYECTO";
   const actors = resolveWorkOrderReportActors(h, detail.history);
+  const lifecycle = resolveWorkOrderLifecycle(h, detail.history);
   const labor = buildResponsibleHours(detail.tasks).reduce((sum, row) => sum + row.cost, 0);
   const materials = buildMaterialsCost(detail.consumptions, detail.issues);
   const contracted = contractedLaborCost(h);
@@ -69,6 +70,10 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
       creado_por: actors.createdBy, fecha_creacion: h.created_at,
       realizado_por: actors.processedBy, fecha_realizacion: audit.processed_at || h.started_at,
       aprobado_por: actors.approvedBy, fecha_aprobacion: h.approved_at || audit.approved_at || h.closed_at,
+      planificada_por: lifecycle.planned.by, fecha_planificacion: lifecycle.planned.at,
+      ejecucion_iniciada_por: lifecycle.started.by, fecha_inicio_ejecucion: lifecycle.started.at,
+      finalizada_por: lifecycle.finished.by, fecha_finalizacion: lifecycle.finished.at,
+      anulada_por: lifecycle.annulled.by, fecha_anulacion: lifecycle.annulled.at,
       causa: audit.causa, accion: audit.accion, prevencion: audit.prevencion,
     },
     tasks, consumos,
@@ -79,7 +84,7 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
     }),
     issues: flattenDetailLines(detail.issues).map(row => ({ salida: row.codigo || row.code, fecha: row.fecha || row.created_at, material: label(row), cantidad: row.cantidad, bodega: row.bodega_label || row.bodega_nombre })),
     scraps: flattenDetailLines(detail.scraps).map(row => ({ transferencia: row.transferencia_codigo || row.codigo, fecha: row.fecha, material: label(row), cantidad: row.cantidad, bodega_chatarra: row.bodega_chatarra_label })),
-    history: detail.history.map(row => ({ hacia: workflow[row.to_status] || row.to_status, usuario: row.changed_by_label || row.changed_by || row.user_label || row.username || "-", fecha: row.changed_at, nota: typeof row.note === "string" ? row.note.replace(/→/g, " -> ") : row.note })),
+    history: detail.history.map(row => ({ desde: workflow[row.from_status] || row.from_status || "", hacia: /ANUL|CANCEL|VOID/i.test(String(row.note || "")) ? "Anulada" : row.to_status === "CLOSED" ? "Finalizada" : workflow[row.to_status] || row.to_status, usuario: workOrderHistoryActor(row) || "Usuario sin registro", fecha: row.changed_at, nota: formatWorkOrderHistoryNote(row.note) })),
   });
   if (isProject) {
     const project = audit.proyecto || {};

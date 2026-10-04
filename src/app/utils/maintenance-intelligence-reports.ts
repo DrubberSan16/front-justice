@@ -6,7 +6,7 @@ import {
   looksLikeDateValue,
 } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
-import { reportDisplayLabel } from "@/app/utils/work-order-audit";
+import { reportDisplayLabel, formatWorkOrderHistoryNote } from "@/app/utils/work-order-audit";
 import { buildEquipmentDisplayTitle, resolveEquipmentLocation } from "@/app/utils/equipment-display";
 import {
   formatCurrencyForDisplay,
@@ -2187,6 +2187,14 @@ export function buildWorkOrderReport(payload: {
       aprobado_por: header.aprobado_por || "",
       fecha_aprobacion: header.fecha_aprobacion || "",
       accion_aprobacion: header.accion_aprobacion || "",
+      planificada_por: header.planificada_por ?? header.creado_por ?? "",
+      fecha_planificacion: header.fecha_planificacion ?? header.fecha_creacion ?? "",
+      ejecucion_iniciada_por: header.ejecucion_iniciada_por ?? header.realizado_por ?? "",
+      fecha_inicio_ejecucion: header.fecha_inicio_ejecucion !== undefined ? header.fecha_inicio_ejecucion : header.fecha_realizacion ?? "",
+      finalizada_por: header.finalizada_por ?? header.aprobado_por ?? "",
+      fecha_finalizacion: header.fecha_finalizacion !== undefined ? header.fecha_finalizacion : header.fecha_aprobacion ?? "",
+      anulada_por: header.anulada_por || "",
+      fecha_anulacion: header.fecha_anulacion || "",
       ot_bloqueante: header.blocked_by || "",
       motivo_bloqueo: header.blocked_reason || "",
     },
@@ -2274,10 +2282,10 @@ const WORK_ORDER_DETAIL_COLUMNS = {
     { key: "bodega_chatarra", header: "Destino", width: 27 },
   ] satisfies ReportColumn[],
   history: [
-    { key: "hacia", header: "Estado", width: 18 },
-    { key: "usuario", header: "Usuario", width: 20 },
-    { key: "fecha", header: "Fecha", width: 18, format: "datetime" },
-    { key: "nota", header: "Nota", width: 44 },
+    { key: "transicion", header: "Transición / estado", width: 26 },
+    { key: "usuario", header: "Realizado por", width: 20 },
+    { key: "fecha", header: "Fecha y hora", width: 18, format: "datetime" },
+    { key: "nota", header: "Detalle de la acción", width: 44 },
   ] satisfies ReportColumn[],
 };
 
@@ -2326,9 +2334,10 @@ function buildWorkOrderSectionSheets(
     },
     { label: "Procedimiento", value: header.procedimiento || "-" },
     { label: "Plan operativo", value: header.plan_operativo || "-" },
-    { label: "Registrada por", value: formatActor(header.creado_por, header.fecha_creacion) },
-    { label: "Realizada por", value: formatActor(header.realizado_por, header.fecha_realizacion) },
-    { label: "Aprobada por", value: formatActor(header.aprobado_por, header.fecha_aprobacion) },
+    { label: "Planificada por / fecha y hora", value: formatActor(header.planificada_por ?? header.creado_por, header.fecha_planificacion ?? header.fecha_creacion) },
+    { label: "Ejecución iniciada por / fecha y hora", value: formatActor(header.ejecucion_iniciada_por ?? header.realizado_por, header.fecha_inicio_ejecucion !== undefined ? header.fecha_inicio_ejecucion : header.fecha_realizacion) },
+    { label: "Finalizada por / fecha y hora", value: formatActor(header.finalizada_por ?? header.aprobado_por, header.fecha_finalizacion !== undefined ? header.fecha_finalizacion : header.fecha_aprobacion) },
+    { label: "Anulada por / fecha y hora", value: formatActor(header.anulada_por, header.fecha_anulacion) },
     { label: "Causa", value: header.causa || "-" },
     { label: "Acción", value: header.accion || "-" },
     { label: "Prevención", value: header.prevencion || "-" },
@@ -2422,7 +2431,12 @@ function buildWorkOrderSectionSheets(
     {
       name: "Histórico",
       section,
-      rows: order.history,
+      rows: [...order.history].sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime()).map(row => ({
+        ...row, transicion: row.desde && row.desde !== row.hacia ? `${row.desde} a ${row.hacia}` : row.hacia,
+        nota: formatWorkOrderHistoryNote(row.nota), usuario: reportDisplayLabel(row.usuario) || "Usuario sin registro",
+      })),
+      note: "Cronología de seguimiento · eventos más recientes primero. Cada cambio entre En proceso y En revisión conserva su fecha y usuario.",
+      minRowHeight: 30,
       fitColumnsToPage: true,
       columns: WORK_ORDER_DETAIL_COLUMNS.history,
     },

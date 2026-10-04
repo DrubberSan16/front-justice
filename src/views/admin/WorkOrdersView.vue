@@ -301,16 +301,7 @@
           PDF
         </v-btn>
         <v-btn
-          v-if="editingId && isCreated && canEdit"
-          variant="tonal"
-          class="mr-2"
-          prepend-icon="mdi-play-circle-outline"
-          @click="startProcess"
-        >
-          Completar información
-        </v-btn>
-        <v-btn
-          v-if="editingId && (isCreated || isInProcess) && canEdit && canCloseOrVoidCurrent"
+          v-if="editingId && (isCreated || isInProcess || isInReview) && canEdit && canCloseOrVoidCurrent"
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-lock-check-outline"
@@ -318,8 +309,12 @@
         >
           Finalizar OT
         </v-btn>
+        <v-btn v-if="editingId && isInProcess && canEdit && canCloseOrVoidCurrent" variant="tonal" class="mr-2"
+          prepend-icon="mdi-clipboard-search-outline" :loading="savingHeader" @click="moveToReview">
+          Pasar a revisión
+        </v-btn>
         <v-btn
-          v-if="editingId && canAnnulDocuments && !isAnnulledWorkOrder(currentWorkOrderRecord)"
+          v-if="editingId && canCloseOrVoidCurrent && !isAnnulledWorkOrder(currentWorkOrderRecord)"
           variant="tonal"
           color="error"
           class="mr-2"
@@ -613,13 +608,16 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-select
-              v-model="headerForm.status_workflow"
+              :model-value="headerForm.status_workflow"
+              @update:model-value="handleWorkflowSelection"
               :items="workflowOptionsForCurrent"
               item-title="title"
               item-value="value"
-              label="Estado workflow"
+              label="Estado de la orden de trabajo"
               variant="outlined"
-              :disabled="isReadOnlyWorkflow"
+              :disabled="!editingId || !canCloseOrVoidCurrent || (isReadOnlyWorkflow && !isClosed)"
+              hint="Planificación e inicio de ejecución automáticos. El creador puede finalizar o anular."
+              persistent-hint
             />
           </v-col>
           <v-col cols="12" md="4">
@@ -1430,21 +1428,11 @@
             <div class="text-body-2 text-medium-emphasis pt-2 mb-3">
               {{ materialIssueHelperText }}
             </div>
-            <!-- Sin el permiso la pestaña no desaparece: se consulta lo que
-                 salio y se imprime el egreso, que es la constancia que firma
-                 quien recibe el material. Registrar la salida sigue siendo de
-                 bodega. -->
-            <v-alert
-              v-if="!canIssueMaterials"
-              type="info"
-              variant="tonal"
-              density="comfortable"
-              class="mb-3"
-            >
-              Puedes consultar las salidas e imprimir el egreso de bodega. El
-              registro de la salida real lo realiza Bodega, Administración,
-              Super Administración o Gerencia General.
+            <v-alert v-if="equipmentExecutionBlocker" type="warning" variant="tonal" class="mb-3">
+              El equipo tiene la OT {{ equipmentExecutionBlocker.code }} en ejecución. Debe finalizarse o anularse antes de registrar salidas o imprimir el egreso de otra OT.
             </v-alert>
+
+
             <v-alert
               v-if="String(headerForm.close_shortfall_reason || '').trim()"
               type="info"
@@ -1487,7 +1475,7 @@
                   variant="tonal"
                   prepend-icon="mdi-package-variant-closed"
                   :disabled="
-                    !canIssueMaterials ||
+                    !canRegisterRealIssue ||
                     isReadOnlyWorkflow ||
                     toPositiveNumber((item.raw ?? item).cantidad_pendiente) <= 0 ||
                     issuingMaterials
@@ -1509,30 +1497,15 @@
             >
               <div class="text-subtitle-2">Salidas reales registradas</div>
               <div class="d-flex align-center flex-wrap" style="gap: 8px;">
-                <!-- Bodega cierra el circuito: avisa a quien levanto la OT de que
-                     el material ya salio, sin que tenga que entrar a mirarlo. -->
-                <v-btn
-                  size="small"
-                  color="primary"
-                  variant="tonal"
-                  prepend-icon="mdi-email-fast-outline"
-                  :disabled="
-                    !canIssueMaterials || !issueRows.length || notifyingMaterialIssue
-                  "
-                  :loading="notifyingMaterialIssue"
-                  @click="notifyMaterialIssue"
-                >
-                  Informar salida de material
-                </v-btn>
                 <v-btn
                   size="small"
                   variant="tonal"
                   prepend-icon="mdi-printer-outline"
-                  :disabled="!issueRows.length"
+                  :disabled="!canIssueMaterials || !issueRows.length || ((isCreated || isInReview) && !!equipmentExecutionBlocker) || issuingMaterials"
                   :loading="isPrintingIssueDocuments(currentWorkOrderRecord)"
                   @click="printWorkOrderIssueDocuments(currentWorkOrderRecord)"
                 >
-                  Imprimir Egreso
+                  Imprimir egreso
                 </v-btn>
               </div>
             </div>
@@ -1732,15 +1705,31 @@
                 Aun no hay cambios de horometro registrados para esta orden.
               </div>
             </v-card>
-            <v-list density="compact" border rounded>
-              <v-list-item
-                v-for="(item, i) in localHistory"
-                :key="i"
-                :title="`${workflowLabel(item.to_status)}${item.from_status ? ` · desde ${workflowLabel(item.from_status)}` : ''}`"
-                :subtitle="`${item.note || 'Sin detalle'}${item.changed_at ? ` · ${formatDateTime(item.changed_at, '')}` : ''}`"
-              />
-              <v-list-item v-if="!localHistory.length" title="Sin historial" subtitle="No hay movimientos registrados para esta orden." />
-            </v-list>
+            <div class="d-flex flex-wrap align-center justify-space-between mb-3" style="gap: 8px;">
+              <div>
+                <div class="text-subtitle-1 font-weight-bold">Seguimiento de la orden</div>
+                <div class="text-body-2 text-medium-emphasis">Cada transición conserva su usuario, fecha y detalle. Los eventos más recientes aparecen primero.</div>
+              </div>
+              <v-chip size="small" variant="tonal">{{ localHistory.length }} eventos</v-chip>
+            </div>
+            <v-timeline v-if="localHistory.length" density="compact" side="end" truncate-line="both" class="work-order-history">
+              <v-timeline-item v-for="(item, i) in localHistory" :key="item.id || i"
+                :dot-color="historyEventColor(item)" :icon="historyEventIcon(item)" size="small" fill-dot>
+                <v-card variant="outlined" rounded="lg" class="pa-4">
+                  <div class="d-flex flex-wrap align-center justify-space-between mb-2" style="gap: 8px;">
+                    <div class="d-flex flex-wrap align-center" style="gap: 6px;">
+                      <v-chip v-if="item.from_status && item.from_status !== item.to_status" size="small" variant="outlined">{{ workflowLabel(item.from_status) }}</v-chip>
+                      <v-icon v-if="item.from_status && item.from_status !== item.to_status" size="16" icon="mdi-arrow-right" />
+                      <v-chip size="small" :color="historyEventColor(item)" variant="tonal">{{ historyEventLabel(item) }}</v-chip>
+                    </div>
+                    <span class="text-caption text-medium-emphasis">{{ formatDateTime(item.changed_at, 'Fecha sin registro') }}</span>
+                  </div>
+                  <div class="text-body-2 font-weight-medium mb-2"><v-icon size="16" icon="mdi-account-outline" class="mr-1" />{{ getHistoryUser(item) || 'Usuario sin registro' }}</div>
+                  <div class="text-body-2" style="white-space: normal; overflow-wrap: anywhere;">{{ formatWorkOrderHistoryNote(item.note) || 'Sin detalle adicional' }}</div>
+                </v-card>
+              </v-timeline-item>
+            </v-timeline>
+            <v-alert v-else type="info" variant="tonal">No hay movimientos registrados para esta orden.</v-alert>
           </v-window-item>
         </v-window>
       </v-card-text>
@@ -2251,7 +2240,7 @@
 
 <script setup lang="ts">
 import { fetchCanonicalWorkOrderReport, consolidateCanonicalWorkOrderReports } from "@/app/utils/canonical-work-order-report";
-import { reportDisplayLabel } from "@/app/utils/work-order-audit";
+import { reportDisplayLabel, formatWorkOrderHistoryNote, resolveWorkOrderLifecycle } from "@/app/utils/work-order-audit";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
   formatHorometerForDisplay,
@@ -2652,7 +2641,8 @@ const workflowOptions = [
   { title: "En proceso", value: "IN_PROGRESS" },
   { title: "En revisión", value: "REVIEW" },
   { title: "Bloqueada", value: "BLOCKED" },
-  { title: "Cerrada", value: "CLOSED" },
+  { title: "Finalizada", value: "CLOSED" },
+  { title: "Anulada", value: "ANNULLED" },
 ];
 
 const perms = computed(() =>
@@ -2686,9 +2676,9 @@ function workOrderActions(item: any): WorkOrderRowAction[] {
   const actions: WorkOrderRowAction[] = [];
   // La constancia del egreso la firma bodega, no gerencia: no se esconde
   // detras del permiso de reportes de la OT.
-  actions.push({
+  if (canIssueMaterials.value && !isAnnulledWorkOrder(item)) actions.push({
     key: "issue-pdf",
-    label: "Imprimir Egreso",
+    label: "Imprimir egreso",
     icon: "mdi-printer-outline",
     variant: "text",
   });
@@ -2701,7 +2691,7 @@ function workOrderActions(item: any): WorkOrderRowAction[] {
   if (canEdit.value && !isAnnulledWorkOrder(item)) {
     actions.push({ key: "edit", label: "Editar", icon: "mdi-pencil", variant: "text" });
   }
-  if (canAnnulDocuments.value && !isAnnulledWorkOrder(item)) {
+  if (canCloseOrVoidWorkOrder(item) && !isAnnulledWorkOrder(item)) {
     actions.push({ key: "annul", label: "Anular", icon: "mdi-cancel", color: "error", variant: "tonal" });
   }
   return actions;
@@ -2904,9 +2894,7 @@ const consumoProductHint = computed(() =>
       : "Puedes reservar cualquier material aunque la bodega no tenga stock: la falta se informa por correo.",
 );
 const materialIssueHelperText = computed(() =>
-  requiresOilProductsForCurrentWorkOrder.value
-    ? "Se listan los materiales con check de aceite reservados en consumos. La salida real solo se puede registrar cuando la OT está en proceso y nunca puede exceder lo reservado pendiente."
-    : "Se listan los materiales reservados en consumos. La salida real solo se puede registrar cuando la OT está en proceso y nunca puede exceder lo reservado pendiente.",
+  "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución y mantiene el equipo Parado. Los materiales adicionales actualizan el mismo documento.",
 );
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
@@ -2921,9 +2909,18 @@ const persistedWorkflow = computed(() =>
 );
 const isPersistedBlocked = computed(() => persistedWorkflow.value === "BLOCKED");
 const isPersistedClosed = computed(() => persistedWorkflow.value === "CLOSED");
-const hasPendingInProcessSave = computed(
-  () => !!editingId.value && normalizedWorkflow.value === "IN_PROGRESS" && persistedWorkflow.value !== "IN_PROGRESS",
-);
+function historyEventLabel(item: any) {
+  return /anulad/i.test(String(item.note || "")) ? "Anulada" : workflowLabel(item.to_status);
+}
+function historyEventColor(item: any) {
+  if (historyEventLabel(item) === "Anulada") return "error";
+  return ({ PLANNED: "info", IN_PROGRESS: "primary", REVIEW: "warning", CLOSED: "success", BLOCKED: "error" } as Record<string, string>)[item.to_status] || "secondary";
+}
+function historyEventIcon(item: any) {
+  if (historyEventLabel(item) === "Anulada") return "mdi-cancel";
+  return ({ PLANNED: "mdi-calendar-check", IN_PROGRESS: "mdi-play", REVIEW: "mdi-clipboard-search-outline", CLOSED: "mdi-check", BLOCKED: "mdi-lock-outline" } as Record<string, string>)[item.to_status] || "mdi-pencil-outline";
+}
+
 function currentUserId() {
   return String(auth.user?.id || auth.userId || "").trim();
 }
@@ -2961,7 +2958,6 @@ function normalizeOwnerName(value: unknown) {
 function canCloseOrVoidWorkOrder(item: any) {
   const row = item?._raw ?? item;
   if (!row) return false;
-  if (currentRoleName.value.includes("ADMIN")) return true;
   const userId = currentUserId();
   const userName = currentUserName();
   const payload = parseValorJson(row?.valor_json);
@@ -2969,17 +2965,12 @@ function canCloseOrVoidWorkOrder(item: any) {
     String(row?.requested_by || "").trim(),
     String(row?.created_by_user_id || "").trim(),
     String(payload?.created_by_user_id || "").trim(),
-    String(payload?.actor_user_id || "").trim(),
-    String(payload?.requested_by_user_id || "").trim(),
   ].filter(Boolean);
   const ownerNames = [
     normalizeOwnerName(row?.created_by),
     normalizeOwnerName(row?.created_by_username),
     normalizeOwnerName(payload?.created_by_username),
-    normalizeOwnerName(payload?.actor_username),
     normalizeOwnerName(payload?.created_by),
-    normalizeOwnerName(payload?.updated_by),
-    normalizeOwnerName(row?.linked_programacion_owner),
   ].filter(Boolean);
   const isOwner =
     (!!userId && ownerIds.includes(userId)) ||
@@ -3015,6 +3006,7 @@ const canCreateConsumo = computed(() => {
   if (!EDITABLE_WORKFLOWS.includes(normalizedWorkflow.value)) return false;
   if (!editingId.value) return true;
   return (
+    canCloseOrVoidCurrent.value &&
     EDITABLE_WORKFLOWS.includes(workOrderDetailWorkflow.value) &&
     !isReadOnlyWorkflow.value
   );
@@ -3026,9 +3018,16 @@ const canCreateConsumo = computed(() => {
 const canIssueMaterials = computed(() => canRegisterMaterialIssue(auth.user));
 const showMaterialsTab = computed(
   () =>
-    !!editingId.value &&
-    (isInProcess.value || isInReview.value || isClosed.value),
+    !!editingId.value && canIssueMaterials.value &&
+    ["PLANNED", "IN_PROGRESS", "REVIEW", "CLOSED"].includes(workOrderDetailWorkflow.value),
 );
+const equipmentExecutionBlocker = computed(() => {
+  const equipmentId = String(currentWorkOrderRecord.value?.equipment_id || headerForm.equipment_id || "");
+  if (!equipmentId) return null;
+  return workOrderCatalogRows.value.find((item: any) => String(item.id) !== String(editingId.value) &&
+    String(item.equipment_id) === equipmentId && !isAnnulledWorkOrder(item) &&
+    (["IN_PROGRESS", "REVIEW"].includes(normalizeWorkflowStatus(item.status_workflow)) || (normalizeWorkflowStatus(item.status_workflow) === "BLOCKED" && !!item.started_at)) && !item.closed_at) || null;
+});
 const showScrapTab = computed(
   () => !!editingId.value && (isInProcess.value || isInReview.value || isClosed.value),
 );
@@ -3036,20 +3035,16 @@ const canRegisterRealIssue = computed(
   () =>
     canIssueMaterials.value &&
     !!editingId.value &&
-    ["IN_PROGRESS", "REVIEW"].includes(normalizedWorkflow.value) &&
-    ["IN_PROGRESS", "REVIEW"].includes(persistedWorkflow.value) &&
+    ["PLANNED", "REVIEW"].includes(normalizedWorkflow.value) &&
+    ["PLANNED", "REVIEW"].includes(persistedWorkflow.value) && !equipmentExecutionBlocker.value &&
     !isReadOnlyWorkflow.value,
 );
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
-  if (isBlocked.value) {
-    return workflowOptions.filter((item) => item.value === "BLOCKED");
-  }
-  const manualOptions = workflowOptions.filter((item) => item.value !== "BLOCKED");
-  if (!editingId.value || canCloseOrVoidCurrent.value || isClosed.value) {
-    return manualOptions;
-  }
-  return manualOptions.filter((item) => item.value !== "CLOSED");
+  const current = workflowOptions.filter(item => item.value === persistedWorkflow.value || (!editingId.value && item.value === "PLANNED"));
+  if (!editingId.value || !canCloseOrVoidCurrent.value) return current;
+  const choices = persistedWorkflow.value === "IN_PROGRESS" ? ["REVIEW", "CLOSED", "ANNULLED"] : ["CLOSED", "ANNULLED"];
+  return [...current, ...workflowOptions.filter(item => choices.includes(item.value) && !current.some(row => row.value === item.value))];
 });
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
@@ -3254,7 +3249,7 @@ function workOrderAuditPayload(item: any) {
 }
 
 const ANNULMENT_PERMISSION_MESSAGE =
-  "No tienes permiso para anular ordenes de trabajo. Requiere un rol administrativo o el permiso de eliminacion sobre el modulo de ordenes de trabajo.";
+  "Solo el usuario que creó esta orden de trabajo puede anularla.";
 
 function isClosedWorkflowRecord(item: any) {
   const row = item?._raw ?? item;
@@ -3670,6 +3665,7 @@ function isCancellationHistory(item: any) {
 }
 
 function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
+  const lifecycle = resolveWorkOrderLifecycle(header || {}, historyRows);
   const sortedHistory = [...(historyRows || [])].sort((a: any, b: any) => {
     const aTime = new Date(getHistoryDate(a) || 0).getTime();
     const bTime = new Date(getHistoryDate(b) || 0).getTime();
@@ -3690,6 +3686,10 @@ function resolveWorkOrderTraceability(header: any, historyRows: any[] = []) {
     null;
 
   return {
+    planificada_por: lifecycle.planned.by, fecha_planificacion: lifecycle.planned.at,
+    ejecucion_iniciada_por: lifecycle.started.by, fecha_inicio_ejecucion: lifecycle.started.at,
+    finalizada_por: lifecycle.finished.by, fecha_finalizacion: lifecycle.finished.at,
+    anulada_por: lifecycle.annulled.by, fecha_anulacion: lifecycle.annulled.at,
     creado_por:
       resolveUserDisplayLabel(
         header?.created_by_label,
@@ -3812,7 +3812,7 @@ const workOrderReportDefinition = computed(() =>
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
       usuario: getHistoryUser(item),
-      nota: item?.note || "",
+      nota: formatWorkOrderHistoryNote(item?.note),
       fecha: item?.changed_at || "",
     })),
   });
@@ -6724,10 +6724,10 @@ function buildIssueDocumentsWorkOrderContext(item: any): MaterialIssueWorkOrderL
  *
  * El EB es un documento del inventario y no viaja dentro del informe de la OT,
  * asi que se pide aparte. Cuando la orden acumula varias salidas, todas van en
- * el mismo PDF con una hoja por egreso: bodega imprime una sola vez y firma
- * cada documento por separado.
+ * un solo documento. Confirmar la impresión inicia o reanuda la ejecución.
  */
 async function printWorkOrderIssueDocuments(item: any) {
+  if (!canIssueMaterials.value) return ui.error("Solo Bodega puede confirmar e imprimir el egreso de la OT.");
   const workOrderId = String(item?.id || item?._raw?.id || "").trim();
   if (!workOrderId) {
     ui.error("No se pudo identificar la orden de trabajo del egreso.");
@@ -6738,8 +6738,8 @@ async function printWorkOrderIssueDocuments(item: any) {
   exportState[key] = true;
   try {
     await ensureCatalogsLoaded();
-    const { data } = await api.get(
-      `/kpi_maintenance/work-orders/${workOrderId}/issue-documents`,
+    const { data } = await api.post(
+      `/kpi_maintenance/work-orders/${workOrderId}/issue-documents/confirm`,
     );
     const documents = asArray(data) as MaterialIssueDocumentLike[];
     if (!documents.length) {
@@ -6748,7 +6748,13 @@ async function printWorkOrderIssueDocuments(item: any) {
       ui.error("No hay egresos de bodega vigentes para esta orden de trabajo.");
       return;
     }
-    const workOrder = buildIssueDocumentsWorkOrderContext(item);
+    await fetchWorkOrders();
+    if (String(editingId.value) === workOrderId) {
+      await loadDetailData();
+      headerForm.status_workflow = currentWorkOrderRecord.value?.status_workflow || "IN_PROGRESS";
+    }
+    const refreshed = records.value.find((row: any) => String(row.id) === workOrderId) || item;
+    const workOrder = buildIssueDocumentsWorkOrderContext(refreshed);
     const singleDocument = documents.length === 1 ? documents[0] : null;
     await workOrderPdfPreview.open({
       title: singleDocument
@@ -7376,7 +7382,7 @@ async function handleAttachmentFileChange(value: File | File[] | null) {
 }
 
 function openDelete(item: any) {
-  if (!canAnnulDocuments.value || isAnnulledWorkOrder(item)) {
+  if (!canCloseOrVoidWorkOrder(item) || isAnnulledWorkOrder(item)) {
     ui.error(ANNULMENT_PERMISSION_MESSAGE);
     return;
   }
@@ -7404,13 +7410,17 @@ function ensureTabVisible() {
   }
 }
 
-async function startProcess() {
-  if (isReadOnlyWorkflow.value) {
-    ui.error(readOnlyWorkflowMessage());
-    return;
-  }
-  headerForm.status_workflow = "IN_PROGRESS";
-  tab.value = "consumos";
+function handleWorkflowSelection(value: string) {
+  if (value === "ANNULLED") return openDelete(currentWorkOrderRecord.value);
+  if (value === "CLOSED") { void prepareClose(); return; }
+  if (value === "REVIEW") { void moveToReview(); return; }
+}
+
+async function moveToReview() {
+  if (!canCloseOrVoidCurrent.value || persistedWorkflow.value !== "IN_PROGRESS" || savingHeader.value) return;
+  headerForm.status_workflow = "REVIEW";
+  await saveAll();
+  if (String(persistedWorkflow.value) !== "REVIEW") headerForm.status_workflow = persistedWorkflow.value;
 }
 
 async function prepareClose() {
@@ -7805,6 +7815,10 @@ async function saveAll() {
       return;
     }
     const pendingConsumoLines = collectConsumoLines();
+    if (!editingId.value && !pendingConsumoLines.length) {
+      tab.value = "consumos";
+      return ui.error("Añade al menos un material en Consumos antes de crear la OT.");
+    }
 
     if (editingId.value) {
       const headerChanged = hasWorkOrderHeaderChanges();
@@ -8202,9 +8216,9 @@ function issueLineStockHint(line: any) {
 function openMaterialIssueDialog(item?: any) {
   if (!canRegisterRealIssue.value) {
     ui.error(
-      hasPendingInProcessSave.value
-        ? "Guarda primero la OT con estado En proceso para registrar la salida real de materiales."
-        : "La salida real de materiales solo se puede registrar cuando la OT está en proceso.",
+      equipmentExecutionBlocker.value
+        ? `El equipo tiene la OT ${equipmentExecutionBlocker.value.code} en ejecución.`
+        : "Registra la salida de materiales durante la planificación, antes de imprimir el egreso.",
     );
     return;
   }
@@ -8233,46 +8247,14 @@ function closeMaterialIssueDialog() {
   materialIssueForm.observacion = "";
 }
 
-const notifyingMaterialIssue = ref(false);
-
-/**
- * Avisa por correo que la salida ya se realizo.
- *
- * Es manual y no automatico al registrar la salida: una OT puede entregarse en
- * varias tandas y solo bodega sabe cuando esta completa. Enviar un correo por
- * cada linea seria ruido.
- */
-async function notifyMaterialIssue() {
-  if (notifyingMaterialIssue.value) return;
-  if (!editingId.value) {
-    return ui.error("Guarda primero la OT para informar la salida de material.");
-  }
-  if (!issueRows.value.length) {
-    return ui.error("Todavia no hay ninguna salida de material registrada.");
-  }
-  try {
-    notifyingMaterialIssue.value = true;
-    const { data } = await api.post(
-      `/kpi_maintenance/work-orders/${editingId.value}/notify-material-issue`,
-    );
-    ui.success(data?.message || "Aviso de salida de material enviado.");
-  } catch (e: any) {
-    ui.error(
-      e?.response?.data?.message || "No se pudo informar la salida de material.",
-    );
-  } finally {
-    notifyingMaterialIssue.value = false;
-  }
-}
-
 async function submitMaterialIssue() {
   if (issuingMaterials.value) return;
   if (isReadOnlyWorkflow.value) return ui.error(readOnlyWorkflowMessage());
   if (!canRegisterRealIssue.value) {
     return ui.error(
-      hasPendingInProcessSave.value
-        ? "Guarda primero la OT con estado En proceso para registrar la salida real de materiales."
-        : "La salida real de materiales solo se puede registrar cuando la OT está en proceso.",
+      equipmentExecutionBlocker.value
+        ? `El equipo tiene la OT ${equipmentExecutionBlocker.value.code} en ejecución.`
+        : "Las salidas de materiales se registran en Planificada o En revisión por el perfil Bodega.",
     );
   }
   if (!editingId.value) {
@@ -8426,7 +8408,7 @@ function buildAnnulmentSummary(payload: any) {
 
 async function confirmDelete() {
   if (!deletingId.value) return;
-  if (!canAnnulDocuments.value || isAnnulledWorkOrder(currentWorkOrderRecord.value)) {
+  if (!canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) || isAnnulledWorkOrder(currentWorkOrderRecord.value)) {
     ui.error(ANNULMENT_PERMISSION_MESSAGE);
     return;
   }
@@ -8960,5 +8942,12 @@ watch(
   .task-responsibles-cell {
     min-width: 150px;
   }
+}
+.work-order-history :deep(.v-timeline-item__body) {
+  width: 100%;
+  min-width: 0;
+}
+.work-order-history {
+  grid-template-columns: min-content min-content auto;
 }
 </style>
