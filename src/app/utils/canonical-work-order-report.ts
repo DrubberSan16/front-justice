@@ -29,7 +29,11 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
     issued.set(key, total);
   }
   const tasks = detail.tasks.flatMap(task => {
-    const people = Array.isArray(task.responsables) && task.responsables.length ? task.responsables : [{}];
+    const worked = Array.isArray(task.responsables)
+      ? task.responsables.filter((person: Record<string, any>) => number(person?.horas) > 0)
+      : [];
+    // Conserva la actividad una sola vez cuando nadie registró horas.
+    const people = worked.length ? worked : [{}];
     return people.map((person: Record<string, any>) => ({
       responsable: person.display_name || person.nameSurname || person.username || "Sin responsables",
       tarea: task.actividad || task.actividad_adicional || task.tarea_label || task.tarea_nombre || task.tarea?.nombre || task.task_name || task.tarea_descripcion || task.descripcion || task.nombre || "Trabajo registrado",

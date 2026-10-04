@@ -3188,9 +3188,9 @@ function getTaskResponsiblesSummary(task: any) {
  * Filas de tarea para el informe: una por responsable.
  *
  * El informe debe decir quien hizo cada trabajo y si dejo alguna novedad, y eso
- * no cabe en una sola fila por tarea. Cuando la tarea no tiene responsables
- * registrados igual se emite una fila, porque el trabajo se hizo aunque nadie
- * quedara asignado.
+ * no cabe en una sola fila por tarea. Solo se incluyen responsables con horas
+ * positivas en esa tarea; si ninguno registró horas, se conserva una sola fila
+ * sin responsable.
  */
 function buildTaskReportRows(task: any) {
   const base = {
@@ -3201,7 +3201,9 @@ function buildTaskReportRows(task: any) {
     observacion: task?.observacion ?? "",
     requisitos: getTaskRequirementChips(task).join(" | "),
   };
-  const responsables = getTaskResponsibles(task);
+  const responsables = getTaskResponsibles(task).filter(
+    (responsable: any) => Number(responsable?.horas) > 0,
+  );
   if (!responsables.length) {
     return [{ ...base, responsable: "Sin responsables", horas: 0 }];
   }

@@ -175,6 +175,54 @@ assert.equal(consolidated.sheets[canonical.sheets.length], secondCanonical.sheet
 await assertPdf(await reports.buildReportPdfBlob(consolidated), ["OT-CEBADO-2", "Costo total", "por", "hora", "UG21", "CPT"]);
 await assertExcel(await reports.buildReportExcelBlob(consolidated), ["OT-CEBADO-2", "Costo total", "Cantidad de horas", "Costo por hora"], 2);
 console.log("PASS: informe único OT, costos conciliados, UG/central, permisos y proyecto sin horómetro");
+const tasksWithInactiveResponsibles = [
+  { tarea_nombre: "Actividad con horas", responsables: [
+    { display_name: "Persona activa", horas: "0.25", costo_hora: 4 },
+    { display_name: "Persona inactiva", horas: 0, costo_hora: 99 },
+  ] },
+  { tarea_nombre: "Actividad sin horas", observacion: "Pendiente de registro", responsables: [
+    { display_name: "Persona activa", horas: "0" },
+    { display_name: "Persona inactiva", horas: null },
+    { display_name: "Persona sin registro" },
+  ] },
+  { tarea_nombre: "Actividad sin asignacion", responsables: [] },
+];
+const originalTasks = JSON.stringify(tasksWithInactiveResponsibles);
+for (const maintenanceKind of ["CORRECTIVO", "PROYECTO"]) {
+  for (const showCosts of [false, true]) {
+    const filteredReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail,
+      header: { ...canonicalDetail.header, maintenance_kind: maintenanceKind },
+      tasks: tasksWithInactiveResponsibles,
+    }, showCosts);
+    assert.deepEqual(filteredReport.sheets[0].rows.map(row => [row.tarea, row.responsable, row.horas]), [
+      ["Actividad con horas", "Persona activa", 0.25],
+      ["Actividad sin horas", "Sin responsables", 0],
+      ["Actividad sin asignacion", "Sin responsables", 0],
+    ]);
+    assert.equal(filteredReport.sheets[0].rows[1].observacion, "Pendiente de registro");
+    if (showCosts) assert.equal(filteredReport.sheets[0].rows[0].costo_total, 1);
+    const pdf = await reports.buildReportPdfBlob(filteredReport);
+    await assertPdf(pdf, ["Persona activa", "Actividad sin horas", "Actividad sin asignacion", "Sin responsables"]);
+    const pdfText = Buffer.from(await pdf.arrayBuffer()).toString("latin1");
+    assert.ok(!pdfText.includes("Persona inactiva"));
+    assert.ok(!pdfText.includes("Persona sin registro"));
+  }
+}
+const noHoursReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail,
+  tasks: tasksWithInactiveResponsibles.slice(1),
+}, true);
+assert.equal(noHoursReport.sheets[0].rows.length, 2);
+assert.ok(noHoursReport.sheets[0].rows.every(row => row.responsable === "Sin responsables" && row.horas === 0 && row.costo_total === 0));
+const noHoursPdf = await reports.buildReportPdfBlob(noHoursReport);
+await assertPdf(noHoursPdf, ["Actividad sin horas", "Actividad sin asignacion", "Sin responsables"]);
+assert.ok(!Buffer.from(await noHoursPdf.arrayBuffer()).toString("latin1").includes("Persona activa"));
+assert.equal(JSON.stringify(tasksWithInactiveResponsibles), originalTasks, "La exportacion no modifica las asignaciones de la OT");
+if (process.env.REPORT_OUTPUT_DIR) {
+  const mixedReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, tasks: tasksWithInactiveResponsibles }, true);
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_responsables_con_horas.pdf"), Buffer.from(await (await reports.buildReportPdfBlob(mixedReport)).arrayBuffer()));
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_actividades_sin_horas.pdf"), Buffer.from(await noHoursPdf.arrayBuffer()));
+}
+console.log("PASS: responsables solo con horas por actividad, actividades sin horas conservadas y asignaciones intactas");
 const locations = [{ codigo: "UBI-A00003", nombre: "CENTRAL CPT" }, { codigo: "UBI-A00004", nombre: "CENTRAL TPTA" }];
 const tptaOnly = [{ central: "UBI-A00004 - CENTRAL TPTA", galones_periodo: 2 }];
 assert.deepEqual(reports.buildPrimingCentralOptions(locations, tptaOnly), ["UBI-A00003 - CENTRAL CPT", "UBI-A00004 - CENTRAL TPTA"]);
