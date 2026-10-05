@@ -10,7 +10,7 @@
             </div>
             <h1 class="manual-hero__title">Guía de trabajo paso a paso</h1>
             <p class="manual-hero__description">
-              Aprende qué hacer, qué debe existir antes y cómo resolver los inconvenientes más comunes de cada proceso.
+              Descubre quién hace cada paso, qué necesitas para avanzar y cómo se conectan los módulos de tu trabajo.
             </p>
             <div class="manual-hero__meta">
               <span><v-icon icon="mdi-account-check-outline" size="16" />Contenido según tus módulos disponibles</span>
@@ -185,6 +185,21 @@
             </div>
           </div>
 
+          <div class="manual-team">
+            <div class="manual-team__heading"><v-icon icon="mdi-account-group-outline" /> Perfiles que intervienen</div>
+            <div class="manual-team__profiles">
+              <v-chip v-for="profile in activeProfiles" :key="profile" color="primary" variant="tonal">{{ profile }}</v-chip>
+            </div>
+            <p>Las responsabilidades se coordinan entre estos perfiles. Tus acciones disponibles dependen de tus permisos y sucursales.</p>
+          </div>
+
+          <v-tabs v-model="detailTab" class="manual-tabs" color="primary" show-arrows aria-label="Contenido de la guía">
+            <v-tab value="flow">Flujo paso a paso</v-tab>
+            <v-tab value="details">Datos y controles</v-tab>
+            <v-tab value="help">Ayuda y verificación</v-tab>
+          </v-tabs>
+
+          <div v-show="detailTab === 'flow'">
           <div class="manual-prerequisites">
             <div class="manual-section-heading">
               <div class="manual-section-heading__icon manual-section-heading__icon--warning"><v-icon icon="mdi-sign-caution" size="20" /></div>
@@ -205,45 +220,67 @@
           <div class="manual-process-section">
             <div class="manual-section-heading">
               <div class="manual-section-heading__icon"><v-icon icon="mdi-directions-fork" size="20" /></div>
-              <div><strong>Ruta recomendada</strong><span>Sigue el orden para evitar devolverte o perder información.</span></div>
+              <div><strong>Tu recorrido de trabajo</strong><span>Selecciona un paso para ver quién interviene y cómo continuar.</span></div>
             </div>
-            <div class="manual-flow">
-              <div
+            <div class="manual-journey">
+              <v-select class="manual-journey__mobile-select" v-model="activeStepIndex" :items="stepOptions" label="Selecciona un paso" variant="outlined" hide-details />
+              <nav class="manual-journey__steps" aria-label="Pasos del flujo">
+              <button
                 v-for="(step, index) in activeManual.flow"
                 :key="step.id"
-                class="manual-flow__step"
+                type="button"
+                class="manual-journey__stop"
+                :class="{ 'manual-journey__stop--active': activeStepIndex === index }"
+                :aria-current="activeStepIndex === index ? 'step' : undefined"
+                @click="activeStepIndex = index"
               >
-                <div class="manual-flow__step-index">{{ index + 1 }}</div>
-                <div class="manual-flow__step-card js-hover-card">
-                  <div class="manual-flow__step-kicker">PASO {{ index + 1 }}</div>
-                  <div class="text-subtitle-1 font-weight-bold">{{ step.title }}</div>
-                  <div class="text-body-2 text-medium-emphasis mt-2">
-                    {{ step.description }}
-                  </div>
-
-                  <div v-if="step.fields.length" class="mt-3">
-                    <div class="text-caption text-medium-emphasis mb-1">Lo que vas a usar</div>
-                    <div class="d-flex flex-wrap" style="gap: 6px;">
-                      <v-chip
-                        v-for="field in step.fields"
-                        :key="field"
-                        size="small"
-                        variant="tonal"
-                        color="primary"
-                        label
-                      >
-                        {{ field }}
-                      </v-chip>
-                    </div>
-                  </div>
-
-                  <ul v-if="step.checks.length" class="manual-list mt-3">
-                    <li v-for="check in step.checks" :key="check">{{ check }}</li>
-                  </ul>
+                <span class="manual-journey__number">{{ index + 1 }}</span>
+                <span><strong>{{ step.title }}</strong><small>{{ step.profiles?.join(' · ') }}</small></span>
+                <v-icon icon="mdi-chevron-right" size="18" aria-hidden="true" />
+              </button>
+              </nav>
+              <article v-if="activeStep" class="manual-step-detail" aria-live="polite" aria-atomic="true">
+                <div class="manual-step-detail__progress">
+                  <span>Paso {{ activeStepIndex + 1 }} de {{ activeManual.flow.length }}</span>
+                  <v-progress-linear :model-value="((activeStepIndex + 1) / activeManual.flow.length) * 100" rounded height="4" color="primary" aria-label="Posición en el flujo" />
                 </div>
-              </div>
+                <h3>{{ activeStep.title }}</h3>
+                <div class="manual-step-detail__actors">
+                  <v-chip v-for="profile in activeStep.profiles" :key="profile" size="small" color="primary" variant="tonal" prepend-icon="mdi-account-outline">{{ profile }}</v-chip>
+                </div>
+                <div class="manual-step-detail__module">
+                  <v-icon icon="mdi-view-grid-outline" size="18" />
+                  <span>En <strong>{{ activeStep.moduleLabel }}</strong></span>
+                  <v-btn v-if="canConsultStep(activeStep.moduleRoute)" size="small" variant="text" color="primary" @click="openStepModule(activeStep.moduleRoute)">Ver módulo <v-icon icon="mdi-arrow-top-right" end /></v-btn>
+                </div>
+                <div class="manual-step-detail__gate">
+                  <strong><v-icon icon="mdi-lock-open-check-outline" size="18" /> Para empezar este paso</strong>
+                  <p>{{ activeStep.requirement }}</p>
+                </div>
+                <div class="manual-step-detail__action"><strong>Qué debes hacer</strong><p>{{ activeStep.description }}</p></div>
+                <ul v-if="activeStep.checks.length" class="manual-list">
+                    <li v-for="check in activeStep.checks" :key="check">{{ check }}</li>
+                  </ul>
+                <div class="manual-step-detail__result">
+                  <strong><v-icon icon="mdi-check-circle-outline" size="18" /> Resultado para continuar</strong>
+                  <p>{{ activeStep.outcome }}</p>
+                </div>
+                <div class="manual-step-detail__navigation">
+                  <v-btn variant="text" :disabled="activeStepIndex === 0" prepend-icon="mdi-arrow-left" @click="activeStepIndex--">Anterior</v-btn>
+                  <v-btn color="primary" variant="flat" :disabled="activeStepIndex === activeManual.flow.length - 1" append-icon="mdi-arrow-right" @click="activeStepIndex++">Siguiente</v-btn>
+                </div>
+                <p class="manual-step-detail__hint">Este recorrido es una guía de lectura; cambiar de paso no modifica la operación.</p>
+              </article>
             </div>
           </div>
+
+          <div v-if="nextStep" class="manual-next-person">
+            <v-icon icon="mdi-account-switch-outline" color="primary" />
+            <span><strong>Después interviene: {{ nextStep.profiles?.join(' / ') }}</strong><br>{{ nextStep.title }} · {{ nextStep.moduleLabel }}</span>
+          </div>
+          </div>
+
+          <div v-show="detailTab === 'details'">
 
           <section class="manual-state-section" aria-labelledby="manual-state-title">
             <div class="manual-section-heading">
@@ -251,7 +288,7 @@
                 <v-icon icon="mdi-progress-check" size="20" aria-hidden="true" />
               </div>
               <div>
-                <strong id="manual-state-title">Estados y controles del proceso</strong>
+                <strong id="manual-state-title">Etapas y controles del flujo</strong>
                 <span>Antes de avanzar, confirma qué significa la etapa y qué debe quedar listo.</span>
               </div>
             </div>
@@ -376,6 +413,8 @@
             </v-col>
           </v-row>
 
+          </div>
+          <div v-show="detailTab === 'help'">
           <div class="manual-errors-section">
             <div class="manual-section-heading">
               <div class="manual-section-heading__icon manual-section-heading__icon--error"><v-icon icon="mdi-alert-decagram-outline" size="20" /></div>
@@ -467,6 +506,7 @@
               </v-card>
             </v-col>
           </v-row>
+          </div>
         </v-card>
       </v-col>
     </template>
@@ -489,14 +529,13 @@ import {
 } from "@/app/config/user-manual";
 import type { MenuNode } from "@/app/types/menu.types";
 import { findMenuRouteByValue } from "@/app/utils/menu-route-catalog";
-import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
-import { type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import {
   buildUserManualExcelReport,
   buildUserManualPdfBlob,
   userManualFileName,
+  userManualProfileLabel,
 } from "@/app/utils/user-manual-documents";
 
 const router = useRouter();
@@ -510,6 +549,8 @@ const reportPreview = useReportPreview({
 const search = ref("");
 const selectedCategory = ref("Todas");
 const activeManualId = ref("");
+const activeStepIndex = ref(0);
+const detailTab = ref("flow");
 const checklistState = ref<Record<string, boolean>>({});
 const exportingPdf = ref(false);
 const exportingExcel = ref(false);
@@ -519,7 +560,7 @@ function flattenMenu(nodes: MenuNode[]): MenuNode[] {
 }
 
 const manualStorageKey = computed(
-  () => `user-manual:${auth.userId || auth.user?.id || auth.user?.nameUser || "anon"}`,
+  () => `user-manual:flows-v2:${auth.userId || auth.user?.id || auth.user?.nameUser || "anon"}`,
 );
 
 function loadChecklistState() {
@@ -542,6 +583,7 @@ const accessibleManuals = computed(() => {
 
   for (const node of flattenMenu(menu.tree)) {
     const routeItem = findMenuRouteByValue(router, node.urlComponent || "");
+    if (!routeItem || !node.permissions?.isReaded) continue;
     const routeName = routeItem?.routeName ?? String(node.urlComponent || "").trim();
     const manual = getOperativeUserManualDefinition(
       routeName,
@@ -564,7 +606,8 @@ const categoryOptions = computed(() => [
 ]);
 
 const filteredManuals = computed(() => {
-  const normalizedSearch = search.value.trim().toLowerCase();
+  const normalizeSearch = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  const normalizedSearch = normalizeSearch(search.value);
 
   return accessibleManuals.value.filter((manual) => {
     const matchesCategory =
@@ -588,7 +631,7 @@ const filteredManuals = computed(() => {
         issue.howToResolve,
       ]),
       ...manual.checklist,
-      ...manual.flow.flatMap((item) => [item.title, item.description, ...item.fields, ...item.checks]),
+      ...manual.flow.flatMap((item) => [item.title, item.description, item.requirement, item.outcome, item.moduleLabel, ...(item.profiles ?? []), ...item.fields, ...item.checks]),
       ...manual.states.flatMap((state) => [state.name, state.meaning, state.userAction, state.validation]),
       ...manual.handoffs.flatMap((handoff) => [
         handoff.moment,
@@ -602,7 +645,7 @@ const filteredManuals = computed(() => {
       .join(" ")
       .toLowerCase();
 
-    return haystack.includes(normalizedSearch);
+    return normalizeSearch(haystack).includes(normalizedSearch);
   });
 });
 
@@ -612,6 +655,24 @@ const activeManual = computed(
     filteredManuals.value[0] ??
     null,
 );
+
+const activeStep = computed(() => activeManual.value?.flow[activeStepIndex.value]);
+const stepOptions = computed(() => activeManual.value?.flow.map((step, index) => ({ title: `Paso ${index + 1}: ${step.title}`, value: index })) ?? []);
+const nextStep = computed(() => activeManual.value?.flow[activeStepIndex.value + 1]);
+const activeProfiles = computed(() => [...new Set(activeManual.value?.flow.flatMap(step => step.profiles ?? []) ?? [])]);
+
+watch(() => activeManual.value?.routeName, () => {
+  activeStepIndex.value = 0;
+  detailTab.value = "flow";
+});
+
+function canConsultStep(routeName?: string) {
+  return Boolean(routeName && accessibleManuals.value.some(manual => manual.routeName === routeName));
+}
+
+function openStepModule(routeName?: string) {
+  if (routeName && canConsultStep(routeName)) router.push({ name: routeName });
+}
 
 const completedChecklistCount = computed(
   () => accessibleManuals.value.filter((manual) => checklistProgress(manual) === manual.checklist.length).length,
@@ -664,450 +725,11 @@ function sortedFields(manual: UserManualDefinition): UserManualFieldGuide[] {
   return [...manual.fields].sort((left, right) => Number(right.required) - Number(left.required));
 }
 
-function manualFileSlug(value: string) {
-  return String(value || "manual")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase() || "manual";
-}
-
-const manualPdfTextReplacements: Array<[string, string]> = [
-  ["ÃƒÂ¡", "a"],
-  ["ÃƒÂ©", "e"],
-  ["ÃƒÂ­", "i"],
-  ["ÃƒÂ³", "o"],
-  ["ÃƒÂº", "u"],
-  ["ÃƒÂ±", "n"],
-  ["Ãƒâ€˜", "N"],
-  ["Ã‚Â·", "-"],
-  ["Ã‚", ""],
-];
-
-function pdfText(value: unknown) {
-  let text = String(value ?? "");
-  for (const [from, to] of manualPdfTextReplacements) {
-    text = text.split(from).join(to);
-  }
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function manualListText(items: string[], fallback = "No aplica") {
-  const values = items.map(pdfText).filter(Boolean);
-  return values.length ? values.join("\n") : fallback;
-}
-
-function manualGeneratedAtLabel() {
-  return new Intl.DateTimeFormat("es-EC", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date());
-}
-
-function buildManualModuleGroups(manuals: UserManualDefinition[]) {
-  const groups = new Map<string, UserManualDefinition[]>();
-  for (const manual of manuals) {
-    const category = manual.category || "General";
-    groups.set(category, [...(groups.get(category) ?? []), manual]);
-  }
-  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right, "es"));
-}
-
-function buildManualExcelReportLegacy(manuals: UserManualDefinition[]): ReportDefinition {
-  const userLabel = String(auth.user?.nameSurname || auth.user?.nameUser || "Usuario");
-  const roleLabel = String(auth.user?.role?.nombre || "Sin rol asignado");
-
-  return {
-    fileName: `manual_usuario_${manualFileSlug(roleLabel)}_${new Date().toISOString().slice(0, 10)}`,
-    title: "Manual de usuario KPI Justice",
-    subtitle: `Guía paso a paso para ${userLabel}. Incluye únicamente los procesos disponibles para su perfil.`,
-    generatedAt: new Date().toISOString(),
-    summary: [
-      { label: "Usuario", value: userLabel },
-      { label: "Perfil", value: roleLabel },
-      { label: "Procesos incluidos", value: manuals.length },
-      { label: "Guías completadas", value: completedChecklistCount.value },
-    ],
-    sheets: [
-      {
-        name: "Ruta de trabajo",
-        note: "Sigue los pasos en el orden indicado. La columna Verifica antes de avanzar ayuda a prevenir errores.",
-        groupBy: ["modulo", "categoria"],
-        rows: manuals.flatMap((manual) =>
-          manual.flow.map((step, index) => ({
-            modulo: manual.title,
-            categoria: manual.category,
-            paso: index + 1,
-            accion: step.title,
-            que_hacer: step.description,
-            elementos_a_usar: step.fields.join(" | ") || "No aplica",
-            verifica_antes_de_avanzar: step.checks.join(" | ") || "Continúa con el siguiente paso",
-          })),
-        ),
-      },
-      {
-        name: "Antes de empezar",
-        note: "Si falta alguno de estos puntos, completa primero el proceso de origen.",
-        groupBy: ["modulo", "categoria"],
-        rows: manuals.flatMap((manual) =>
-          manual.prerequisites.map((item, index) => ({
-            modulo: manual.title,
-            categoria: manual.category,
-            orden: index + 1,
-            requisito_previo: item,
-          })),
-        ),
-      },
-      {
-        name: "Datos a completar",
-        note: "Los datos obligatorios deben completarse antes de guardar. Las indicaciones explican cómo utilizarlos.",
-        groupBy: ["modulo", "categoria"],
-        rows: manuals.flatMap((manual) =>
-          sortedFields(manual).map((field) => ({
-            modulo: manual.title,
-            categoria: manual.category,
-            dato: field.label,
-            es_obligatorio: field.required ? "Sí" : "No",
-            como_completarlo: field.note,
-          })),
-        ),
-      },
-      {
-        name: "Solución de problemas",
-        note: "Identifica qué ocurre, revisa el proceso anterior y aplica la solución recomendada.",
-        groupBy: ["modulo", "categoria"],
-        rows: manuals.flatMap((manual) =>
-          manual.commonErrors.map((issue) => ({
-            modulo: manual.title,
-            categoria: manual.category,
-            inconveniente: issue.title,
-            que_ocurre: issue.whatHappens,
-            por_que_ocurre: issue.why,
-            como_resolverlo: issue.howToResolve,
-          })),
-        ),
-      },
-      {
-        name: "Verificación final",
-        note: "Utiliza esta lista para confirmar que el proceso quedó completo y listo para el siguiente paso.",
-        groupBy: ["modulo", "categoria"],
-        rows: manuals.flatMap((manual) =>
-          manual.checklist.map((item, index) => ({
-            modulo: manual.title,
-            categoria: manual.category,
-            estado: isChecklistChecked(manual, index) ? "Completado" : "Pendiente",
-            verificacion: item,
-          })),
-        ),
-      },
-    ],
-  };
-}
-
-async function downloadManualExcelLegacy() {
-  const manuals = accessibleManuals.value;
-  if (!manuals.length) {
-    ui.error("No hay módulos disponibles para generar el manual.");
-    return;
-  }
-
-  exportingExcel.value = true;
-  try {
-    await reportPreview.open("excel", buildManualExcelReportLegacy(manuals));
-  } catch (error: any) {
-    ui.error(error?.message || "No se pudo generar el manual en Excel.");
-  } finally {
-    exportingExcel.value = false;
-  }
-}
-
-function addManualPdfFooter(doc: any) {
-  const totalPages = doc.getNumberOfPages();
-  for (let page = 1; page <= totalPages; page += 1) {
-    doc.setPage(page);
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    doc.setDrawColor(183, 201, 214);
-    doc.line(48, pageHeight - 36, pageWidth - 48, pageHeight - 36);
-    doc.setTextColor(91, 107, 123);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text("Manual de usuario KPI Justice", 48, pageHeight - 20);
-    doc.text(`Pagina ${page} de ${totalPages}`, pageWidth - 48, pageHeight - 20, {
-      align: "right",
-    });
-  }
-}
-
-async function downloadManualPdfLegacy() {
-  const manuals = accessibleManuals.value;
-  if (!manuals.length) {
-    ui.error("No hay modulos disponibles para generar el manual.");
-    return;
-  }
-  exportingPdf.value = true;
-  try {
-    const [{ jsPDF }, autoTableModule] = await Promise.all([
-      import("jspdf"),
-      import("jspdf-autotable"),
-    ]);
-    const autoTable = autoTableModule.default as any;
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-    const companyLogoAsset = await getCompanyLogoAsset();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const marginX = 48;
-    const contentWidth = pageWidth - marginX * 2;
-    const headerTop = 82;
-    const bottomLimit = pageHeight - 58;
-    const generatedAt = manualGeneratedAtLabel();
-    const userLabel = pdfText(auth.user?.nameSurname || auth.user?.nameUser || "Usuario");
-    const roleLabel = pdfText(auth.user?.role?.nombre || "Sin rol asignado");
-
-    function drawHeader() {
-      doc.setFillColor(31, 78, 120);
-      doc.rect(0, 0, pageWidth, 56, "F");
-      doc.setFillColor(244, 177, 131);
-      doc.rect(0, 56, pageWidth, 4, "F");
-      drawPdfCompanyLogo(doc, companyLogoAsset, {
-        marginX,
-        y: 12,
-        maxWidth: 94,
-        maxHeight: 28,
-      });
-      const headerTextX = marginX + (companyLogoAsset ? 110 : 0);
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text("KPI Justice", headerTextX, 32);
-      doc.setFont("helvetica", "normal");
-      doc.text("Guía de trabajo paso a paso", pageWidth - marginX, 32, { align: "right" });
-      doc.setTextColor(31, 41, 55);
-    }
-
-    function ensureSpace(y: number, needed = 64) {
-      if (y + needed <= bottomLimit) return y;
-      doc.addPage();
-      drawHeader();
-      return headerTop;
-    }
-
-    function sectionTitle(title: string, y: number) {
-      y = ensureSpace(y, 42);
-      doc.setFillColor(236, 244, 251);
-      doc.roundedRect(marginX, y - 15, contentWidth, 28, 6, 6, "F");
-      doc.setTextColor(31, 78, 120);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11.5);
-      doc.text(pdfText(title), marginX + 10, y + 3);
-      doc.setTextColor(31, 41, 55);
-      return y + 25;
-    }
-
-    function paragraph(text: unknown, y: number, fontSize = 9) {
-      const clean = pdfText(text);
-      if (!clean) return y;
-      const lines = doc.splitTextToSize(clean, contentWidth);
-      y = ensureSpace(y, lines.length * (fontSize + 4));
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(fontSize);
-      doc.setTextColor(31, 41, 55);
-      doc.text(lines, marginX, y);
-      return y + lines.length * (fontSize + 4) + 8;
-    }
-
-    function table(startY: number, head: string[], body: Array<Array<string | number>>) {
-      autoTable(doc, {
-        startY,
-        head: [head.map(pdfText)],
-        body: body.map((row) => row.map((cell) => pdfText(cell))),
-        theme: "grid",
-        margin: { left: marginX, right: marginX, top: headerTop, bottom: 58 },
-        styles: {
-          font: "helvetica",
-          fontSize: 7.6,
-          cellPadding: 5.5,
-          lineColor: [183, 201, 214],
-          lineWidth: 0.25,
-          valign: "top",
-          overflow: "linebreak",
-        },
-        headStyles: {
-          fillColor: [31, 78, 120],
-          textColor: [255, 255, 255],
-          fontStyle: "bold",
-        },
-        alternateRowStyles: { fillColor: [247, 250, 252] },
-        didDrawPage: drawHeader,
-      });
-      return ((doc as any).lastAutoTable?.finalY ?? startY) + 18;
-    }
-
-    doc.setFillColor(31, 78, 120);
-    doc.rect(0, 0, pageWidth, 174, "F");
-    doc.setFillColor(244, 177, 131);
-    doc.rect(0, 174, pageWidth, 6, "F");
-    drawPdfCompanyLogo(doc, companyLogoAsset, {
-      marginX,
-      y: 24,
-      maxWidth: 150,
-      maxHeight: 46,
-    });
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(24);
-    doc.text("Guía de Usuario", marginX, 96);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text("Procesos explicados paso a paso, con requisitos y soluciones", marginX, 122);
-    doc.text("KPI Justice", marginX, 146);
-
-    doc.setTextColor(31, 41, 55);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("Tu guía personalizada", marginX, 212);
-    autoTable(doc, {
-      startY: 230,
-      body: [
-        ["Usuario", userLabel],
-        ["Perfil de trabajo", roleLabel],
-        ["Generado", generatedAt],
-        ["Procesos incluidos", manuals.length],
-        ["Contenido", "Se muestran únicamente los procesos disponibles para este usuario."],
-      ],
-      theme: "grid",
-      margin: { left: marginX, right: marginX },
-      styles: { font: "helvetica", fontSize: 9, cellPadding: 7, lineColor: [183, 201, 214] },
-      columnStyles: {
-        0: { fillColor: [217, 234, 247], fontStyle: "bold", cellWidth: 150 },
-        1: { cellWidth: contentWidth - 150 },
-      },
-    });
-    let y = ((doc as any).lastAutoTable?.finalY ?? 304) + 28;
-    y = sectionTitle("Cómo utilizar esta guía", y);
-    y = paragraph(
-      "Busca el proceso que deseas realizar, confirma primero los requisitos, sigue los pasos en orden y utiliza la sección de solución de problemas cuando el sistema no te permita continuar. Finaliza marcando la lista de verificación.",
-      y,
-      10,
-    );
-
-    doc.addPage();
-    drawHeader();
-    y = sectionTitle("Índice general", headerTop);
-    y = paragraph(
-      "Los procesos están agrupados por área de trabajo. Cada capítulo explica para qué sirve, qué debe existir antes, qué información completar, errores frecuentes y cómo confirmar que todo quedó listo.",
-      y,
-    );
-    for (const [category, items] of buildManualModuleGroups(manuals)) {
-      y = sectionTitle(category, y + 6);
-      for (const manual of items) {
-        y = ensureSpace(y, 18);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        doc.setTextColor(31, 41, 55);
-        doc.text(`- ${pdfText(manual.title)}`, marginX + 10, y);
-        y += 16;
-      }
-    }
-
-    manuals.forEach((manual, manualIndex) => {
-      doc.addPage();
-      drawHeader();
-      let moduleY = sectionTitle(`${manualIndex + 1}. ${manual.title}`, headerTop);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(91, 107, 123);
-      doc.text(`Categoria: ${pdfText(manual.category)}`, marginX, moduleY);
-      moduleY += 18;
-      moduleY = paragraph(manual.summary, moduleY, 9);
-
-      moduleY = sectionTitle("¿Para qué sirve?", moduleY + 4);
-      moduleY = paragraph(manual.purpose, moduleY, 9);
-
-      moduleY = sectionTitle("Antes de empezar", moduleY + 4);
-      moduleY = paragraph(manualListText(manual.prerequisites), moduleY, 9);
-
-      moduleY = sectionTitle("Ruta recomendada", moduleY + 4);
-      moduleY = table(
-        moduleY,
-        ["No.", "Paso", "Qué hacer", "Lo que vas a usar", "Verifica antes de avanzar"],
-        manual.flow.map((step, index) => [
-          index + 1,
-          step.title,
-          step.description,
-          manualListText(step.fields, "No aplica"),
-          manualListText(step.checks, "No aplica"),
-        ]),
-      );
-
-      moduleY = sectionTitle("Información que debes completar", moduleY + 4);
-      moduleY = table(
-        moduleY,
-        ["Dato", "Obligatorio", "Cómo completarlo"],
-        sortedFields(manual).map((field) => [
-          field.label,
-          field.required ? "Si" : "No",
-          field.note,
-        ]),
-      );
-
-      moduleY = sectionTitle("Recomendaciones y cuidados", moduleY + 4);
-      moduleY = table(
-        moduleY,
-        ["Tipo", "Detalle"],
-        [
-          ...manual.tips.map((item) => ["Recomendación", item]),
-          ...manual.warnings.map((item) => ["Cuidado", item]),
-        ],
-      );
-
-      moduleY = sectionTitle("Si el proceso no te deja continuar", moduleY + 4);
-      moduleY = table(
-        moduleY,
-        ["Inconveniente", "Qué ocurre", "Por qué ocurre", "Cómo resolverlo"],
-        manual.commonErrors.map((issue) => [
-          issue.title,
-          issue.whatHappens,
-          issue.why,
-          issue.howToResolve,
-        ]),
-      );
-
-      moduleY = sectionTitle("Verificación final", moduleY + 4);
-      table(
-        moduleY,
-        ["Estado", "Verificacion"],
-        manual.checklist.map((item, index) => [
-          isChecklistChecked(manual, index) ? "Completado" : "Pendiente",
-          item,
-        ]),
-      );
-    });
-
-    addManualPdfFooter(doc);
-    doc.save(`manual_usuario_${manualFileSlug(roleLabel)}_${new Date().toISOString().slice(0, 10)}.pdf`);
-    ui.success("Manual completo descargado en PDF.");
-  } catch (error: any) {
-    ui.error(error?.message || "No se pudo descargar el manual en PDF.");
-  } finally {
-    exportingPdf.value = false;
-  }
-}
-
-// Conserva los generadores anteriores como respaldo mientras las descargas activas
-// utilizan el formato unificado y validado en user-manual-documents.
-void downloadManualExcelLegacy;
-void downloadManualPdfLegacy;
-
 function manualDocumentContext() {
   return {
     manuals: accessibleManuals.value,
     userLabel: String(auth.user?.nameSurname || auth.user?.nameUser || "Usuario"),
-    roleLabel: String(auth.user?.role?.nombre || "Sin rol asignado"),
+    roleLabel: userManualProfileLabel(auth.user?.role?.nombre),
     generatedAt: new Date(),
     isChecklistChecked,
   };
@@ -1206,6 +828,36 @@ function setMotionRoot(el: unknown) {
 </script>
 
 <style scoped>
+.manual-team { margin: 20px 0; padding: 18px; border-radius: 16px; background: rgba(var(--v-theme-primary), .045); border: 1px solid rgba(var(--v-theme-primary), .12); }
+.manual-team__heading { display: flex; gap: 8px; align-items: center; font-weight: 700; }
+.manual-team__profiles, .manual-step-detail__actors { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.manual-team p { font-size: 12px; margin-top: 12px; color: rgba(var(--v-theme-on-surface), .7); }
+.manual-tabs { margin-bottom: 20px; border-bottom: 1px solid rgba(var(--v-theme-on-surface), .12); }
+.manual-journey { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.5fr); gap: 20px; align-items: start; }
+.manual-journey__steps { display: grid; gap: 8px; }
+.manual-journey__mobile-select { display: none; }
+.manual-journey__stop { display: grid; grid-template-columns: 30px minmax(0, 1fr) 18px; align-items: center; gap: 10px; width: 100%; min-height: 66px; padding: 12px; text-align: left; border: 1px solid rgba(var(--v-theme-on-surface), .1); border-radius: 12px; background: rgb(var(--v-theme-surface)); color: rgb(var(--v-theme-on-surface)); cursor: pointer; }
+.manual-journey__stop:hover { border-color: rgba(var(--v-theme-primary), .5); }
+.manual-journey__stop:focus-visible { outline: 3px solid rgba(var(--v-theme-primary), .6); outline-offset: 2px; }
+.manual-journey__stop--active { background: rgba(var(--v-theme-primary), .065); border-color: rgb(var(--v-theme-primary)); }
+.manual-journey__stop strong { display: block; font-size: 13px; line-height: 1.4; }
+.manual-journey__stop small { display: block; font-size: 11px; line-height: 1.5; color: rgba(var(--v-theme-on-surface), .7); margin-top: 4px; }
+.manual-journey__number { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: rgb(var(--v-theme-primary)); background: rgba(var(--v-theme-primary), .09); font-weight: 700; }
+.manual-journey__stop--active .manual-journey__number { background: rgb(var(--v-theme-primary)); color: rgb(var(--v-theme-on-primary)); }
+.manual-step-detail { min-width: 0; padding: 24px; border: 1px solid rgba(var(--v-theme-primary), .2); border-radius: 18px; background: rgb(var(--v-theme-surface)); box-shadow: 0 8px 28px rgba(var(--v-theme-primary), .05); }
+.manual-step-detail__progress { display: grid; gap: 8px; color: rgb(var(--v-theme-primary)); font-size: 12px; font-weight: 700; margin-bottom: 20px; }
+.manual-step-detail h3 { font-size: 21px; line-height: 1.3; }
+.manual-step-detail__module { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; margin: 16px 0; }
+.manual-step-detail__gate, .manual-step-detail__result { padding: 14px; border-radius: 12px; margin: 18px 0; }
+.manual-step-detail__gate { background: rgba(var(--v-theme-warning), .09); border: 1px solid rgba(var(--v-theme-warning), .2); }
+.manual-step-detail__result { background: rgba(var(--v-theme-success), .07); border: 1px solid rgba(var(--v-theme-success), .16); }
+.manual-step-detail strong { font-size: 13px; }
+.manual-step-detail p { margin: 8px 0 0; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.manual-step-detail__navigation { display: flex; justify-content: space-between; gap: 8px; margin-top: 24px; }
+.manual-step-detail .manual-step-detail__hint { font-size: 11px; color: rgba(var(--v-theme-on-surface), .6); }
+.manual-next-person { display: flex; gap: 12px; align-items: center; padding: 16px; margin-top: 16px; border-radius: 12px; border: 1px dashed rgba(var(--v-theme-primary), .25); font-size: 13px; line-height: 1.7; }
+@media (max-width: 1100px) { .manual-journey { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .manual-journey__steps { display: none; } .manual-journey__mobile-select { display: block; } .manual-step-detail { padding: 16px; } .manual-step-detail h3 { font-size: 19px; } .manual-team { padding: 14px; } }
 .manual-layout {
   --manual-primary: 37, 99, 235;
   --manual-info: 8, 145, 178;

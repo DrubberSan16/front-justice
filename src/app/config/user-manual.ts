@@ -5,6 +5,7 @@ import {
   type MaintenanceField,
   type MaintenanceModuleConfig,
 } from "@/app/config/maintenance-modules";
+import { applyManualWorkflow } from "@/app/config/user-manual-workflows";
 
 export type UserManualFieldGuide = {
   key: string;
@@ -36,6 +37,11 @@ export type UserManualStep = {
   description: string;
   fields: string[];
   checks: string[];
+  profiles?: string[];
+  moduleRoute?: string;
+  moduleLabel?: string;
+  requirement?: string;
+  outcome?: string;
 };
 
 export type UserManualIssue = {
@@ -77,9 +83,6 @@ const moduleCatalog = new Map<string, MaintenanceModuleConfig>(
 
 export const MANUAL_ROUTE_EXCLUSIONS = new Set([
   "login",
-  "usuarios",
-  "roles",
-  "menu",
   "manual-usuario",
   "public-work-order-attachment",
 ]);
@@ -1979,13 +1982,13 @@ export function getOperativeUserManualDefinition(
 
   const override = manualOverrides[normalizedRoute];
   if (override) {
-    return mergeManualOverride(override);
+    return applyManualWorkflow(mergeManualOverride(override));
   }
 
   const config = resolveModuleConfig(normalizedRoute);
   if (config) {
-    return buildGenericDefinition(normalizedRoute, config);
+    return applyManualWorkflow(buildGenericDefinition(normalizedRoute, config));
   }
 
-  return buildStandaloneDefinition(normalizedRoute, routeTitle);
+  return applyManualWorkflow(buildStandaloneDefinition(normalizedRoute, routeTitle));
 }

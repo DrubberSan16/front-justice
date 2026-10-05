@@ -8,7 +8,8 @@
     "build": "vue-tsc -b && vite build",
     "test:reports": "node scripts/test-work-order-report-labels.mjs",
     "test:material-costs": "node scripts/test-inventory-cost-reference.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:manual": "node scripts/test-user-manual-flows.mjs"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

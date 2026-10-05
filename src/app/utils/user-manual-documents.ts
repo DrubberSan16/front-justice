@@ -11,7 +11,13 @@ export type UserManualDocumentContext = {
 };
 
 function text(value: unknown) {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
+  return String(value ?? "").replace(/→/g, " > ").replace(/\s+/g, " ").trim();
+}
+
+export function userManualProfileLabel(value: unknown) {
+  const label = text(value);
+  const normalized = label.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/gi, "").toLowerCase();
+  return normalized.startsWith("superadmin") ? "Usuario" : label || "Usuario";
 }
 
 function slug(value: string) {
@@ -54,7 +60,8 @@ function moduleGroups(manuals: UserManualDefinition[]) {
 export function buildUserManualExcelReport(
   context: UserManualDocumentContext,
 ): ReportDefinition {
-  const { manuals, userLabel, roleLabel } = context;
+  const { manuals, userLabel } = context;
+  const roleLabel = userManualProfileLabel(context.roleLabel);
   const generatedAt = context.generatedAt ?? new Date();
   const completedManuals = manuals.filter((manual) =>
     manual.checklist.every((_, index) => context.isChecklistChecked?.(manual, index)),
@@ -74,7 +81,7 @@ export function buildUserManualExcelReport(
     sheets: [
       {
         name: "Ruta de trabajo",
-        note: "Sigue los pasos en el orden indicado. La columna Verifica antes de avanzar ayuda a prevenir errores.",
+        note: "Sigue el orden del flujo. Cada paso indica quién interviene, en qué módulo, su requisito de entrada y el resultado que permite continuar.",
         groupBy: ["modulo", "categoria"],
         rows: manuals.flatMap((manual) =>
           manual.flow.map((step, index) => ({
@@ -82,7 +89,11 @@ export function buildUserManualExcelReport(
             categoria: manual.category,
             paso: index + 1,
             accion: step.title,
+            perfiles_que_intervienen: step.profiles?.join(" / ") || "Usuario",
+            modulo_donde_se_realiza: step.moduleLabel || manual.title,
+            requisito_para_empezar: step.requirement || "Revisa los antecedentes",
             que_hacer: step.description,
+            resultado_para_continuar: step.outcome || "Paso verificado",
             elementos_a_usar: step.fields.join(" | ") || "No aplica",
             verifica_antes_de_avanzar: step.checks.join(" | ") || "Continúa con el siguiente paso",
           })),
@@ -266,7 +277,7 @@ export async function buildUserManualPdfBlob(context: UserManualDocumentContext)
       theme: "grid",
       tableWidth: contentWidth,
       margin: { left: marginX, right: marginX, top: headerTop, bottom: 58 },
-      rowPageBreak: "auto",
+      rowPageBreak: "avoid",
       styles: {
         font: "helvetica",
         fontSize: 7.6,
@@ -317,7 +328,7 @@ export async function buildUserManualPdfBlob(context: UserManualDocumentContext)
     startY: 230,
     body: [
       ["Usuario", text(context.userLabel)],
-      ["Perfil de trabajo", text(context.roleLabel)],
+      ["Perfil de trabajo", userManualProfileLabel(context.roleLabel)],
       ["Generado", `${generatedAtLabel(generatedAt)} - ${text(context.userLabel) || "Sistema"}`],
       ["Procesos incluidos", manuals.length],
       ["Contenido", "Se muestran únicamente los procesos disponibles para este usuario."],
@@ -374,40 +385,36 @@ export async function buildUserManualPdfBlob(context: UserManualDocumentContext)
     moduleY = sectionTitle("Antes de empezar", moduleY + 4);
     moduleY = paragraph(listText(manual.prerequisites), moduleY, 9);
 
-    moduleY = sectionTitle("Ruta recomendada", moduleY + 4);
+    moduleY = sectionTitle("Flujo de trabajo y perfiles", moduleY + 4);
     moduleY = table(
       moduleY,
-      ["No.", "Paso", "Qué hacer", "Lo que vas a usar", "Verifica antes de avanzar"],
+      ["Paso y perfil", "Módulo", "Qué hacer", "Requisito y resultado"],
       manual.flow.map((step, index) => [
-        index + 1,
-        step.title,
+        `${index + 1}. ${step.title}\n${step.profiles?.join(" / ") || "Usuario"}`,
+        step.moduleLabel || manual.title,
         step.description,
-        listText(step.fields),
-        listText(step.checks),
+        `Para empezar: ${step.requirement || "Revisa los antecedentes"}\nResultado: ${step.outcome || "Paso verificado"}${step.checks.length ? "\n" + listText(step.checks) : ""}`,
       ]),
     );
 
-    moduleY = sectionTitle("Estados y controles del proceso", moduleY + 4);
-    moduleY = table(
-      moduleY,
-      ["Estado o etapa", "Qué significa", "Qué debe hacer", "Cómo validar"],
-      manual.states.map((state) => [
-        state.name,
-        state.meaning,
-        state.userAction,
-        state.validation,
-      ]),
-    );
+    // Avoid repeating the full workflow when the controls describe those same steps.
+    if (!manual.states.every((state, index) => state.name === manual.flow[index]?.title)) {
+      moduleY = sectionTitle("Etapas y controles del flujo", moduleY + 4);
+      moduleY = table(
+        moduleY,
+        ["Estado o etapa", "Qué significa", "Qué debe hacer", "Cómo validar"],
+        manual.states.map((state) => [state.name, state.meaning, state.userAction, state.validation]),
+      );
+    }
 
     if (manual.handoffs.length) {
       moduleY = sectionTitle("Quién interviene después", moduleY + 4);
       moduleY = table(
         moduleY,
-        ["Momento", "Entrega", "Recibe", "Acción", "Listo para avanzar cuando"],
+        ["Momento", "Entrega y recibe", "Acción", "Listo para avanzar cuando"],
         manual.handoffs.map((handoff) => [
           handoff.moment,
-          handoff.delivers,
-          handoff.receives,
+          `Entrega: ${handoff.delivers}. Recibe: ${handoff.receives}.`,
           handoff.action,
           handoff.readyWhen,
         ]),
@@ -475,5 +482,5 @@ export async function buildUserManualPdfBlob(context: UserManualDocumentContext)
 }
 
 export function userManualFileName(roleLabel: string, generatedAt = new Date()) {
-  return `manual_usuario_${slug(roleLabel)}_${generatedAt.toISOString().slice(0, 10)}`;
+  return `manual_usuario_${slug(userManualProfileLabel(roleLabel))}_${generatedAt.toISOString().slice(0, 10)}`;
 }
