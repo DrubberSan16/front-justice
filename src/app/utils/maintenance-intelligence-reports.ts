@@ -15,6 +15,7 @@ import {
   roundForDisplay,
 } from "@/app/utils/number-format";
 import { useAuthStore } from "@/app/stores/auth.store";
+import { seriesColor } from "@/app/config/chart-theme";
 import { drawExcelHistoryTimeline, drawPdfHistoryTimeline } from "@/app/utils/work-order-history-timeline";
 
 type AnyRow = Record<string, any>;
@@ -24,12 +25,28 @@ export type ReportSummaryItem = {
   value: string | number;
 };
 
+/**
+ * Un tramo de las barras apiladas: una serie (por ejemplo una marca) con un
+ * valor por barra, en el mismo orden que `points`.
+ */
+export type ReportChartStack = {
+  name: string;
+  values: number[];
+  color?: string;
+};
+
 export type ReportChart = {
   title: string;
   subtitle?: string;
   type: "line" | "bar";
   unit?: string;
-  points: Array<{ label: string; value: number }>;
+  /** `caption` es una segunda linea bajo la etiqueta del eje (la marca del equipo). */
+  points: Array<{ label: string; value: number; caption?: string }>;
+  /**
+   * Parte cada barra en tramos. El alto total sigue siendo `points[i].value`;
+   * los tramos dicen de que se compone (cuantas OT de cada marca).
+   */
+  stacks?: ReportChartStack[];
 };
 
 export type ReportColumn = {
@@ -71,9 +88,18 @@ export type ReportSheetSection = {
   infoColumns?: 1 | 2;
 };
 
+/**
+ * Papel de una fila en una tabla jerarquica: `group` es el encabezado (un
+ * estado), `detail` su desglose sangrado (las marcas), `total` la suma y
+ * `note` una aclaracion que no suma.
+ */
+export type ReportRowKind = "group" | "detail" | "total" | "note";
+
 export type ReportSheet = {
   name: string;
   rows: AnyRow[];
+  /** Papel de cada fila, en el mismo orden que `rows`. Solo lo dibuja el PDF. */
+  rowKinds?: Array<ReportRowKind | null | undefined>;
   columns?: ReportColumn[];
   fitColumnsToPage?: boolean;
   media?: ReportSheetMedia;
@@ -198,6 +224,51 @@ const REPORT_LINK_COLOR: [number, number, number] = [21, 101, 192];
 function applyReportLinkStyles(cell: any) {
   if (!cell?.styles) return;
   cell.styles.textColor = REPORT_LINK_COLOR;
+}
+
+/** Sangria de la primera celda de una fila de detalle, en puntos. */
+const REPORT_DETAIL_INDENT = 14;
+
+/**
+ * Estilo de una fila segun su papel en la tabla. El desglose va sangrado y en
+ * tinta suave bajo su encabezado en negrita, para que se lea "de estas 20
+ * cerradas, 12 fueron MTU" sin tener que buscar la fila padre.
+ */
+function applyReportRowKindStyles(
+  cell: any,
+  columnIndex: number,
+  kind: ReportRowKind | null | undefined,
+  basePadding: number,
+) {
+  if (!kind || !cell?.styles) return;
+  if (kind === "group") {
+    cell.styles.fontStyle = "bold";
+    cell.styles.fillColor = [217, 234, 247];
+    cell.styles.textColor = [31, 78, 120];
+    return;
+  }
+  if (kind === "detail") {
+    cell.styles.fillColor = [255, 255, 255];
+    cell.styles.textColor = [91, 107, 123];
+    if (columnIndex === 0) {
+      cell.styles.cellPadding = {
+        top: basePadding,
+        right: basePadding,
+        bottom: basePadding,
+        left: basePadding + REPORT_DETAIL_INDENT,
+      };
+    }
+    return;
+  }
+  if (kind === "total") {
+    cell.styles.fontStyle = "bold";
+    cell.styles.fillColor = [252, 228, 214];
+    cell.styles.textColor = [31, 41, 55];
+    return;
+  }
+  cell.styles.fontStyle = "italic";
+  cell.styles.fillColor = [255, 255, 255];
+  cell.styles.textColor = [91, 107, 123];
 }
 
 /**
@@ -1477,6 +1548,14 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
         ),
       ),
       didParseCell: (hookData: any) => {
+        if (hookData.section === "body" && rows.length && sheet.rowKinds) {
+          applyReportRowKindStyles(
+            hookData.cell,
+            hookData.column.index,
+            sheet.rowKinds[hookData.row.index],
+            tableCellPadding,
+          );
+        }
         if (!sheet.media || hookData.section !== "body") return;
         const row = safeRows[hookData.row.index] ?? {};
         const linkUrl = repairText(
@@ -1715,6 +1794,36 @@ export function buildLubricantReport(analyses: AnyRow[]) {
   } satisfies ReportDefinition;
 }
 
+/** Cifra de un rotulo del grafico: sin decimales si es entera, dos si no. */
+function formatChartValue(value: number) {
+  return value.toLocaleString("es-EC", { maximumFractionDigits: 2 });
+}
+
+/**
+ * Techo "redondo" del eje. Las barras
+ * apiladas llevan su total encima y necesitan ese aire sobre la mas alta.
+ */
+function niceChartMaximum(value: number) {
+  if (!(value > 0)) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  for (const step of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
+    if (step * magnitude >= value) return step * magnitude;
+  }
+  return 10 * magnitude;
+}
+
+/** Tinta legible sobre el color de un tramo: oscura sobre los tonos claros. */
+function chartInkOn(color: string) {
+  const match = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (!match) return "#ffffff";
+  const channel = (offset: number) => {
+    const value = parseInt(match[1]!.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+  return luminance > 0.3 ? "#1f2937" : "#ffffff";
+}
+
 function buildReportChartDataUrl(chart: ReportChart): string | null {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas");
@@ -1723,12 +1832,33 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
   const context = canvas.getContext("2d");
   if (!context) return null;
 
-  const points = chart.points
-    .map((point) => ({
+  // Los tramos se alinean por posicion con los puntos, asi que aqui no se
+  // descarta ninguno: un valor que no es numero cuenta como cero.
+  const points = chart.points.map((point) => {
+    const value = Number(point.value || 0);
+    return {
       label: repairText(String(point.label || "")),
-      value: Number(point.value || 0),
-    }))
-    .filter((point) => Number.isFinite(point.value));
+      caption: repairText(String(point.caption || "")).trim(),
+      value: Number.isFinite(value) ? value : 0,
+    };
+  });
+  // El color se asigna antes de filtrar: una marca conserva su tono aunque la
+  // de al lado no tenga ordenes en este periodo.
+  const stacks =
+    chart.type === "bar"
+      ? (chart.stacks ?? [])
+          .map((stack, index) => ({
+            name: repairText(String(stack.name || "")),
+            color: stack.color || seriesColor(index, false),
+            values: points.map((_, pointIndex) => {
+              const value = Number(stack.values[pointIndex] || 0);
+              return Number.isFinite(value) && value > 0 ? value : 0;
+            }),
+          }))
+          .filter((stack) => stack.values.some((value) => value > 0))
+      : [];
+  const stacked = stacks.length > 0;
+  const hasCaptions = points.some((point) => point.caption);
 
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, canvas.width, canvas.height);
@@ -1751,7 +1881,32 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
   }
 
   const plot = { x: 76, y: 102, width: 842, height: 245 };
-  const maximum = Math.max(...points.map((point) => point.value), 1);
+  const tallest = Math.max(...points.map((point) => point.value), 0);
+  const maximum = stacked ? niceChartMaximum(tallest * 1.12) : Math.max(tallest, 1);
+
+  // La leyenda se ajusta por filas para conservar todas las marcas.
+  if (stacked) {
+    let legendY = chart.subtitle ? 92 : 80;
+    let legendX = 42;
+    context.font = "14px Arial";
+    context.textAlign = "left";
+    for (const stack of stacks) {
+      const width = 18 + context.measureText(stack.name).width + 22;
+      if (legendX > 42 && legendX + width > plot.x + plot.width - 120) {
+        legendX = 42;
+        legendY += 22;
+      }
+      context.fillStyle = stack.color;
+      context.fillRect(legendX, legendY - 11, 12, 12);
+      context.fillStyle = "#1f2937";
+      context.fillText(stack.name, legendX + 18, legendY);
+      legendX += width;
+    }
+    const plotStart = Math.max(plot.y, legendY + 18);
+    plot.height -= plotStart - plot.y;
+    plot.y = plotStart;
+  }
+
   context.strokeStyle = "#d7e2ea";
   context.lineWidth = 1;
   context.font = "12px Arial";
@@ -1768,7 +1923,42 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
   }
 
   const spacing = plot.width / Math.max(points.length, 1);
-  if (chart.type === "bar") {
+  if (chart.type === "bar" && stacked) {
+    const barWidth = Math.max(8, Math.min(64, spacing * 0.62));
+    const base = plot.y + plot.height;
+    points.forEach((point, index) => {
+      const x = plot.x + spacing * index + (spacing - barWidth) / 2;
+      let top = base;
+      for (const stack of stacks) {
+        const value = stack.values[index] ?? 0;
+        if (!(value > 0)) continue;
+        const height = (value / maximum) * plot.height;
+        top -= height;
+        context.fillStyle = stack.color;
+        context.fillRect(x, top, barWidth, height);
+        // Separador blanco entre tramos para que dos tonos vecinos no se fundan.
+        context.fillStyle = "#ffffff";
+        context.fillRect(x, top, barWidth, 1);
+        if (height >= 18 && barWidth >= 26) {
+          context.fillStyle = chartInkOn(stack.color);
+          context.font = "bold 12px Arial";
+          context.textAlign = "center";
+          if (height >= 36) {
+            context.font = "bold 10px Arial";
+            context.fillText(stack.name, x + barWidth / 2, top + height / 2 - 5, barWidth - 4);
+            context.font = "bold 12px Arial";
+            context.fillText(formatChartValue(value), x + barWidth / 2, top + height / 2 + 10);
+          } else {
+            context.fillText(formatChartValue(value), x + barWidth / 2, top + height / 2 + 4);
+          }
+        }
+      }
+      context.fillStyle = "#1f2937";
+      context.font = "bold 13px Arial";
+      context.textAlign = "center";
+      context.fillText(formatChartValue(point.value), x + barWidth / 2, top - 7);
+    });
+  } else if (chart.type === "bar") {
     const barWidth = Math.max(8, Math.min(54, spacing * 0.62));
     points.forEach((point, index) => {
       const height = (point.value / maximum) * plot.height;
@@ -1802,19 +1992,33 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
   }
 
   const labelStride = Math.max(1, Math.ceil(points.length / 8));
-  context.fillStyle = "#5b6b7b";
-  context.font = "12px Arial";
   context.textAlign = "center";
   points.forEach((point, index) => {
     if (index % labelStride !== 0 && index !== points.length - 1) return;
     const x = plot.x + spacing * index + spacing / 2;
     const label = point.label.length > 18 ? `${point.label.slice(0, 16)}…` : point.label;
+    context.fillStyle = "#5b6b7b";
+    context.font = "12px Arial";
     context.fillText(label, x, plot.y + plot.height + 24);
+    if (point.caption) {
+      const caption = point.caption.length > 20 ? `${point.caption.slice(0, 18)}…` : point.caption;
+      context.fillStyle = "#1f4e78";
+      context.font = "bold 12px Arial";
+      context.fillText(caption, x, plot.y + plot.height + 41);
+    }
   });
   context.textAlign = "right";
   context.font = "bold 13px Arial";
   context.fillStyle = "#1f4e78";
-  if (chart.unit) context.fillText(repairText(chart.unit), plot.x + plot.width, 392);
+  // Con leyenda o segunda linea de etiquetas, la unidad sube a la esquina del
+  // grafico: abajo chocaria con la marca del ultimo equipo.
+  if (chart.unit) {
+    if (stacked || hasCaptions) {
+      context.fillText(repairText(chart.unit), plot.x + plot.width, chart.subtitle ? 92 : 80);
+    } else {
+      context.fillText(repairText(chart.unit), plot.x + plot.width, 392);
+    }
+  }
   return canvas.toDataURL("image/png");
 }
 

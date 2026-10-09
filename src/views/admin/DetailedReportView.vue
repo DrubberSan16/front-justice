@@ -854,8 +854,8 @@
           <div>
             <h2 id="maintenance-cost-title">Costo de mantenimiento</h2>
             <p>
-              Valor de los materiales usados en órdenes de mantenimiento,
-              separado por tipo de equipo.
+              Materiales y mano de obra de las órdenes de mantenimiento,
+              separados por tipo de equipo.
             </p>
           </div>
           <v-btn
@@ -985,6 +985,12 @@
                     :key="`total-${header.key}`"
                   >
                     <template v-if="index === 0">Total del tab</template>
+                    <template v-else-if="header.key === 'costo_materiales'">{{
+                      formatCurrency(tab.totalMateriales)
+                    }}</template>
+                    <template v-else-if="header.key === 'costo_mano_obra'">{{
+                      formatCurrency(tab.totalManoObra)
+                    }}</template>
                     <template v-else-if="header.key === 'total_costo'">{{
                       formatCurrency(tab.totalCosto)
                     }}</template>
@@ -1674,7 +1680,11 @@
 
 <script setup lang="ts">
 import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
-import { buildReportPdfBlob } from "@/app/utils/maintenance-intelligence-reports";
+import {
+  buildReportPdfBlob,
+  type ReportChart,
+  type ReportRowKind,
+} from "@/app/utils/maintenance-intelligence-reports";
 import { buildPrimingCentralOptions, filterPrimingRows } from "@/app/utils/priming-central-filter";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
@@ -2137,6 +2147,7 @@ function orderStatus(order: AnyRow): StatusKey {
     order.status_workflow,
     order.status,
     order.approval_action,
+    order.valor_json?.approval_action,
   ].map(normalizeStatus);
   const has = (tokens: string[]) => values.some((value) => tokens.includes(value));
   if (
@@ -2451,6 +2462,29 @@ function equipmentLabel(item: AnyRow) {
  */
 function equipmentChartLabel(item: AnyRow) {
   return equipmentName(item) || equipmentLabel(item);
+}
+
+/**
+ * Marca del equipo (MTU, CUMMINS...). Las filas del reporte de sistema no la
+ * traen suelta: sale del catalogo por el id del equipo -- el del tablero o el
+ * que viaja con el propio reporte -- y, si falta, del prefijo de la etiqueta
+ * `marca | nombre`.
+ */
+function equipmentBrand(item: AnyRow, extraCatalog: AnyRow[] = []) {
+  const id = String(item?.equipment_id || item?.equipo_id || "").trim();
+  const fromReport = id
+    ? extraCatalog.find((row) => String(row?.id || "").trim() === id)
+    : null;
+  const catalogItem = findEquipmentCatalogItem(item);
+  const brand = resolveEquipmentBrand({
+    ...item,
+    ...(catalogItem ?? {}),
+    ...(fromReport ?? {}),
+  });
+  if (brand) return brand.trim().toUpperCase();
+  const label = String(item?.equipment_label || item?.equipment_name || item?.equipo_nombre || "");
+  const prefix = label.includes(" | ") ? (label.split(" | ")[0] ?? "").trim() : "";
+  return prefix.toUpperCase() || "Sin marca";
 }
 
 function materialLabel(item: AnyRow) {
@@ -3065,6 +3099,8 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
   total_materiales: "Total ítems",
   materiales: "Materiales",
   total_cantidad: "Cantidad",
+  costo_materiales: "Costo materiales",
+  costo_mano_obra: "Mano de obra",
   total_costo: "Costo total",
   total_stock: "Total materiales",
   stock_actual: "Total materiales",
@@ -3093,8 +3129,17 @@ const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "responsables",
     ],
   },
+  // El costo de una OT es materiales mas mano de obra, igual que en su informe
+  // individual y en el consolidado de ordenes; las dos partes van a la vista.
   costo_mantenimiento: {
-    OT: [...SYSTEM_OT_COLUMNS, "total_costo", "total_cantidad", "materiales"],
+    OT: [
+      ...SYSTEM_OT_COLUMNS,
+      "costo_materiales",
+      "costo_mano_obra",
+      "total_costo",
+      "total_cantidad",
+      "total_materiales",
+    ],
   },
   responsables_ot: {
     OT: [
@@ -3418,21 +3463,78 @@ const MAINTENANCE_COST_OTHER_TAB = "__OTROS_EQUIPOS__";
 
 const maintenanceCostPayload = ref<AnyRow | null>(null);
 const orderCostsPayload = ref<AnyRow | null>(null);
-const managerOrderCosts = computed(() => {
+
+/**
+ * Mano de obra de cada OT: horas de cada responsable por su costo por hora,
+ * mas el personal contratado (dias por valor del dia) de las OT Proyecto.
+ *
+ * `costo_mantenimiento` del servidor solo valoriza materiales, y el
+ * consolidado de ordenes sumaba ademas esta mano de obra: el mismo periodo
+ * daba dos costos totales distintos. Ahora ambos consolidados la suman.
+ */
+function laborCostByOrder(payload: AnyRow | null | undefined) {
   const result = new Map<string, number>();
-  const reports = orderCostsPayload.value?.reports || {};
-  for (const row of reports.costo_mantenimiento?.rows || []) {
-    const id = String(row.work_order_id || "");
-    result.set(id, (result.get(id) || 0) + Number(row.total_costo || 0));
-  }
-  for (const row of reports.horas_trabajadas?.rows || []) {
-    const id = String(row.work_order_id || "");
-    const labor = (row.responsables_meta || []).reduce((sum: number, person: AnyRow) => sum + Number(person.costo_total ?? Number(person.horas || 0) * Number(person.costo_hora || 0)), 0);
-    result.set(id, (result.get(id) || 0) + labor + Number(row.costo_personal_contratado || 0));
+  const rows = payload?.reports?.horas_trabajadas?.rows;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const id = String(row?.work_order_id || "").trim();
+    if (!id) continue;
+    const people: AnyRow[] = Array.isArray(row?.responsables_meta)
+      ? row.responsables_meta
+      : [];
+    const labor = people.reduce(
+      (sum, person) =>
+        sum +
+        Number(
+          person?.costo_total ??
+            Number(person?.horas || 0) * Number(person?.costo_hora || 0),
+        ),
+      0,
+    );
+    result.set(
+      id,
+      (result.get(id) || 0) + labor + Number(row?.costo_personal_contratado || 0),
+    );
   }
   return result;
-});
-const managerTotalOrderCost = computed(() => orders.value.filter(row => orderStatus(row) !== "annulled").reduce((sum, row) => sum + (managerOrderCosts.value.get(String(row.id)) || 0), 0));
+}
+
+/**
+ * Materiales de cada OT segun `inventario_consumido`. Solo hace falta para las
+ * OT Proyecto: `costo_mantenimiento` no las incluye porque no son
+ * mantenimiento, pero sus materiales tambien son costo.
+ */
+function consumedMaterialCostByOrder(payload: AnyRow | null | undefined) {
+  const result = new Map<string, number>();
+  const rows = payload?.reports?.inventario_consumido?.rows;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const id = String(row?.work_order_id || "").trim();
+    if (!id) continue;
+    result.set(id, (result.get(id) || 0) + Number(row?.total_costo || 0));
+  }
+  return result;
+}
+
+/**
+ * Filas de `costo_mantenimiento` con la mano de obra al lado: el costo de los
+ * materiales pasa a `costo_materiales` y `total_costo` queda como la suma de
+ * las dos partes.
+ */
+function enrichMaintenanceCostRows(
+  rows: AnyRow[],
+  labor: Map<string, number>,
+): AnyRow[] {
+  return rows.map((row) => {
+    const materiales = Number(row?.total_costo || 0);
+    const manoObra = labor.get(String(row?.work_order_id || "").trim()) || 0;
+    return {
+      ...row,
+      costo_materiales: materiales,
+      costo_mano_obra: manoObra,
+      total_costo: materiales + manoObra,
+    };
+  });
+}
+
 const maintenanceCostLoading = ref(false);
 const maintenanceCostError = ref<string | null>(null);
 const maintenanceCostStart = ref(startDate.value);
@@ -3472,7 +3574,9 @@ const maintenanceCostWarehouseOptions = computed<AnyRow[]>(() => {
 
 const maintenanceCostRawRows = computed<AnyRow[]>(() => {
   const rows = maintenanceCostPayload.value?.reports?.costo_mantenimiento?.rows;
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(rows)
+    ? enrichMaintenanceCostRows(rows, laborCostByOrder(maintenanceCostPayload.value))
+    : [];
 });
 
 const maintenanceCostHeaders = computed(() => {
@@ -3481,7 +3585,7 @@ const maintenanceCostHeaders = computed(() => {
     SYSTEM_COLUMN_OVERRIDES.costo_mantenimiento?.OT,
   );
   return keys.map((key) => ({
-    title: SYSTEM_FIELD_LABELS[key] ?? key,
+    title: key === "total_materiales" ? "Ítems" : SYSTEM_FIELD_LABELS[key] ?? key,
     key,
   }));
 });
@@ -3524,6 +3628,9 @@ function buildMaintenanceCostTab(
     subtitle,
     icon,
     rows: rows.map(buildMaintenanceCostRow),
+    rawRows: rows,
+    totalMateriales: sumMaintenanceCost(rows, "costo_materiales"),
+    totalManoObra: sumMaintenanceCost(rows, "costo_mano_obra"),
     totalCosto: sumMaintenanceCost(rows, "total_costo"),
     totalCantidad: sumMaintenanceCost(rows, "total_cantidad"),
   };
@@ -4358,6 +4465,346 @@ function reportChartPoints(points: Array<{ label: string; value: number }>) {
   }));
 }
 
+/* --- Consolidados por marca ----------------------------------------------- */
+
+type ConsolidatedOrder = {
+  id: string;
+  status: StatusKey;
+  brand: string;
+  materials: number;
+  labor: number;
+  total: number;
+};
+
+type OrderTotals = {
+  count: number;
+  materials: number;
+  labor: number;
+  total: number;
+};
+
+/** Estados que suman al costo de mantenimiento; las anuladas van aparte. */
+const CONSOLIDATED_STATUS_KEYS: StatusKey[] = [
+  "planned",
+  "open",
+  "in_progress",
+  "review",
+  "closed",
+];
+
+const PROJECT_STACK_LABEL = "OT Proyecto";
+
+function isProjectOrder(order: AnyRow) {
+  return (
+    order?.es_proyecto === true ||
+    String(order?.type || "").trim().toUpperCase() === "PROYECTO" ||
+    String(order?.maintenance_kind || "").trim().toUpperCase() === "PROYECTO"
+  );
+}
+
+function statusShortLabel(status: StatusKey) {
+  const card = statusCards.value.find((item) => item.key === status);
+  return String(card?.label || status).replace(/^Órdenes\s+/i, "");
+}
+
+function capitalizeLabel(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+function sumConsolidated(list: ConsolidatedOrder[]): OrderTotals {
+  return list.reduce<OrderTotals>(
+    (acc, order) => ({
+      count: acc.count + 1,
+      materials: acc.materials + order.materials,
+      labor: acc.labor + order.labor,
+      total: acc.total + order.total,
+    }),
+    { count: 0, materials: 0, labor: 0, total: 0 },
+  );
+}
+
+/** Desglose por marca, de la que mas costo a la que menos. */
+function brandBreakdown(list: ConsolidatedOrder[]) {
+  const byBrand = new Map<string, ConsolidatedOrder[]>();
+  for (const order of list) {
+    byBrand.set(order.brand, [...(byBrand.get(order.brand) ?? []), order]);
+  }
+  return [...byBrand.entries()]
+    .map(([brand, items]) => ({ brand, ...sumConsolidated(items) }))
+    .sort(
+      (left, right) =>
+        right.total - left.total ||
+        right.count - left.count ||
+        left.brand.localeCompare(right.brand, "es"),
+    );
+}
+
+/**
+ * El consolidado de OT es el costo de mantenimiento partido por estado.
+ *
+ * Antes se armaba desde el listado de OT: contaba tambien las OT Proyecto (que
+ * el costo de mantenimiento no incluye) y sumaba mano de obra que el otro no
+ * sumaba, asi que el mismo periodo daba dos totales. Ahora las ordenes de
+ * mantenimiento salen de las MISMAS filas de `costo_mantenimiento`, con la
+ * misma mano de obra, y lo que no es mantenimiento (OT Proyecto) o no suma
+ * (anuladas) se muestra aparte.
+ */
+function buildOrdersConsolidation(payload: AnyRow | null) {
+  const labor = laborCostByOrder(payload);
+  const consumed = consumedMaterialCostByOrder(payload);
+  const reportCatalog: AnyRow[] = Array.isArray(payload?.catalogs?.equipos)
+    ? payload.catalogs.equipos
+    : [];
+  const listed = new Map(
+    orders.value.map((row) => [String(row?.id || "").trim(), row]),
+  );
+  const costRows = payload?.reports?.costo_mantenimiento?.rows;
+  const maintenance: ConsolidatedOrder[] = enrichMaintenanceCostRows(
+    Array.isArray(costRows) ? costRows : [],
+    labor,
+  ).map((row) => {
+    const id = String(row.work_order_id || "").trim();
+    const listRow = listed.get(id);
+    return {
+      id,
+      status: orderStatus(listRow ?? { status_workflow: row.work_order_status }),
+      brand: equipmentBrand(listRow ? { ...row, ...listRow } : row, reportCatalog),
+      materials: Number(row.costo_materiales || 0),
+      labor: Number(row.costo_mano_obra || 0),
+      total: Number(row.total_costo || 0),
+    };
+  });
+
+  const maintenanceIds = new Set(maintenance.map((order) => order.id));
+  const projects: ConsolidatedOrder[] = [];
+  const others: ConsolidatedOrder[] = [];
+  const annulled: ConsolidatedOrder[] = [];
+  for (const row of orders.value) {
+    const id = String(row?.id || "").trim();
+    if (!id || maintenanceIds.has(id)) continue;
+    const status = orderStatus(row);
+    const brand = equipmentBrand(row, reportCatalog);
+    if (status === "annulled") {
+      annulled.push({ id, status, brand, materials: 0, labor: 0, total: 0 });
+      continue;
+    }
+    const materials = consumed.get(id) || 0;
+    const manoObra = labor.get(id) || 0;
+    const entry = {
+      id,
+      status,
+      brand,
+      materials,
+      labor: manoObra,
+      total: materials + manoObra,
+    };
+    if (isProjectOrder(row)) projects.push(entry);
+    else others.push(entry);
+  }
+  return { maintenance, projects, others, annulled };
+}
+
+type OrdersConsolidation = ReturnType<typeof buildOrdersConsolidation>;
+
+/**
+ * Tabla del consolidado: cada estado con sus marcas sangradas debajo, el total
+ * de mantenimiento y, aparte, lo que no suma a ese total.
+ */
+function ordersConsolidationTable(data: OrdersConsolidation) {
+  const rows: AnyRow[] = [];
+  const kinds: ReportRowKind[] = [];
+  const push = (kind: ReportRowKind, label: string, totals: OrderTotals, withCost = true) => {
+    rows.push({
+      estado: label,
+      ordenes: totals.count,
+      materiales: withCost ? totals.materials : "",
+      mano_obra: withCost ? totals.labor : "",
+      costo: withCost ? totals.total : "",
+    });
+    kinds.push(kind);
+  };
+
+  for (const status of CONSOLIDATED_STATUS_KEYS) {
+    const inStatus = data.maintenance.filter((order) => order.status === status);
+    const card = statusCards.value.find((item) => item.key === status);
+    push("group", String(card?.label || status), sumConsolidated(inStatus));
+    for (const brand of brandBreakdown(inStatus)) push("detail", brand.brand, brand);
+  }
+  push("total", "Total mantenimiento", sumConsolidated(data.maintenance));
+
+  if (data.projects.length) {
+    push(
+      "group",
+      `${PROJECT_STACK_LABEL} · fuera del costo de mantenimiento`,
+      sumConsolidated(data.projects),
+    );
+    for (const status of CONSOLIDATED_STATUS_KEYS) {
+      const inStatus = data.projects.filter((order) => order.status === status);
+      if (inStatus.length) {
+        push("detail", capitalizeLabel(statusShortLabel(status)), sumConsolidated(inStatus));
+      }
+    }
+  }
+  if (data.others.length) {
+    push("group", "Otras OT · fuera del costo de mantenimiento", sumConsolidated(data.others));
+    for (const brand of brandBreakdown(data.others)) push("detail", brand.brand, brand);
+  }
+  if (data.annulled.length) {
+    push("group", "Órdenes anuladas · no suman", sumConsolidated(data.annulled), false);
+    for (const brand of brandBreakdown(data.annulled)) {
+      push("detail", brand.brand, brand, false);
+    }
+  }
+  return { rows, kinds };
+}
+
+/**
+ * Barras de ordenes por estado partidas por marca. Las OT Proyecto llevan su
+ * propio tramo: su "marca" es la del modulo de proyectos, que no es un equipo.
+ */
+function ordersConsolidationChart(data: OrdersConsolidation): ReportChart {
+  const statuses: StatusKey[] = [...CONSOLIDATED_STATUS_KEYS, "annulled"];
+  const branded = [...data.maintenance, ...data.others, ...data.annulled];
+  const brandCounts = new Map<string, number>();
+  for (const order of branded) {
+    brandCounts.set(order.brand, (brandCounts.get(order.brand) || 0) + 1);
+  }
+  const brands = [...brandCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "es"))
+    .map(([brand]) => brand);
+  const countIn = (list: ConsolidatedOrder[], status: StatusKey, brand?: string) =>
+    list.filter(
+      (order) => order.status === status && (brand === undefined || order.brand === brand),
+    ).length;
+
+  const stacks = brands.map((brand) => ({
+    name: brand,
+    values: statuses.map((status) => countIn(branded, status, brand)),
+  }));
+  if (data.projects.length) {
+    stacks.push({
+      name: PROJECT_STACK_LABEL,
+      values: statuses.map((status) => countIn(data.projects, status)),
+    });
+  }
+  return {
+    title: "Órdenes por estado y marca",
+    type: "bar",
+    unit: "órdenes",
+    points: statuses.map((status) => ({
+      label: capitalizeLabel(statusShortLabel(status)),
+      value: countIn(branded, status) + countIn(data.projects, status),
+    })),
+    stacks,
+  };
+}
+
+/**
+ * Ordenes de cebado por nivel, partidas por la marca del equipo. Cada fila
+ * del control es un equipo con sus cebados criticos, en seguimiento y el
+ * resto normales.
+ */
+function primingLevelChart(): ReportChart {
+  const levels = ["good", "warning", "critical"] as const;
+  const byBrand = new Map<string, Record<(typeof levels)[number], number>>();
+  for (const row of primingRows.value) {
+    const brand = equipmentBrand(row);
+    const critical = Number(row?.ots_criticas || 0);
+    const warning = Number(row?.ots_seguimiento || 0);
+    const good = Math.max(0, Number(row?.ots_cebado || 0) - critical - warning);
+    const current = byBrand.get(brand) ?? { good: 0, warning: 0, critical: 0 };
+    current.good += good;
+    current.warning += warning;
+    current.critical += critical;
+    byBrand.set(brand, current);
+  }
+  const brands = [...byBrand.entries()].sort(
+    (left, right) =>
+      levels.reduce((sum, level) => sum + right[1][level], 0) -
+        levels.reduce((sum, level) => sum + left[1][level], 0) ||
+      left[0].localeCompare(right[0], "es"),
+  );
+  return {
+    title: "Órdenes por nivel de consumo y marca",
+    type: "bar",
+    unit: "OT",
+    points: reportChartPoints(primingLevelPoints.value),
+    stacks: brands.map(([brand, counts]) => ({
+      name: brand,
+      values: levels.map((level) => counts[level]),
+    })),
+  };
+}
+
+/**
+ * Costo por marca de las unidades de generacion. El grafico decia una sola
+ * barra, "Unidades de generacion", que no informa nada cuando casi todo el
+ * mantenimiento es de UG; partido por marca se ve cuanto se lleva cada
+ * fabricante. El resto de equipos, si lo hay, queda en su propia barra.
+ */
+function maintenanceCostBrandPoints() {
+  const generation = maintenanceCostTabs.value.find(
+    (tab) => tab.key === MAINTENANCE_COST_GENERATION_TAB,
+  );
+  const other = maintenanceCostTabs.value.find(
+    (tab) => tab.key === MAINTENANCE_COST_OTHER_TAB,
+  );
+  const reportCatalog: AnyRow[] = Array.isArray(
+    maintenanceCostPayload.value?.catalogs?.equipos,
+  )
+    ? maintenanceCostPayload.value.catalogs.equipos
+    : [];
+  const byBrand = new Map<string, number>();
+  for (const row of generation?.rawRows ?? []) {
+    const brand = equipmentBrand(row, reportCatalog);
+    byBrand.set(brand, (byBrand.get(brand) || 0) + Number(row?.total_costo || 0));
+  }
+  const points = [...byBrand.entries()]
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1])
+    .map(([brand, value]) => ({ label: brand, value }));
+  if ((other?.totalCosto ?? 0) > 0) {
+    points.push({ label: "Otros equipos", value: other?.totalCosto ?? 0 });
+  }
+  return points;
+}
+
+/**
+ * Columnas del PDF del costo de mantenimiento, con ancho declarado para que
+ * conserven su legibilidad en un A4. La lista de materiales se reemplaza por cuantos son
+ * ("Ítems"): impresa, una fila con trece materiales ocupaba media pagina.
+ */
+const MAINTENANCE_COST_PDF_COLUMNS: SectionReportColumn[] = [
+  { key: "work_order_code", title: "OT", width: 10 },
+  { key: "work_order_status", title: "Estado", width: 10 },
+  { key: "maintenance_kind_label", title: "Tipo", width: 10 },
+  { key: "fecha_referencia", title: "Fecha", width: 10 },
+  { key: "equipment_name", title: "Equipo", width: 26 },
+  { key: "plan_name", title: "Plan", width: 17 },
+  { key: "horometro_actual_ot", title: "Horómetro", format: "horometer", width: 10 },
+  { key: "horas_a_realizar_ot", title: "Horas", format: "hours", width: 10 },
+  { key: "total_costo", title: "Costo total", format: "currency", width: 11 },
+  { key: "total_cantidad", title: "Cantidad", format: "number", width: 10 },
+  { key: "items", title: "Ítems", width: 10 },
+];
+
+function maintenanceCostPdfRow(row: AnyRow) {
+  const horometro = Number(row?.horometro_actual_ot);
+  return {
+    work_order_code: row?.work_order_code || "",
+    work_order_status: formatSystemStatus(row?.work_order_status),
+    maintenance_kind_label: row?.maintenance_kind_label || "",
+    fecha_referencia: formatAppDateOnly(row?.fecha_referencia, ""),
+    equipment_name: row?.equipment_name || row?.equipment_label || "",
+    plan_name: row?.plan_name || "",
+    horometro_actual_ot: Number.isFinite(horometro) && horometro > 0 ? horometro : "",
+    horas_a_realizar_ot: Number(row?.horas_a_realizar_ot || 0),
+    total_costo: Number(row?.total_costo || 0),
+    total_cantidad: Number(row?.total_cantidad || 0),
+    items: Number(row?.total_materiales || 0),
+  };
+}
+
 /**
  * Previsualiza el consolidado de la tarjeta usando exactamente los datos ya
  * filtrados en pantalla. El PDF incluye cifra, gráfico y tabla; no dispara una
@@ -4371,36 +4818,50 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
   };
 
   if (section === "orders") {
-    if (canViewCosts.value) {
-      const { data } = await api.get("/kpi_maintenance/inteligencia/reportes-sistema", {
-        params: { from: startDate.value, to: endDate.value, group_by: "OT" },
-      });
-      orderCostsPayload.value = unwrap(data);
-    }
+    // Siempre con el reporte de sistema, tambien sin permiso de costos: de ahi
+    // sale que OT son de mantenimiento, para que el conteo cuadre con el
+    // consolidado de costo de mantenimiento. Los importes se ocultan igual.
+    const { data } = await api.get("/kpi_maintenance/inteligencia/reportes-sistema", {
+      params: { from: startDate.value, to: endDate.value, group_by: "OT" },
+    });
+    orderCostsPayload.value = unwrap(data);
+    const consolidation = buildOrdersConsolidation(orderCostsPayload.value);
+    const table = ordersConsolidationTable(consolidation);
+    const maintenanceTotals = sumConsolidated(consolidation.maintenance);
     await sectionPreview.open(
       "pdf",
       buildSectionReport({
         ...common,
         title: "Consolidado de órdenes de trabajo",
         columns: [
-          { key: "estado", title: "Estado" },
-          { key: "cantidad", title: "Órdenes", format: "number" },
-          ...(canViewCosts.value ? [{ key: "costo", title: "Costo total", format: "currency" as const }] : []),
+          { key: "estado", title: "Estado / marca", width: 34 },
+          { key: "ordenes", title: "Órdenes", width: 10 },
+          ...(canViewCosts.value
+            ? ([
+                { key: "materiales", title: "Materiales", format: "currency", width: 14 },
+                { key: "mano_obra", title: "Mano de obra", format: "currency", width: 14 },
+                { key: "costo", title: "Costo total", format: "currency", width: 14 },
+              ] as SectionReportColumn[])
+            : []),
         ],
-        rows: statusRailCards.value.map((status) => ({
-          estado: status.label,
-          cantidad: status.count,
-          costo: status.key === "annulled" ? 0 : groupedOrders.value[status.key].reduce((sum, row) => sum + (managerOrderCosts.value.get(String(row.id)) || 0), 0),
-        })),
-        summary: [{ label: "Total de órdenes", value: totalOrders.value }, ...(canViewCosts.value ? [{ label: "Costo total", value: formatCurrency(managerTotalOrderCost.value) }] : [])],
-        charts: [
-          {
-            title: "Órdenes por estado",
-            type: "bar",
-            unit: "órdenes",
-            points: reportChartPoints(orderStatusPoints.value),
-          },
+        rows: table.rows,
+        rowKinds: table.kinds,
+        note: canViewCosts.value
+          ? "Costo total = materiales + mano de obra. El total de mantenimiento es el mismo del consolidado de costo de mantenimiento; las OT Proyecto y las anuladas van aparte y no suman."
+          : "Las OT Proyecto y las anuladas van aparte del total de mantenimiento.",
+        summary: [
+          { label: "Órdenes de mantenimiento", value: maintenanceTotals.count },
+          ...(canViewCosts.value
+            ? [{ label: "Costo de mantenimiento", value: formatCurrency(maintenanceTotals.total) }]
+            : []),
+          ...(consolidation.projects.length
+            ? [{ label: "OT Proyecto (aparte)", value: consolidation.projects.length }]
+            : []),
+          ...(consolidation.annulled.length
+            ? [{ label: "Anuladas (no suman)", value: consolidation.annulled.length }]
+            : []),
         ],
+        charts: [ordersConsolidationChart(consolidation)],
       }),
     );
     return;
@@ -4436,7 +4897,13 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
             title: "Equipos con mayor consumo",
             type: "bar",
             unit: "galones",
-            points: reportChartPoints(topOilEquipmentPoints.value),
+            // Debajo del nombre de campo va la marca: "JC - UG07" solo no dice
+            // si la unidad es MTU o CUMMINS.
+            points: sortedOilEquipment.value.slice(0, CHART_TOP).map((entry) => ({
+              label: equipmentChartLabel(entry.row),
+              caption: equipmentBrand(entry.row),
+              value: entry.cantidad,
+            })),
           },
         ],
       }),
@@ -4458,14 +4925,7 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
           ...(canViewCosts.value ? [{ label: "Costo total", value: formatCurrency(primingTotals.value.cost) }] : []),
           { label: "Central / ubicación", value: primingCentral.value || "Todas" },
         ],
-        charts: [
-          {
-            title: "Órdenes por nivel de consumo",
-            type: "bar",
-            unit: "OT",
-            points: reportChartPoints(primingLevelPoints.value),
-          },
-        ],
+        charts: [primingLevelChart()],
       }),
     );
     return;
@@ -4530,21 +4990,22 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
     buildSectionReport({
       ...common,
       title: "Consolidado de costo de mantenimiento",
-      columns: maintenanceCostHeaders.value.map((header) => ({
-        key: String(header.key),
-        title: String(header.title),
-      })),
-      rows: totalTab?.rows ?? [],
+      // Las once columnas no se leen bien de pie. La orientación automática
+      // elige horizontal y fitColumnsToPage evita fragmentarlas entre hojas.
+      columns: MAINTENANCE_COST_PDF_COLUMNS,
+      rows: (totalTab?.rawRows ?? []).map(maintenanceCostPdfRow),
       summary: [
+        { label: "Costo materiales", value: formatCurrency(totalTab?.totalMateriales ?? 0) },
+        { label: "Mano de obra", value: formatCurrency(totalTab?.totalManoObra ?? 0) },
         { label: "Costo total", value: formatCurrency(maintenanceCostTotal.value) },
         { label: "Registros", value: totalTab?.rows.length ?? 0 },
       ],
       charts: [
         {
-          title: "Costo por grupo de equipo",
+          title: "Costo por marca de unidad de generación",
           type: "bar",
           unit: "USD",
-          points: reportChartPoints(maintenanceCostPoints.value),
+          points: maintenanceCostBrandPoints(),
         },
       ],
     }),

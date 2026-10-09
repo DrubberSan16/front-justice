@@ -2,6 +2,7 @@ import type {
   ReportColumn,
   ReportChart,
   ReportDefinition,
+  ReportRowKind,
   ReportSummaryItem,
 } from "@/app/utils/maintenance-intelligence-reports";
 
@@ -27,6 +28,8 @@ export type SectionReportOptions = {
   fileName: string;
   columns: SectionReportColumn[];
   rows: Record<string, any>[];
+  /** Papel de cada fila (estado, marca, total), en el orden de `rows`. */
+  rowKinds?: Array<ReportRowKind | null | undefined>;
   summary?: ReportSummaryItem[];
   charts?: ReportChart[];
   note?: string;
@@ -79,6 +82,7 @@ export function buildSectionReport(
         name: options.sheetName || options.title || "Detalle",
         fitColumnsToPage: true,
         note: options.note,
+        rowKinds: options.rowKinds,
         rows: options.rows.map((row) =>
           Object.fromEntries(
             columns.map((column) => [column.key, toCellValue(row?.[column.key])]),
