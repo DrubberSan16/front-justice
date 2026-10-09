@@ -2470,7 +2470,28 @@ function equipmentChartLabel(item: AnyRow) {
  * que viaja con el propio reporte -- y, si falta, del prefijo de la etiqueta
  * `marca | nombre`.
  */
+function isSsaReportRow(item: AnyRow, extraCatalog: AnyRow[] = []) {
+  const id = String(item?.equipment_id || item?.equipo_id || "").trim();
+  const equipment = findEquipmentCatalogItem(item);
+  const reportEquipment = extraCatalog.find((row) => String(row?.id || "").trim() === id);
+  const typeId = item?.equipment_type_id || equipment?.equipo_tipo_id;
+  const equipmentType = maintenanceCostTypeCatalog.value.find((type) => type.id === typeId);
+  return [
+    item?.maintenance_kind,
+    item?.maintenance_kind_label,
+    item?.equipment_type_label,
+    item?.equipment_type_name,
+    item?.tipo_equipo_nombre,
+    equipmentType?.nombre,
+    equipment?.nombre,
+    reportEquipment?.nombre,
+    item?.equipment_nombre,
+    item?.equipo_nombre,
+  ].some((value) => String(value || "").trim().toUpperCase() === "SSA");
+}
+
 function equipmentBrand(item: AnyRow, extraCatalog: AnyRow[] = []) {
+  if (isSsaReportRow(item, extraCatalog)) return "SSA";
   const id = String(item?.equipment_id || item?.equipo_id || "").trim();
   const fromReport = id
     ? extraCatalog.find((row) => String(row?.id || "").trim() === id)
@@ -3595,7 +3616,9 @@ function buildMaintenanceCostRow(row: AnyRow) {
     ...Object.fromEntries(
       maintenanceCostHeaders.value.map((header) => [
         header.key,
-        formatSystemCell(header.key, row?.[header.key]),
+        formatSystemCell(header.key, header.key === "equipment_name"
+          ? maintenanceCostEquipmentLabel(row)
+          : row?.[header.key]),
       ]),
     ),
     _raw: row,
@@ -4690,6 +4713,7 @@ function ordersConsolidationChart(data: OrdersConsolidation): ReportChart {
   return {
     title: "Órdenes por estado y marca",
     type: "bar",
+    heightScale: 1.2,
     unit: "órdenes",
     points: statuses.map((status) => ({
       label: capitalizeLabel(statusShortLabel(status)),
@@ -4740,7 +4764,7 @@ function primingLevelChart(): ReportChart {
  * Costo por marca de las unidades de generacion. El grafico decia una sola
  * barra, "Unidades de generacion", que no informa nada cuando casi todo el
  * mantenimiento es de UG; partido por marca se ve cuanto se lleva cada
- * fabricante. El resto de equipos, si lo hay, queda en su propia barra.
+ * fabricante. SSA tiene su propia barra y el resto conserva "Otros equipos".
  */
 function maintenanceCostBrandPoints() {
   const generation = maintenanceCostTabs.value.find(
@@ -4759,12 +4783,21 @@ function maintenanceCostBrandPoints() {
     const brand = equipmentBrand(row, reportCatalog);
     byBrand.set(brand, (byBrand.get(brand) || 0) + Number(row?.total_costo || 0));
   }
+  let otherCost = 0;
+  for (const row of other?.rawRows ?? []) {
+    const cost = Number(row?.total_costo || 0);
+    if (isSsaReportRow(row, reportCatalog)) {
+      byBrand.set("SSA", (byBrand.get("SSA") || 0) + cost);
+    } else {
+      otherCost += cost;
+    }
+  }
   const points = [...byBrand.entries()]
     .filter(([, value]) => value > 0)
     .sort((left, right) => right[1] - left[1])
     .map(([brand, value]) => ({ label: brand, value }));
-  if ((other?.totalCosto ?? 0) > 0) {
-    points.push({ label: "Otros equipos", value: other?.totalCosto ?? 0 });
+  if (otherCost > 0) {
+    points.push({ label: "Otros equipos", value: otherCost });
   }
   return points;
 }
@@ -4788,6 +4821,13 @@ const MAINTENANCE_COST_PDF_COLUMNS: SectionReportColumn[] = [
   { key: "items", title: "Ítems", width: 10 },
 ];
 
+function maintenanceCostEquipmentLabel(row: AnyRow) {
+  const label = String(row?.equipment_name || row?.equipment_label || "");
+  return isSsaReportRow(row)
+    ? label.replace(/^N\/A\s*\|\s*/i, "SSA | ")
+    : label;
+}
+
 function maintenanceCostPdfRow(row: AnyRow) {
   const horometro = Number(row?.horometro_actual_ot);
   return {
@@ -4795,7 +4835,7 @@ function maintenanceCostPdfRow(row: AnyRow) {
     work_order_status: formatSystemStatus(row?.work_order_status),
     maintenance_kind_label: row?.maintenance_kind_label || "",
     fecha_referencia: formatAppDateOnly(row?.fecha_referencia, ""),
-    equipment_name: row?.equipment_name || row?.equipment_label || "",
+    equipment_name: maintenanceCostEquipmentLabel(row),
     plan_name: row?.plan_name || "",
     horometro_actual_ot: Number.isFinite(horometro) && horometro > 0 ? horometro : "",
     horas_a_realizar_ot: Number(row?.horas_a_realizar_ot || 0),
@@ -5002,7 +5042,7 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
       ],
       charts: [
         {
-          title: "Costo por marca de unidad de generación",
+          title: "Costo por marca de generación y SSA",
           type: "bar",
           unit: "USD",
           points: maintenanceCostBrandPoints(),

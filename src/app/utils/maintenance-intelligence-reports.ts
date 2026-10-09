@@ -38,6 +38,8 @@ export type ReportChartStack = {
 export type ReportChart = {
   title: string;
   subtitle?: string;
+  /** Aumenta el espacio vertical del gráfico sin afectar los demás reportes. */
+  heightScale?: number;
   type: "line" | "bar";
   unit?: string;
   /** `caption` es una segunda linea bajo la etiqueta del eje (la marca del equipo). */
@@ -1272,8 +1274,8 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
   if (chartAssets.length) {
     if (report.compactPdf) {
       const chartWidth = pageWidth - marginX * 2;
-      const chartHeight = Math.min(220, Math.round(chartWidth * 0.4));
       chartAssets.forEach((asset) => {
+        const chartHeight = Math.min(220, Math.round(chartWidth * 0.4)) * (asset.chart.heightScale ?? 1);
         if (cursorY + chartHeight > pageHeight - 42) {
           doc.addPage(resolveReportOrientation(report));
           drawPageHeader(report.title, report.subtitle, "Análisis gráfico");
@@ -1828,7 +1830,7 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas");
   canvas.width = 960;
-  canvas.height = 420;
+  canvas.height = Math.round(420 * (chart.heightScale ?? 1));
   const context = canvas.getContext("2d");
   if (!context) return null;
 
@@ -1880,7 +1882,7 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
     return canvas.toDataURL("image/png");
   }
 
-  const plot = { x: 76, y: 102, width: 842, height: 245 };
+  const plot = { x: 76, y: 102, width: 842, height: canvas.height - 175 };
   const tallest = Math.max(...points.map((point) => point.value), 0);
   const maximum = stacked ? niceChartMaximum(tallest * 1.12) : Math.max(tallest, 1);
 
