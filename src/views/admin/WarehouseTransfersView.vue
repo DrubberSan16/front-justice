@@ -8,7 +8,7 @@
       <div>
         <div class="text-h6 font-weight-bold">Transferencias de bodega</div>
         <div class="text-body-2 text-medium-emphasis">
-          Registra transferencias manuales entre bodegas o precarga materiales desde una orden de compra pendiente.
+          Registra el traslado pendiente de recepción. El inventario se mueve cuando la bodega destino aprueba lo recibido.
         </div>
       </div>
       <div class="d-flex flex-wrap" style="gap: 8px;">
@@ -42,6 +42,10 @@
         </v-btn>
       </div>
     </div>
+
+    <v-alert type="info" variant="tonal" class="mb-4">
+      Al guardar, las cantidades quedan reservadas en origen. La guía de remisión puede prepararse antes de recibir; la salida, el ingreso y el Kardex se generan al aprobar en Recepción de bodega.
+    </v-alert>
 
     <v-row dense class="mb-2">
       <v-col cols="12" md="4">
@@ -85,6 +89,10 @@
     >
       <template #item.fecha_transferencia="{ item }">
         {{ formatDateOnly(item.fecha_transferencia, "-") }}
+      </template>
+
+      <template #item.estado="{ item }">
+        <v-chip size="small" :color="transferStateColor(item.estado)" variant="tonal">{{ transferStateLabel(item.estado) }}</v-chip>
       </template>
 
       <template #item.orden_compra_codigo="{ item }">
@@ -183,6 +191,12 @@
           </template>
 
           <v-list density="compact" min-width="260">
+            <v-list-item
+              v-if="canReadReception && !isAnnulledTransfer(item)"
+              prepend-icon="mdi-clipboard-check-outline"
+              title="Ver recepción de bodega"
+              :to="{ name: 'recepciones-bodega', query: { transferencia: item.id } }"
+            />
             <v-list-item
               v-if="canGenerateGuide(item)"
               :prepend-icon="
@@ -386,8 +400,8 @@
       <v-card-text>
         <template v-if="!isForcedAuthorizedGuideAnnulment">
           ¿Seguro que deseas anular la transferencia
-          <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se generará el reverso
-          del stock y se conservará la auditoría del usuario y la fecha de anulación.
+          <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se liberarán las cantidades pendientes
+          y se revertirá únicamente el inventario de las recepciones aprobadas. Se conservará la auditoría.
         </template>
         <v-alert
           v-if="isForcedAuthorizedGuideAnnulment"
@@ -400,8 +414,7 @@
             {{ annullingTransfer?.codigo || "" }} ya fue anulada directamente en el SRI?
           </p>
           Justice KPI no anula la guía ante el SRI. Al continuar, solo se anulará la
-          transferencia en el sistema y se generarán los movimientos inversos de stock y
-          Kardex.
+          transferencia en el sistema, se liberarán pendientes y se revertirán los movimientos de las cantidades aprobadas.
         </v-alert>
       </v-card-text>
       <v-card-actions class="pa-4">
@@ -426,10 +439,8 @@
       <v-card-text>
         ¿Seguro que deseas reversar la anulación de la transferencia
         <strong>{{ reversingTransfer?.codigo || "" }}</strong>? La transferencia
-        vuelve a aplicarse tal como estaba: el stock regresa a
-        <strong>{{ reversingTransfer?.bodega_destino_label || "la bodega destino" }}</strong>,
-        se reactivan sus movimientos de bodega y su Kardex, y la orden de compra
-        recupera la cantidad transferida.
+        recupera su estado previo: se reaplican las cantidades ya aprobadas y se reservan las pendientes.
+        La orden de compra conserva la diferencia entre cantidades comprometidas y transferidas.
         <v-alert type="info" variant="tonal" class="mt-3">
           Si el material ya se consumió después de anular, el stock de origen no
           alcanzará para devolverlo y la operación se detendrá sin cambiar nada.
@@ -557,8 +568,8 @@
             <div class="text-subtitle-1 font-weight-bold">Materiales de la transferencia</div>
             <div class="text-body-2 text-medium-emphasis">
               {{ selectedOrder
-                ? 'Ajusta las cantidades a lo que realmente llegó, y retira o vuelve a agregar materiales de la orden.'
-                : 'Agrega los materiales que se moverán entre bodegas.' }}
+                ? 'Indica las cantidades a enviar desde la compra. Destino confirmará lo recibido en Recepción de bodega.'
+                : 'Agrega los materiales que quedarán reservados hasta aprobar su recepción en destino.' }}
             </div>
           </div>
           <v-btn
@@ -682,6 +693,9 @@
                     </div>
                     <div class="text-caption text-medium-emphasis mt-1">
                       Reservado OT: {{ formatNumber(toNumber(getTransferStockRow(detail)?.cantidad_reservada_activa)) }}
+                    </div>
+                    <div class="text-caption text-medium-emphasis">
+                      Pendiente recepción: {{ formatNumber(toNumber(getTransferStockRow(detail)?.cantidad_pendiente_transferencia)) }}
                     </div>
                   </div>
                   <span v-else class="text-caption text-medium-emphasis">Selecciona un material</span>
@@ -1438,7 +1452,8 @@ import { api } from "@/app/http/api";
 import { useAuthStore } from "@/app/stores/auth.store";
 import { useMenuStore } from "@/app/stores/menu.store";
 import { useUiStore } from "@/app/stores/ui.store";
-import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
+import { getPermissionsForAnyComponent, getPermissionsForComponent } from "@/app/utils/menu-permissions";
+import { transferStateLabel, transferStateColor } from "@/app/utils/warehouse-reception";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
@@ -1491,6 +1506,10 @@ type StockRow = {
   stock_usado?: string | number | null;
   stock_critico?: string | number | null;
   stock_disponible?: string | number | null;
+  stock_disponible_nuevo?: string | number | null;
+  stock_disponible_usado?: string | number | null;
+  stock_disponible_critico?: string | number | null;
+  cantidad_pendiente_transferencia?: string | number | null;
   cantidad_reservada_activa?: string | number | null;
   costo_promedio_bodega?: string | number | null;
   es_usado?: boolean | null;
@@ -1745,6 +1764,7 @@ const perms = computed(() =>
   ]),
 );
 const canRead = computed(() => perms.value.isReaded);
+const canReadReception = computed(() => getPermissionsForComponent(menuStore.tree, "recepciones-bodega").isReaded);
 const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const canCreate = computed(() => perms.value.isCreated);
 const canEdit = computed(() => perms.value.isEdited);
@@ -1865,6 +1885,8 @@ const pendingOrdersLoaded = ref(false);
 const stockRowsLoaded = ref(false);
 const stockRowsLoading = ref(false);
 const transferStatusOptionsBase = [
+  { title: "Pendiente de recepción", value: "PENDIENTE_RECEPCION" },
+  { title: "Recepción parcial", value: "PARCIALMENTE_RECIBIDA" },
   { title: "Completada", value: "COMPLETADA" },
   { title: "Anulada", value: "ANULADA" },
 ];
@@ -1962,6 +1984,7 @@ const headers = [
   { title: "Orden de compra", key: "orden_compra_codigo" },
   { title: "Origen", key: "bodega_origen_label" },
   { title: "Destino", key: "bodega_destino_label" },
+  { title: "Estado", key: "estado" },
   { title: "EB", key: "egreso_bodega_codigo" },
   { title: "IB", key: "ingreso_bodega_codigo" },
   { title: "Guía SRI", key: "guia_remision", sortable: false },
@@ -3141,9 +3164,9 @@ function syncTransferDetailCondition(detail: TransferDetailForm) {
 
 function getConditionStock(row: StockRow | null, condition: StockCondition) {
   if (!row) return 0;
-  if (condition === "USADO") return Math.max(toNumber(row.stock_usado), 0);
-  if (condition === "CRITICO") return Math.max(toNumber(row.stock_critico), 0);
-  const explicitNew = row.stock_nuevo;
+  if (condition === "USADO") return Math.max(toNumber(row.stock_disponible_usado ?? row.stock_usado), 0);
+  if (condition === "CRITICO") return Math.max(toNumber(row.stock_disponible_critico ?? row.stock_critico), 0);
+  const explicitNew = row.stock_disponible_nuevo ?? row.stock_nuevo;
   if (explicitNew !== null && explicitNew !== undefined) return Math.max(toNumber(explicitNew), 0);
   return Math.max(
     toNumber(row.stock_actual) - toNumber(row.stock_usado) - toNumber(row.stock_critico),
@@ -3489,8 +3512,8 @@ function guideSriStateColor(state?: string | null) {
 }
 
 function canGenerateGuide(item: TransferRow) {
-  const normalized = String(item.estado || "COMPLETADA").toUpperCase();
-  return ["COMPLETADA", "COMPLETADO", "FINALIZADA", "FINALIZADO", "APROBADA", "APROBADO"].includes(normalized);
+  const normalized = String(item.estado || "").toUpperCase();
+  return ["PENDIENTE_RECEPCION", "PARCIALMENTE_RECIBIDA", "COMPLETADA", "COMPLETADO", "FINALIZADA", "FINALIZADO", "APROBADA", "APROBADO"].includes(normalized);
 }
 
 function canAnnulTransfer(item: TransferRow) {
@@ -3902,7 +3925,7 @@ async function saveGlobalSriSignature() {
 
 async function openGuideDialog(item: TransferRow) {
   if (!canGenerateGuide(item)) {
-    ui.error("La guía solo puede generarse cuando la transferencia esté aprobada, completada o finalizada.");
+    ui.error("La guía requiere una transferencia vigente: pendiente de recepción, parcial o completada.");
     return;
   }
   guideDialog.value = true;
@@ -4604,7 +4627,7 @@ function validateForm() {
 
   if (selectedOrder.value && !detallesATransferir.length) {
     ui.error(
-      "Indica la cantidad recibida de al menos un material de la orden para registrar la transferencia.",
+      "Indica la cantidad a enviar de al menos un material de la orden para registrar la transferencia.",
     );
     return false;
   }
@@ -4707,7 +4730,7 @@ async function saveTransfer() {
       updated_by: getUserName(),
       detalles: transferDetails,
     });
-    ui.success("Transferencia registrada correctamente.");
+    ui.success("Transferencia registrada y reservada. La bodega destino debe aprobar la recepción para mover el inventario.");
     dialog.value = false;
     await hydrateView();
   } catch (error: any) {

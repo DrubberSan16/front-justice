@@ -1,12 +1,16 @@
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
+import { transferStateLabel } from "@/app/utils/warehouse-reception";
 
 type WarehouseTransferDetailLike = {
   codigo_producto?: string | null;
   nombre_producto?: string | null;
   descripcion_producto?: string | null;
   cantidad?: string | number | null;
+  cantidad_recibida?: string | number | null;
+  cantidad_pendiente?: string | number | null;
+  condicion_material?: string | null;
   costo_unitario?: string | number | null;
   subtotal?: string | number | null;
   observacion?: string | null;
@@ -148,6 +152,8 @@ export async function buildWarehouseTransferPdfBlob(
   );
   const preparedBy = text(transfer.created_by, generatedBy);
   const updatedBy = text(transfer.updated_by || transfer.created_by, generatedBy);
+  const missingMovementLabel = String(transfer.estado || "").toUpperCase() === "PENDIENTE_RECEPCION"
+    ? "Pendiente de aprobación" : "-";
 
   const drawCompactHeader = () => {
     drawPdfCompanyLogo(doc, logo, {
@@ -198,7 +204,7 @@ export async function buildWarehouseTransferPdfBlob(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.text(`Generado: ${generatedAt} - ${text(generatedBy, "Sistema")}`, marginX + 16, 124);
-  doc.text(`Estado: ${text(transfer.estado, "COMPLETADA")}`, rightX - 16, 124, {
+  doc.text(`Estado: ${transferStateLabel(transfer.estado)}`, rightX - 16, 124, {
     align: "right",
   });
 
@@ -226,7 +232,7 @@ export async function buildWarehouseTransferPdfBlob(
   drawLabelValue(
     doc,
     "Documento de egreso",
-    transfer.egreso_bodega_codigo,
+    transfer.egreso_bodega_codigo || missingMovementLabel,
     marginX,
     fieldTop + 78,
     columnWidth,
@@ -234,7 +240,7 @@ export async function buildWarehouseTransferPdfBlob(
   drawLabelValue(
     doc,
     "Documento de ingreso",
-    transfer.ingreso_bodega_codigo,
+    transfer.ingreso_bodega_codigo || missingMovementLabel,
     marginX + columnWidth + columnGap,
     fieldTop + 78,
     columnWidth,
@@ -350,6 +356,27 @@ export async function buildWarehouseTransferPdfBlob(
     },
   });
 
+  const hasReceptionControl = details.some(detail => detail.cantidad_recibida != null || detail.cantidad_pendiente != null)
+    || ["PENDIENTE_RECEPCION", "PARCIALMENTE_RECIBIDA"].includes(String(transfer.estado || "").toUpperCase());
+  if (hasReceptionControl) {
+    const mainTableEnd = Number((doc as any).lastAutoTable?.finalY || tableStartY);
+    autoTable(doc, {
+      startY: mainTableEnd + 22,
+      margin: { left: marginX, right: marginX, top: 78, bottom: 74 },
+      theme: "grid", rowPageBreak: "avoid",
+      styles: { font: "helvetica", fontSize: 8, cellPadding: 5, overflow: "linebreak" },
+      headStyles: { fillColor: COLORS.primary, textColor: [255, 255, 255] },
+      head: [["CONTROL DE RECEPCIÓN", "CONDICIÓN", "ENVIADO", "APROBADO", "PENDIENTE"]],
+      body: details.map(detail => [
+        `${text(detail.codigo_producto)} · ${text(detail.nombre_producto)}`,
+        text(detail.condicion_material, "NUEVO"),
+        formatNumber(detail.cantidad, 2),
+        formatNumber(detail.cantidad_recibida, 2),
+        formatNumber(detail.cantidad_pendiente ?? Math.max(0, numberValue(detail.cantidad) - numberValue(detail.cantidad_recibida)), 2),
+      ]),
+      didDrawPage: (data: any) => { if (data.pageNumber > 1) drawCompactHeader(); },
+    });
+  }
   const lastTable = (doc as any).lastAutoTable;
   let signatureY = Number(lastTable?.finalY || tableStartY) + 64;
   if (signatureY > pageHeight - 145) {

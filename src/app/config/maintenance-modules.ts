@@ -196,6 +196,8 @@ export const inventoryModules: MaintenanceModuleConfig[] = [
       { key: "stock_usado", label: "Stock usado", type: "number" },
       { key: "stock_critico", label: "Stock crítico", type: "number", required: true },
       { key: "stock_actual", label: "Stock actual total", type: "number", readonly: true, sendInPayload: false },
+      { key: "cantidad_pendiente_transferencia", label: "Pendiente de recepción", type: "number", readonly: true, sendInPayload: false },
+      { key: "stock_disponible", label: "Disponible para nuevas operaciones", type: "number", readonly: true, sendInPayload: false },
       { key: "stock_fisico", label: "Stock fisico", type: "number", required: true },
       { key: "diferencia", label: "Diferencia", type: "number", readonly: true, sendInPayload: false },
       { key: "stock_min_bodega", label: "Stock mín. bodega", type: "number", required: true },

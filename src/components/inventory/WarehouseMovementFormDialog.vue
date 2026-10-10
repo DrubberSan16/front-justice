@@ -202,6 +202,10 @@ type StockRow = {
   stock_usado?: string | number | null;
   stock_critico?: string | number | null;
   stock_disponible?: string | number | null;
+  stock_disponible_nuevo?: string | number | null;
+  stock_disponible_usado?: string | number | null;
+  stock_disponible_critico?: string | number | null;
+  cantidad_pendiente_transferencia?: string | number | null;
   cantidad_reservada_activa?: string | number | null;
   es_usado?: boolean;
 };
@@ -519,10 +523,11 @@ function syncDetailCondition(detail: DetailForm) {
 
 function conditionStock(stock: StockRow | null, condition: StockCondition) {
   if (!stock) return 0;
-  if (condition === "USADO") return toStockNumber(stock.stock_usado);
-  if (condition === "CRITICO") return toStockNumber(stock.stock_critico);
-  if (stock.stock_nuevo !== null && stock.stock_nuevo !== undefined) {
-    return toStockNumber(stock.stock_nuevo);
+  if (condition === "USADO") return toStockNumber(stock.stock_disponible_usado ?? stock.stock_usado);
+  if (condition === "CRITICO") return toStockNumber(stock.stock_disponible_critico ?? stock.stock_critico);
+  const newAvailable = stock.stock_disponible_nuevo ?? stock.stock_nuevo;
+  if (newAvailable !== null && newAvailable !== undefined) {
+    return toStockNumber(newAvailable);
   }
   return Math.max(
     toStockNumber(stock.stock_actual) -
@@ -554,9 +559,10 @@ function stockCaption(detail: DetailForm) {
   return [
     `Total ${formatNumberForDisplay(toStockNumber(stock.stock_actual))}`,
     `Nuevo ${formatNumberForDisplay(conditionStock(stock, "NUEVO"))}`,
-    `Usado ${formatNumberForDisplay(toStockNumber(stock.stock_usado))}`,
-    `Crítico ${formatNumberForDisplay(toStockNumber(stock.stock_critico))}`,
+    `Usado ${formatNumberForDisplay(conditionStock(stock, "USADO"))}`,
+    `Crítico ${formatNumberForDisplay(conditionStock(stock, "CRITICO"))}`,
     `Reservado OT ${formatNumberForDisplay(toStockNumber(stock.cantidad_reservada_activa))}`,
+    `Pendiente recepción ${formatNumberForDisplay(toStockNumber(stock.cantidad_pendiente_transferencia))}`,
   ].join(" · ");
 }
 

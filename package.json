@@ -8,6 +8,7 @@
     "build": "vue-tsc -b && vite build",
     "test:reports": "node scripts/test-work-order-report-labels.mjs",
     "test:material-costs": "node scripts/test-inventory-cost-reference.mjs",
+    "test:reception": "node scripts/test-warehouse-reception.mjs",
     "preview": "vite preview",
     "test:manual": "node scripts/test-user-manual-flows.mjs"
   },

@@ -644,11 +644,11 @@
           </v-col>
           <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-text-field
-              :model-value="resolvedHorometroActual == null ? 'Se calculará al guardar' : formatHorometerForDisplay(resolvedHorometroActual)"
+              :model-value="resolvedHorometroActual == null ? 'Se capturará al iniciar' : formatHorometerForDisplay(resolvedHorometroActual)"
               label="Horómetro automático"
               readonly
               variant="outlined"
-              hint="El sistema toma la lectura del equipo al guardar y la congela al iniciar la ejecución."
+              hint="La lectura se guarda en la OT al pasar a En proceso. El contador automático del equipo continúa independiente."
               persistent-hint
             />
           </v-col>
@@ -2891,7 +2891,7 @@ const consumoProductHint = computed(() =>
       : "Puedes reservar cualquier material aunque la bodega no tenga stock: la falta se informa por correo.",
 );
 const materialIssueHelperText = computed(() =>
-  "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución y mantiene el equipo Parado. Los materiales adicionales actualizan el mismo documento.",
+  "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución y conserva la lectura capturada al iniciar, sin alterar el funcionamiento del equipo. Los materiales adicionales actualizan el mismo documento.",
 );
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");
@@ -4216,22 +4216,23 @@ function normalizeStockProductOption(row: any) {
     : resolveProductLabel(productId, baseLabel);
   const stock = toPositiveNumber(row?.stock_disponible ?? row?.stock_actual);
   const activeReserved = toPositiveNumber(row?.cantidad_reservada_activa);
-  const stockNuevo = toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual);
-  const stockUsado = toPositiveNumber(row?.stock_usado);
+  const stockNuevo = toPositiveNumber(row?.stock_disponible_nuevo ?? row?.stock_nuevo ?? row?.stock_actual);
+  const stockUsado = toPositiveNumber(row?.stock_disponible_usado ?? row?.stock_usado);
   return {
     value: productId,
     title:
       (stock > 0
         ? `${productLabel} - Disponible: ${stock}`
         : `${productLabel} - SIN STOCK en esta bodega`) +
-      (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
+      (activeReserved > 0 ? ` · Reservado OT: ${activeReserved}` : "") +
+      (toPositiveNumber(row?.cantidad_pendiente_transferencia) > 0 ? ` · Pendiente recepción: ${toPositiveNumber(row?.cantidad_pendiente_transferencia)}` : ""),
     label: String(productLabel || productId),
     es_aceite: Boolean(row?.es_aceite),
     maneja_stock_usado: Boolean(row?.es_usado),
     stock_actual: toPositiveNumber(row?.stock_actual),
     stock_nuevo: stockNuevo,
     stock_usado: stockUsado,
-    stock_critico: toPositiveNumber(row?.stock_critico),
+    stock_critico: toPositiveNumber(row?.stock_disponible_critico ?? row?.stock_critico),
     stock_disponible: stock,
     cantidad_reservada_activa: activeReserved,
   };
@@ -4259,22 +4260,23 @@ function ensureConsumoProductOption(item: any) {
   );
   const stockAvailable = toPositiveNumber(item?.stock_disponible ?? item?.stock_actual);
   const activeReserved = toPositiveNumber(item?.cantidad_reservada_activa);
-  const stockNuevo = toPositiveNumber(item?.stock_nuevo ?? item?.stock_actual);
-  const stockUsado = toPositiveNumber(item?.stock_usado);
+  const stockNuevo = toPositiveNumber(item?.stock_disponible_nuevo ?? item?.stock_nuevo ?? item?.stock_actual);
+  const stockUsado = toPositiveNumber(item?.stock_disponible_usado ?? item?.stock_usado);
 
   consumoProductOptions.value = [
     {
       value: productId,
       title:
         `${productLabel} - Disponible: ${stockAvailable}` +
-        (activeReserved > 0 ? ` · Reservado activo: ${activeReserved}` : ""),
+        (activeReserved > 0 ? ` · Reservado OT: ${activeReserved}` : "") +
+        (toPositiveNumber(item?.cantidad_pendiente_transferencia) > 0 ? ` · Pendiente recepción: ${toPositiveNumber(item?.cantidad_pendiente_transferencia)}` : ""),
       label: productLabel,
       es_aceite: Boolean(item?.es_aceite ?? productRecord?.es_aceite),
       maneja_stock_usado: Boolean(item?.es_usado ?? item?.maneja_stock_usado),
       stock_actual: toPositiveNumber(item?.stock_actual),
       stock_nuevo: stockNuevo,
       stock_usado: stockUsado,
-      stock_critico: toPositiveNumber(item?.stock_critico),
+      stock_critico: toPositiveNumber(item?.stock_disponible_critico ?? item?.stock_critico),
       stock_disponible: stockAvailable,
       cantidad_reservada_activa: activeReserved,
     },
@@ -4597,9 +4599,9 @@ const consumoRows = computed(() => localConsumos.value.map((item: any) => ({
   cantidad_pendiente: toPositiveNumber(item?.cantidad_pendiente ?? item?.cantidad),
   maneja_stock_usado: Boolean(item?.maneja_stock_usado ?? item?.es_usado),
   stock_actual: toPositiveNumber(item?.stock_actual),
-  stock_nuevo: toPositiveNumber(item?.stock_nuevo ?? item?.stock_actual),
-  stock_usado: toPositiveNumber(item?.stock_usado),
-  stock_critico: toPositiveNumber(item?.stock_critico),
+  stock_nuevo: toPositiveNumber(item?.stock_disponible_nuevo ?? item?.stock_nuevo ?? item?.stock_actual),
+  stock_usado: toPositiveNumber(item?.stock_disponible_usado ?? item?.stock_usado),
+  stock_critico: toPositiveNumber(item?.stock_disponible_critico ?? item?.stock_critico),
   costo_unitario: toPositiveNumber(item?.costo_unitario),
   subtotal: toPositiveNumber(item?.subtotal ?? (toPositiveNumber(item?.cantidad) * toPositiveNumber(item?.costo_unitario))),
   observacion: item?.observacion || "-",
@@ -4623,9 +4625,9 @@ const materialReservationRows = computed(() => {
         es_aceite: Boolean(row?.es_aceite),
         maneja_stock_usado: Boolean(row?.maneja_stock_usado),
         stock_actual: toPositiveNumber(row?.stock_actual),
-        stock_nuevo: toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual),
-        stock_usado: toPositiveNumber(row?.stock_usado),
-        stock_critico: toPositiveNumber(row?.stock_critico),
+        stock_nuevo: toPositiveNumber(row?.stock_disponible_nuevo ?? row?.stock_nuevo ?? row?.stock_actual),
+        stock_usado: toPositiveNumber(row?.stock_disponible_usado ?? row?.stock_usado),
+        stock_critico: toPositiveNumber(row?.stock_disponible_critico ?? row?.stock_critico),
         cantidad_reservada: 0,
         cantidad_emitida: 0,
         cantidad_pendiente: 0,
@@ -4651,15 +4653,15 @@ const materialReservationRows = computed(() => {
     );
     current.stock_nuevo = Math.max(
       toPositiveNumber(current.stock_nuevo),
-      toPositiveNumber(row?.stock_nuevo ?? row?.stock_actual),
+      toPositiveNumber(row?.stock_disponible_nuevo ?? row?.stock_nuevo ?? row?.stock_actual),
     );
     current.stock_usado = Math.max(
       toPositiveNumber(current.stock_usado),
-      toPositiveNumber(row?.stock_usado),
+      toPositiveNumber(row?.stock_disponible_usado ?? row?.stock_usado),
     );
     current.stock_critico = Math.max(
       toPositiveNumber(current.stock_critico),
-      toPositiveNumber(row?.stock_critico),
+      toPositiveNumber(row?.stock_disponible_critico ?? row?.stock_critico),
     );
     const observation = String(row?.observacion || "").trim();
     if (
@@ -6326,11 +6328,8 @@ const resolvedHorasARealizar = computed(() => {
 });
 
 /**
- * Horometro con el que arranco la orden.
- *
- * El backend lo guarda en `valor_json.horometro_anterior` cuando la lectura de
- * la OT difiere de la del equipo. El informe necesita el par completo (inicial
- * y final) para que se pueda leer cuanto trabajo el equipo entre ambas.
+ * Lectura histórica de la OT anterior. La lectura actual se captura una sola
+ * vez cuando esta OT inicia y permanece independiente del contador del equipo.
  */
 const resolvedHorometroAnterior = computed(() => {
   const audit = currentWorkOrderAudit.value ?? {};

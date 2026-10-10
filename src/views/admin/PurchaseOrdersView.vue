@@ -81,9 +81,12 @@
       </template>
 
       <template #item.tiene_transferencia="{ item }">
-        <v-chip size="small" variant="tonal" :color="item.tiene_transferencia ? 'success' : 'warning'">
-          {{ item.tiene_transferencia ? item.transferencia_codigo || "Transferida" : "Pendiente" }}
-        </v-chip>
+        <div class="d-flex flex-column" style="gap: 4px">
+          <v-chip size="small" variant="tonal" :color="item.tiene_transferencia ? 'info' : 'warning'">
+            {{ item.tiene_transferencia ? item.transferencia_codigo || "Traslado registrado" : "Sin traslado" }}
+          </v-chip>
+          <span v-if="item.transferencia_estado" class="text-caption">{{ transferStateLabel(item.transferencia_estado) }}</span>
+        </div>
       </template>
 
       <template #item.actions="{ item }">
@@ -344,6 +347,7 @@ import {
 import { isAnnulledStateValue } from "@/app/utils/annulled-records";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import { transferStateLabel } from "@/app/utils/warehouse-reception";
 import {
   formatCurrencyForDisplay,
   formatNumberForInput,
@@ -373,6 +377,7 @@ type PurchaseOrderRow = {
   total?: string | number | null;
   tiene_transferencia?: boolean;
   transferencia_codigo?: string | null;
+  transferencia_estado?: string | null;
   updated_at?: string | null;
   updated_by?: string | null;
   anulado?: boolean;
