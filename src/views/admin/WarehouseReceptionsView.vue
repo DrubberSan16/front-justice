@@ -28,7 +28,7 @@
     </v-data-table-server>
   </v-card>
 
-  <v-dialog :model-value="dialog" :fullscreen="mdAndDown" :max-width="mdAndDown ? undefined : 1180" scrollable persistent>
+  <v-dialog :model-value="dialog" :fullscreen="mdAndDown" :max-width="mdAndDown ? undefined : 1480" scrollable persistent>
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="d-flex justify-space-between align-center flex-wrap pa-5" style="gap: 12px">
         <div class="reception-dialog-heading"><div class="text-h6 font-weight-bold">Recepción · {{ transfer?.codigo || 'Cargando' }}</div><div class="text-body-2 text-medium-emphasis">{{ transfer?.bodega_origen_label || 'Origen' }} → {{ transfer?.bodega_destino_label || 'Destino' }}</div></div>
@@ -46,10 +46,12 @@
             <v-btn variant="text" size="small" :disabled="dirty || busy" :to="{ name: 'transferencias-bodega' }" prepend-icon="mdi-swap-horizontal">Ir a transferencias</v-btn>
           </div>
           <v-alert v-if="transfer.observacion" type="info" variant="tonal" class="mb-4">{{ transfer.observacion }}</v-alert>
-          <v-table class="mb-5" density="comfortable">
-            <thead><tr><th>Material</th><th>Condición</th><th class="text-right">Enviado</th><th class="text-right">Aprobado</th><th class="text-right">Pendiente</th></tr></thead>
-            <tbody><tr v-for="detail in transfer.detalles || []" :key="detail.id"><td>{{ detail.codigo_producto }} · {{ detail.nombre_producto }}</td><td>{{ detail.condicion_material || 'NUEVO' }}</td><td class="text-right">{{ quantity(detail.cantidad) }}</td><td class="text-right">{{ quantity(detail.cantidad_recibida ?? (transfer.estado === 'COMPLETADA' ? detail.cantidad : 0)) }}</td><td class="text-right">{{ quantity(detail.cantidad_pendiente ?? (transfer.estado === 'COMPLETADA' ? 0 : receptionNumber(detail.cantidad) - receptionNumber(detail.cantidad_recibida))) }}</td></tr></tbody>
-          </v-table>
+          <div v-if="!isReviewing" class="reception-table-scroll mb-5" role="region" aria-label="Cantidades de la transferencia" tabindex="0">
+            <v-table class="reception-table transfer-summary-table" density="comfortable">
+              <thead><tr><th scope="col" class="material-column">Material</th><th scope="col" class="text-right">Enviado</th><th scope="col" class="text-right">Aprobado</th><th scope="col" class="text-right">Pendiente</th></tr></thead>
+              <tbody><tr v-for="detail in transfer.detalles || []" :key="detail.id"><th scope="row" class="material-column"><div class="material-code">{{ detail.codigo_producto }}</div><div class="material-name">{{ detail.nombre_producto }}</div><v-chip size="x-small" variant="tonal" class="mt-1">{{ detail.condicion_material || 'NUEVO' }}</v-chip></th><td class="quantity-cell">{{ quantity(detail.cantidad) }}</td><td class="quantity-cell text-success">{{ quantity(detail.cantidad_recibida ?? (transfer.estado === 'COMPLETADA' ? detail.cantidad : 0)) }}</td><td class="quantity-cell">{{ quantity(detail.cantidad_pendiente ?? (transfer.estado === 'COMPLETADA' ? 0 : receptionNumber(detail.cantidad) - receptionNumber(detail.cantidad_recibida))) }}</td></tr></tbody>
+            </v-table>
+          </div>
           <template v-if="draft">
             <v-alert type="warning" variant="tonal" class="mb-4">Existe una revisión guardada pendiente de aprobación. Revisa su detalle abajo antes de aprobar. Para corregirla, descártala y registra una nueva revisión.</v-alert>
             <div class="d-flex flex-wrap justify-end mb-5" style="gap: 8px">
@@ -57,20 +59,38 @@
               <v-btn v-if="canApprove" color="primary" prepend-icon="mdi-check-decagram-outline" :disabled="busy || isClosed" @click="approvalDialog = true">Aprobar recepción</v-btn>
             </div>
           </template>
-          <template v-else-if="!isClosed && canCreate && lines.length">
-            <h2 class="text-subtitle-1 font-weight-bold mb-2">Nueva revisión de materiales pendientes</h2>
-            <p class="text-body-2 text-medium-emphasis mb-4">Indica lo que llegó en esta entrega. Para una entrega parcial, escribe la cantidad recibida; el resto conservará su reserva hasta que se apruebe o se anule la transferencia.</p>
-            <v-card v-for="line in lines" :key="line.transferencia_detalle_id" variant="outlined" rounded="lg" class="pa-4 mb-3">
-              <div class="d-flex flex-wrap align-center justify-space-between mb-3" style="gap: 8px"><strong>{{ line.codigo_producto }} · {{ line.nombre_producto }}</strong><v-chip size="small" variant="tonal">{{ line.condicion_material }} · Pendiente {{ quantity(line.cantidad_pendiente) }}</v-chip></div>
-              <v-row dense>
-                <v-col cols="12" sm="6"><v-select :model-value="line.llego" :items="arrivalOptions" label="Resultado de esta entrega" variant="outlined" density="comfortable" :disabled="busy" :aria-label="`Resultado de ${line.codigo_producto}`" @update:model-value="value => setArrival(line, value)" /></v-col>
-                <v-col cols="12" sm="6"><v-text-field v-model="line.cantidad_recibida" label="Cantidad recibida en esta entrega" type="number" inputmode="decimal" min="0" :max="line.cantidad_pendiente" step="any" variant="outlined" density="comfortable" :disabled="line.llego !== true || busy" :rules="line.llego ? [value => validQuantity(value, line.cantidad_pendiente)] : []" /></v-col>
-                <v-col cols="12"><v-textarea v-model="line.observacion" label="Observación del material" rows="2" auto-grow variant="outlined" density="compact" :disabled="busy" maxlength="2000" /></v-col>
-                <v-col cols="12"><v-file-input :key="`${line.transferencia_detalle_id}-${fileInputVersion}`" label="Adjuntar evidencia opcional" accept="application/pdf,image/jpeg,image/png" multiple show-size variant="outlined" density="compact" :disabled="busy || fileReading" hint="Hasta 5 archivos PDF, JPG o PNG por material. Máximo 5 MB por archivo y 20 MB por recepción." persistent-hint @update:model-value="files => addFiles(line, files)" /></v-col>
-              </v-row>
-              <div v-if="line.adjuntos.length" class="d-flex flex-wrap mt-3" style="gap: 8px"><v-chip v-for="(file, index) in line.adjuntos" :key="`${file.nombre}-${index}`" closable :disabled="busy" :aria-label="`Quitar adjunto ${file.nombre}`" @click:close="removeFile(line, index)">{{ file.nombre }}</v-chip></div>
-            </v-card>
-            <v-textarea v-model="observation" label="Observación general de la recepción" rows="2" variant="outlined" :disabled="busy" maxlength="2000" class="mt-4" />
+          <template v-else-if="isReviewing">
+            <div class="review-toolbar">
+              <div><h2 class="text-subtitle-1 font-weight-bold">Nueva revisión de materiales pendientes</h2><p class="text-body-2 text-medium-emphasis mt-1">Marca una opción por fila. Si llegó parcialmente, ajusta la cantidad recibida.</p></div>
+              <v-chip :color="reviewedCount === lines.length ? 'success' : 'warning'" variant="tonal" prepend-icon="mdi-clipboard-check-outline">{{ reviewedCount }} de {{ lines.length }} revisados</v-chip>
+            </div>
+            <div class="review-summary text-body-2">
+              <span><strong>{{ lines.length }}</strong> materiales pendientes</span>
+              <span><strong>{{ receivedCount }}</strong> recibidos</span>
+              <span><strong>{{ notReceivedCount }}</strong> no recibidos</span>
+              <span class="text-medium-emphasis">Las cantidades se transferirán al aprobar.</span>
+            </div>
+            <p v-if="mdAndDown" class="table-scroll-hint text-body-2 text-medium-emphasis"><v-icon size="small" aria-hidden="true">mdi-arrow-left-right</v-icon> Desliza la tabla para ver cantidades, observaciones y adjuntos.</p>
+            <div class="reception-table-scroll" role="region" aria-label="Revisión editable de materiales pendientes" tabindex="0">
+              <v-table class="reception-table review-table" density="comfortable">
+                <caption class="sr-only">Revisa cada material y marca Recibido o No recibido. Puedes ajustar la cantidad recibida, escribir observaciones y adjuntar evidencia en su fila.</caption>
+                <thead><tr><th scope="col" class="material-column">Material</th><th scope="col" class="text-right">Enviado</th><th scope="col" class="text-right">Aprobado</th><th scope="col" class="text-right">Pendiente</th><th scope="col" class="text-right received-column">Recibido <span class="column-note">Esta entrega</span></th><th scope="col" class="arrival-column">Recepción <span class="column-note">Marca sí o no</span></th><th scope="col" class="observation-column">Observación</th><th scope="col" class="attachments-column">Adjuntos <span class="column-note">Opcionales</span></th></tr></thead>
+                <tbody>
+                  <tr v-for="line in lines" :key="line.transferencia_detalle_id" :class="{ 'unreviewed-row': line.llego === null }">
+                    <th scope="row" class="material-column"><div class="material-code">{{ line.codigo_producto }}</div><div class="material-name">{{ line.nombre_producto }}</div><v-chip size="x-small" variant="tonal" class="mt-2">{{ line.condicion_material }}</v-chip></th>
+                    <td class="quantity-cell">{{ quantity(line.cantidad_enviada) }}</td>
+                    <td class="quantity-cell text-success">{{ quantity(line.cantidad_aprobada) }}</td>
+                    <td class="quantity-cell pending-quantity">{{ quantity(line.cantidad_pendiente) }}</td>
+                    <td class="received-column"><v-text-field v-model="line.cantidad_recibida" label="Cantidad" :aria-label="`Cantidad recibida: ${line.codigo_producto || line.nombre_producto}`" type="number" inputmode="decimal" min="0" :max="line.cantidad_pendiente" step="any" variant="outlined" density="compact" hide-details="auto" class="quantity-field" :disabled="line.llego !== true || busy" :rules="line.llego ? [value => validQuantity(value, line.cantidad_pendiente)] : []" /></td>
+                    <td class="arrival-column"><div class="arrival-options" role="group" :aria-label="`Resultado de recepción: ${line.codigo_producto || line.nombre_producto}`"><v-checkbox :model-value="line.llego === true" label="Recibido" :aria-label="`Recibido: ${line.codigo_producto || line.nombre_producto}`" color="success" density="compact" hide-details :disabled="busy" @update:model-value="value => setArrival(line, value ? true : null)" /><v-checkbox :model-value="line.llego === false" label="No recibido" :aria-label="`No recibido: ${line.codigo_producto || line.nombre_producto}`" color="warning" density="compact" hide-details :disabled="busy" @update:model-value="value => setArrival(line, value ? false : null)" /></div><div v-if="line.llego === null" class="arrival-hint text-medium-emphasis">Sin revisar</div></td>
+                    <td class="observation-column"><v-textarea v-model="line.observacion" label="Observación" :aria-label="`Observación: ${line.codigo_producto || line.nombre_producto}`" rows="1" auto-grow max-rows="3" variant="outlined" density="compact" hide-details :disabled="busy" maxlength="2000" /></td>
+                    <td class="attachments-column"><v-file-input :key="`${line.transferencia_detalle_id}-${fileInputVersion}`" label="Adjuntar" :aria-label="`Adjuntar evidencia: ${line.codigo_producto || line.nombre_producto}`" accept="application/pdf,image/jpeg,image/png" multiple show-size variant="outlined" density="compact" hide-details :disabled="busy || fileReading" @update:model-value="files => addFiles(line, files)" /><div v-if="line.adjuntos.length" class="attachment-list mt-2"><v-chip v-for="(file, index) in line.adjuntos" :key="`${file.nombre}-${index}`" size="small" variant="tonal" closable class="attachment-chip" :title="file.nombre" :disabled="busy || fileReading" :aria-label="`Quitar adjunto ${file.nombre}`" @click:close="removeFile(line, index)"><span class="attachment-name">{{ file.nombre }}</span></v-chip></div></td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </div>
+            <p class="text-body-2 text-medium-emphasis mt-3">Adjuntos: hasta 5 PDF, JPG o PNG por material; 5 MB por archivo y 20 MB en total. Lo no recibido conserva su reserva.</p>
+            <v-textarea v-model="observation" label="Observación general de la recepción" rows="2" variant="outlined" density="compact" hide-details :disabled="busy" maxlength="2000" class="mt-4 mb-4" />
             <v-alert v-if="formError" type="error" variant="tonal" class="mb-4">{{ formError }}</v-alert>
           </template>
           <v-alert v-else-if="!isClosed && !canCreate" type="info" variant="tonal" class="mb-4">Puedes consultar el historial. El registro de una recepción requiere permiso de creación.</v-alert>
@@ -83,11 +103,11 @@
               <v-expansion-panel-text>
                 <p v-if="receipt.observacion" class="mb-3">{{ receipt.observacion }}</p>
                 <p v-if="receipt.estado === 'APROBADA'" class="text-body-2 mb-3">Aprobada por {{ receipt.aprobado_por || 'Usuario' }} · {{ formatDateTime(receipt.aprobado_at, '-') }}</p>
-                <div v-for="detail in receipt.detalles || []" :key="detail.id" class="history-material py-3">
-                  <div class="font-weight-medium">{{ receiptMaterial(detail.transferencia_detalle_id) }}</div>
-                  <div class="text-body-2">{{ detail.llego ? `Llegó: ${quantity(detail.cantidad_recibida)}` : 'No llegó' }}</div>
-                  <p v-if="detail.observacion" class="text-body-2 mt-1">{{ detail.observacion }}</p>
-                  <div class="d-flex flex-wrap mt-2" style="gap: 8px"><v-btn v-for="file in detail.adjuntos || []" :key="file.id" size="small" variant="tonal" prepend-icon="mdi-paperclip" :loading="downloadingId === file.id" @click="downloadFile(receipt, file)">{{ file.nombre }}</v-btn></div>
+                <div class="reception-table-scroll" role="region" :aria-label="`Materiales de la revisión ${formatDateTime(receipt.created_at, '-')}`" tabindex="0">
+                  <v-table class="reception-table history-table" density="comfortable">
+                    <thead><tr><th scope="col" class="material-column">Material</th><th scope="col" class="text-right">Enviado</th><th scope="col" class="text-right">Recibido <span class="column-note">Esta revisión</span></th><th scope="col">Resultado</th><th scope="col" class="observation-column">Observación</th><th scope="col" class="attachments-column">Adjuntos</th></tr></thead>
+                    <tbody><tr v-for="detail in receipt.detalles || []" :key="detail.id"><th scope="row" class="material-column"><div class="material-code">{{ receiptTransferDetail(detail.transferencia_detalle_id).codigo_producto }}</div><div class="material-name">{{ receiptTransferDetail(detail.transferencia_detalle_id).nombre_producto || 'Material de la transferencia' }}</div><v-chip size="x-small" variant="tonal" class="mt-1">{{ receiptTransferDetail(detail.transferencia_detalle_id).condicion_material || 'NUEVO' }}</v-chip></th><td class="quantity-cell">{{ quantity(receiptTransferDetail(detail.transferencia_detalle_id).cantidad) }}</td><td class="quantity-cell">{{ quantity(detail.cantidad_recibida) }}</td><td><v-chip size="small" :color="detail.llego ? 'success' : 'warning'" variant="tonal" :prepend-icon="detail.llego ? 'mdi-check' : 'mdi-close'">{{ detail.llego ? 'Recibido' : 'No recibido' }}</v-chip></td><td class="history-observation">{{ detail.observacion || '—' }}</td><td><div v-if="detail.adjuntos?.length" class="attachment-list"><v-btn v-for="file in detail.adjuntos" :key="file.id" size="small" variant="tonal" prepend-icon="mdi-paperclip" class="history-attachment" :title="file.nombre" :aria-label="`Descargar adjunto ${file.nombre}`" :loading="downloadingId === file.id" @click="downloadFile(receipt, file)"><span class="attachment-name">{{ file.nombre }}</span></v-btn></div><span v-else class="text-medium-emphasis">—</span></td></tr></tbody>
+                  </v-table>
                 </div>
               </v-expansion-panel-text>
             </v-expansion-panel>
@@ -166,9 +186,12 @@ const receipts = computed<any[]>(() => [...(transfer.value?.recepciones ?? [])].
 const draft = computed(() => receipts.value.find(receipt => receipt.estado === "BORRADOR"));
 const draftQuantity = computed(() => (draft.value?.detalles ?? []).reduce((sum: number, detail: any) => sum + receptionNumber(detail.cantidad_recibida), 0));
 const isClosed = computed(() => ["COMPLETADA", "ANULADA"].includes(String(transfer.value?.estado).toUpperCase()));
+const isReviewing = computed(() => !draft.value && !isClosed.value && canCreate.value && lines.value.length > 0);
+const reviewedCount = computed(() => lines.value.filter(line => line.llego !== null).length);
+const receivedCount = computed(() => lines.value.filter(line => line.llego === true).length);
+const notReceivedCount = computed(() => lines.value.filter(line => line.llego === false).length);
 const dirty = computed(() => Boolean(observation.value.trim()) || lines.value.some(line => line.llego !== null || line.observacion.trim() || line.adjuntos.length));
 const states = [{ title: "Pendientes y parciales", value: "" }, { title: "Pendiente de recepción", value: "PENDIENTE_RECEPCION" }, { title: "Recepción parcial", value: "PARCIALMENTE_RECIBIDA" }, { title: "Completada", value: "COMPLETADA" }];
-const arrivalOptions = [{ title: "Llegó", value: true }, { title: "No llegó", value: false }];
 const headers = [{ title: "Transferencia", key: "codigo" }, { title: "Fecha", key: "fecha_transferencia" }, { title: "Origen", key: "bodega_origen_label" }, { title: "Destino", key: "bodega_destino_label" }, { title: "Estado", key: "estado" }, { title: "Recepción", key: "acciones", sortable: false }];
 const quantity = (value: unknown) => formatNumberForDisplay(receptionNumber(value));
 function errorMessage(error: any, fallback: string) { const message = error?.response?.data?.message || error?.message; return Array.isArray(message) ? message.join(". ") : String(message || fallback); }
@@ -238,7 +261,7 @@ async function cancelReview() {
   } catch (error) { cancelDialog.value = false; detailError.value = errorMessage(error, "No se pudo descartar la revisión."); }
   finally { cancelling.value = false; }
 }
-function receiptMaterial(detailId: string) { const detail = transfer.value?.detalles?.find((item: any) => item.id === detailId); return detail ? `${detail.codigo_producto || ''} · ${detail.nombre_producto || 'Material'} · ${detail.condicion_material || 'NUEVO'}` : "Material de la transferencia"; }
+function receiptTransferDetail(detailId: string) { return transfer.value?.detalles?.find((item: any) => item.id === detailId) ?? {}; }
 async function addFiles(line: ReceptionLine, selected: File | File[] | null) {
   const files = Array.isArray(selected) ? selected : selected ? [selected] : [];
   if (!files.length || fileReading.value || busy.value) return;
@@ -279,5 +302,50 @@ onMounted(async () => {
 <style scoped>
 .responsive-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .reception-dialog-heading { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
-.history-material + .history-material { border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.review-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.review-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; padding: 12px 16px; margin-bottom: 16px; border-radius: 8px; background: rgba(var(--v-theme-primary), 0.05); }
+.table-scroll-hint { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.reception-table-scroll { max-width: 100%; overflow-x: auto; border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); border-radius: 10px; scroll-padding-inline-start: 248px; }
+.reception-table-scroll:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 3px; }
+.reception-table :deep(.v-table__wrapper) { overflow: visible; }
+.reception-table :deep(table) { table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.review-table :deep(table) { min-width: 1280px; }
+.transfer-summary-table :deep(table) { min-width: 560px; }
+.history-table :deep(table) { min-width: 980px; }
+.reception-table :deep(thead th) { height: 60px; background: rgb(var(--v-theme-surface-variant)); color: rgb(var(--v-theme-on-surface-variant)); font-size: 0.8125rem; font-weight: 700; white-space: nowrap; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.reception-table :deep(tbody th), .reception-table :deep(tbody td) { padding: 14px 12px; vertical-align: top; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); background: rgb(var(--v-theme-surface)); }
+.reception-table :deep(tbody tr:nth-child(even) > *) { background: color-mix(in srgb, rgb(var(--v-theme-primary)) 3%, rgb(var(--v-theme-surface))); }
+.reception-table :deep(tbody tr:hover > *) { background: color-mix(in srgb, rgb(var(--v-theme-primary)) 7%, rgb(var(--v-theme-surface))); }
+.reception-table :deep(tbody tr:last-child > *) { border-bottom: 0; }
+.reception-table :deep(.material-column) { position: sticky; left: 0; z-index: 1; width: 236px; min-width: 236px; text-align: left; border-right: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); }
+.reception-table :deep(thead .material-column) { z-index: 2; }
+.material-code { font-size: 0.75rem; font-weight: 500; color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity)); overflow-wrap: anywhere; }
+.material-name { font-size: 0.875rem; font-weight: 600; line-height: 1.4; margin-top: 3px; overflow-wrap: anywhere; }
+.quantity-cell { text-align: right; font-size: 0.875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reception-table :deep(.quantity-cell) { padding-top: 22px; }
+.pending-quantity { font-weight: 700; }
+.reception-table :deep(.received-column) { width: 132px; }
+.reception-table :deep(.arrival-column) { width: 180px; }
+.reception-table :deep(.observation-column) { width: 220px; }
+.reception-table :deep(.attachments-column) { width: 206px; }
+.column-note { display: block; font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
+.quantity-field :deep(input) { text-align: right; font-variant-numeric: tabular-nums; }
+.quantity-field :deep(.v-field__input) { padding-inline: 10px; }
+.arrival-options { display: flex; flex-direction: column; }
+.arrival-options :deep(.v-selection-control) { min-height: 36px; }
+.arrival-options :deep(.v-label) { font-size: 0.8125rem; opacity: 1; }
+.arrival-hint { font-size: 0.75rem; margin-left: 36px; }
+.unreviewed-row .material-column { box-shadow: inset 3px 0 0 rgba(var(--v-theme-warning), 0.65); }
+.attachment-list { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px; }
+.attachment-chip, .history-attachment { max-width: 100%; }
+.attachment-chip :deep(.v-chip__content), .history-attachment :deep(.v-btn__content) { min-width: 0; }
+.attachment-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-observation { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.875rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (max-width: 600px) {
+  .reception-table :deep(.material-column) { width: 140px; min-width: 140px; }
+  .reception-table :deep(.observation-column), .reception-table :deep(.attachments-column) { width: 180px; }
+  .reception-table-scroll { scroll-padding-inline-start: 152px; }
+  .review-summary { gap: 8px 16px; padding: 10px 12px; }
+}
 </style>
