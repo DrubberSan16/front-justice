@@ -219,8 +219,9 @@
               title="Control de cebado y consumo de aceite"
               :subtitle="periodoLabel"
               :file-name="`cebado_${desde}_${hasta}`"
-              :columns="headersCebado"
+              :columns="[]"
               :rows="data.cebado"
+              :load-report="loadCebadoExportReport"
             />
           </template>
           <div class="legend">
@@ -514,6 +515,7 @@ import { useDataChanged } from "@/app/utils/use-data-changed";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
+import { buildOilOrderReport } from "@/app/utils/oil-consumption-report";
 import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { useReportPreview } from "@/app/utils/report-preview";
@@ -1055,6 +1057,18 @@ function estadoOperativoNivel(value: unknown) {
 
 function money(value: unknown) {
   return formatCurrencyForDisplay(value);
+}
+
+async function loadCebadoExportReport() {
+  const { data: response } = await api.get("/kpi_maintenance/dashboard-administracion/detalle", {
+    params: { bloque: "aceite", desde: desde.value, hasta: hasta.value, equipo_id: equipoId.value || undefined },
+  });
+  const payload = response?.data ?? response;
+  return buildOilOrderReport({
+    rows: Array.isArray(payload?.filas) ? payload.filas : [], mode: "control",
+    subtitle: periodoLabel.value, fileName: `cebado_${desde.value}_${hasta.value}`,
+    showCosts: canViewCosts.value,
+  });
 }
 
 async function load() {

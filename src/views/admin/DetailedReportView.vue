@@ -276,18 +276,29 @@
             <h2 id="oil-title">Consumo de aceite</h2>
             <p>{{ rangeLabel }} · Galones y costo registrados.</p>
           </div>
-          <v-select
-            v-model="selectedOilProductId"
-            :items="oilCatalog"
-            :item-title="materialLabel"
-            item-value="id"
-            label="Aceite"
-            variant="outlined"
-            density="comfortable"
-            hide-details
-            class="oil-select"
-            @update:model-value="loadOilReport"
-          />
+          <div class="d-flex align-center flex-wrap ga-2">
+            <SectionExportButtons
+              :preview="sectionPreview"
+              title="Consumo de aceite"
+              :subtitle="rangeLabel"
+              file-name="gerencia_aceite"
+              :columns="[]"
+              :rows="oilWorkOrders"
+              :load-report="loadOilExportReport"
+            />
+            <v-select
+              v-model="selectedOilProductId"
+              :items="oilCatalog"
+              :item-title="materialLabel"
+              item-value="id"
+              label="Aceite"
+              variant="outlined"
+              density="comfortable"
+              hide-details
+              class="oil-select"
+              @update:model-value="loadOilReport"
+            />
+          </div>
         </div>
         <!-- Cuadricula de dos columnas y no el riel del resumen: en el riel cada
              tarjeta medía un tercio de pantalla, las barras partían el nombre
@@ -453,9 +464,9 @@
               title="Control de cebado y consumo de aceite"
               :subtitle="rangeLabel"
               file-name="gerencia_cebado"
-              :columns="primingExportColumns"
-              :rows="primingReportRows"
-              orientation="portrait"
+              :columns="[]"
+              :rows="primingRows"
+              :load-report="loadPrimingExportReport"
             />
             <v-icon icon="mdi-oil" size="34" color="primary" aria-hidden="true" />
           </div>
@@ -1679,6 +1690,7 @@
 </template>
 
 <script setup lang="ts">
+import { buildOilOrderReport } from "@/app/utils/oil-consumption-report";
 import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
 import {
   buildReportPdfBlob,
@@ -1878,48 +1890,32 @@ const inventoryHeaders = computed(() => [
 const sectionPreview = useReportPreview({
   title: "Previsualización de la sección",
 });
-const primingExportColumns = computed(() =>
-  primingHeaders.value
-    .filter((header: any) => PRIMING_REPORT_KEYS.includes(String(header.key)))
-    .map((header: any) => ({
-      key: String(header.key),
-      title: String(header.title || header.key),
-      format: header.key === "costo_aceite" ? "currency" as const : undefined,
-    })),
-);
+async function loadPrimingExportReport() {
+  if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
+  const { data } = await api.get("/kpi_maintenance/dashboard-administracion/detalle", {
+    params: { bloque: "aceite", desde: startDate.value, hasta: endDate.value },
+  });
+  const payload = unwrap(data);
+  return buildOilOrderReport({
+    rows: filterPrimingRows(Array.isArray(payload?.filas) ? payload.filas : [], primingCentral.value),
+    mode: "control", subtitle: rangeLabel.value,
+    fileName: `gerencia_cebado_${startDate.value}_${endDate.value}`,
+    showCosts: canViewCosts.value,
+  });
+}
 
-/**
- * Filas del reporte de cebado, con la sumatoria al pie.
- *
- * Quien lee el consolidado quiere saber cuanto aceite se gasto en total, y esa
- * cifra no estaba en ninguna parte: habia que sumar la columna a mano. Los
- * horometros NO se suman: son lecturas de un contador, no cantidades.
- */
-const primingReportRows = computed(() => {
-  const filas = primingRows.value.map((row: AnyRow) => ({
-    ...row,
-    equipo_nombre: equipmentLabel(row),
-  }));
-  if (!filas.length) return filas;
+async function loadOilExportReport() {
+  if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
+  await loadOilReport();
+  return oilExportReport.value;
+}
 
-  const suma = (key: string) =>
-    filas.reduce((acc: number, row: AnyRow) => acc + Number(row?.[key] || 0), 0);
-
-  return [
-    ...filas,
-    {
-      equipo_nombre: "TOTAL",
-      central: "",
-      costo_aceite: suma("costo_aceite"),
-      ots_cebado: suma("ots_cebado"),
-      galones_periodo: suma("galones_periodo"),
-      galones_semana: suma("galones_semana"),
-      galones_mes: suma("galones_mes"),
-      horometro_inicial: "",
-      horometro_final: "",
-    },
-  ];
-});
+const oilExportReport = computed(() => buildOilOrderReport({
+  rows: oilWorkOrders.value, mode: "management",
+  subtitle: `${rangeLabel.value} · ${materialLabel(oilReport.value?.selected_product || {})}`,
+  fileName: `gerencia_aceite_${startDate.value}_${endDate.value}`,
+  showCosts: canViewCosts.value,
+}));
 const inventoryExportColumns = computed(() =>
   inventoryHeaders.value.map((header: any) => ({
     key: String(header.key),
@@ -1966,25 +1962,6 @@ const primingHeaders = computed(() => [
   { title: "Órdenes por nivel", key: "niveles", sortable: false },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ]);
-
-/**
- * Columnas del reporte del control de cebado.
- *
- * No son las de la pantalla: "Mayor orden" mide otra cosa que el consolidado,
- * y "Ordenes por nivel" y la de acciones salian en blanco porque una es un
- * distintivo pintado y la otra un boton. En papel sobran las tres.
- */
-const PRIMING_REPORT_KEYS = [
-  "equipo_nombre",
-  "central",
-  "costo_aceite",
-  "ots_cebado",
-  "galones_periodo",
-  "galones_semana",
-  "galones_mes",
-  "horometro_inicial",
-  "horometro_final",
-];
 
 const primingDetailHeaders = computed(() => {
   const headers: AnyRow[] = [
@@ -4724,43 +4701,6 @@ function ordersConsolidationChart(data: OrdersConsolidation): ReportChart {
 }
 
 /**
- * Ordenes de cebado por nivel, partidas por la marca del equipo. Cada fila
- * del control es un equipo con sus cebados criticos, en seguimiento y el
- * resto normales.
- */
-function primingLevelChart(): ReportChart {
-  const levels = ["good", "warning", "critical"] as const;
-  const byBrand = new Map<string, Record<(typeof levels)[number], number>>();
-  for (const row of primingRows.value) {
-    const brand = equipmentBrand(row);
-    const critical = Number(row?.ots_criticas || 0);
-    const warning = Number(row?.ots_seguimiento || 0);
-    const good = Math.max(0, Number(row?.ots_cebado || 0) - critical - warning);
-    const current = byBrand.get(brand) ?? { good: 0, warning: 0, critical: 0 };
-    current.good += good;
-    current.warning += warning;
-    current.critical += critical;
-    byBrand.set(brand, current);
-  }
-  const brands = [...byBrand.entries()].sort(
-    (left, right) =>
-      levels.reduce((sum, level) => sum + right[1][level], 0) -
-        levels.reduce((sum, level) => sum + left[1][level], 0) ||
-      left[0].localeCompare(right[0], "es"),
-  );
-  return {
-    title: "Órdenes por nivel de consumo y marca",
-    type: "bar",
-    unit: "OT",
-    points: reportChartPoints(primingLevelPoints.value),
-    stacks: brands.map(([brand, counts]) => ({
-      name: brand,
-      values: levels.map((level) => counts[level]),
-    })),
-  };
-}
-
-/**
  * Costo por marca de las unidades de generacion. El grafico decia una sola
  * barra, "Unidades de generacion", que no informa nada cuando casi todo el
  * mantenimiento es de UG; partido por marca se ve cuanto se lleva cada
@@ -4908,66 +4848,12 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
   }
 
   if (section === "oil") {
-    const columns: SectionReportColumn[] = [
-      { key: "equipo", title: "Equipo" },
-      { key: "galones", title: "Galones", format: "number" },
-      ...(canViewCosts.value
-        ? ([{ key: "costo", title: "Costo", format: "currency" }] as SectionReportColumn[])
-        : []),
-    ];
-    await sectionPreview.open(
-      "pdf",
-      buildSectionReport({
-        ...common,
-        title: "Consolidado de consumo de aceite",
-        columns,
-        rows: sortedOilEquipment.value.map((entry) => ({
-          equipo: entry.label,
-          galones: entry.cantidad,
-          costo: entry.costo,
-        })),
-        summary: [
-          { label: "Galones consumidos", value: formatNumber(oilTotals.value.total_cantidad) },
-          ...(canViewCosts.value
-            ? [{ label: "Costo total", value: formatCurrency(oilTotals.value.total_costo) }]
-            : []),
-        ],
-        charts: [
-          {
-            title: "Equipos con mayor consumo",
-            type: "bar",
-            unit: "galones",
-            // Debajo del nombre de campo va la marca: "JC - UG07" solo no dice
-            // si la unidad es MTU o CUMMINS.
-            points: sortedOilEquipment.value.slice(0, CHART_TOP).map((entry) => ({
-              label: equipmentChartLabel(entry.row),
-              caption: equipmentBrand(entry.row),
-              value: entry.cantidad,
-            })),
-          },
-        ],
-      }),
-    );
+    await sectionPreview.open("pdf", await loadOilExportReport());
     return;
   }
 
   if (section === "priming") {
-    await sectionPreview.open(
-      "pdf",
-      buildSectionReport({
-        ...common,
-        title: "Consolidado de control de cebado y consumo de aceite",
-        columns: primingExportColumns.value,
-        rows: primingReportRows.value,
-        summary: [
-          { label: "Cebados", value: primingTotals.value.orders },
-          { label: "Galones", value: formatNumber(primingTotals.value.gallons) },
-          ...(canViewCosts.value ? [{ label: "Costo total", value: formatCurrency(primingTotals.value.cost) }] : []),
-          { label: "Central / ubicación", value: primingCentral.value || "Todas" },
-        ],
-        charts: [primingLevelChart()],
-      }),
-    );
+    await sectionPreview.open("pdf", await loadPrimingExportReport());
     return;
   }
 

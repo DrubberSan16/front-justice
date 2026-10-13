@@ -4,7 +4,8 @@
       size="small"
       variant="text"
       prepend-icon="mdi-file-excel"
-      :disabled="!rows.length"
+      :disabled="busy || (!rows.length && !loadReport)"
+      :loading="busy && activeFormat === 'excel'"
       :aria-label="`Previsualizar ${title} en Excel`"
       @click="run('excel')"
     >
@@ -14,17 +15,20 @@
       size="small"
       variant="text"
       prepend-icon="mdi-file-pdf-box"
-      :disabled="!rows.length"
+      :disabled="busy || (!rows.length && !loadReport)"
+      :loading="busy && activeFormat === 'pdf'"
       :aria-label="`Previsualizar ${title} en PDF`"
       @click="run('pdf')"
     >
       PDF
     </v-btn>
+    <span v-if="error" role="alert" class="text-error text-caption">{{ error }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { ReportSummaryItem } from "@/app/utils/maintenance-intelligence-reports";
+import { ref } from "vue";
+import type { ReportDefinition, ReportSummaryItem } from "@/app/utils/maintenance-intelligence-reports";
 import type { ReportPreview } from "@/app/utils/report-preview";
 import {
   buildSectionReport,
@@ -51,23 +55,38 @@ const props = defineProps<{
   orientation?: "portrait" | "landscape";
   /** Rotulo de la tabla en el PDF y nombre de la hoja; por defecto, el titulo. */
   sheetName?: string;
+  loadReport?: () => ReportDefinition | Promise<ReportDefinition>;
 }>();
 
+const busy = ref(false);
+const activeFormat = ref<"pdf" | "excel">("pdf");
+const error = ref("");
+
 async function run(format: "pdf" | "excel") {
-  await props.preview.open(
-    format,
-    buildSectionReport({
-      title: props.title,
-      subtitle: props.subtitle,
-      fileName: props.fileName,
-      columns: props.columns,
-      rows: props.rows,
-      summary: props.summary,
-      note: props.note,
-      orientation: props.orientation,
-      sheetName: props.sheetName,
-    }),
-  );
+  if (busy.value) return;
+  busy.value = true;
+  activeFormat.value = format;
+  error.value = "";
+  try {
+    await props.preview.open(
+      format,
+      props.loadReport ? await props.loadReport() : buildSectionReport({
+        title: props.title,
+        subtitle: props.subtitle,
+        fileName: props.fileName,
+        columns: props.columns,
+        rows: props.rows,
+        summary: props.summary,
+        note: props.note,
+        orientation: props.orientation,
+        sheetName: props.sheetName,
+      }),
+    );
+  } catch (cause: any) {
+    error.value = cause?.response?.data?.message || cause?.message || "No se pudo generar el reporte.";
+  } finally {
+    busy.value = false;
+  }
 }
 </script>
 
