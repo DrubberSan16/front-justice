@@ -555,7 +555,7 @@ const manualHandoffsByRoute: Record<string, UserManualHandoff[]> = {
       moment: "Después de registrar consumos",
       delivers: "Responsable o ejecutor del proyecto",
       receives: "Personal autorizado de bodega",
-      action: "Bodega registra la salida física por la cantidad realmente entregada para el proyecto.",
+      action: "Bodega registra la salida física por la cantidad realmente entregada para el proyecto. Todo lo que sale en un mismo día va en un egreso de bodega; al día siguiente se genera otro.",
       readyWhen: "Los consumos tienen salida o existe un motivo claro por el menor uso del material reservado.",
     },
     {
@@ -1003,12 +1003,12 @@ const manualOverrides: Record<string, ManualOverride> = {
     title: "OT. Proyecto",
     category: "Mantenimiento",
     summary:
-      "Levanta y ejecuta una orden de trabajo de tipo Proyecto: se realiza sobre ubicaciones y bodegas, contrata personal eventual y carga sus materiales.",
+      "Levanta y ejecuta una orden de trabajo de tipo Proyecto: se realiza en una sucursal y sus bodegas, contrata personal eventual y saca materiales con un egreso de bodega por día.",
     purpose:
       "Usa este modulo cuando el trabajo no recae sobre un equipo sino sobre un sitio: una construccion, una adecuacion o cualquier obra con personal contratado por dia.",
     prerequisites: [
       "Debe existir una plantilla de tipo Proyecto; aqui solo se listan esas.",
-      "Ten claras las ubicaciones y bodegas donde se ejecutara el proyecto.",
+      "Ten clara la sucursal y las bodegas donde se ejecutara el proyecto.",
     ],
     states: [
       stateGuidance("PLANNED", "Planificada"),
@@ -1111,8 +1111,9 @@ const manualOverrides: Record<string, ManualOverride> = {
       },
     ],
     extraFields: [
-      { key: "proyecto_ubicaciones", label: "Ubicaciones donde se ejecuta", type: "Elegir varias opciones", required: true, note: "Selecciona las áreas físicas donde se realizará el trabajo. Es obligatorio si no indicas bodegas.", example: "Bodega norte y patio de maniobras" },
-      { key: "proyecto_bodegas", label: "Bodegas donde se ejecuta", type: "Elegir varias opciones", required: true, note: "Selecciona las bodegas relacionadas con la ejecución. Es obligatorio si no indicas ubicaciones.", example: "Bodega de materiales industriales" },
+      { key: "proyecto_sucursal", label: "Sucursal", type: "Elegir una opción", required: true, note: "Selecciona la sucursal donde se ejecuta el proyecto. De ella salen las bodegas y los proyectos que puedes elegir.", example: "CAMPAMENTO" },
+      { key: "proyecto_bodegas", label: "Bodegas donde se ejecuta", type: "Elegir varias opciones", required: true, note: "Solo se listan las bodegas de la sucursal elegida.", example: "BODEGA COCA" },
+      { key: "is_overhaul", label: "Orden normal / Orden OVERHAUL", type: "Interruptor", required: false, note: "Clasifica la OT Proyecto. Se elige al crear y luego queda fija; no cambia los campos ni la salida de materiales.", example: "Orden OVERHAUL" },
       { key: "proyecto_personal", label: "Contratación de personal", type: "Filas de personal", required: false, note: "Agrega una fila por cada persona real e indica cargo, nombre, días, ubicación, valor diario, fecha y observación.", example: "Pintor industrial · Carlos Mendoza · 3,5 días · $40 por día" },
     ],
     tips: [

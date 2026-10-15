@@ -50,7 +50,8 @@ export type ProjectWorkOrderReportData = {
   objetivosEspecificos: string[];
   metodologia: string;
   alcance: string[];
-  ubicaciones: string[];
+  /** Sucursal donde se ejecuta; de ella salen las bodegas y el proyecto. */
+  sucursal: string;
   bodegas: string[];
   personal: ProjectWorkOrderPersonnel[];
   materiales: ProjectWorkOrderMaterial[];
@@ -214,10 +215,10 @@ function drawProjectWorkOrder(
     theme: "grid",
     styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [51, 65, 85], textColor: 255, fontStyle: "bold" },
-    head: [["Ubicaciones", "Bodegas"]],
+    head: [["Sucursal", "Bodegas"]],
     body: [
       [
-        data.ubicaciones.length ? data.ubicaciones.join("\n") : "-",
+        data.sucursal || "-",
         data.bodegas.length ? data.bodegas.join("\n") : "-",
       ],
     ],
@@ -642,9 +643,9 @@ function drawProjectWorkOrderSheet(
   paragraph("Metodología aplicable", data.metodologia);
   list("Alcance del proyecto", data.alcance);
 
-  // Lugar de ejecucion: una ubicacion y una bodega por fila, en paralelo.
+  // Lugar de ejecucion: la sucursal en la primera fila y una bodega por fila.
   sectionTitle("Lugar de ejecución");
-  writeSpanRow(ws, row, [4, 4], [{ value: "Ubicaciones" }, { value: "Bodegas" }], {
+  writeSpanRow(ws, row, [4, 4], [{ value: "Sucursal" }, { value: "Bodegas" }], {
     fill: XL.slate,
     color: XL.white,
     bold: true,
@@ -652,7 +653,7 @@ function drawProjectWorkOrderSheet(
   });
   row += 1;
   // Una lista vacia se marca con "-" en su primera fila, como en el PDF.
-  const placeRows = Math.max(data.ubicaciones.length, data.bodegas.length, 1);
+  const placeRows = Math.max(data.bodegas.length, 1);
   for (let index = 0; index < placeRows; index += 1) {
     const blank = index === 0 ? "-" : "";
     writeSpanRow(
@@ -660,7 +661,7 @@ function drawProjectWorkOrderSheet(
       row,
       [4, 4],
       [
-        { value: data.ubicaciones[index] ?? blank },
+        { value: index === 0 ? data.sucursal || "-" : "" },
         { value: data.bodegas[index] ?? blank },
       ],
     );

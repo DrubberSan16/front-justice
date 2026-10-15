@@ -7,7 +7,7 @@
         </div>
         <div class="text-body-2 text-medium-emphasis">
           {{ isProjectMode
-            ? "Proyectos ejecutados sobre ubicaciones y bodegas. Los materiales se cargan aquí, no en la plantilla."
+            ? "Proyectos ejecutados en una sucursal y sus bodegas. Los materiales se cargan aquí, no en la plantilla, con un egreso de bodega por día."
             : "Cabeceras creadas y gestión de todo el detalle en una sola pantalla." }}
         </div>
       </div>
@@ -158,6 +158,11 @@
           :color="getEmergencyChipColor((item._raw ?? item)?.is_emergency)"
         >
           {{ parseBooleanFlag((item._raw ?? item)?.is_emergency) ? "Emergente" : "Normal" }}
+        </v-chip>
+      </template>
+      <template #item.project_order_label="{ item }">
+        <v-chip size="small" variant="tonal" :color="parseBooleanFlag((item._raw ?? item)?.is_overhaul) ? 'warning' : 'primary'">
+          {{ parseBooleanFlag((item._raw ?? item)?.is_overhaul) ? "OVERHAUL" : "Normal" }}
         </v-chip>
       </template>
       <template #item.equipment_component_label="{ item }">
@@ -417,27 +422,28 @@
               :disabled="isReadOnlyWorkflow"
             />
           </v-col>
+          <!--
+            Una sola sucursal: de ella salen las bodegas y los proyectos que se
+            pueden elegir. La ubicacion ya no se pide: viaja la del proyecto.
+          -->
           <v-col v-if="isProjectMode" cols="12" md="6">
             <v-autocomplete
-              v-model="headerForm.proyecto_ubicacion_ids"
-              :items="locationOptions"
+              v-model="headerForm.proyecto_sucursal_id"
+              :items="sucursalOptions"
               item-title="title"
               item-value="value"
-              label="Ubicaciones donde se ejecuta"
+              label="Sucursal"
               variant="outlined"
-              multiple
-              chips
-              closable-chips
-              clearable
-              :disabled="isReadOnlyWorkflow"
-              hint="Al menos una ubicación o una bodega."
+              :disabled="isReadOnlyWorkflow || (isEditingLockedFields && !!headerForm.equipment_id)"
+              :hint="editingId && headerForm.equipment_id ? 'Es la sucursal del proyecto, que queda fijo.' : 'Obligatoria. Lista sus bodegas y sus proyectos.'"
               persistent-hint
+              no-data-text="No hay sucursales disponibles"
             />
           </v-col>
           <!--
             El proyecto al que pertenece la OT: un equipo de tipo Proyectos de
-            las ubicaciones elegidas. Se elige al crear y luego queda fijo, como
-            el equipo de una OT normal.
+            la sucursal elegida. Se elige al crear y luego queda fijo, como el
+            equipo de una OT normal.
           -->
           <v-col v-if="isProjectMode" cols="12" md="6">
             <v-autocomplete
@@ -448,13 +454,13 @@
               label="Proyecto"
               variant="outlined"
               :loading="loadingProjectEquipment"
-              :disabled="isReadOnlyWorkflow || isEditingLockedFields || !headerForm.proyecto_ubicacion_ids.length"
+              :disabled="isReadOnlyWorkflow || isEditingLockedFields || !headerForm.proyecto_sucursal_id"
               :hint="projectEquipmentHint"
               persistent-hint
-              no-data-text="No hay proyectos en las ubicaciones elegidas"
+              no-data-text="No hay proyectos en la sucursal elegida"
             />
             <!--
-              Sin proyectos en las ubicaciones elegidas no se puede crear la OT:
+              Sin proyectos en la sucursal elegida no se puede crear la OT:
               se registra en su modulo, en otra pestana para no perder lo que ya
               se escribio aqui, y se vuelve a pedir la lista.
             -->
@@ -482,7 +488,7 @@
           <v-col v-if="isProjectMode" cols="12" md="6">
             <v-autocomplete
               v-model="headerForm.proyecto_bodega_ids"
-              :items="warehouseOptions"
+              :items="projectWarehouseOptions"
               item-title="title"
               item-value="value"
               label="Bodegas donde se ejecuta"
@@ -491,7 +497,10 @@
               chips
               closable-chips
               clearable
-              :disabled="isReadOnlyWorkflow"
+              :disabled="isReadOnlyWorkflow || !headerForm.proyecto_sucursal_id"
+              :hint="headerForm.proyecto_sucursal_id ? 'Bodegas de la sucursal elegida.' : 'Selecciona primero la sucursal.'"
+              persistent-hint
+              no-data-text="La sucursal no tiene bodegas"
             />
           </v-col>
           <v-col v-if="!isProjectMode" cols="12" md="4">
@@ -515,7 +524,16 @@
           </v-col>
           <v-col cols="12" md="4">
             <v-switch
-              v-if="!editingId"
+              v-if="isProjectMode && !editingId"
+              v-model="headerForm.is_overhaul"
+              color="warning"
+              inset
+              :label="headerForm.is_overhaul ? 'Orden OVERHAUL' : 'Orden normal'"
+              :disabled="isReadOnlyWorkflow"
+              hide-details="auto"
+            />
+            <v-switch
+              v-else-if="!editingId"
               v-model="headerForm.is_emergency"
               color="warning"
               inset
@@ -529,11 +547,14 @@
                 <v-chip
                   size="small"
                   variant="tonal"
-                  :color="getEmergencyChipColor(headerForm.is_emergency)"
+                  :color="getEmergencyChipColor(isProjectMode ? headerForm.is_overhaul : headerForm.is_emergency)"
                 >
                   {{ resolvedEmergencyOrderLabel }}
                 </v-chip>
               </div>
+            </div>
+            <div v-if="isProjectMode && !editingId" class="text-caption text-medium-emphasis mt-1">
+              Clase de la OT Proyecto. Se elige al crear y luego queda fija.
             </div>
           </v-col>
           <v-col v-if="headerForm.is_emergency" cols="12" md="4">
@@ -2431,6 +2452,8 @@ const equipmentComponentOptions = ref<any[]>([]);
 const planOptions = ref<any[]>([]);
 const procedureOptions = ref<any[]>([]);
 const warehouseOptions = ref<any[]>([]);
+/** Sucursales que el usuario puede ver, para la OT de Proyecto. */
+const sucursalOptions = ref<any[]>([]);
 const productCatalogRows = ref<any[]>([]);
 const warehouseCatalogRows = ref<any[]>([]);
 const workOrderCatalogRows = ref<any[]>([]);
@@ -2502,6 +2525,7 @@ const headerForm = reactive<any>({
   maintenance_kind: "CORRECTIVO",
   fecha_programacion: "",
   is_emergency: false,
+  is_overhaul: false,
   emergency_reason: "",
   hora_inicio: "",
   hora_fin: "",
@@ -2526,6 +2550,8 @@ const headerForm = reactive<any>({
   proyecto_alcance: [] as string[],
   proyecto_ubicacion_ids: [] as string[],
   proyecto_bodega_ids: [] as string[],
+  // Solo de pantalla: se deduce de las bodegas o del proyecto al abrir la OT.
+  proyecto_sucursal_id: "",
 });
 
 type ProjectPersonnelRow = {
@@ -2892,7 +2918,7 @@ const consumoProductHint = computed(() =>
 );
 const materialIssueHelperText = computed(() =>
   isProjectMode.value
-    ? "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución. Los materiales adicionales actualizan el mismo documento."
+    ? "Registra salidas durante la planificación, la ejecución o la revisión. Los materiales que salen el mismo día se agrupan en un egreso de bodega; al cambiar de día se genera otro EB. Imprimir el primer egreso inicia la OT."
     : isCebadoWorkOrder.value
       ? "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución y conserva la lectura capturada al iniciar; en Cebado el equipo sigue en funcionamiento. Los materiales adicionales actualizan el mismo documento."
       : "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución, conserva la lectura capturada al iniciar y deja el equipo Parado hasta registrar su encendido. Los materiales adicionales actualizan el mismo documento.",
@@ -3036,9 +3062,15 @@ const canRegisterRealIssue = computed(
   () =>
     canIssueMaterials.value &&
     !!editingId.value &&
-    ["PLANNED", "REVIEW"].includes(normalizedWorkflow.value) &&
-    ["PLANNED", "REVIEW"].includes(persistedWorkflow.value) && !equipmentExecutionBlocker.value &&
+    materialIssueAllowedWorkflows.value.includes(normalizedWorkflow.value) &&
+    materialIssueAllowedWorkflows.value.includes(persistedWorkflow.value) && !equipmentExecutionBlocker.value &&
     !isReadOnlyWorkflow.value,
+);
+// Toda OT Proyecto, Normal u OVERHAUL, saca material mientras dura (un EB por día).
+const materialIssueAllowedWorkflows = computed(() =>
+  isProjectMode.value
+    ? ["PLANNED", "IN_PROGRESS", "REVIEW"]
+    : ["PLANNED", "REVIEW"],
 );
 const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
@@ -3127,9 +3159,10 @@ const projectHeaders = [
   { title: "Código", key: "code", fixed: true, width: 150 },
   { title: "Proyecto", key: "title" },
   { title: "Plantilla", key: "procedimiento_nombre" },
-  { title: "Ubicaciones", key: "proyecto_ubicaciones_label" },
+  { title: "Sucursal", key: "proyecto_sucursal_label" },
   { title: "Bodegas", key: "proyecto_bodegas_label" },
   { title: "Personal", key: "proyecto_personal_count" },
+  { title: "Clase", key: "project_order_label" },
   { title: "Estado", key: "status_workflow" },
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
@@ -3457,9 +3490,7 @@ const workOrderPreviewSummary = computed(() => [
 /** Sitios y personal del proyecto, en texto, para la previsualización. */
 const projectPreviewSitesLabel = computed(() =>
   [
-    ...headerForm.proyecto_ubicacion_ids.map((id: string) =>
-      getProjectOptionLabel(locationOptions.value, id),
-    ),
+    sucursalLabelById.value.get(String(headerForm.proyecto_sucursal_id || "")) || "",
     ...headerForm.proyecto_bodega_ids.map((id: string) =>
       getProjectOptionLabel(warehouseOptions.value, id),
     ),
@@ -3853,9 +3884,7 @@ const projectReportData = computed<ProjectWorkOrderReportData>(() => {
     objetivosEspecificos: [...headerForm.proyecto_objetivos_especificos],
     metodologia: headerForm.proyecto_metodologia || "",
     alcance: [...headerForm.proyecto_alcance],
-    ubicaciones: headerForm.proyecto_ubicacion_ids
-      .map((id: string) => getProjectOptionLabel(locationOptions.value, id, audit?.proyecto_ubicaciones))
-      .filter(Boolean),
+    sucursal: sucursalLabelById.value.get(String(headerForm.proyecto_sucursal_id || "")) || "",
     bodegas: headerForm.proyecto_bodega_ids
       .map((id: string) => getProjectOptionLabel(warehouseOptions.value, id, audit?.proyecto_bodegas))
       .filter(Boolean),
@@ -4870,15 +4899,74 @@ async function loadProjectEquipment() {
   }
 }
 
-/** Los proyectos que se pueden elegir son los de las ubicaciones de la OT. */
+/** Sucursal de cada ubicación y de cada bodega, para filtrar por sucursal. */
+const locationSucursalById = computed(
+  () => new Map(locationCatalogRows.value.map((row: any) => [String(row?.id || ""), String(row?.sucursal_id || "")])),
+);
+const warehouseSucursalById = computed(
+  () => new Map(warehouseCatalogRows.value.map((row: any) => [String(row?.id || ""), String(row?.sucursal_id || "")])),
+);
+const sucursalLabelById = computed(
+  () => new Map(sucursalOptions.value.map((option: any) => [String(option.value), String(option.title)])),
+);
+
+/** Los proyectos que se pueden elegir son los de la sucursal de la OT. */
 const projectEquipmentByLocation = computed(() => {
-  const locationIds = new Set(
-    headerForm.proyecto_ubicacion_ids.map((id: string) => String(id)),
-  );
-  return projectEquipmentRows.value.filter((row: any) =>
-    locationIds.has(String(row?.location_id || "")),
+  const sucursalId = String(headerForm.proyecto_sucursal_id || "");
+  if (!sucursalId) return [];
+  return projectEquipmentRows.value.filter(
+    (row: any) => locationSucursalById.value.get(String(row?.location_id || "")) === sucursalId,
   );
 });
+
+/**
+ * Bodegas de la sucursal elegida. Una bodega ya guardada que no sea de ella
+ * (una OT anterior a la regla) se sigue mostrando para no perderla de vista.
+ */
+const projectWarehouseOptions = computed(() => {
+  const sucursalId = String(headerForm.proyecto_sucursal_id || "");
+  const options = warehouseCatalogRows.value
+    .filter((row: any) => !row?.es_chatarra && String(row?.sucursal_id || "") === sucursalId)
+    .map(normalize);
+  for (const id of headerForm.proyecto_bodega_ids) {
+    if (!options.some((option: any) => String(option.value) === String(id))) {
+      options.push({ value: id, title: getProjectOptionLabel(warehouseOptions.value, id) });
+    }
+  }
+  return options;
+});
+
+/** Sucursal de una OT de Proyecto: la de sus bodegas o, si no tiene, la de su proyecto. */
+function resolveProjectSucursalId(bodegaIds: string[], ubicacionIds: string[], equipmentId: unknown) {
+  const fromBodega = bodegaIds
+    .map((id) => warehouseSucursalById.value.get(String(id)))
+    .find(Boolean);
+  if (fromBodega) return fromBodega;
+  const project = projectEquipmentRows.value.find((row: any) => String(row?.id || "") === String(equipmentId || ""));
+  const locationIds = [project?.location_id, ...ubicacionIds].map((id) => String(id || "")).filter(Boolean);
+  return locationIds.map((id) => locationSucursalById.value.get(id)).find(Boolean) || "";
+}
+
+/**
+ * La ubicación de la OT ya no se elige: es la del proyecto. Si el proyecto no
+ * está en la lista cargada se conservan las ubicaciones guardadas.
+ */
+function resolveProjectLocationIds() {
+  const current = String(headerForm.equipment_id || "").trim();
+  if (!current) return [...headerForm.proyecto_ubicacion_ids];
+  const project = projectEquipmentRows.value.find((row: any) => String(row?.id || "") === current);
+  if (!project) return [...headerForm.proyecto_ubicacion_ids];
+  return project.location_id ? [String(project.location_id)] : [];
+}
+
+function getProjectSucursalLabel(record: any) {
+  const sucursalId = resolveProjectSucursalId(
+    toStringList(record?.proyecto_bodega_ids),
+    toStringList(record?.proyecto_ubicacion_ids),
+    record?.equipment_id,
+  );
+  return sucursalId ? sucursalLabelById.value.get(sucursalId) || "Sin registro" : "—";
+}
 
 const projectEquipmentOptions = computed(() => {
   const options = projectEquipmentByLocation.value.map((row: any) => ({
@@ -4902,25 +4990,25 @@ const projectEquipmentHint = computed(() => {
       ? "El proyecto se elige al crear la OT y queda fijo."
       : "Esta OT se creó sin proyecto asociado.";
   }
-  if (!headerForm.proyecto_ubicacion_ids.length) {
-    return "Obligatorio. Selecciona primero la ubicación donde se ejecuta.";
+  if (!headerForm.proyecto_sucursal_id) {
+    return "Obligatorio. Selecciona primero la sucursal.";
   }
   if (!projectEquipmentByLocation.value.length) {
-    return "No hay proyectos registrados en las ubicaciones elegidas. Regístralos en Configuración > Proyectos.";
+    return "No hay proyectos registrados en la sucursal elegida. Regístralos en Configuración > Proyectos.";
   }
-  return "Obligatorio. Proyectos registrados en las ubicaciones elegidas.";
+  return "Obligatorio. Proyectos registrados en la sucursal elegida.";
 });
 
 /**
- * Al crear una OT de Proyecto, con ubicaciones elegidas y ningun proyecto
- * registrado en ellas, hay que poder ir a registrarlo sin salir del formulario.
+ * Al crear una OT de Proyecto, con la sucursal elegida y ningun proyecto
+ * registrado en ella, hay que poder ir a registrarlo sin salir del formulario.
  */
 const showProjectRegisterHelp = computed(
   () =>
     isProjectMode.value &&
     !editingId.value &&
     !isReadOnlyWorkflow.value &&
-    headerForm.proyecto_ubicacion_ids.length > 0 &&
+    !!headerForm.proyecto_sucursal_id &&
     !projectEquipmentByLocation.value.length &&
     !loadingProjectEquipment.value,
 );
@@ -4960,7 +5048,7 @@ async function ensureEquipmentCatalogLoaded(force = false) {
 async function loadCatalogs() {
   loadingCatalogs.value = true;
   try {
-    const [, planes, procedimientos, bodegas, usuarios, ubicaciones, empleados] =
+    const [, planes, procedimientos, bodegas, usuarios, ubicaciones, empleados, sucursales] =
       await Promise.all([
         ensureEquipmentCatalogLoaded(),
         listAll("/kpi_maintenance/planes"),
@@ -4976,6 +5064,9 @@ async function loadCatalogs() {
           ui.error("No se pudo cargar la lista de empleados para elegir responsables.");
           return [] as any[];
         }),
+        isProjectMode.value
+          ? listAll("/kpi_inventory/sucursales")
+          : Promise.resolve([] as any[]),
       ]);
     planOptions.value = planes.map(normalize);
     // En OT Proyecto solo se ofrecen las plantillas de formato proyecto; en el
@@ -4989,6 +5080,9 @@ async function loadCatalogs() {
     procedureOptions.value = procedimientosDelModo.map(normalize);
     locationCatalogRows.value = ubicaciones;
     locationOptions.value = ubicaciones.map(normalize);
+    sucursalOptions.value = sucursales
+      .filter((item: any) => !item?.is_deleted && String(item?.status || "ACTIVE").toUpperCase() === "ACTIVE")
+      .map(normalize);
     workOrderCatalogRows.value = records.value;
     /* legacy manual alert catalog removed
     value: item.id,
@@ -5955,7 +6049,7 @@ function buildProjectValorJsonPayload() {
 function buildProjectHeaderPayload() {
   if (!isProjectMode.value) return {};
   return {
-    proyecto_ubicacion_ids: [...headerForm.proyecto_ubicacion_ids],
+    proyecto_ubicacion_ids: resolveProjectLocationIds(),
     proyecto_bodega_ids: [...headerForm.proyecto_bodega_ids],
     proyecto_personal: projectPersonnelRows.value
       .filter((row) => String(row.rol || "").trim())
@@ -5975,15 +6069,15 @@ function buildProjectHeaderPayload() {
 /** Mensaje de rechazo del formulario de proyecto, o `null` si esta completo. */
 function validateProjectHeader(): string | null {
   if (!isProjectMode.value) return null;
-  if (
-    !headerForm.proyecto_ubicacion_ids.length &&
-    !headerForm.proyecto_bodega_ids.length
-  ) {
-    return "Debes indicar al menos una ubicación o una bodega donde se ejecuta el proyecto.";
+  if (!String(headerForm.proyecto_sucursal_id || "").trim()) {
+    return "Debes seleccionar la sucursal donde se ejecuta el proyecto.";
   }
   // Una OT guardada antes de esta regla se sigue editando sin proyecto.
   if (!editingId.value && !String(headerForm.equipment_id || "").trim()) {
-    return "Debes seleccionar el proyecto al que pertenece la OT. Elige primero la ubicación donde se ejecuta.";
+    return "Debes seleccionar el proyecto al que pertenece la OT. Elige primero la sucursal.";
+  }
+  if (!resolveProjectLocationIds().length && !headerForm.proyecto_bodega_ids.length) {
+    return "Debes indicar al menos una bodega de la sucursal donde se ejecuta el proyecto.";
   }
   if (!String(headerForm.proyecto_objetivo_general || "").trim()) {
     return "Objetivo general es obligatorio.";
@@ -6019,6 +6113,7 @@ function buildWorkOrderSaveBundlePayload() {
       equipo_componente_ids: getHeaderComponentIds(),
       maintenance_kind: headerForm.maintenance_kind || null,
       is_emergency: Boolean(headerForm.is_emergency),
+      is_overhaul: isProjectMode.value && Boolean(headerForm.is_overhaul),
       emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
       ...(headerForm.is_emergency
         ? {
@@ -6111,6 +6206,7 @@ function applySavedWorkOrderState(savedHeader: any) {
     : headerForm.equipo_componentes;
   headerForm.alerta_id = savedHeader?.alerta_id ?? headerForm.alerta_id;
   headerForm.is_emergency = parseBooleanFlag(savedHeader?.is_emergency ?? headerForm.is_emergency);
+  headerForm.is_overhaul = parseBooleanFlag(savedHeader?.is_overhaul ?? headerForm.is_overhaul);
   headerForm.emergency_reason = headerForm.is_emergency ? String(savedHeader?.emergency_reason || "") : "";
   headerForm.hora_inicio = headerForm.is_emergency
     ? formatDateTimeForInput(savedHeader?.hora_inicio)
@@ -6476,7 +6572,9 @@ const selectedBlockingOrderLabel = computed(() => {
 });
 
 const resolvedEmergencyOrderLabel = computed(() =>
-  headerForm.is_emergency ? "Orden emergente" : "Orden normal",
+  isProjectMode.value
+    ? (headerForm.is_overhaul ? "Orden OVERHAUL" : "Orden normal")
+    : (headerForm.is_emergency ? "Orden emergente" : "Orden normal"),
 );
 
 const horometerTimelineEntries = computed(() =>
@@ -6939,6 +7037,7 @@ async function loadDetailData() {
     );
     headerForm.alerta_id = currentWorkOrderRecord.value?.alerta_id ?? "";
     headerForm.is_emergency = parseBooleanFlag(currentWorkOrderRecord.value?.is_emergency);
+    headerForm.is_overhaul = parseBooleanFlag(currentWorkOrderRecord.value?.is_overhaul);
     headerForm.emergency_reason = headerForm.is_emergency ? String(currentWorkOrderRecord.value?.emergency_reason || "") : "";
     taskRows.value = asArray(tasksRes.data).map((x) => ({
       ...x,
@@ -6987,11 +7086,12 @@ const rows = computed(() => {
       equipment_component_label: getEquipmentComponentLabel(r),
       maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
       emergency_label: parseBooleanFlag(r?.is_emergency) ? "Emergente" : "Normal",
+      project_order_label: parseBooleanFlag(r?.is_overhaul) ? "OVERHAUL" : "Normal",
       scheduled_program_date: getWorkOrderScheduledProgramDate(r),
       scheduled_program_date_label: getWorkOrderScheduledProgramDateLabel(r),
       operational_date: getWorkOrderOperationalDate(r),
       operational_date_label: getWorkOrderOperationalDateLabel(r),
-      proyecto_ubicaciones_label: getProjectSitesLabel(r?.proyecto_ubicaciones),
+      proyecto_sucursal_label: getProjectSucursalLabel(r),
       proyecto_bodegas_label: getProjectSitesLabel(r?.proyecto_bodegas),
       proyecto_personal_count: Array.isArray(r?.proyecto_personal)
         ? r.proyecto_personal.length
@@ -7003,6 +7103,7 @@ const rows = computed(() => {
         equipment_component_label: getEquipmentComponentLabel(r),
         maintenance_kind_label: getMaintenanceKindLabel(r?.maintenance_kind),
         emergency_label: parseBooleanFlag(r?.is_emergency) ? "Emergente" : "Normal",
+        project_order_label: parseBooleanFlag(r?.is_overhaul) ? "OVERHAUL" : "Normal",
         scheduled_program_date_label: getWorkOrderScheduledProgramDateLabel(r),
         operational_date_label: getWorkOrderOperationalDateLabel(r),
       }).toLowerCase(),
@@ -7093,6 +7194,7 @@ function resetAllForms() {
   headerForm.plan_id = "";
   headerForm.alerta_id = "";
   headerForm.is_emergency = false;
+  headerForm.is_overhaul = false;
   headerForm.emergency_reason = "";
   headerForm.hora_inicio = "";
   headerForm.hora_fin = "";
@@ -7110,6 +7212,7 @@ function resetAllForms() {
   headerForm.proyecto_alcance = [];
   headerForm.proyecto_ubicacion_ids = [];
   headerForm.proyecto_bodega_ids = [];
+  headerForm.proyecto_sucursal_id = "";
   projectPersonnelRows.value = [];
 
   taskForm.plan_id = "";
@@ -7193,6 +7296,7 @@ async function openEdit(item: any) {
   taskForm.plan_id = headerForm.plan_id || "";
   headerForm.alerta_id = item.alerta_id ?? "";
   headerForm.is_emergency = parseBooleanFlag(item?.is_emergency);
+  headerForm.is_overhaul = parseBooleanFlag(item?.is_overhaul);
   headerForm.emergency_reason = headerForm.is_emergency ? String(item?.emergency_reason || "") : "";
   headerForm.hora_inicio = headerForm.is_emergency
     ? formatDateTimeForInput(item?.hora_inicio)
@@ -7249,6 +7353,11 @@ async function openEdit(item: any) {
   await ensureCatalogsLoaded();
   if (isProjectMode.value) {
     await loadProjectEquipment();
+    headerForm.proyecto_sucursal_id = resolveProjectSucursalId(
+      headerForm.proyecto_bodega_ids,
+      headerForm.proyecto_ubicacion_ids,
+      headerForm.equipment_id,
+    );
   } else {
     await loadEquipmentComponents(String(headerForm.equipment_id || ""));
   }
@@ -7507,6 +7616,7 @@ async function saveHeader(
     equipo_componente_ids: getHeaderComponentIds(),
     maintenance_kind: headerForm.maintenance_kind || null,
     is_emergency: Boolean(headerForm.is_emergency),
+    is_overhaul: isProjectMode.value && Boolean(headerForm.is_overhaul),
     emergency_reason: headerForm.is_emergency ? (headerForm.emergency_reason || null) : null,
     ...(headerForm.is_emergency
       ? {
@@ -8492,13 +8602,17 @@ watch(
   },
 );
 
-// El proyecto se elige entre los de las ubicaciones de la OT: si al crearla se
-// quita la ubicacion del proyecto ya elegido, la seleccion deja de valer. Una OT
-// guardada conserva el suyo, que queda fijo.
+// Proyecto y bodegas se eligen dentro de la sucursal: al cambiarla se sueltan
+// las bodegas de otra y, al crear, el proyecto que ya no es de ella. Una OT
+// guardada conserva su proyecto, que queda fijo.
 watch(
-  () => [...headerForm.proyecto_ubicacion_ids],
-  () => {
-    if (!isProjectMode.value || editingId.value) return;
+  () => headerForm.proyecto_sucursal_id,
+  (sucursalId, previous) => {
+    if (!isProjectMode.value || !previous || sucursalId === previous) return;
+    headerForm.proyecto_bodega_ids = headerForm.proyecto_bodega_ids.filter(
+      (id: string) => warehouseSucursalById.value.get(String(id)) === String(sucursalId || ""),
+    );
+    if (editingId.value) return;
     const current = String(headerForm.equipment_id || "").trim();
     if (!current) return;
     const stillAvailable = projectEquipmentByLocation.value.some(
