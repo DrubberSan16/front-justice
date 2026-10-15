@@ -13,15 +13,20 @@ import { useAuthStore } from "@/app/stores/auth.store";
  * Las señales llegan en ráfaga —guardar una OT dispara varias— así que se
  * agrupan en una ventana corta y se recarga una sola vez. Sin eso, guardar una
  * orden provocaría tres recargas seguidas del dashboard.
+ *
+ * `onChange` recibe los recursos que cambiaron en esa ventana, para que la
+ * pantalla recargue solo lo que le toca. Tras una reconexión llega `"*"`:
+ * pudo cambiar cualquier cosa mientras el socket estuvo caído.
  */
 export function useDataChanged(
   recursos: string[],
-  onChange: () => void | Promise<void>,
+  onChange: (cambios: string[]) => void | Promise<void>,
   options: { debounceMs?: number } = {},
 ) {
   const debounceMs = options.debounceMs ?? 1200;
   let socket: Socket | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let pendientes = new Set<string>();
 
   function resolveOrigin() {
     try {
@@ -31,11 +36,14 @@ export function useDataChanged(
     }
   }
 
-  function programarRecarga() {
+  function programarRecarga(recurso = "*") {
+    pendientes.add(recurso);
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      void onChange();
+      const cambios = [...pendientes];
+      pendientes = new Set();
+      void onChange(cambios);
     }, debounceMs);
   }
 
@@ -49,15 +57,19 @@ export function useDataChanged(
       auth: { token: auth.accessToken },
     });
     socket.on("data:changed", (payload: { recurso?: string }) => {
-      if (!recursos.length || recursos.includes(String(payload?.recurso ?? ""))) {
-        programarRecarga();
+      const recurso = String(payload?.recurso ?? "");
+      if (!recursos.length || recursos.includes(recurso)) {
+        programarRecarga(recurso || "*");
       }
     });
+    // Las señales emitidas mientras el socket estaba caído no se repiten.
+    socket.io.on("reconnect", () => programarRecarga());
   });
 
   onBeforeUnmount(() => {
     if (timer) clearTimeout(timer);
     timer = null;
+    pendientes.clear();
     socket?.disconnect();
     socket = null;
   });

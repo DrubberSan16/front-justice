@@ -318,6 +318,7 @@
               :file-name="`proyeccion_horometro_${desde}_${hasta}`"
               :columns="headersProyeccion"
               :rows="proyeccionAplicable"
+              :load-report="proyeccionAplicable.length ? reporteProyeccion : undefined"
             />
           </template>
           <v-data-table
@@ -344,6 +345,21 @@
                 </template>
               </v-tooltip>
             </template>
+            <template #item.horometro_actual="{ item }">
+              <span class="proyeccion-horometro">
+                {{ relojHorometro(row(item)) }}
+                <template v-if="row(item).estado_funcionamiento === 'FUNCIONAMIENTO'">
+                  <v-icon
+                    icon="mdi-timer-play-outline"
+                    size="14"
+                    color="success"
+                    class="ms-1"
+                    title="Contador en marcha"
+                  />
+                  <span class="d-sr-only">Contador en marcha</span>
+                </template>
+              </span>
+            </template>
             <template #item.horometro_ultimo_mantenimiento="{ item }">
               {{ horometro(row(item).horometro_ultimo_mantenimiento) }}
               <span v-if="row(item).referencia_estimada" class="text-caption text-warning">
@@ -351,13 +367,16 @@
               </span>
             </template>
             <template #item.semaforo="{ item }">
-              <StatusChip :nivel="row(item).semaforo.nivel" :texto="row(item).semaforo.etiqueta" />
+              <StatusChip
+                :nivel="proyeccionEnVivo(row(item)).semaforo.nivel"
+                :texto="proyeccionEnVivo(row(item)).semaforo.etiqueta"
+              />
             </template>
             <template #item.horas_restantes="{ item }">
-              <span :class="row(item).horas_restantes < 0 ? 'text-error font-weight-bold' : ''">
-                {{ row(item).horas_restantes < 0
-                  ? `${Math.abs(row(item).horas_restantes)} h excedidas`
-                  : `${row(item).horas_restantes} h` }}
+              <span :class="proyeccionEnVivo(row(item)).horas_restantes < 0 ? 'text-error font-weight-bold' : ''">
+                {{ proyeccionEnVivo(row(item)).horas_restantes < 0
+                  ? `${Math.abs(proyeccionEnVivo(row(item)).horas_restantes)} h excedidas`
+                  : `${proyeccionEnVivo(row(item)).horas_restantes} h` }}
               </span>
             </template>
           </v-data-table>
@@ -497,7 +516,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref } from "vue";
+import { computed, h, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   formatCurrencyForDisplay,
   formatHorometerForDisplay,
@@ -517,6 +536,8 @@ import { canViewMaterialCosts } from "@/app/utils/role-access";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
 import { buildOilOrderReport } from "@/app/utils/oil-consumption-report";
 import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
+import { buildSectionReport } from "@/app/utils/section-report";
+import { operationalClock, operationalHours } from "@/app/utils/operational-horometer";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { useReportPreview } from "@/app/utils/report-preview";
 
@@ -632,15 +653,34 @@ const headersRepuestos = computed(() => [
   ...(canViewCosts.value ? [{ title: "Costo", key: "costo", align: "end" as const }] : []),
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ]);
+const NIVEL_ORDEN: Record<string, number> = { ROJO: 0, AMARILLO: 1, VERDE: 2 };
+// Las columnas que corren en vivo se ordenan por lo que se ve, no por la carga.
 const headersProyeccion = [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Marca", key: "marca" },
-  { title: "Horómetro actual", key: "horometro_actual", align: "end" as const },
+  {
+    title: "Horómetro actual",
+    key: "horometro_actual",
+    align: "end" as const,
+    sortRaw: (a: any, b: any) => horasEnVivo(a) - horasEnVivo(b),
+  },
   { title: "Último mant.", key: "horometro_ultimo_mantenimiento", align: "end" as const },
   { title: "Frecuencia", key: "frecuencia", align: "end" as const },
   { title: "Próximo objetivo", key: "horometro_proximo_mantenimiento", align: "end" as const },
-  { title: "Restantes", key: "horas_restantes", align: "end" as const },
-  { title: "Estado", key: "semaforo" },
+  {
+    title: "Restantes",
+    key: "horas_restantes",
+    align: "end" as const,
+    sortRaw: (a: any, b: any) =>
+      proyeccionEnVivo(a).horas_restantes - proyeccionEnVivo(b).horas_restantes,
+  },
+  {
+    title: "Estado",
+    key: "semaforo",
+    sortRaw: (a: any, b: any) =>
+      (NIVEL_ORDEN[proyeccionEnVivo(a).semaforo?.nivel] ?? 3) -
+      (NIVEL_ORDEN[proyeccionEnVivo(b).semaforo?.nivel] ?? 3),
+  },
 ];
 const headersConfiabilidad = [
   { title: "Equipo", key: "equipo_nombre" },
@@ -667,6 +707,125 @@ const proyeccionEstimada = computed(() =>
     (row: any) => row.aplica && row.referencia_estimada,
   ),
 );
+
+/**
+ * El horometro de la proyeccion corre en vivo con la misma cuenta que el
+ * Control operativo: lectura guardada mas el tiempo en funcionamiento. Las
+ * horas restantes y el semaforo se recalculan con el. Solo las celdas leen
+ * `ahora`, asi que cada segundo se repinta esa tabla y no el tablero entero.
+ */
+const ahora = ref(Date.now());
+let relojProyeccion: ReturnType<typeof setInterval> | null = null;
+let refrescoProyeccion: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * El reloj solo sabe contar: si alguien detiene o enciende el equipo y la señal
+ * del socket no llega (suspensión, cambio de red), seguiría sumando horas. Como
+ * el Control operativo, se relee la proyección cada 30 s y al volver a la
+ * pestaña. Se actualiza en su sitio para no repintar los demás bloques.
+ */
+// El refresco usa el equipo de la ultima carga, no el que el usuario eligio y
+// aun no aplico; y descarta la respuesta si entretanto empezo otra carga.
+let generacionCarga = 0;
+let equipoCargado: string | null = null;
+
+async function refrescarProyeccion() {
+  if (!canRead.value || loading.value || document.hidden) return;
+  const generacion = generacionCarga;
+  try {
+    const { data: response } = await api.get(
+      "/kpi_maintenance/dashboard-administracion/proyeccion",
+      { params: { equipo_id: equipoCargado || undefined } },
+    );
+    const payload = response?.data ?? response;
+    if (!Array.isArray(payload?.proyeccion) || loading.value || generacion !== generacionCarga) return;
+    data.value.proyeccion = payload.proyeccion;
+    if (data.value.resumen) {
+      data.value.resumen.mantenimientos_vencidos = payload.mantenimientos_vencidos;
+      data.value.resumen.mantenimientos_proximos = payload.mantenimientos_proximos;
+    }
+    // La columna Estado de Disponibilidad dice como esta AHORA el equipo: que no
+    // contradiga al contador. Las horas del periodo se rehacen al recargar.
+    const estados = new Map<string, unknown>(
+      payload.proyeccion.map((fila: any) => [fila.equipo_id, fila.estado_funcionamiento]),
+    );
+    for (const fila of data.value.disponibilidad ?? []) {
+      if (estados.has(fila.equipo_id)) fila.estado_funcionamiento = estados.get(fila.equipo_id);
+    }
+  } catch {
+    // Sin red o con el backend anterior: se conserva lo último cargado.
+  }
+}
+
+function alVolverALaPestana() {
+  if (!document.hidden) void refrescarProyeccion();
+}
+
+onMounted(() => {
+  relojProyeccion = setInterval(() => {
+    ahora.value = Date.now();
+  }, 1000);
+  refrescoProyeccion = setInterval(() => void refrescarProyeccion(), 30000);
+  document.addEventListener("visibilitychange", alVolverALaPestana);
+});
+onBeforeUnmount(() => {
+  if (relojProyeccion) clearInterval(relojProyeccion);
+  if (refrescoProyeccion) clearInterval(refrescoProyeccion);
+  document.removeEventListener("visibilitychange", alVolverALaPestana);
+});
+
+function horasEnVivo(fila: any, now = ahora.value) {
+  return operationalHours(
+    fila.horometro_operativo_base ?? fila.horometro_actual,
+    fila.estado_funcionamiento,
+    fila.horometro_operativo_desde,
+    now,
+  );
+}
+
+function relojHorometro(fila: any) {
+  return operationalClock(
+    fila.horometro_operativo_base ?? fila.horometro_actual,
+    fila.estado_funcionamiento,
+    fila.horometro_operativo_desde,
+    ahora.value,
+  );
+}
+
+function proyeccionEnVivo(fila: any, now = ahora.value) {
+  const horas = horasEnVivo(fila, now);
+  // Con base estimada el objetivo es "vence ahora" respecto de la lectura de
+  // cada consulta: restarle el reloj lo pondria en rojo sin que nada cambie.
+  if (fila.referencia_estimada) return { ...fila, horometro_actual: horas };
+  // El objetivo sin redondear, como en getProyeccion; el redondeado solo se muestra.
+  const objetivo = Number(fila.horometro_objetivo ?? fila.horometro_proximo_mantenimiento ?? 0);
+  const restantes = Math.round(objetivo - horas);
+  // Los mismos cortes que getProyeccion (dashboard-administracion.service.ts).
+  const semaforo =
+    restantes < -Number(fila.umbral_rojo ?? 0)
+      ? { nivel: "ROJO", etiqueta: "Superó la tolerancia" }
+      : restantes <= Number(fila.umbral_amarillo ?? 0)
+        ? { nivel: "AMARILLO", etiqueta: "Próximo a mantenimiento" }
+        : { nivel: "VERDE", etiqueta: "Dentro de frecuencia" };
+  return {
+    ...fila,
+    horometro_actual: horas,
+    horas_restantes: restantes,
+    horas_excedidas: restantes < 0 ? Math.abs(restantes) : 0,
+    semaforo,
+  };
+}
+
+/** La exportacion lleva el horometro del momento en que se pide. */
+function reporteProyeccion() {
+  return buildSectionReport({
+    title: "Frecuencia por horómetro y proyección",
+    subtitle: periodoLabel.value,
+    fileName: `proyeccion_horometro_${desde.value}_${hasta.value}`,
+    columns: headersProyeccion,
+    rows: proyeccionAplicable.value.map((fila: any) => proyeccionEnVivo(fila, Date.now())),
+  });
+}
 
 const resumenCards = computed(() => {
   const r = data.value.resumen ?? {};
@@ -1075,6 +1234,8 @@ async function load() {
   if (!canRead.value) return;
   loading.value = true;
   error.value = null;
+  generacionCarga += 1;
+  const filtro = equipoId.value || null;
   try {
     const { data: payload } = await api.get(
       "/kpi_maintenance/dashboard-administracion",
@@ -1082,11 +1243,12 @@ async function load() {
         params: {
           desde: desde.value,
           hasta: hasta.value,
-          equipo_id: equipoId.value || undefined,
+          equipo_id: filtro || undefined,
         },
       },
     );
     data.value = payload?.data ?? payload;
+    equipoCargado = filtro;
     await loadSeries();
   } catch (e: any) {
     // Se conserva el detalle del backend cuando existe; si el fallo no es HTTP
@@ -1107,7 +1269,15 @@ onMounted(load);
  * contenido. La senal llega por socket y se agrupa para no recargar tres veces
  * seguidas por un solo guardado.
  */
-useDataChanged(["work-order"], async () => {
+useDataChanged(["work-order", "equipo"], async (cambios) => {
+  // Encender, detener o editar un equipo mueve el contador: se relee la
+  // proyeccion (y el estado actual de Disponibilidad) en su sitio, sin el
+  // esqueleto ni perder el orden y la pagina de las tablas. Las horas del
+  // periodo y los demas bloques se rehacen con Actualizar o con una OT.
+  if (cambios.length && cambios.every((recurso) => recurso === "equipo")) {
+    await refrescarProyeccion();
+    return;
+  }
   await load();
   if (detalleAbierto.value && detalleEquipo.value) {
     await abrirDetalle(detalleBloque.value, detalleEquipo.value);
@@ -1369,6 +1539,14 @@ function setMotionRoot(el: unknown) {
 .trend--al_alza { color: rgb(198, 40, 40); }
 .trend--a_la_baja { color: rgb(15, 143, 114); }
 .trend--estable { color: var(--app-muted-text); }
+
+/* El reloj avanza cada segundo: cifras de ancho fijo y sin saltos de línea. */
+.proyeccion-horometro {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
 .admin-hero__field--wide {
   min-width: 230px;
