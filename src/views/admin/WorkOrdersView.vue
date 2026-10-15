@@ -648,7 +648,7 @@
               label="Horómetro automático"
               readonly
               variant="outlined"
-              hint="La lectura se guarda en la OT al pasar a En proceso. El contador automático del equipo continúa independiente."
+              :hint="isCebadoWorkOrder ? 'La lectura se guarda en la OT al pasar a En proceso. En Cebado el equipo sigue en funcionamiento y su contador continúa.' : 'La lectura se guarda en la OT al pasar a En proceso. En ese momento el equipo pasa a Parado y su contador se detiene hasta registrar el encendido.'"
               persistent-hint
             />
           </v-col>
@@ -658,7 +658,7 @@
               label="Horas a realizar (horas-hombre)"
               variant="outlined"
               readonly
-              :hint="headerForm.maintenance_kind === 'CEBADO' ? 'Estas horas se añaden al horómetro al volver a encender el equipo tras finalizar la OT.' : 'Horas de trabajo humano definidas por la plantilla.'"
+              :hint="headerForm.maintenance_kind === 'CEBADO' ? 'Estas horas se añaden al horómetro la próxima vez que se registre el encendido del equipo después de finalizar la OT. El Cebado no detiene el equipo.' : 'Horas de trabajo humano definidas por la plantilla.'"
               persistent-hint
             />
           </v-col>
@@ -2891,7 +2891,11 @@ const consumoProductHint = computed(() =>
       : "Puedes reservar cualquier material aunque la bodega no tenga stock: la falta se informa por correo.",
 );
 const materialIssueHelperText = computed(() =>
-  "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución y conserva la lectura capturada al iniciar, sin alterar el funcionamiento del equipo. Los materiales adicionales actualizan el mismo documento.",
+  isProjectMode.value
+    ? "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución. Los materiales adicionales actualizan el mismo documento."
+    : isCebadoWorkOrder.value
+      ? "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución y conserva la lectura capturada al iniciar; en Cebado el equipo sigue en funcionamiento. Los materiales adicionales actualizan el mismo documento."
+      : "Registra las salidas durante la planificación o la revisión. Imprimir egreso inicia o reanuda la ejecución, conserva la lectura capturada al iniciar y deja el equipo Parado hasta registrar su encendido. Los materiales adicionales actualizan el mismo documento.",
 );
 const isCreated = computed(() => normalizedWorkflow.value === "PLANNED");
 const isInProcess = computed(() => normalizedWorkflow.value === "IN_PROGRESS");

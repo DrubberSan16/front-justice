@@ -46,7 +46,7 @@ const workflows: Record<string, WorkflowStep[]> = {
     step("Confirmar e imprimir el egreso", [warehouse], "work-orders", "Órdenes de trabajo · Egreso",
       "Bodega revisa el documento de egreso y confirma su impresión. Esta confirmación inicia o reanuda automáticamente la ejecución; no se inicia cambiando el estado manualmente.",
       "Salida real con al menos un material; programación vinculada para OT ordinaria; sin OT bloqueante ni otra ejecución activa del mismo equipo.",
-      "OT en En proceso. Se guarda la lectura de inicio en la OT y el contador automático del equipo continúa independiente."),
+      "OT en En proceso. Se guarda la lectura de inicio en la OT y el equipo queda Parado con su contador detenido hasta registrar el encendido; en Cebado el equipo sigue en funcionamiento."),
     step("Ejecutar y documentar el trabajo", [technician, operator, supervisor], "work-orders", "Órdenes de trabajo",
       "Completa actividades, horas reales y evidencias. Si se necesita otra entrega, el creador pasa la OT a En revisión para que Bodega registre la salida y vuelva a confirmar el egreso.",
       "Egreso confirmado por Bodega y OT en En proceso.",
