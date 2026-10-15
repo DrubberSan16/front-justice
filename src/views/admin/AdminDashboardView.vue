@@ -308,7 +308,7 @@
         <SectionCard
           icon="mdi-calendar-clock"
           title="5-7 · Frecuencia por horómetro y proyección"
-          subtitle="Objetivo del próximo mantenimiento, horas restantes y semáforo con los márgenes de cada equipo."
+          subtitle="Desde el último servicio MPG: horómetro objetivo, horas restantes (negativas si ya pasó), fecha estimada y semáforo con los márgenes de cada equipo."
         >
           <template #actions>
             <SectionExportButtons
@@ -360,8 +360,15 @@
                 </template>
               </span>
             </template>
+            <template #item.horometro_proximo_mantenimiento="{ item }">
+              {{ horometro(row(item).horometro_proximo_mantenimiento) }}
+            </template>
             <template #item.horometro_ultimo_mantenimiento="{ item }">
-              {{ horometro(row(item).horometro_ultimo_mantenimiento) }}
+              <v-tooltip :text="ultimoServicioLabel(row(item))" location="top">
+                <template #activator="{ props: tipProps }">
+                  <span v-bind="tipProps">{{ horometro(row(item).horometro_ultimo_mantenimiento) }}</span>
+                </template>
+              </v-tooltip>
               <span v-if="row(item).referencia_estimada" class="text-caption text-warning">
                 (estimado)
               </span>
@@ -373,11 +380,25 @@
               />
             </template>
             <template #item.horas_restantes="{ item }">
-              <span :class="proyeccionEnVivo(row(item)).horas_restantes < 0 ? 'text-error font-weight-bold' : ''">
-                {{ proyeccionEnVivo(row(item)).horas_restantes < 0
-                  ? `${Math.abs(proyeccionEnVivo(row(item)).horas_restantes)} h excedidas`
-                  : `${proyeccionEnVivo(row(item)).horas_restantes} h` }}
+              <!-- Con signo: negativas son las horas que el equipo ya pasó del objetivo. -->
+              <span
+                :class="proyeccionEnVivo(row(item)).horas_restantes < 0 ? 'text-error font-weight-bold' : ''"
+                :title="proyeccionEnVivo(row(item)).horas_restantes < 0 ? 'Horas excedidas sobre el objetivo' : undefined"
+              >
+                {{ horasConSigno(proyeccionEnVivo(row(item)).horas_restantes) }}
               </span>
+            </template>
+            <template #item.fecha_proximo_mantenimiento="{ item }">
+              <v-tooltip :text="ritmoLabel(row(item))" location="top">
+                <template #activator="{ props: tipProps }">
+                  <span
+                    v-bind="tipProps"
+                    :class="proyeccionEnVivo(row(item)).horas_restantes < 0 ? 'text-error font-weight-bold' : ''"
+                  >
+                    {{ fechaProyectadaLabel(proyeccionEnVivo(row(item))) }}
+                  </span>
+                </template>
+              </v-tooltip>
             </template>
           </v-data-table>
           <v-alert
@@ -385,14 +406,14 @@
             type="warning"
             variant="tonal"
             class="mt-3"
-            :text="`${proyeccionEstimada.length} equipo(s) se proyectan sobre una base estimada porque su último mantenimiento no dejó un horómetro utilizable: ${proyeccionEstimada.map((e: any) => e.equipo_nombre).join(', ')}. Corrige el horómetro de esa OT para que la proyección sea exacta.`"
+            :text="`${proyeccionEstimada.length} equipo(s) se proyectan sobre una base estimada porque su último servicio MPG no dejó un horómetro utilizable: ${proyeccionEstimada.map((e: any) => e.equipo_nombre).join(', ')}. El detalle está en el ícono junto al equipo; corrige el horómetro de esa OT para que la proyección sea exacta.`"
           />
           <v-alert
             v-if="proyeccionSinFrecuencia.length"
             type="info"
             variant="tonal"
             class="mt-3"
-            :text="`${proyeccionSinFrecuencia.length} equipo(s) sin frecuencia configurada quedan fuera de la proyección: ${proyeccionSinFrecuencia.map((e: any) => e.equipo_nombre).join(', ')}`"
+            :text="`${proyeccionSinFrecuencia.length} equipo(s) quedan fuera de la proyección por horómetro: ${proyeccionSinFrecuencia.map((e: any) => `${e.equipo_nombre} (${String(e.motivo_sin_proyeccion || 'sin frecuencia configurada').toLowerCase()})`).join(', ')}`"
           />
         </SectionCard>
 
@@ -675,6 +696,15 @@ const headersProyeccion = [
       proyeccionEnVivo(a).horas_restantes - proyeccionEnVivo(b).horas_restantes,
   },
   {
+    title: "Fecha próximo mant.",
+    key: "fecha_proximo_mantenimiento",
+    align: "end" as const,
+    // Sin ritmo de operación no hay fecha: al final, en cualquier sentido.
+    sortRaw: (a: any, b: any) =>
+      (proyeccionEnVivo(a).fecha_proximo_ms ?? Number.MAX_SAFE_INTEGER) -
+      (proyeccionEnVivo(b).fecha_proximo_ms ?? Number.MAX_SAFE_INTEGER),
+  },
+  {
     title: "Estado",
     key: "semaforo",
     sortRaw: (a: any, b: any) =>
@@ -794,12 +824,16 @@ function relojHorometro(fila: any) {
 
 function proyeccionEnVivo(fila: any, now = ahora.value) {
   const horas = horasEnVivo(fila, now);
-  // Con base estimada el objetivo es "vence ahora" respecto de la lectura de
-  // cada consulta: restarle el reloj lo pondria en rojo sin que nada cambie.
-  if (fila.referencia_estimada) return { ...fila, horometro_actual: horas };
   // El objetivo sin redondear, como en getProyeccion; el redondeado solo se muestra.
+  // Ya no depende del horómetro actual, ni siquiera con base estimada: se le
+  // resta el reloj igual que a los demás.
   const objetivo = Number(fila.horometro_objetivo ?? fila.horometro_proximo_mantenimiento ?? 0);
   const restantes = Math.round(objetivo - horas);
+  // Las restantes llevadas a días al ritmo de operación del equipo; vencido,
+  // la fecha cae en el pasado: es cuándo debió hacerse.
+  const ritmo = Number(fila.ritmo_horas_dia);
+  const fechaProximoMs =
+    Number.isFinite(ritmo) && ritmo > 0 ? now + (restantes / ritmo) * 86400000 : null;
   // Los mismos cortes que getProyeccion (dashboard-administracion.service.ts).
   const semaforo =
     restantes < -Number(fila.umbral_rojo ?? 0)
@@ -812,8 +846,46 @@ function proyeccionEnVivo(fila: any, now = ahora.value) {
     horometro_actual: horas,
     horas_restantes: restantes,
     horas_excedidas: restantes < 0 ? Math.abs(restantes) : 0,
+    fecha_proximo_ms: fechaProximoMs,
     semaforo,
   };
+}
+
+function horasConSigno(value: number) {
+  return `${Number(value).toLocaleString("es-EC", { maximumFractionDigits: 0 })} h`;
+}
+
+/**
+ * Fecha de calendario. Un "YYYY-MM-DD" se lee como día local: `new Date` lo
+ * toma como medianoche UTC y en Guayaquil saldría el día anterior.
+ */
+function fechaDia(value: unknown) {
+  const raw = typeof value === "number" ? value : String(value ?? "");
+  const soloFecha = typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw);
+  const d = soloFecha
+    ? new Date(Number(raw.slice(0, 4)), Number(raw.slice(5, 7)) - 1, Number(raw.slice(8, 10)))
+    : new Date(raw);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("es-EC", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function fechaProyectadaLabel(vivo: { fecha_proximo_ms: number | null }) {
+  return vivo.fecha_proximo_ms == null ? "—" : fechaDia(vivo.fecha_proximo_ms);
+}
+
+function ritmoLabel(fila: any) {
+  const ritmo = Number(fila.ritmo_horas_dia);
+  if (!Number.isFinite(ritmo) || ritmo <= 0) {
+    return "Sin horas de funcionamiento en los últimos 30 días: no se puede estimar la fecha.";
+  }
+  const horasDia = ritmo.toLocaleString("es-EC", { maximumFractionDigits: 1 });
+  return `Estimada al ritmo de ${horasDia} h/día de funcionamiento (últimos 30 días).`;
+}
+
+function ultimoServicioLabel(fila: any) {
+  if (!fila.ultima_ot) return fila.motivo_referencia_estimada || "Sin servicio MPG registrado";
+  const plan = fila.ultimo_plan ? ` · ${fila.ultimo_plan}` : "";
+  return `${fila.ultima_ot}${plan} · ${fechaDia(fila.fecha_ultimo_mantenimiento)}`;
 }
 
 /** La exportacion lleva el horometro del momento en que se pide. */
@@ -823,7 +895,10 @@ function reporteProyeccion() {
     subtitle: periodoLabel.value,
     fileName: `proyeccion_horometro_${desde.value}_${hasta.value}`,
     columns: headersProyeccion,
-    rows: proyeccionAplicable.value.map((fila: any) => proyeccionEnVivo(fila, Date.now())),
+    rows: proyeccionAplicable.value.map((fila: any) => {
+      const vivo = proyeccionEnVivo(fila, Date.now());
+      return { ...vivo, fecha_proximo_mantenimiento: fechaProyectadaLabel(vivo) };
+    }),
   });
 }
 
