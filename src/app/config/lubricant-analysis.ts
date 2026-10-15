@@ -50,6 +50,16 @@ export const lubricantParameterTemplates: LubricantParameterTemplate[] = [
   { key: "HUMEDAD", label: "Humedad", group: "Estado del lubricante", order: 5, inputType: "select", options: humidityOptions.map((item) => item.value) },
   { key: "GLYCOL", label: "Glycol, Abs/cm", group: "Estado del lubricante", unit: "Abs/cm", order: 6, inputType: "number" },
   { key: "COMBUSTIBLE", label: "Combustible", group: "Estado del lubricante", order: 7, inputType: "select", options: positiveNegativeOptions.map((item) => item.value) },
+  // Ensayos del informe de laboratorio por etiquetas (VEN-FOR-006A v3). La
+  // etiqueta es la misma del backend: el formulario manda `label` como parámetro.
+  { key: "GRADO_VISCOSIDAD", label: "Grado de viscosidad", group: "Estado del lubricante", order: 8, inputType: "text" },
+  { key: "TAN", label: "T.A.N. mgKOH/gr", group: "Estado del lubricante", unit: "mgKOH/gr", order: 9, inputType: "number" },
+  { key: "INSOLUBLES", label: "Insolubles en pentano, % p/p", group: "Estado del lubricante", unit: "% p/p", order: 10, inputType: "number" },
+  { key: "PUNTO_INFLAMACION", label: "Punto de inflamación, °C", group: "Estado del lubricante", unit: "°C", order: 11, inputType: "number" },
+  { key: "CONTEO_PARTICULAS", label: "Conteo de partículas (ISO 4406)", group: "Estado del lubricante", order: 12, inputType: "text" },
+  { key: "AGUA", label: "Contenido de agua, %", group: "Estado del lubricante", unit: "%", order: 13, inputType: "number" },
+  { key: "GLICOL_CUALITATIVO", label: "Glicol (cualitativo)", group: "Estado del lubricante", order: 14, inputType: "select", options: positiveNegativeOptions.map((item) => item.value) },
+  { key: "DILUCION_COMBUSTIBLE", label: "Dilución por combustible, % peso", group: "Estado del lubricante", unit: "% peso", order: 15, inputType: "number" },
   { key: "OXIDACION", label: "Oxidacion, Abs/cm", group: "Degradacion quimica", unit: "Abs/cm", order: 101, inputType: "number" },
   { key: "NITRACION", label: "Nitracion, Abs/cm", group: "Degradacion quimica", unit: "Abs/cm", order: 102, inputType: "number" },
   { key: "SULFATACION", label: "Sulfatacion, Abs/cm", group: "Degradacion quimica", unit: "Abs/cm", order: 103, inputType: "number" },
