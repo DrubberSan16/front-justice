@@ -1,4 +1,5 @@
 import { buildWorkOrderReport, type ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
+import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
 import { buildEquipmentDisplayTitle, resolveEquipmentLocation } from "@/app/utils/equipment-display";
 import { resolveWorkOrderReportActors, resolveWorkOrderLifecycle, workOrderHistoryActor, formatWorkOrderHistoryNote } from "@/app/utils/work-order-audit";
 import { buildMaterialsCost, buildResponsibleHours, contractedLaborCost, fetchWorkOrderDetail, flattenDetailLines, type WorkOrderDetailPayload } from "@/app/utils/work-order-detail";
@@ -64,6 +65,8 @@ export function buildCanonicalWorkOrderReport(detail: WorkOrderDetailPayload, sh
       fecha_operativa: h.fecha_operativa || h.fecha_programacion || h.hora_inicio || h.started_at || h.created_at,
       horometro_anterior: h.horometro_anterior ?? audit.horometro_anterior,
       horometro_actual: h.horometro_actual ?? audit.horometro_actual,
+      horas_trabajadas: workOrderWorkedHours(h, detail.history),
+      es_reserva: h.es_reserva,
       horas_a_realizar: buildResponsibleHours(detail.tasks).reduce((sum, row) => sum + row.hours, 0),
       show_costs: showCosts,
       ...(showCosts ? { costo_materiales: materials, costo_mano_obra: labor, costo_contratado: contracted, costo_total: materials + labor + contracted } : {}),

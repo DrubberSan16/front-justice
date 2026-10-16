@@ -230,6 +230,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     key: "equipos",
     title: "Equipos",
     endpoint: "/kpi_maintenance/equipos",
+    listColumns: [{ key: "codigo" }, { key: "nombre" }, { key: "nombre_real" }, { key: "modelo" }, { key: "equipo_tipo_id" }, { key: "location_id" }, { key: "es_reserva" }],
     fields: [
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
@@ -242,6 +243,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
       { key: "estado_operativo", label: "Estado operativo", type: "select", options: estadoOperativoEquipoOptions },
       { key: "estado_funcionamiento", label: "Estado de funcionamiento", type: "select", options: estadoFuncionamientoEquipoOptions },
       { key: "horometro_actual", label: "Horómetro actual", type: "number", integer: true, required: true },
+      { key: "es_reserva", label: "Reserva", type: "boolean", readonly: true, sendInPayload: false },
       { key: "fecha_ultima_lectura", label: "Última actualización del horómetro", type: "text", readonly: true, sendInPayload: false },
       { key: "es_servicio", label: "Equipo con mantenimiento por tiempo", type: "boolean" },
       { key: "intervalo_mantenimiento_valor", label: "Intervalo de mantenimiento", type: "number" },

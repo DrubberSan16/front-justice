@@ -61,6 +61,10 @@
               >{{ preset.label }}</v-btn
             >
           </div>
+          <div class="d-flex flex-wrap ga-3 mt-3">
+            <v-select v-model="controlScope" :items="[{ title: 'Todos los tipos de OT', value: 'all' }, { title: 'Solo OT de cebado', value: 'cebado' }]" label="Control de cebado y aceite · Tipo de OT" variant="outlined" density="comfortable" hide-details style="min-width:240px" />
+            <v-autocomplete v-model="controlEquipmentId" :items="controlEquipmentOptions" label="Control de cebado y aceite · Equipo" clearable variant="outlined" density="comfortable" hide-details style="min-width:240px" />
+          </div>
         </div>
       </section>
 
@@ -111,7 +115,7 @@
           />
 
           <KpiInsightCard
-            title="Consumo de aceite"
+            title="Control de cebado y aceite"
             subtitle="Equipos con mayor consumo"
             icon="mdi-oil"
             :accent="seriesColor(1, isDark)"
@@ -130,24 +134,6 @@
             preview-label="Vista PDF"
             @action="openSectionWorkspace('oil')"
             @preview="previewSummaryPdf('oil')"
-          />
-
-          <KpiInsightCard
-            title="Control de cebado"
-            subtitle="Órdenes por nivel de consumo"
-            icon="mdi-water-pump"
-            :accent="chartStatus(isDark).warning"
-            :value="formatNumber(primingTotals.gallons)"
-            value-caption="galones"
-            :helper="`${formatCount(primingTotals.orders)} cebados registrados`"
-            variant="donut"
-            :points="primingLevelPoints"
-            :loading="loading || primingLoading"
-            empty-text="Sin consumo de aceite registrado en cebado."
-            action-label="Abrir detalle"
-            preview-label="Vista PDF"
-            @action="openSectionWorkspace('priming')"
-            @preview="previewSummaryPdf('priming')"
           />
 
           <KpiInsightCard
@@ -273,33 +259,26 @@
       <section v-if="sectionWorkspace === 'oil'" class="simple-section simple-section--workspace" aria-labelledby="oil-title">
         <div class="section-title-row">
           <div>
-            <h2 id="oil-title">Consumo de aceite</h2>
+            <h2 id="oil-title">Control de cebado y aceite</h2>
             <p>{{ rangeLabel }} · Galones y costo registrados.</p>
           </div>
           <div class="d-flex align-center flex-wrap ga-2">
             <SectionExportButtons
               :preview="sectionPreview"
-              title="Consumo de aceite"
-              :subtitle="rangeLabel"
-              file-name="gerencia_aceite"
+              title="Control de cebado y aceite"
+              :subtitle="controlFilterLabel"
+              file-name="gerencia_cebado_aceite"
               :columns="[]"
               :rows="oilWorkOrders"
               :load-report="loadOilExportReport"
             />
-            <v-select
-              v-model="selectedOilProductId"
-              :items="oilCatalog"
-              :item-title="materialLabel"
-              item-value="id"
-              label="Aceite"
-              variant="outlined"
-              density="comfortable"
-              hide-details
-              class="oil-select"
-              @update:model-value="loadOilReport"
-            />
           </div>
         </div>
+        <div class="d-flex flex-wrap ga-3 mb-5">
+          <v-select v-model="controlScope" :items="[{ title: 'Todos los tipos de OT', value: 'all' }, { title: 'Solo OT de cebado', value: 'cebado' }]" label="Tipo de OT" variant="outlined" hide-details style="min-width:220px" />
+          <v-autocomplete v-model="controlEquipmentId" :items="controlEquipmentOptions" label="Equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+        </div>
+        <v-alert v-if="controlError" type="error" variant="tonal" class="mb-4">{{ controlError }}</v-alert>
         <!-- Cuadricula de dos columnas y no el riel del resumen: en el riel cada
              tarjeta medía un tercio de pantalla, las barras partían el nombre
              del equipo en cuatro renglones y a la derecha sobraba medio
@@ -309,6 +288,7 @@
           role="group"
           aria-label="Indicadores de consumo de aceite"
         >
+          <KpiInsightCard title="Órdenes por nivel de consumo" subtitle="Control de cebado y aceite" icon="mdi-water-pump" :accent="chartStatus(isDark).warning" :value="formatCount(primingTotals.orders)" value-caption="órdenes" variant="donut" :points="primingLevelPoints" :loading="loading || primingLoading" empty-text="Sin OT en este rango." />
           <KpiInsightCard
             title="Total usado"
             subtitle="Reparto por equipo"
@@ -322,7 +302,7 @@
             show-share
             fill
             :points="oilSharePoints"
-            :loading="loading"
+            :loading="loading || primingLoading"
             empty-text="No hay consumo de aceite en este rango."
           />
           <KpiInsightCard
@@ -344,7 +324,7 @@
             fill
             interactive
             :points="oilEquipmentRankingPoints"
-            :loading="loading"
+            :loading="loading || primingLoading"
             empty-text="No hay consumo de aceite en este rango."
             :action-label="topOilEquipment ? 'Ver detalle del equipo' : ''"
             @action="topOilEquipment && openEquipmentDetail(topOilEquipment)"
@@ -365,7 +345,7 @@
             fill
             interactive
             :points="oilOrderRankingPoints"
-            :loading="loading"
+            :loading="loading || primingLoading"
             empty-text="Ninguna orden registró consumo en este rango."
             @point="openOilOrderFromChart"
           />
@@ -382,7 +362,7 @@
             fill
             interactive
             :points="oilCostPoints"
-            :loading="loading"
+            :loading="loading || primingLoading"
             empty-text="No hay costo de aceite en este rango."
             @point="openEquipmentFromChart"
           />
@@ -449,10 +429,10 @@
         </div>
       </section>
 
-      <section v-if="sectionWorkspace === 'priming'" class="simple-section simple-section--workspace" aria-labelledby="priming-title">
+      <section v-if="sectionWorkspace === 'oil' || sectionWorkspace === 'priming'" class="simple-section simple-section--workspace" aria-labelledby="priming-title">
         <div class="section-title-row">
           <div>
-            <h2 id="priming-title">Control de cebado y consumo de aceite</h2>
+            <h2 id="priming-title">Control por equipo</h2>
             <p>
               Galones por máquina, acumulado semanal y mensual, con nivel por
               orden.
@@ -461,7 +441,7 @@
           <div class="d-flex align-center" style="gap:8px">
             <SectionExportButtons
               :preview="sectionPreview"
-              title="Control de cebado y consumo de aceite"
+              title="Control de cebado y aceite"
               :subtitle="rangeLabel"
               file-name="gerencia_cebado"
               :columns="[]"
@@ -486,6 +466,19 @@
           >
         </div>
         <v-select v-model="primingCentral" :items="primingCentralOptions" label="Filtrar por central / ubicación" clearable hide-details class="mb-4" variant="outlined" />
+        <h3 class="mb-3">Órdenes del control</h3>
+        <v-data-table :headers="controlOrderHeaders" :items="oilWorkOrders" :loading="loading || primingLoading" :items-per-page="10" class="manager-table mb-6" no-data-text="Sin OT para los filtros seleccionados.">
+          <template #item.work_order_code="{ item }"><button type="button" class="order-link" @click="openOrderDetail({ ...item, id: item.work_order_id, code: item.work_order_code })">{{ item.work_order_code }}</button></template>
+          <template #item.fecha_referencia="{ item }">{{ formatShortDate(item.fecha_referencia) }}</template>
+          <template #item.equipment_name="{ item }">{{ equipmentLabel(item) }}</template>
+          <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
+          <template #item.horometro_inicial="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_inicial) }}</template>
+          <template #item.horometro_final="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_final) }}</template>
+          <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? `${formatNumber(item.horas_trabajadas)} h` : '—' }}</template>
+          <template #item.cantidad="{ item }">{{ formatNumber(item.cantidad) }} gal</template>
+          <template #item.subtotal="{ item }">{{ formatCurrency(item.subtotal) }}</template>
+          <template #item.semaforo="{ item }"><v-chip size="small" :color="primingSemaforoColor(item.semaforo)" variant="tonal">{{ item.semaforo?.etiqueta }}</v-chip></template>
+        </v-data-table>
         <v-data-table
           :headers="primingHeaders"
           :items="primingRows"
@@ -499,12 +492,14 @@
         >
           <template #item.equipo_nombre="{ item }">
             <button type="button" class="order-link"
-              :aria-label="`Ver órdenes de cebado de ${equipmentLabel(item)}`"
+              :aria-label="`Ver órdenes del control de ${equipmentLabel(item)}`"
               @click="openPrimingDetail(item)">{{ equipmentLabel(item) }}</button>
             <div v-if="item.equipo_descripcion" class="material-attrs">
               {{ item.equipo_descripcion }}
             </div>
           </template>
+          <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
+          <template #item.horas_trabajadas="{ item }">{{ formatNumber(item.horas_trabajadas) }} h</template>
           <template #item.galones_periodo="{ item }"
             >{{ formatNumber(item.galones_periodo) }} gal</template
           >
@@ -1040,7 +1035,7 @@
               :title="`Cebado y aceite · ${equipmentLabel(primingDetailEquipment || {})}`"
               :subtitle="rangeLabel"
               file-name="gerencia_cebado_detalle"
-              sheet-name="Órdenes de cebado"
+              sheet-name="Órdenes del control"
               :columns="primingDetailExportColumns"
               :rows="primingDetailExportRows"
             />
@@ -1054,7 +1049,7 @@
         </v-card-title>
         <v-card-text class="detail-dialog__body">
           <v-alert type="info" variant="tonal" density="comfortable">
-            Cada fila corresponde a una orden de cebado. La tendencia compara su
+            Cada fila corresponde a una OT del control. La tendencia compara su
             consumo con la orden anterior del mismo equipo.
           </v-alert>
           <div v-if="primingDetailLoading" class="detail-loading">
@@ -1073,7 +1068,7 @@
               :items-per-page="10"
               density="comfortable"
               class="manager-table"
-              no-data-text="Sin órdenes de cebado en este período"
+              no-data-text="Sin OT para los filtros seleccionados"
             >
               <template #item.orden="{ item }">
                 <button
@@ -1096,6 +1091,7 @@
               <template #item.horometro_actual="{ item }">{{
                 formatHorometro(item.horometro_actual)
               }}</template>
+              <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? `${formatNumber(item.horas_trabajadas)} h` : '—' }}</template>
               <template #item.galones="{ item }"
                 >{{ formatNumber(item.galones) }} gal</template
               >
@@ -1211,13 +1207,14 @@
                 ><span
                   ><small>Finalización</small
                   >{{ formatTime(order.closed_at) }}</span
-                ><span
+                ><span v-if="order.maintenance_kind !== 'CEBADO'"
                   ><small>Horómetro anterior</small
                   >{{ formatHorometro(order.horometro_anterior) }}</span
-                ><span
+                ><span v-if="order.maintenance_kind !== 'CEBADO'"
                   ><small>Horómetro actual</small
                   >{{ formatHorometro(order.horometro_actual) }}</span
                 >
+                <span v-if="order.maintenance_kind === 'CEBADO'"><small>Horas trabajadas</small>{{ order.horas_trabajadas == null ? 'Sin registro de inicio' : `${formatNumber(order.horas_trabajadas)} h` }}</span>
               </div>
               <div class="order-card__action">
                 Ver detalle <v-icon icon="mdi-chevron-right" />
@@ -1368,18 +1365,19 @@
                 <span>Finalizada</span
                 ><strong>{{ formatDateTime(detailHeader.closed_at) }}</strong>
               </article>
-              <article>
+              <article v-if="detailHeader.maintenance_kind !== 'CEBADO'">
                 <span>Horómetro anterior</span
                 ><strong>{{
                   formatHorometro(detailHeader.horometro_anterior)
                 }}</strong>
               </article>
-              <article>
+              <article v-if="detailHeader.maintenance_kind !== 'CEBADO'">
                 <span>Horómetro actual</span
                 ><strong>{{
                   formatHorometro(detailHeader.horometro_actual)
                 }}</strong>
               </article>
+              <article v-if="detailHeader.maintenance_kind === 'CEBADO'"><span>Horas trabajadas</span><strong>{{ detailWorkedHours == null ? 'Sin registro de inicio' : `${formatNumber(detailWorkedHours)} h` }}</strong></article>
               <article>
                 <span>Horas de trabajo</span
                 ><strong>{{ formatNumber(totalResponsibleHours) }} h</strong>
@@ -1698,7 +1696,9 @@ import {
   type ReportRowKind,
 } from "@/app/utils/maintenance-intelligence-reports";
 import { buildPrimingCentralOptions, filterPrimingRows } from "@/app/utils/priming-central-filter";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { buildOilControlSummary } from "@/app/utils/oil-control-summary";
+import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
 import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
@@ -1808,18 +1808,27 @@ const inventoryTotals = ref<AnyRow>({
   costo_total: 0,
 });
 const generationEquipments = ref<AnyRow[]>([]);
-const rawPrimingRows = ref<AnyRow[]>([]);
+const controlRows = ref<AnyRow[]>([]);
+const controlError = ref<string | null>(null);
+const controlEquipments = ref<AnyRow[]>([]);
+const controlScope = ref("all");
+const controlEquipmentId = ref<string | null>(null);
+const controlEquipmentOptions = computed(() => controlEquipments.value.map(row => ({ value: String(row.id), title: [row.codigo, row.nombre].filter(Boolean).join(" - ") })));
+const controlFilterLabel = computed(() => `${rangeLabel.value} · ${controlScope.value === 'cebado' ? 'Solo OT de cebado' : 'Todos los tipos de OT'} · ${controlEquipmentOptions.value.find(row => row.value === controlEquipmentId.value)?.title || 'Todos los equipos'}${primingCentral.value ? ` · ${primingCentral.value}` : ''}`);
 const primingLocations = ref<AnyRow[]>([]);
 const primingCentral = ref<string | null>(null);
-const primingCentralOptions = computed(() => buildPrimingCentralOptions(primingLocations.value, rawPrimingRows.value));
+const primingCentralOptions = computed(() => buildPrimingCentralOptions(primingLocations.value, controlRows.value));
+const oilReport = computed(() => buildOilControlSummary(
+  filterPrimingRows(controlRows.value, primingCentral.value),
+  filterPrimingRows(controlEquipments.value.filter(row => !controlEquipmentId.value || String(row.id) === controlEquipmentId.value), primingCentral.value), endDate.value,
+));
+const rawPrimingRows = computed(() => oilReport.value.priming);
 const primingRows = computed(() => filterPrimingRows(rawPrimingRows.value, primingCentral.value));
 const primingLoading = ref(false);
 const primingDetailDialog = ref(false);
 const primingDetailLoading = ref(false);
 const primingDetailEquipment = ref<AnyRow | null>(null);
 const primingDetailRows = ref<AnyRow[]>([]);
-const oilReport = ref<AnyRow | null>(null);
-const selectedOilProductId = ref<string | null>(null);
 const equipmentCatalog = ref<AnyRow[]>([]);
 const ordersDialog = ref(false);
 const equipmentDialog = ref(false);
@@ -1834,6 +1843,7 @@ const detailConsumptions = ref<AnyRow[]>([]);
 const detailIssues = ref<AnyRow[]>([]);
 const detailScraps = ref<AnyRow[]>([]);
 const detailHistory = ref<AnyRow[]>([]);
+const detailWorkedHours = computed(() => workOrderWorkedHours(detailHeader.value, detailHistory.value));
 const sectionWorkspace = ref<SectionWorkspaceKey | null>(null);
 const sectionWorkspaceOpen = computed({
   get: () => sectionWorkspace.value !== null,
@@ -1843,8 +1853,8 @@ const sectionWorkspaceOpen = computed({
 });
 const SECTION_WORKSPACES: Record<SectionWorkspaceKey, { title: string }> = {
   orders: { title: "Órdenes de trabajo" },
-  oil: { title: "Consumo de aceite" },
-  priming: { title: "Control de cebado y consumo de aceite" },
+  oil: { title: "Control de cebado y aceite" },
+  priming: { title: "Control de cebado y aceite" },
   inventory: { title: "Inventario del período" },
   system: { title: "Reportes del sistema" },
   "maintenance-cost": { title: "Costo de mantenimiento" },
@@ -1892,28 +1902,25 @@ const sectionPreview = useReportPreview({
 });
 async function loadPrimingExportReport() {
   if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
-  const { data } = await api.get("/kpi_maintenance/dashboard-administracion/detalle", {
-    params: { bloque: "aceite", desde: startDate.value, hasta: endDate.value },
-  });
-  const payload = unwrap(data);
+  if (primingLoading.value) throw new Error("Espera a que termine de actualizar el control.");
   return buildOilOrderReport({
-    rows: filterPrimingRows(Array.isArray(payload?.filas) ? payload.filas : [], primingCentral.value),
-    mode: "control", subtitle: rangeLabel.value,
-    fileName: `gerencia_cebado_${startDate.value}_${endDate.value}`,
+    rows: oilWorkOrders.value,
+    mode: "management", subtitle: controlFilterLabel.value,
+    fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
     showCosts: canViewCosts.value,
   });
 }
 
 async function loadOilExportReport() {
   if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
-  await loadOilReport();
+  if (primingLoading.value) throw new Error("Espera a que termine de actualizar el control.");
   return oilExportReport.value;
 }
 
 const oilExportReport = computed(() => buildOilOrderReport({
   rows: oilWorkOrders.value, mode: "management",
-  subtitle: `${rangeLabel.value} · ${materialLabel(oilReport.value?.selected_product || {})}`,
-  fileName: `gerencia_aceite_${startDate.value}_${endDate.value}`,
+  subtitle: controlFilterLabel.value,
+  fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
   showCosts: canViewCosts.value,
 }));
 const inventoryExportColumns = computed(() =>
@@ -1952,33 +1959,49 @@ const primingHeaders = computed(() => [
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Central / ubicación", key: "central" },
   { title: "Total galones", key: "galones_periodo", align: "end" as const },
-  { title: "Cebados", key: "ots_cebado", align: "end" as const },
+  { title: "Órdenes", key: "ots_cebado", align: "end" as const },
+  { title: "Reserva", key: "es_reserva" },
   { title: "Gal x Semana", key: "galones_semana", align: "end" as const },
   { title: "Gal x Mes", key: "galones_mes", align: "end" as const },
-  { title: "Horómetro inicial (h)", key: "horometro_inicial", align: "end" as const },
-  { title: "Horómetro final (h)", key: "horometro_final", align: "end" as const },
+  ...(controlScope.value === "cebado" ? [{ title: "Horas trabajadas", key: "horas_trabajadas", align: "end" as const }] : [
+    { title: "Horómetro inicial (h)", key: "horometro_inicial", align: "end" as const },
+    { title: "Horómetro final (h)", key: "horometro_final", align: "end" as const },
+  ]),
   ...(canViewCosts.value ? [{ title: "Costo aceite", key: "costo_aceite", align: "end" as const }] : []),
   { title: "Mayor orden", key: "galones_max_orden", align: "end" as const },
   { title: "Órdenes por nivel", key: "niveles", sortable: false },
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ]);
 
+const controlOrderHeaders = computed(() => [
+  { title: "OT", key: "work_order_code" }, { title: "Fecha", key: "fecha_referencia" },
+  { title: "Equipo", key: "equipment_name" }, { title: "Reserva", key: "es_reserva" },
+  { title: "Tipo", key: "maintenance_kind_label" },
+  ...(controlScope.value === "cebado" ? [] : [
+    { title: "Horómetro inicial", key: "horometro_inicial" }, { title: "Horómetro final", key: "horometro_final" },
+  ]),
+  { title: "Horas trabajadas (cebado)", key: "horas_trabajadas" },
+  { title: "Aceite consumido", key: "cantidad" }, { title: "Control", key: "semaforo" },
+  ...(canViewCosts.value ? [{ title: "Costo aceite", key: "subtotal" }] : []),
+]);
+function primingSemaforoColor(value: AnyRow) { return value?.nivel === 'ROJO' ? 'error' : value?.nivel === 'AMARILLO' ? 'warning' : 'success'; }
+
 const primingDetailHeaders = computed(() => {
   const headers: AnyRow[] = [
     { title: "Orden", key: "orden" },
     { title: "Fecha", key: "fecha" },
     { title: "Producto", key: "producto" },
-    // El horometro con el que llego la maquina y el que se anoto en el cebado.
-    {
+    ...(primingDetailRows.value.some(row => row.maintenance_kind !== 'CEBADO') ? [{
       title: "Horómetro anterior",
       key: "horometro_anterior",
       align: "end" as const,
     },
     {
-      title: "Horómetro del cebado",
+      title: "Horómetro final",
       key: "horometro_actual",
       align: "end" as const,
-    },
+    }] : []),
+    ...(primingDetailRows.value.some(row => row.maintenance_kind === 'CEBADO') ? [{ title: "Horas trabajadas (cebado)", key: "horas_trabajadas", align: "end" as const }] : []),
     { title: "Galones", key: "galones", align: "end" as const },
     { title: "Tendencia", key: "tendencia" },
     { title: "Nivel", key: "semaforo" },
@@ -2004,8 +2027,11 @@ const primingDetailExportColumns = computed(() => {
     { key: "orden", title: "Orden", width: 11 },
     { key: "fecha", title: "Fecha", width: 11 },
     { key: "producto", title: "Producto", width: 30 },
-    { key: "horometro_anterior", title: "Horóm. anterior", format: "horometer", width: 12 },
-    { key: "horometro_actual", title: "Horóm. del cebado", format: "horometer", width: 12 },
+    ...(primingDetailRows.value.some(row => row.maintenance_kind !== 'CEBADO') ? [
+      { key: "horometro_anterior", title: "Horóm. anterior", format: "horometer" as const, width: 12 },
+      { key: "horometro_actual", title: "Horóm. final", format: "horometer" as const, width: 12 },
+    ] : []),
+    ...(primingDetailRows.value.some(row => row.maintenance_kind === 'CEBADO') ? [{ key: "horas_trabajadas", title: "Horas trabajadas (cebado)", format: "number" as const, width: 12 }] : []),
     { key: "galones", title: "Galones", format: "number", width: 9 },
     { key: "tendencia", title: "Tendencia", width: 11 },
     { key: "nivel", title: "Nivel", width: 13 },
@@ -2029,6 +2055,7 @@ const primingDetailExportRows = computed(() => {
     producto: row?.producto || "",
     horometro_anterior: row?.horometro_anterior ?? null,
     horometro_actual: row?.horometro_actual ?? null,
+    horas_trabajadas: row.maintenance_kind === 'CEBADO' ? row.horas_trabajadas ?? '' : '',
     galones: Number(row?.galones || 0),
     tendencia:
       row?.tendencia && row.tendencia !== "SIN_REFERENCIA"
@@ -2269,9 +2296,6 @@ const visibleOrders = computed(() => {
     ),
   );
 });
-const oilCatalog = computed<AnyRow[]>(() =>
-  Array.isArray(oilReport.value?.catalog) ? oilReport.value.catalog : [],
-);
 const oilTotals = computed<AnyRow>(() => oilReport.value?.totals ?? {});
 const equipmentRows = computed<AnyRow[]>(() =>
   Array.isArray(oilReport.value?.by_equipment)
@@ -2304,7 +2328,7 @@ const visibleEquipmentRows = computed<AnyRow[]>(() =>
 );
 
 const topOilEquipment = computed<AnyRow | null>(
-  () => equipmentRows.value[0] ?? null,
+  () => equipmentRows.value.find(row => Number(row.total_cantidad) > 0) ?? null,
 );
 /**
  * Consumo por orden, de mayor a menor.
@@ -2388,6 +2412,8 @@ function findEquipmentCatalogItem(item: AnyRow) {
       item?.codigo ||
       "",
   ).trim();
+  const byId = equipmentCatalog.value.find(row => equipmentId && String(row.id) === equipmentId);
+  if (byId) return byId;
   return equipmentCatalog.value.find((row) => {
     const rowId = String(row?.id || "").trim();
     const rowCode = String(row?.codigo || "").trim();
@@ -2686,20 +2712,6 @@ function applyInventoryEquipmentFilter() {
   inventoryPage.value = 1;
   void loadInventoryReport();
 }
-async function loadPrimingReport() {
-  if (invalidDateRange.value) return;
-  primingLoading.value = true;
-  try {
-    const { data } = await api.get(
-      "/kpi_maintenance/dashboard-administracion/cebado",
-      { params: { desde: startDate.value, hasta: endDate.value } },
-    );
-    const payload = unwrap(data);
-    rawPrimingRows.value = Array.isArray(payload?.cebado) ? payload.cebado : [];
-  } finally {
-    primingLoading.value = false;
-  }
-}
 async function loadPrimingLocations() {
   primingLocations.value = await listAllPages(
     "/kpi_maintenance/locaciones",
@@ -2711,42 +2723,45 @@ async function openPrimingDetail(equipment: AnyRow) {
   primingDetailDialog.value = true;
   primingDetailLoading.value = true;
   try {
-    const { data } = await api.get(
-      "/kpi_maintenance/dashboard-administracion/detalle",
-      {
-        params: {
-          bloque: "cebado",
-          equipo_id: equipment?.equipo_id,
-          desde: startDate.value,
-          hasta: endDate.value,
-        },
-      },
-    );
-    const payload = unwrap(data);
-    primingDetailRows.value = Array.isArray(payload?.filas)
-      ? payload.filas
-      : [];
+    primingDetailRows.value = oilWorkOrders.value.filter(row => String(row.equipment_id || '') === String(equipment.equipo_id || ''));
   } finally {
     primingDetailLoading.value = false;
   }
 }
+let controlRequest = 0;
 async function loadOilReport() {
   if (invalidDateRange.value) return;
+  const request = ++controlRequest;
+  primingLoading.value = true;
+  controlError.value = null;
+  try {
   const { data } = await api.get(
-    "/kpi_maintenance/inteligencia/analisis-aceite/kpi",
+    "/kpi_maintenance/dashboard-administracion/control-cebado-aceite",
     {
       params: {
-        periodo: "PERSONALIZADO",
-        from: startDate.value,
-        to: endDate.value,
-        producto_id: selectedOilProductId.value || undefined,
+        desde: startDate.value, hasta: endDate.value,
+        equipo_id: controlEquipmentId.value || undefined,
+        solo_cebado: controlScope.value === "cebado",
       },
     },
   );
-  oilReport.value = unwrap(data);
-  if (!selectedOilProductId.value && oilReport.value?.selected_product_id)
-    selectedOilProductId.value = String(oilReport.value.selected_product_id);
+  if (request !== controlRequest) return;
+  const payload = unwrap(data);
+  controlRows.value = Array.isArray(payload?.filas) ? payload.filas : [];
+  controlEquipments.value = Array.isArray(payload?.equipos) ? payload.equipos : [];
+  primingDetailDialog.value = false;
+  } catch (cause: any) {
+    if (request !== controlRequest) return;
+    controlRows.value = [];
+    controlError.value = cause?.response?.data?.message || "No se pudo actualizar el control de cebado y aceite.";
+    throw cause;
+  } finally {
+    if (request === controlRequest) primingLoading.value = false;
+  }
 }
+watch([controlScope, controlEquipmentId], () => {
+  void loadOilReport().catch((e: any) => { error.value = e?.response?.data?.message || "No se pudo actualizar el control de cebado y aceite."; });
+});
 async function loadReport() {
   if (!canAccess.value || invalidDateRange.value) return;
   loading.value = true;
@@ -2758,7 +2773,6 @@ async function loadReport() {
       loadWorkOrders(),
       loadInventoryReport(),
       loadOilReport(),
-      loadPrimingReport(),
       loadPrimingLocations(),
     ]);
   } catch (requestError: any) {

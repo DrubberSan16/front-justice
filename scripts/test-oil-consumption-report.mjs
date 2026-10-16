@@ -20,6 +20,8 @@ const { outputFiles } = await build({
       export * from "@/app/utils/priming-central-filter";
       export * from "@/app/utils/equipment-summary-report";
       export * from "@/app/utils/reporting-relations";
+      export * from "@/app/utils/work-order-hours";
+      export * from "@/app/utils/oil-control-summary";
     `,
     resolveDir: root,
   },
@@ -58,11 +60,38 @@ const sample = {
 };
 const output = path.join(root, "tmp", "oil-report-validation");
 await mkdir(output, { recursive: true });
+{
+  const priming = { ...sample, maintenance_kind: 'CEBADO', work_order_id: 'ot-priming', horas_trabajadas: 1.5, es_reserva: true };
+  const zero = { ...sample, work_order_id: 'ot-zero', cantidad: 0, subtotal: 0 };
+  const summary = reports.buildOilControlSummary([priming, zero], [{ id: sample.equipment_id, nombre: sample.equipment_name }], '2026-10-16');
+  assert.equal(summary.work_orders.length, 2, 'Incluye OT sin aceite');
+  assert.equal(summary.totals.total_cantidad, 2.5);
+  assert.equal(summary.totals.total_costo, 31.25);
+  assert.equal(summary.by_equipment[0].total_ordenes, 2);
+  assert.equal(summary.priming[0].galones_periodo, summary.totals.total_cantidad);
+  const onlyPriming = reports.buildOilOrderReport({ rows: [priming], mode: 'management', subtitle: '', fileName: 'cebado', showCosts: true });
+  assert.ok(!onlyPriming.sheets[0].columns.some(column => /horometro/.test(column.key)));
+  assert.equal(onlyPriming.sheets[0].rows[0].horas_trabajadas, 1.5);
+  assert.equal(onlyPriming.sheets[0].rows[0].reserva, 'En reserva');
+  const mixed = reports.buildOilOrderReport({ rows: [priming, zero], mode: 'management', subtitle: '', fileName: 'mixed', showCosts: true });
+  assert.equal(mixed.sheets[0].rows[0].horometro_inicial, '');
+  assert.equal(mixed.sheets[0].rows[1].horometro_final, 120, 'Los demás tipos conservan sus lecturas');
+  const history = [
+    { changed_at: '2026-10-01T09:00:00-05:00', from_status: 'IN_PROGRESS', to_status: 'REVIEW' },
+    { changed_at: '2026-10-01T11:00:00-05:00', from_status: 'REVIEW', to_status: 'IN_PROGRESS' },
+  ];
+  const header = { code: 'OT-CEBADO', maintenance_kind: 'CEBADO', started_at: '2026-10-01T08:00:00-05:00', closed_at: '2026-10-01T12:00:00-05:00' };
+  assert.equal(reports.workOrderWorkedHours(header, history), 2);
+  const report = reports.buildCanonicalWorkOrderReport({ header, history, tasks: [], consumptions: [], issues: [], scraps: [], attachments: [] }, true);
+  const info = report.sheets[0].section.info;
+  assert.ok(info.some(row => row.label === 'Horas trabajadas' && row.value.includes('2')));
+  assert.ok(!info.some(row => /Horómetro (inicial|final)/.test(row.label)));
+}
 for (const mode of ["control", "management"]) {
   const report = reports.buildOilOrderReport({ rows: [sample], mode,
     subtitle: "01/10/2026 a 13/10/2026", fileName: mode, showCosts: true });
   const sheet = report.sheets[0];
-  assert.equal(sheet.columns.length, mode === "control" ? 7 : 9);
+  assert.equal(sheet.columns.length, mode === "control" ? 7 : 10);
   assert.equal(sheet.rows[0].fecha, "01-10-2026", "Respeta America/Guayaquil");
   assert.equal(sheet.rows[0].tipo, "Mantenimiento MPG");
   assert.equal(sheet.rows[0].equipo, mode === "control" ? "UG07" : "UG07 - CUMMINS");
@@ -93,4 +122,4 @@ for (const mode of ["control", "management"]) {
     assert.equal(missing.sheets[0].rows[0].horometro_inicial, "");
   }
 }
-console.log("Oil reports: 7/9 columns, local dates, brand names, missing readings, numeric Excel, cost permissions and PDF passed.");
+console.log("Oil reports: unified totals, reserve, priming hours without review, local dates, names, Excel/PDF and cost permissions passed.");

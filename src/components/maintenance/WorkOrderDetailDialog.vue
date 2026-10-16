@@ -119,6 +119,7 @@
 
 <script setup lang="ts">
 import { buildCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
+import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { computed, ref, watch } from "vue";
@@ -194,18 +195,19 @@ const evidences = computed(() => detail.value.attachments || []);
 const facts = computed(() => {
   const row = header.value;
   const actors = resolveWorkOrderReportActors(row || {}, detail.value.history);
+  const worked = workOrderWorkedHours(row, detail.value.history);
   const base = [
     { label: "Equipo", value: equipmentLabel.value },
     { label: "Estado", value: statusLabel.value },
     { label: "Tipo", value: maintenanceKindLabel.value },
     { label: "Inicio", value: formatDate(row?.hora_inicio || row?.created_at) },
     { label: "Cierre", value: formatDate(row?.hora_fin || row?.closed_at) },
-    {
+    ...(String(row?.maintenance_kind).toUpperCase() === "CEBADO" ? [{ label: "Horas trabajadas", value: worked == null ? "Sin registro de inicio" : `${formatNumber(worked)} h` }] : [{
       label: "Horómetro",
       value: [row?.horometro_anterior, row?.horometro_actual]
         .map((value) => formatHorometerForDisplay(value, { empty: "-" }))
         .join("  →  "),
-    },
+    }]),
     {
       label: "Horas registradas",
       value: `${formatNumber(totalHours.value)} h`,

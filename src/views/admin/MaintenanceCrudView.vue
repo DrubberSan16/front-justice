@@ -94,6 +94,7 @@
         </template>
         <span v-else>{{ resolveTableItem(item).estado }}</span>
       </template>
+      <template #item.es_reserva="{ item }"><v-chip size="small" :color="resolveTableItem(item).es_reserva ? 'info' : 'secondary'" variant="tonal">{{ resolveTableItem(item).es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
 
       <template #item.tipo_alerta="{ item }">
         <span v-if="showAlertGroupValue(resolveTableItem(item))">{{ resolveTableItem(item).tipo_alerta }}</span>

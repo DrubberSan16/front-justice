@@ -360,6 +360,9 @@
                 </template>
               </span>
             </template>
+            <template #item.es_reserva="{ item }">
+              <v-chip size="small" :color="row(item).es_reserva ? 'info' : 'secondary'" variant="tonal">{{ row(item).es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip>
+            </template>
             <template #item.horometro_proximo_mantenimiento="{ item }">
               {{ horometro(row(item).horometro_proximo_mantenimiento) }}
             </template>
@@ -519,6 +522,7 @@
                 </template>
                 <template #item.horometro_anterior="{ item }">{{ horometro(row(item).horometro_anterior) }}</template>
                 <template #item.horometro_actual="{ item }">{{ horometro(row(item).horometro_actual) }}</template>
+                <template #item.horas_trabajadas="{ item }">{{ row(item).horas_trabajadas == null ? 'Sin registro de inicio' : `${Number(row(item).horas_trabajadas).toLocaleString('es-EC', { maximumFractionDigits: 2 })} h` }}</template>
                 <template #item.desde="{ item }">{{ fechaHora(row(item).desde) }}</template>
                 <template #item.hasta="{ item }">{{ fechaHora(row(item).hasta) }}</template>
               </v-data-table>
@@ -677,6 +681,7 @@ const headersRepuestos = computed(() => [
 const NIVEL_ORDEN: Record<string, number> = { ROJO: 0, AMARILLO: 1, VERDE: 2 };
 // Las columnas que corren en vivo se ordenan por lo que se ve, no por la carga.
 const headersProyeccion = [
+  { title: "Reserva", key: "es_reserva" },
   { title: "Equipo", key: "equipo_nombre" },
   { title: "Marca", key: "marca" },
   {
@@ -897,7 +902,7 @@ function reporteProyeccion() {
     columns: headersProyeccion,
     rows: proyeccionAplicable.value.map((fila: any) => {
       const vivo = proyeccionEnVivo(fila, Date.now());
-      return { ...vivo, fecha_proximo_mantenimiento: fechaProyectadaLabel(vivo) };
+      return { ...vivo, es_reserva: fila.es_reserva ? 'En reserva' : 'Sin reserva', fecha_proximo_mantenimiento: fechaProyectadaLabel(vivo) };
     }),
   });
 }
@@ -1109,19 +1114,7 @@ const HEADERS_DETALLE: Record<string, any[]> = {
     { title: "Orden", key: "orden" },
     { title: "Fecha", key: "fecha" },
     { title: "Producto", key: "producto" },
-    // El horometro con el que llego la maquina y el que se anoto en el cebado:
-    // sin los dos no se sabe cuantas horas corrio entre uno y otro, que es lo
-    // que explica si el consumo fue alto o normal.
-    {
-      title: "Horómetro anterior",
-      key: "horometro_anterior",
-      align: "end" as const,
-    },
-    {
-      title: "Horómetro del cebado",
-      key: "horometro_actual",
-      align: "end" as const,
-    },
+    { title: "Horas trabajadas", key: "horas_trabajadas", align: "end" as const },
     { title: "Galones", key: "galones", align: "end" as const },
     { title: "Tendencia", key: "tendencia" },
     { title: "Nivel", key: "semaforo" },

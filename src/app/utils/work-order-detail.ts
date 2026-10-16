@@ -2,6 +2,7 @@ import { api } from "@/app/http/api";
 import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { formatHorometerForDisplay } from "@/app/utils/number-format";
 import type { WorkOrderReportData } from "@/app/utils/work-order-report-documents";
+import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
 
 /**
  * Detalle de una orden de trabajo, resuelto en un solo sitio.
@@ -336,6 +337,8 @@ export function buildWorkOrderReportPayload(
     equipmentLabel: context.equipmentLabel,
     statusLabel: context.statusLabel,
     maintenanceKindLabel: context.maintenanceKindLabel,
+    maintenanceKind: String(header.maintenance_kind || ''),
+    workedHours: workOrderWorkedHours(header, detail.history),
     openedAt: context.formatDate(header?.hora_inicio || header?.created_at),
     closedAt: context.formatDate(header?.hora_fin || header?.closed_at),
     horometroAnterior: formatHorometerForDisplay(header?.horometro_anterior, {

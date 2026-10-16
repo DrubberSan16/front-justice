@@ -32,6 +32,8 @@ export type WorkOrderReportData = {
   equipmentLabel: string;
   statusLabel: string;
   maintenanceKindLabel: string;
+  maintenanceKind?: string;
+  workedHours?: number | null;
   openedAt: string;
   closedAt: string;
   horometroAnterior: string;
@@ -136,11 +138,14 @@ export async function buildWorkOrderReportPdfBlob(
     theme: "grid",
     styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [31, 61, 122], textColor: 255, fontStyle: "bold" },
-    head: [["Horómetro inicial", "Horómetro final", "Horas - hombre", "Costo total"]],
+    head: [String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'CEBADO'
+      ? ["Horas trabajadas", "Horas - hombre", "Costo total"]
+      : ["Horómetro inicial", "Horómetro final", "Horas - hombre", "Costo total"]],
     body: [
       [
-        safeText(data.horometroAnterior),
-        safeText(data.horometroActual),
+        ...(String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'CEBADO'
+          ? [data.workedHours == null ? 'Sin registro de inicio' : `${formatNumber(data.workedHours)} h`]
+          : [safeText(data.horometroAnterior), safeText(data.horometroActual)]),
         `${formatNumber(data.totalHours)} h`,
         safeText(data.totalCost),
       ],

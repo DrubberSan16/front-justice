@@ -1180,6 +1180,7 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
     modelo: item?.modelo || null,
     marca_nombre: item?.marca_nombre || null,
     estado_operativo: item?.estado_operativo || null,
+    es_reserva: item?.es_reserva === true,
     estado_funcionamiento: item?.estado_funcionamiento || null,
     estado_funcionamiento_actualizado_en: item?.estado_funcionamiento_actualizado_en || null,
     horometro_actual: item?.horometro_actual ?? null,
@@ -1191,6 +1192,7 @@ const equipmentControlItems = computed<EquipmentControlItem[]>(() =>
 );
 
 function handleEquipmentFuncionamientoUpdated(payload: {
+  es_reserva: boolean;
   id: string | number;
   estado_funcionamiento: string;
   estado_funcionamiento_actualizado_en: string | null;
@@ -1199,6 +1201,7 @@ function handleEquipmentFuncionamientoUpdated(payload: {
 }) {
   for (const target of [...equipos.value, ...generationUnits.value].filter(item => String(item.id) === String(payload.id))) {
     target.estado_funcionamiento = payload.estado_funcionamiento;
+    target.es_reserva = payload.es_reserva;
     target.estado_funcionamiento_actualizado_en = payload.estado_funcionamiento_actualizado_en;
     target.horometro_operativo_base = payload.horometro_operativo_base;
     target.horometro_operativo_desde = payload.horometro_operativo_desde;

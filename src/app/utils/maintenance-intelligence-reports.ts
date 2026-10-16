@@ -2397,6 +2397,8 @@ export function buildWorkOrderReport(payload: {
       fecha_operativa: header.fecha_operativa || "",
       horometro_anterior: header.horometro_anterior ?? "",
       horometro_actual: header.horometro_actual ?? "",
+      horas_trabajadas: header.horas_trabajadas ?? null,
+      es_reserva: header.es_reserva,
       horas_a_realizar: header.horas_a_realizar ?? "",
       alerta: header.alerta || "",
       causa: header.causa || "",
@@ -2520,6 +2522,7 @@ function buildWorkOrderSectionSheets(
   const code = String(header.codigo || header.code || `OT-${position}`).trim();
   const title = String(header.titulo || header.title || "").trim();
   const isProject = /PROYECTO/i.test(String(header.tipo_mantenimiento || ""));
+  const isPriming = /^CEBADO$/i.test(String(header.tipo_mantenimiento || "").trim());
   const showCosts = header.show_costs === true;
   const formatActor = (user: unknown, date: unknown) =>
     [reportDisplayLabel(user), date ? String(formatValue(date)) : ""].filter(Boolean).join(" · ") || "-";
@@ -2538,11 +2541,11 @@ function buildWorkOrderSectionSheets(
     },
     { label: "Mantenimiento", value: header.tipo_mantenimiento || "-" },
     { label: "Clase", value: header.clase_orden || "-" },
-    {
-      label: "Horómetro inicial",
-      value: formatHorometer(header.horometro_anterior),
-    },
-    { label: "Horómetro final", value: formatHorometer(header.horometro_actual) },
+    ...(isPriming ? [{ label: "Horas trabajadas", value: header.horas_trabajadas == null ? "Sin registro de inicio" : `${formatValue(header.horas_trabajadas)} h` }] : [
+      { label: "Horómetro inicial", value: formatHorometer(header.horometro_anterior) },
+      { label: "Horómetro final", value: formatHorometer(header.horometro_actual) },
+    ]),
+    ...(typeof header.es_reserva === "boolean" ? [{ label: "Reserva del equipo", value: header.es_reserva ? "En reserva" : "Sin reserva" }] : []),
     {
       label: "Horas de trabajo",
       value:

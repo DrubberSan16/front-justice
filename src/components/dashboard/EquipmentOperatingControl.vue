@@ -74,6 +74,7 @@
                 <span v-if="item.modelo" class="equipment-card__model">({{ item.modelo }})</span>
               </div>
             </header>
+            <v-chip v-if="stateFor(item).reserve" size="small" color="info" variant="tonal" class="mb-2 align-self-start">En reserva</v-chip>
 
             <div class="equipment-card__panel">
               <div class="equipment-control">
@@ -165,6 +166,21 @@
       </button>
     </div>
 
+    <v-dialog v-model="stopDialog" max-width="400" :persistent="stopSaving">
+      <v-card rounded="xl" title="Detener equipo">
+        <v-card-text>
+          <p class="mb-3">{{ stopEquipment ? equipmentHeaderLabel(stopEquipment) : '' }}</p>
+          <v-checkbox v-model="stopReserve" label="La parada es por reserva" hide-details />
+          <p class="text-body-2 text-medium-emphasis">Marca la casilla para dejar el equipo en reserva.</p>
+          <v-alert v-if="stopError" type="error" variant="tonal" class="mt-3">{{ stopError }}</v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn :disabled="stopSaving" @click="stopDialog = false">Cancelar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="stopSaving" @click="confirmStop">Detener</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     <div class="equipment-panel__sr-live" aria-live="polite">{{ liveMessage }}</div>
 
 
@@ -179,6 +195,7 @@ import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 import { operationalClock } from "@/app/utils/operational-horometer";
 
 export type EquipmentControlItem = {
+  es_reserva?: boolean;
   id: string | number;
   codigo?: string | null;
   nombre?: string | null;
@@ -195,6 +212,7 @@ export type EquipmentControlItem = {
 };
 
 type CardState = {
+  reserve: boolean;
   value: "FUNCIONAMIENTO" | "PARADO";
   saving: boolean;
   error: string | null;
@@ -222,6 +240,7 @@ const emit = defineEmits<{
     payload: {
       id: string | number;
       estado_funcionamiento: "FUNCIONAMIENTO" | "PARADO";
+      es_reserva: boolean;
       estado_funcionamiento_actualizado_en: string | null;
       horometro_operativo_base: number;
       horometro_operativo_desde: string | null;
@@ -240,6 +259,11 @@ const emit = defineEmits<{
 
 const states = reactive<Record<string, CardState>>({});
 const liveMessage = ref("");
+const stopDialog = ref(false);
+const stopEquipment = ref<EquipmentControlItem | null>(null);
+const stopReserve = ref(false);
+const stopSaving = ref(false);
+const stopError = ref<string | null>(null);
 const clockNow = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 function clockReading(item: EquipmentControlItem) {
@@ -264,6 +288,7 @@ function stateFor(item: EquipmentControlItem): CardState {
   const key = String(item.id);
   if (!states[key]) {
     states[key] = {
+      reserve: item.es_reserva === true,
       value: normalizeFuncionamiento(item.estado_funcionamiento),
       saving: false,
       error: null,
@@ -299,6 +324,31 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
   if (!props.canEdit) return;
   const state = stateFor(item);
   if (state.saving) return;
+  if (state.value === "FUNCIONAMIENTO") {
+    stopEquipment.value = item;
+    stopReserve.value = false;
+    stopError.value = null;
+    stopDialog.value = true;
+    return;
+  }
+  await saveFuncionamiento(item, false);
+}
+
+async function confirmStop() {
+  if (!stopEquipment.value || stopSaving.value) return;
+  stopSaving.value = true;
+  try {
+    if (await saveFuncionamiento(stopEquipment.value, stopReserve.value)) stopDialog.value = false;
+    else stopError.value = stateFor(stopEquipment.value).error;
+  } finally {
+    stopSaving.value = false;
+  }
+}
+
+async function saveFuncionamiento(item: EquipmentControlItem, reserve: boolean) {
+  if (!props.canEdit) return false;
+  const state = stateFor(item);
+  if (state.saving) return false;
 
   const next = state.value === "FUNCIONAMIENTO" ? "PARADO" : "FUNCIONAMIENTO";
   const label = equipmentHeaderLabel(item);
@@ -309,18 +359,21 @@ async function toggleFuncionamiento(item: EquipmentControlItem) {
   try {
     const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/estado-funcionamiento`, {
       estado_funcionamiento: next,
+      es_reserva: next === "PARADO" && reserve,
     });
     const updated = data?.data ?? data ?? {};
     const updatedAt: string | null =
       updated?.estado_funcionamiento_actualizado_en || updated?.updated_at || state.updatedAt;
     state.value = next;
+    state.reserve = updated.es_reserva === true;
     state.updatedAt = updatedAt;
     state.operatingBase = Number(updated.horometro_actual ?? state.operatingBase);
     state.operatingSince = updated.horometro_operativo_desde ?? null;
     state.horometerUpdatedAt = updated.fecha_ultima_lectura ?? state.horometerUpdatedAt;
     emit("horometer-updated", { id: item.id, horometro_actual: Number(updated.horometro_actual), fecha_ultima_lectura: state.horometerUpdatedAt, horometro_operativo_desde: state.operatingSince });
     liveMessage.value = `${label} actualizado a ${next === "FUNCIONAMIENTO" ? "En funcionamiento" : "Parada"}.`;
-    emit("updated", { id: item.id, estado_funcionamiento: next, estado_funcionamiento_actualizado_en: updatedAt, horometro_operativo_base: state.operatingBase, horometro_operativo_desde: state.operatingSince });
+    emit("updated", { id: item.id, es_reserva: state.reserve, estado_funcionamiento: next, estado_funcionamiento_actualizado_en: updatedAt, horometro_operativo_base: state.operatingBase, horometro_operativo_desde: state.operatingSince });
+    return true;
   } catch (e: any) {
     state.error = e?.response?.data?.message || "No se pudo actualizar el estado de funcionamiento.";
     liveMessage.value = `No se pudo actualizar ${label}: ${state.error}`;
@@ -355,6 +408,7 @@ watch(
       const current = states[key];
       if (current?.saving) continue;
       states[key] = {
+        reserve: item.es_reserva === true,
         value: normalizeFuncionamiento(item.estado_funcionamiento),
         saving: false,
         error: null,
