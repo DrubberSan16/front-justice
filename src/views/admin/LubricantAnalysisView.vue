@@ -1183,7 +1183,7 @@ async function exportAnalyses(format: "excel" | "pdf") {
   exportState[key] = true;
   error.value = null;
   try {
-    const report = buildLubricantReport(reportAnalyses.value);
+    const report = buildLubricantReport(await loadAnalysesWithDetails(reportAnalyses.value));
     report.subtitle = `Resultados filtrados${
       reportFrom.value || reportTo.value
         ? ` del ${reportFrom.value || "..."} al ${reportTo.value || "..."}`
@@ -1271,9 +1271,29 @@ function applySelectedEquipmentSnapshot() {
   form.equipo_marca = resolveEquipmentBrand(equipment);
 }
 
+// La lista llega sin detalles (`resumen`): con ellos pesaba ~70 KB por
+// analisis y tardaba varios segundos. Los detalles se piden al editar un
+// analisis y al exportar, que son los unicos que los usan.
 async function loadAnalyses() {
-  const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-lubricante");
+  const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-lubricante", {
+    params: { resumen: true },
+  });
   analyses.value = unwrap(data, []);
+}
+
+async function loadAnalysisWithDetails(item: AnyRow): Promise<AnyRow> {
+  if (Array.isArray(item?.detalles)) return item;
+  const { data } = await api.get(`/kpi_maintenance/inteligencia/analisis-lubricante/${item.id}`);
+  return unwrap(data, item);
+}
+
+async function loadAnalysesWithDetails(items: AnyRow[]): Promise<AnyRow[]> {
+  if (items.every((item) => Array.isArray(item?.detalles))) return items;
+  const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-lubricante");
+  const fullById = new Map(
+    unwrap<AnyRow[]>(data, []).map((row) => [String(row.id), row]),
+  );
+  return items.map((item) => fullById.get(String(item.id)) ?? item);
 }
 
 async function loadCatalog(search = "") {
@@ -1688,10 +1708,17 @@ function fillFormFromAnalysis(item: AnyRow) {
   });
 }
 
-function openEdit(item: AnyRow) {
+async function openEdit(item: AnyRow) {
   if (!canEdit.value) return;
-  editingId.value = item.id;
-  fillFormFromAnalysis(item);
+  let analysis: AnyRow;
+  try {
+    analysis = await loadAnalysisWithDetails(item);
+  } catch (e: any) {
+    ui.error(e?.response?.data?.message || "No se pudo cargar el detalle del análisis.");
+    return;
+  }
+  editingId.value = analysis.id;
+  fillFormFromAnalysis(analysis);
   if (form.producto_id) applySelectedOilSnapshot(form.producto_id);
   dialog.value = true;
 }

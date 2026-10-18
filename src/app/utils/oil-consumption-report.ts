@@ -1,4 +1,5 @@
 import { formatDateOnly } from "@/app/utils/date-time";
+import { formatWorkedDuration } from "@/app/utils/number-format";
 import { buildSectionReport, type SectionReportColumn } from "@/app/utils/section-report";
 import type { ReportChart } from "@/app/utils/maintenance-intelligence-reports";
 
@@ -26,7 +27,7 @@ export function buildOilOrderReport(options: {
       { key: "horometro_inicial", title: "Horómetro inicial", format: "horometer" as const, width: 12 },
       { key: "horometro_final", title: "Horómetro final", format: "horometer" as const, width: 12 },
     ] : []),
-    ...(hasPriming ? [{ key: "horas_trabajadas", title: "Horas trabajadas (cebado)", format: "number" as const, width: 13 }] : []),
+    ...(hasPriming ? [{ key: "horas_trabajadas", title: "Horas trabajadas cebado (hh:mm:ss)", format: "text" as const, width: 13 }] : []),
     { key: "galones", title: "Aceite consumido (gal)", format: "number", width: 13 },
   ] : [
     { key: "equipo", title: "Equipo (UG)", width: 20 },
@@ -60,7 +61,7 @@ export function buildOilOrderReport(options: {
       tipo: typeLabels[rawType.toUpperCase()] || rawType || "Sin tipo",
       horometro_inicial: isPriming ? "" : row.horometro_inicial ?? "",
       horometro_final: isPriming ? "" : row.horometro_final ?? "",
-      horas_trabajadas: isPriming ? row.horas_trabajadas ?? "" : "",
+      horas_trabajadas: isPriming ? formatWorkedDuration(row.horas_trabajadas, { empty: "" }) : "",
       galones: Number(row.cantidad ?? row.galones ?? 0),
       costo: Number(row.subtotal ?? row.costo ?? 0),
     };

@@ -474,7 +474,7 @@
           <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
           <template #item.horometro_inicial="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_inicial) }}</template>
           <template #item.horometro_final="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_final) }}</template>
-          <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? `${formatNumber(item.horas_trabajadas)} h` : '—' }}</template>
+          <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? formatWorkedDuration(item.horas_trabajadas) : '—' }}</template>
           <template #item.cantidad="{ item }">{{ formatNumber(item.cantidad) }} gal</template>
           <template #item.subtotal="{ item }">{{ formatCurrency(item.subtotal) }}</template>
           <template #item.semaforo="{ item }"><v-chip size="small" :color="primingSemaforoColor(item.semaforo)" variant="tonal">{{ item.semaforo?.etiqueta }}</v-chip></template>
@@ -499,7 +499,7 @@
             </div>
           </template>
           <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
-          <template #item.horas_trabajadas="{ item }">{{ formatNumber(item.horas_trabajadas) }} h</template>
+          <template #item.horas_trabajadas="{ item }">{{ formatWorkedDuration(item.horas_trabajadas, { empty: '00:00:00' }) }}</template>
           <template #item.galones_periodo="{ item }"
             >{{ formatNumber(item.galones_periodo) }} gal</template
           >
@@ -1091,7 +1091,7 @@
               <template #item.horometro_actual="{ item }">{{
                 formatHorometro(item.horometro_actual)
               }}</template>
-              <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? `${formatNumber(item.horas_trabajadas)} h` : '—' }}</template>
+              <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? formatWorkedDuration(item.horas_trabajadas) : '—' }}</template>
               <template #item.galones="{ item }"
                 >{{ formatNumber(item.galones) }} gal</template
               >
@@ -1214,7 +1214,7 @@
                   ><small>Horómetro actual</small
                   >{{ formatHorometro(order.horometro_actual) }}</span
                 >
-                <span v-if="order.maintenance_kind === 'CEBADO'"><small>Horas trabajadas</small>{{ order.horas_trabajadas == null ? 'Sin registro de inicio' : `${formatNumber(order.horas_trabajadas)} h` }}</span>
+                <span v-if="order.maintenance_kind === 'CEBADO'"><small>Horas trabajadas</small>{{ order.horas_trabajadas == null ? 'Sin registro de inicio' : formatWorkedDuration(order.horas_trabajadas) }}</span>
               </div>
               <div class="order-card__action">
                 Ver detalle <v-icon icon="mdi-chevron-right" />
@@ -1729,6 +1729,7 @@ import {
   formatCurrencyForDisplay,
   formatHorometerForDisplay,
   formatNumberForDisplay,
+  formatWorkedDuration,
 } from "@/app/utils/number-format";
 import {
   buildSectionReport,
@@ -1963,7 +1964,7 @@ const primingHeaders = computed(() => [
   { title: "Reserva", key: "es_reserva" },
   { title: "Gal x Semana", key: "galones_semana", align: "end" as const },
   { title: "Gal x Mes", key: "galones_mes", align: "end" as const },
-  ...(controlScope.value === "cebado" ? [{ title: "Horas trabajadas", key: "horas_trabajadas", align: "end" as const }] : [
+  ...(controlScope.value === "cebado" ? [{ title: "Horas trabajadas (hh:mm:ss)", key: "horas_trabajadas", align: "end" as const }] : [
     { title: "Horómetro inicial (h)", key: "horometro_inicial", align: "end" as const },
     { title: "Horómetro final (h)", key: "horometro_final", align: "end" as const },
   ]),
@@ -1980,7 +1981,7 @@ const controlOrderHeaders = computed(() => [
   ...(controlScope.value === "cebado" ? [] : [
     { title: "Horómetro inicial", key: "horometro_inicial" }, { title: "Horómetro final", key: "horometro_final" },
   ]),
-  { title: "Horas trabajadas (cebado)", key: "horas_trabajadas" },
+  { title: "Horas trabajadas cebado (hh:mm:ss)", key: "horas_trabajadas" },
   { title: "Aceite consumido", key: "cantidad" }, { title: "Control", key: "semaforo" },
   ...(canViewCosts.value ? [{ title: "Costo aceite", key: "subtotal" }] : []),
 ]);
@@ -2001,7 +2002,7 @@ const primingDetailHeaders = computed(() => {
       key: "horometro_actual",
       align: "end" as const,
     }] : []),
-    ...(primingDetailRows.value.some(row => row.maintenance_kind === 'CEBADO') ? [{ title: "Horas trabajadas (cebado)", key: "horas_trabajadas", align: "end" as const }] : []),
+    ...(primingDetailRows.value.some(row => row.maintenance_kind === 'CEBADO') ? [{ title: "Horas trabajadas cebado (hh:mm:ss)", key: "horas_trabajadas", align: "end" as const }] : []),
     { title: "Galones", key: "galones", align: "end" as const },
     { title: "Tendencia", key: "tendencia" },
     { title: "Nivel", key: "semaforo" },
@@ -2031,7 +2032,7 @@ const primingDetailExportColumns = computed(() => {
       { key: "horometro_anterior", title: "Horóm. anterior", format: "horometer" as const, width: 12 },
       { key: "horometro_actual", title: "Horóm. final", format: "horometer" as const, width: 12 },
     ] : []),
-    ...(primingDetailRows.value.some(row => row.maintenance_kind === 'CEBADO') ? [{ key: "horas_trabajadas", title: "Horas trabajadas (cebado)", format: "number" as const, width: 12 }] : []),
+    ...(primingDetailRows.value.some(row => row.maintenance_kind === 'CEBADO') ? [{ key: "horas_trabajadas", title: "Horas trabajadas cebado (hh:mm:ss)", format: "text" as const, width: 12 }] : []),
     { key: "galones", title: "Galones", format: "number", width: 9 },
     { key: "tendencia", title: "Tendencia", width: 11 },
     { key: "nivel", title: "Nivel", width: 13 },
@@ -2055,7 +2056,7 @@ const primingDetailExportRows = computed(() => {
     producto: row?.producto || "",
     horometro_anterior: row?.horometro_anterior ?? null,
     horometro_actual: row?.horometro_actual ?? null,
-    horas_trabajadas: row.maintenance_kind === 'CEBADO' ? row.horas_trabajadas ?? '' : '',
+    horas_trabajadas: row.maintenance_kind === 'CEBADO' ? formatWorkedDuration(row.horas_trabajadas, { empty: '' }) : '',
     galones: Number(row?.galones || 0),
     tendencia:
       row?.tendencia && row.tendencia !== "SIN_REFERENCIA"

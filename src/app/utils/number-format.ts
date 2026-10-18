@@ -130,6 +130,30 @@ export function formatHorometerForDisplay(
 }
 
 /**
+ * Tiempo trabajado (horas decimales) como `HH:MM:SS`.
+ *
+ * Un cebado dura minutos: "0,21 h" no dice nada en campo y con dos decimales
+ * se pierden hasta 18 segundos. Se muestra como el horómetro automático del
+ * panel, horas:minutos:segundos, con las horas sin tope ("123:04:05").
+ */
+export function formatWorkedDuration(
+  value: unknown,
+  options?: { empty?: string },
+): string {
+  const empty = options?.empty ?? "—";
+  const parsed = toFiniteNumber(value);
+  if (parsed === null) return empty;
+
+  const totalSeconds = Math.max(0, Math.round(parsed * 3600));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+}
+
+/**
  * Lectura de horómetro para el `value` de un `<input type="number">`.
  *
  * Sin sufijo, sin agrupador y sin decimales: lo que el campo sabe leer y lo

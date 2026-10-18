@@ -71,7 +71,7 @@ await mkdir(output, { recursive: true });
   assert.equal(summary.priming[0].galones_periodo, summary.totals.total_cantidad);
   const onlyPriming = reports.buildOilOrderReport({ rows: [priming], mode: 'management', subtitle: '', fileName: 'cebado', showCosts: true });
   assert.ok(!onlyPriming.sheets[0].columns.some(column => /horometro/.test(column.key)));
-  assert.equal(onlyPriming.sheets[0].rows[0].horas_trabajadas, 1.5);
+  assert.equal(onlyPriming.sheets[0].rows[0].horas_trabajadas, '01:30:00');
   assert.equal(onlyPriming.sheets[0].rows[0].reserva, 'En reserva');
   const mixed = reports.buildOilOrderReport({ rows: [priming, zero], mode: 'management', subtitle: '', fileName: 'mixed', showCosts: true });
   assert.equal(mixed.sheets[0].rows[0].horometro_inicial, '');
@@ -84,7 +84,7 @@ await mkdir(output, { recursive: true });
   assert.equal(reports.workOrderWorkedHours(header, history), 2);
   const report = reports.buildCanonicalWorkOrderReport({ header, history, tasks: [], consumptions: [], issues: [], scraps: [], attachments: [] }, true);
   const info = report.sheets[0].section.info;
-  assert.ok(info.some(row => row.label === 'Horas trabajadas' && row.value.includes('2')));
+  assert.ok(info.some(row => row.label === 'Horas trabajadas (hh:mm:ss)' && row.value === '02:00:00'));
   assert.ok(!info.some(row => /Horómetro (inicial|final)/.test(row.label)));
 }
 for (const mode of ["control", "management"]) {

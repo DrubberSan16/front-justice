@@ -12,6 +12,7 @@ import {
   formatCurrencyForDisplay,
   formatHorometerForDisplay,
   formatNumberForDisplay,
+  formatWorkedDuration,
   roundForDisplay,
 } from "@/app/utils/number-format";
 import { useAuthStore } from "@/app/stores/auth.store";
@@ -2541,7 +2542,7 @@ function buildWorkOrderSectionSheets(
     },
     { label: "Mantenimiento", value: header.tipo_mantenimiento || "-" },
     { label: "Clase", value: header.clase_orden || "-" },
-    ...(isPriming ? [{ label: "Horas trabajadas", value: header.horas_trabajadas == null ? "Sin registro de inicio" : `${formatValue(header.horas_trabajadas)} h` }] : [
+    ...(isPriming ? [{ label: "Horas trabajadas (hh:mm:ss)", value: header.horas_trabajadas == null ? "Sin registro de inicio" : formatWorkedDuration(header.horas_trabajadas) }] : [
       { label: "Horómetro inicial", value: formatHorometer(header.horometro_anterior) },
       { label: "Horómetro final", value: formatHorometer(header.horometro_actual) },
     ]),
@@ -2560,7 +2561,7 @@ function buildWorkOrderSectionSheets(
     { label: "Procedimiento", value: header.procedimiento || "-" },
     { label: "Plan operativo", value: header.plan_operativo || "-" },
     { label: "Planificada por / fecha y hora", value: formatActor(header.planificada_por ?? header.creado_por, header.fecha_planificacion ?? header.fecha_creacion) },
-    { label: "Ejecución iniciada por / fecha y hora", value: formatActor(header.ejecucion_iniciada_por ?? header.realizado_por, header.fecha_inicio_ejecucion !== undefined ? header.fecha_inicio_ejecucion : header.fecha_realizacion) },
+    { label: "Materiales entregados por / fecha y hora", value: formatActor(header.ejecucion_iniciada_por ?? header.realizado_por, header.fecha_inicio_ejecucion !== undefined ? header.fecha_inicio_ejecucion : header.fecha_realizacion) },
     { label: "Finalizada por / fecha y hora", value: formatActor(header.finalizada_por ?? header.aprobado_por, header.fecha_finalizacion !== undefined ? header.fecha_finalizacion : header.fecha_aprobacion) },
     { label: "Anulada por / fecha y hora", value: formatActor(header.anulada_por, header.fecha_anulacion) },
     { label: "Causa", value: header.causa || "-" },

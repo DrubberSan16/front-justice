@@ -142,6 +142,7 @@ import {
   formatCurrencyForDisplay,
   formatHorometerForDisplay,
   formatNumberForDisplay,
+  formatWorkedDuration,
 } from "@/app/utils/number-format";
 
 /**
@@ -202,7 +203,7 @@ const facts = computed(() => {
     { label: "Tipo", value: maintenanceKindLabel.value },
     { label: "Inicio", value: formatDate(row?.hora_inicio || row?.created_at) },
     { label: "Cierre", value: formatDate(row?.hora_fin || row?.closed_at) },
-    ...(String(row?.maintenance_kind).toUpperCase() === "CEBADO" ? [{ label: "Horas trabajadas", value: worked == null ? "Sin registro de inicio" : `${formatNumber(worked)} h` }] : [{
+    ...(String(row?.maintenance_kind).toUpperCase() === "CEBADO" ? [{ label: "Horas trabajadas", value: worked == null ? "Sin registro de inicio" : formatWorkedDuration(worked) }] : [{
       label: "Horómetro",
       value: [row?.horometro_anterior, row?.horometro_actual]
         .map((value) => formatHorometerForDisplay(value, { empty: "-" }))
