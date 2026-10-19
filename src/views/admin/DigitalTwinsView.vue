@@ -1,1006 +1,1048 @@
 <template>
-  <v-alert v-if="!canRead" type="warning" variant="tonal">
-    No tienes permisos para visualizar el modulo de Gemelos digitales.
-  </v-alert>
-
-  <div v-else class="digital-twins-page">
-    <v-card rounded="xl" class="pa-5 enterprise-surface">
-      <div class="responsive-header page-wrap">
-        <div>
-          <div class="text-h6 font-weight-bold">Gemelos digitales</div>
-          <div class="text-body-2 text-medium-emphasis">
-            Monitoreo operativo por equipo con KPI propios, señales del período y análisis con IA.
-          </div>
-        </div>
-        <div class="responsive-actions page-wrap">
-          <MassPurgeButton
-            endpoint="/kpi_process/digital-twins/purge-all"
-            module-title="Gemelos digitales"
-            @purged="loadDashboard"
-          />
-          <v-btn v-if="canCreate" color="primary" prepend-icon="mdi-plus" @click="openCreate">
-            Nuevo gemelo
-          </v-btn>
-          <v-btn
-            color="secondary"
-            variant="tonal"
-            prepend-icon="mdi-sync"
-            :loading="refreshingAll"
-            @click="refreshAll"
-          >
-            Recalcular KPI
-          </v-btn>
-          <v-btn
-            variant="tonal"
-            prepend-icon="mdi-refresh"
-            :loading="loading"
-            @click="loadDashboard"
-          >
-            Actualizar
-          </v-btn>
-        </div>
+  <div v-if="allowed" class="twin-workspace">
+    <header class="twin-heading">
+      <div>
+        <div class="eyebrow">INGENIERÍA DE ACTIVOS</div>
+        <h1>Gemelo digital</h1>
+        <p>Estado del activo, trazabilidad y escenarios de operación.</p>
       </div>
-
-      <v-alert v-if="error" type="warning" variant="tonal" class="mt-4" :text="error" />
-
-      <v-row dense class="mt-3">
-        <v-col cols="12" md="3">
-          <v-select
-            v-model="selectedYear"
-            :items="yearOptions"
-            label="Año"
-            variant="outlined"
-            density="compact"
-          />
-        </v-col>
-        <v-col cols="12" md="3">
-          <v-select
-            v-model="selectedMonth"
-            :items="monthOptions"
-            item-title="title"
-            item-value="value"
-            label="Mes"
-            variant="outlined"
-            density="compact"
-          />
-        </v-col>
-        <v-col cols="12" md="6">
-          <v-text-field
-            v-model="search"
-            label="Buscar por código, gemelo, equipo o modelo"
-            variant="outlined"
-            density="compact"
-            prepend-inner-icon="mdi-magnify"
-            clearable
-          />
-        </v-col>
-      </v-row>
-
-      <v-row dense class="mt-1">
-        <v-col v-for="card in dashboard.kpis" :key="card.key" cols="12" sm="6" xl="3">
-          <v-card rounded="lg" variant="outlined" class="pa-4 h-100 twin-kpi-card">
-            <div class="d-flex align-center justify-space-between mb-2">
-              <div class="text-subtitle-2 text-medium-emphasis">{{ card.label }}</div>
-              <v-icon :icon="card.icon" size="20" />
-            </div>
-            <div class="text-h4 font-weight-bold">{{ card.value }}</div>
-            <div class="text-body-2 text-medium-emphasis mt-2">{{ card.helper }}</div>
-          </v-card>
-        </v-col>
-      </v-row>
-
-      <v-row dense class="mt-2">
-        <v-col cols="12" md="4" v-for="risk in dashboard.risk_breakdown" :key="risk.label">
-          <v-card rounded="lg" variant="outlined" class="pa-4">
-            <div class="d-flex align-center justify-space-between mb-2">
-              <div class="text-subtitle-2">{{ risk.label }}</div>
-              <v-chip :color="risk.color" variant="tonal" label>{{ risk.value }}</v-chip>
-            </div>
-            <v-progress-linear
-              :model-value="riskPercent(risk.value)"
-              :color="risk.color"
-              height="10"
-              rounded
-            />
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-card>
-
-    <v-card rounded="xl" class="pa-4 enterprise-surface mt-4">
-      <v-data-table
-        :headers="headers"
-        :items="dashboardRows"
-        :loading="loading"
-        loading-text="Obteniendo gemelos digitales..."
-        :items-per-page="15"
-        class="enterprise-table"
+      <v-btn color="primary" prepend-icon="mdi-plus" @click="openForm()"
+        >Vincular equipo</v-btn
       >
-        <template #item.name="{ item }">
-          <div class="font-weight-medium">{{ rowData(item).twin?.name || "Sin nombre" }}</div>
-          <div class="text-caption text-medium-emphasis">{{ rowData(item).twin?.code || "Sin código" }}</div>
-        </template>
-
-        <template #item.equipment="{ item }">
-          <div class="font-weight-medium">{{ rowData(item).twin?.equipment_name || "Sin equipo" }}</div>
-          <div class="text-caption text-medium-emphasis">
-            {{ rowData(item).twin?.equipment_code || "Sin código" }}
-            <span v-if="rowData(item).twin?.equipment_model"> · {{ rowData(item).twin?.equipment_model }}</span>
-          </div>
-        </template>
-
-        <template #item.health_score="{ item }">
-          <div class="font-weight-bold">{{ rowData(item).health_score }}%</div>
-          <v-progress-linear
-            :model-value="Number(rowData(item).health_score || 0)"
-            :color="healthColor(rowData(item).health_score)"
-            height="8"
-            rounded
-          />
-        </template>
-
-        <template #item.risk_level="{ item }">
-          <v-chip :color="riskColor(rowData(item).risk_level)" variant="tonal" label size="small">
-            {{ rowData(item).risk_level }}
-          </v-chip>
-        </template>
-
-        <template #item.operational_status="{ item }">
-          <v-chip
-            :color="statusColor(rowData(item).operational_status)"
-            variant="tonal"
-            label
-            size="small"
+    </header>
+    <v-alert
+      v-if="error"
+      type="error"
+      variant="tonal"
+      closable
+      class="mb-4"
+      @click:close="error = ''"
+      >{{ error }}</v-alert
+    >
+    <div class="twin-layout">
+      <aside class="twin-fleet">
+        <div class="fleet-heading">
+          <h2>Activos vinculados</h2>
+          <span>{{ total }}</span>
+        </div>
+        <v-text-field
+          v-model="search"
+          label="Buscar activo"
+          prepend-inner-icon="mdi-magnify"
+          variant="outlined"
+          density="compact"
+          hide-details
+          clearable
+          @update:model-value="scheduleSearch"
+        />
+        <v-progress-linear
+          v-if="busy"
+          indeterminate
+          color="primary"
+          class="mt-2"
+        />
+        <nav aria-label="Activos vinculados" class="fleet-list">
+          <button
+            v-for="asset in assets"
+            :key="asset.id"
+            type="button"
+            class="fleet-item"
+            :class="{ 'fleet-item--active': asset.id === selectedId }"
+            :aria-current="asset.id === selectedId ? 'true' : undefined"
+            @click="
+              selectedId = asset.id;
+              tab = 'state';
+            "
           >
-            {{ rowData(item).operational_status }}
-          </v-chip>
-        </template>
-
-        <template #item.lubricant="{ item }">
-          <div class="font-weight-medium">{{ rowData(item).lubricant?.latest_state || "SIN_ANALISIS" }}</div>
-          <div class="text-caption text-medium-emphasis">
-            {{ rowData(item).lubricant?.latest_report_date || "Sin reporte" }}
-          </div>
-        </template>
-
-        <template #item.actions="{ item }">
-          <div class="responsive-actions justify-end">
-            <v-btn icon="mdi-eye" variant="text" @click="openDetail(rowData(item))" />
-            <v-btn
-              icon="mdi-robot-industrial"
-              variant="text"
-              color="secondary"
-              :loading="analyzingTwinId === rowData(item).twin?.id"
-              @click="analyzeTwin(rowData(item))"
-            />
-            <v-btn
-              icon="mdi-sync"
-              variant="text"
-              color="primary"
-              :loading="refreshingTwinId === rowData(item).twin?.id"
-              @click="refreshTwin(rowData(item))"
-            />
-            <v-btn v-if="canEdit" icon="mdi-pencil" variant="text" @click="openEdit(rowData(item).twin?.id)" />
-            <v-btn v-if="canDelete" icon="mdi-delete-outline" variant="text" color="error" @click="removeTwin(rowData(item))" />
-          </div>
-        </template>
-      </v-data-table>
-    </v-card>
-
-    <v-dialog v-model="formDialog" :max-width="920">
-      <v-card rounded="xl">
-        <v-card-title class="text-subtitle-1 font-weight-bold">
-          {{ editingId ? "Editar gemelo digital" : "Nuevo gemelo digital" }}
-        </v-card-title>
-        <v-divider />
-        <v-card-text class="pt-4">
-          <v-row dense>
-            <v-col cols="12" md="4">
-              <v-text-field v-model="form.code" label="Código" variant="outlined" readonly :loading="codeLoading" />
-            </v-col>
-            <v-col cols="12" md="8">
-              <v-text-field v-model="form.name" label="Nombre del gemelo" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-autocomplete
-                v-model="form.equipment_id"
-                :items="equipmentOptions"
-                item-title="label"
-                item-value="id"
-                label="Equipo asociado"
-                variant="outlined"
-                clearable
-                @update:model-value="handleEquipmentSelected"
-              />
-            </v-col>
-            <v-col cols="12" md="3">
-              <v-text-field v-model="form.equipment_code" label="Código equipo" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="3">
-              <v-text-field v-model="form.equipment_name" label="Nombre equipo" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-text-field v-model="form.equipment_model" label="Modelo" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-select v-model="form.twin_type" :items="twinTypeOptions" label="Tipo de gemelo" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="4">
-              <v-select v-model="form.process_scope" :items="scopeOptions" label="Alcance" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-select v-model="form.status" :items="statusOptions" label="Estado" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="6" class="d-flex align-center">
-              <v-switch v-model="form.ai_enabled" color="primary" inset label="Análisis IA habilitado" />
-            </v-col>
-            <v-col cols="12">
-              <v-textarea
-                v-model="form.configNotes"
-                label="Notas operativas / contexto"
-                variant="outlined"
-                rows="3"
-                auto-grow
-              />
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider />
-        <v-card-actions class="pa-4">
-          <v-spacer />
-          <v-btn variant="text" @click="formDialog = false">Cancelar</v-btn>
-          <v-btn v-if="canPersistForm" color="primary" :loading="saving" @click="saveTwin">Guardar</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <v-dialog v-model="detailDialog" :max-width="1200">
-      <v-card rounded="xl">
-        <v-card-title class="text-subtitle-1 font-weight-bold d-flex align-center justify-space-between" style="gap: 8px; flex-wrap: wrap;">
-          <span>{{ detail?.twin?.name || "Detalle del gemelo digital" }}</span>
-          <div class="responsive-actions">
-            <v-btn
-              variant="tonal"
-              prepend-icon="mdi-sync"
-              :loading="refreshingTwinId === detail?.twin?.id"
-              @click="detail && refreshTwin(detail.snapshot)"
+            <small>{{ asset.equipment_code || asset.code }}</small
+            ><strong>{{ asset.name }}</strong>
+            <span>{{
+              asset.equipment_name || "Equipo pendiente de vinculación"
+            }}</span>
+            <span class="fleet-condition"
+              ><i :class="tone(asset.condition?.status)" />{{
+                asset.condition
+                  ? conditionLabel(asset.condition.status)
+                  : "Sin captura"
+              }}<small>Última captura</small></span
             >
-              Recalcular
-            </v-btn>
-            <v-btn
-              variant="tonal"
-              prepend-icon="mdi-robot-industrial"
-              :loading="analyzingTwinId === detail?.twin?.id"
-              @click="detail && analyzeTwin(detail.snapshot)"
-            >
-              {{ analyzingTwinId === detail?.twin?.id ? "Buscando modelos recomendados..." : "Analizar IA" }}
-            </v-btn>
+          </button>
+        </nav>
+        <p v-if="!busy && !assets.length" class="text-body-2 my-5">
+          {{
+            search
+              ? "No hay activos que coincidan con la búsqueda."
+              : "Vincula un equipo para consultar su representación digital."
+          }}
+        </p>
+        <v-pagination
+          v-if="pages > 1"
+          v-model="page"
+          :length="pages"
+          :total-visible="3"
+          density="compact"
+          @update:model-value="loadAssets"
+        />
+      </aside>
+      <main class="twin-content">
+        <div v-if="selectedId" class="twin-toolbar">
+          <div class="text-caption">
+            {{ historical ? "CAPTURA HISTÓRICA" : "CONSULTA ACTUAL"
+            }}<span v-if="display"> · {{ formatDateTime(display.as_of) }}</span>
           </div>
-        </v-card-title>
-        <v-divider />
-        <v-card-text v-if="detail" class="pt-4">
-          <div
-            v-if="analyzingTwinId === detail?.twin?.id"
-            class="mb-4 text-body-2 text-medium-emphasis"
+          <div class="toolbar-actions">
+            <v-btn
+              size="small"
+              variant="text"
+              :loading="reading"
+              :disabled="!!historical"
+              prepend-icon="mdi-refresh"
+              @click="loadState"
+              >Actualizar</v-btn
+            >
+            <v-btn
+              size="small"
+              variant="tonal"
+              :loading="saving"
+              :disabled="!!historical || !state"
+              prepend-icon="mdi-camera-outline"
+              @click="capture"
+              >Guardar captura</v-btn
+            >
+            <v-btn
+              size="small"
+              variant="text"
+              icon="mdi-pencil-outline"
+              aria-label="Editar activo vinculado"
+              @click="openForm(selected)"
+            />
+          </div>
+        </div>
+        <v-alert v-if="historical" type="info" variant="tonal" class="mb-4"
+          >Estás consultando una captura guardada.
+          <v-btn variant="text" size="small" @click="historical = null"
+            >Volver al estado actual</v-btn
+          ></v-alert
+        >
+        <v-skeleton-loader v-if="reading && !display" type="card,article" />
+        <template v-else-if="display">
+          <section class="asset-identity">
+            <div class="asset-symbol" aria-hidden="true">
+              <v-icon icon="mdi-engine-outline" size="44" />
+            </div>
+            <div class="asset-description">
+              <div class="eyebrow">
+                {{ display.identity.brand || "Marca sin registrar" }} ·
+                {{ display.identity.code }}
+              </div>
+              <h2>{{ display.identity.name }}</h2>
+              <p>
+                {{ display.identity.model || "Modelo sin registrar" }} · Serie
+                {{ display.identity.serie || "sin registrar" }}
+              </p>
+              <p class="text-caption">
+                {{ display.identity.location || "Ubicación sin registrar" }} ·
+                {{ display.identity.central || "Central sin registrar" }}
+              </p>
+            </div>
+            <v-chip :color="tone(display.condition.status)" variant="tonal">{{
+              conditionLabel(display.condition.status)
+            }}</v-chip>
+          </section>
+          <div class="twin-metrics">
+            <article>
+              <small>Funcionamiento registrado</small
+              ><strong>{{
+                display.operation.running === "FUNCIONAMIENTO"
+                  ? "En marcha"
+                  : display.operation.running === "PARADO"
+                    ? "Detenido"
+                    : "Sin registrar"
+              }}</strong
+              ><span
+                >{{ display.operation.status }} ·
+                {{ formatDateTime(display.operation.since) }}</span
+              >
+            </article>
+            <article>
+              <small>Horómetro guardado</small
+              ><strong>{{ num(display.horometer.measured) }} <em>h</em></strong
+              ><span>{{ formatDateTime(display.horometer.measured_at) }}</span>
+            </article>
+            <article>
+              <small>{{
+                display.horometer.calculated
+                  ? "Horómetro con avance calculado"
+                  : "Horómetro de referencia"
+              }}</small
+              ><strong>{{ num(display.horometer.estimated) }} <em>h</em></strong
+              ><span>{{
+                display.horometer.calculated
+                  ? "Registro + tiempo en funcionamiento"
+                  : "Sin avance calculado"
+              }}</span>
+            </article>
+            <article>
+              <small>Distancia al próximo MPG</small
+              ><strong
+                >{{
+                  display.maintenance ? num(display.maintenance.remaining) : "—"
+                }}
+                <em>h</em></strong
+              ><span>{{
+                display.maintenance
+                  ? display.maintenance.reliable
+                    ? "Referencia MPG registrada"
+                    : "Referencia estimada"
+                  : "Sin frecuencia por horas"
+              }}</span>
+            </article>
+          </div>
+          <v-tabs
+            v-model="tab"
+            color="primary"
+            class="workspace-tabs"
+            show-arrows
+            ><v-tab value="state">Estado y fuentes</v-tab
+            ><v-tab value="structure">Estructura</v-tab
+            ><v-tab value="events">Eventos</v-tab
+            ><v-tab value="history">Capturas</v-tab
+            ><v-tab value="simulation">Simulación</v-tab></v-tabs
           >
-            Buscando modelos recomendados...
-          </div>
-          <div class="summary-strip mb-4">
-            <v-chip label color="primary" variant="tonal">{{ detail.period.label }}</v-chip>
-            <v-chip label :color="healthColor(detail.snapshot.health_score)" variant="tonal">
-              Salud {{ detail.snapshot.health_score }}%
-            </v-chip>
-            <v-chip label :color="riskColor(detail.snapshot.risk_level)" variant="tonal">
-              Riesgo {{ detail.snapshot.risk_level }}
-            </v-chip>
-            <v-chip label :color="statusColor(detail.snapshot.operational_status)" variant="tonal">
-              Estado {{ detail.snapshot.operational_status }}
-            </v-chip>
-          </div>
-
-          <v-row dense class="mb-2">
-            <v-col cols="12" md="4">
-              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
-                <div class="text-subtitle-2 font-weight-bold mb-3">Contexto del equipo</div>
-                <div class="text-body-2"><strong>Código:</strong> {{ detail.snapshot.equipment?.code || detail.twin?.equipment_code || "No registrado" }}</div>
-                <div class="text-body-2 mt-1"><strong>Nombre real:</strong> {{ detail.snapshot.equipment?.display_name || detail.twin?.equipment_name || "No registrado" }}</div>
-                <div class="text-body-2 mt-1" v-if="detail.snapshot.equipment?.operational_name && detail.snapshot.equipment?.operational_name !== detail.snapshot.equipment?.display_name">
-                  <strong>Nombre operativo:</strong> {{ detail.snapshot.equipment?.operational_name }}
-                </div>
-                <div class="text-body-2 mt-1"><strong>Modelo:</strong> {{ detail.snapshot.equipment?.model || detail.twin?.equipment_model || "No registrado" }}</div>
-                <div class="text-body-2 mt-1"><strong>Marca:</strong> {{ detail.snapshot.equipment?.brand_name || "No registrada" }}</div>
-                <div class="text-body-2 mt-1"><strong>Estado:</strong> {{ detail.snapshot.equipment?.estado_operativo || "No registrado" }}</div>
-                <div class="text-body-2 mt-1"><strong>Criticidad:</strong> {{ detail.snapshot.equipment?.criticidad || "No registrada" }}</div>
-                <div
-                  v-if="Array.isArray(detail.snapshot.equipment?.components) && detail.snapshot.equipment?.components.length"
-                  class="mt-3"
-                >
-                  <div class="text-body-2 font-weight-medium mb-2"><strong>Partes oficiales:</strong></div>
-                  <div class="d-flex flex-wrap" style="gap: 6px;">
-                    <v-chip
-                      v-for="component in detail.snapshot.equipment?.components"
-                      :key="component.id || `${component.codigo}-${component.nombre_oficial}`"
-                      size="small"
-                      variant="tonal"
-                      color="secondary"
-                    >
-                      {{ component.codigo ? `${component.codigo} - ` : "" }}{{ component.nombre_oficial || component.nombre }}
-                    </v-chip>
-                  </div>
-                </div>
-              </v-card>
-            </v-col>
-
-            <v-col cols="12" md="4">
-              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
-                <div class="text-subtitle-2 font-weight-bold mb-3">Lubricación analizada</div>
-                <div class="text-body-2 mt-1"><strong>Último analizado:</strong> {{ detail.snapshot.lubricant?.latest_lubricant || "Sin análisis" }}</div>
-                <div class="text-body-2 mt-1"><strong>Marca:</strong> {{ detail.snapshot.lubricant?.latest_lubricant_brand || "No registrada" }}</div>
-                <div class="text-body-2 mt-1"><strong>Informe:</strong> {{ detail.snapshot.lubricant?.latest_report_code || "Sin código" }}</div>
-                <div class="text-body-2 mt-3"><strong>Estado:</strong> {{ detail.snapshot.lubricant?.latest_state || "SIN_ANALISIS" }}</div>
-                <div
-                  v-if="detail.snapshot.lubricant?.match_status && detail.snapshot.lubricant?.match_status !== 'NO_APLICA'"
-                  class="mt-2 d-flex align-center justify-space-between"
-                  style="gap: 8px; flex-wrap: wrap;"
-                >
-                  <div class="text-body-2"><strong>Consistencia:</strong></div>
-                  <v-chip
-                    :color="lubricantMatchColor(detail.snapshot.lubricant?.match_status)"
+          <section class="twin-panel">
+            <template v-if="tab === 'state'">
+              <div class="state-columns">
+                <div>
+                  <h3 class="panel-title">Condición observada</h3>
+                  <p class="text-body-2 mb-4">{{ display.condition.basis }}</p>
+                  <v-alert
+                    :type="
+                      display.condition.status === 'CRITICO'
+                        ? 'error'
+                        : display.condition.status === 'ATENCION'
+                          ? 'warning'
+                          : 'info'
+                    "
                     variant="tonal"
-                    size="small"
-                    label
+                    class="mb-4"
                   >
-                    {{ detail.snapshot.lubricant?.match_status }}
-                  </v-chip>
+                    <ul
+                      v-if="display.condition.reasons.length"
+                      class="reason-list"
+                    >
+                      <li
+                        v-for="reason in display.condition.reasons"
+                        :key="reason"
+                      >
+                        {{ reason }}
+                      </li>
+                    </ul>
+                    <span v-else>{{
+                      display.condition.status === "SIN_DATOS"
+                        ? "La evidencia disponible no permite determinar una condición completa."
+                        : "Sin hallazgos en las reglas y fuentes consultadas."
+                    }}</span>
+                  </v-alert>
+                  <h3 class="panel-title">Próximo mantenimiento por horas</h3>
+                  <template v-if="display.maintenance"
+                    ><dl class="asset-facts">
+                      <div>
+                        <dt>Objetivo</dt>
+                        <dd>{{ num(display.maintenance.target) }} h</dd>
+                      </div>
+                      <div>
+                        <dt>Frecuencia</dt>
+                        <dd>{{ num(display.maintenance.interval) }} h</dd>
+                      </div>
+                      <div>
+                        <dt>Servicio de referencia</dt>
+                        <dd>
+                          {{
+                            display.maintenance.service_code ||
+                            "Sin servicio válido"
+                          }}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p class="text-caption mt-3">
+                      {{ display.maintenance.explanation }}
+                    </p></template
+                  >
+                  <p v-else class="text-body-2">
+                    Configura una frecuencia por horas y verifica el horómetro
+                    del equipo para habilitar la proyección MPG.
+                  </p>
+                  <v-alert
+                    v-if="display.horometer.clock_issue"
+                    type="warning"
+                    variant="tonal"
+                    class="mt-4"
+                    >{{ display.horometer.clock_issue }}</v-alert
+                  >
+                  <h3 class="panel-title mt-6">
+                    Último análisis de lubricante consultado
+                  </h3>
+                  <p v-if="display.oil[0]" class="text-body-2">
+                    {{ display.oil[0].codigo }} ·
+                    {{ display.oil[0].compartimento_principal }} ·
+                    {{ display.oil[0].estado_diagnostico }}<br />{{
+                      formatDateTime(display.oil[0].fecha_reporte)
+                    }}<br />{{ display.oil[0].diagnostico }}
+                  </p>
+                  <p v-else class="text-body-2">
+                    Sin análisis disponibles en la consulta.
+                  </p>
                 </div>
-              </v-card>
-            </v-col>
-
-            <v-col cols="12" md="4">
-              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
-                <div class="text-subtitle-2 font-weight-bold mb-3">Materiales e inventario</div>
-                <div class="text-body-2"><strong>Materiales sugeridos:</strong> {{ detail.snapshot.inventory?.total_materials ?? 0 }}</div>
-                <div class="text-body-2 mt-1"><strong>Con stock comprometido:</strong> {{ detail.snapshot.inventory?.low_stock_materials ?? 0 }}</div>
-                <div
-                  v-if="Array.isArray(detail.snapshot.inventory?.recommended_materials) && detail.snapshot.inventory?.recommended_materials.length"
-                  class="mt-3"
-                >
+                <div>
+                  <h3 class="panel-title">Origen y vigencia de los datos</h3>
+                  <p class="text-caption mb-4">
+                    Los estados describen los registros consultados. La
+                    antigüedad se marca a los 7 días para el horómetro y a los
+                    30 días en las demás fuentes con fecha.
+                  </p>
                   <div
-                    v-for="material in (detail.snapshot.inventory?.recommended_materials || []).slice(0, 3)"
-                    :key="material.producto_id || `${material.codigo}-${material.nombre}`"
-                    class="mb-2"
+                    v-for="source in display.quality"
+                    :key="source.key"
+                    class="source-row"
                   >
-                    <div class="font-weight-medium">{{ material.codigo || "Sin código" }} · {{ material.nombre || "Material" }}</div>
-                    <div class="text-caption text-medium-emphasis">
-                      Stock {{ material.stock_total ?? 0 }} · {{ material.stock_status || "SIN_STOCK" }}
-                      <span v-if="material.bodega_sugerida">
-                        · Bodega {{ material.bodega_sugerida.codigo || material.bodega_sugerida.nombre }}
-                      </span>
+                    <div>
+                      <strong>{{ source.label }}</strong
+                      ><span>{{
+                        source.latest_at
+                          ? formatDateTime(source.latest_at)
+                          : "Sin fecha de lectura aplicable"
+                      }}</span>
+                    </div>
+                    <v-chip
+                      size="x-small"
+                      :color="
+                        source.status === 'NO_DISPONIBLE'
+                          ? 'error'
+                          : source.stale
+                            ? 'warning'
+                            : 'secondary'
+                      "
+                      variant="tonal"
+                      >{{
+                        source.status === "NO_DISPONIBLE"
+                          ? "No disponible"
+                          : source.stale
+                            ? "Revisar vigencia"
+                            : source.status === "SIN_REGISTROS"
+                              ? "Sin registros"
+                              : "Disponible"
+                      }}</v-chip
+                    >
+                  </div>
+                  <div class="source-limits">
+                    <v-icon icon="mdi-database-outline" size="18" />
+                    <div>
+                      <strong>{{ display.connection.label }}</strong>
+                      <ul>
+                        <li v-for="limit in display.limits" :key="limit">
+                          {{ limit }}
+                        </li>
+                      </ul>
                     </div>
                   </div>
                 </div>
-                <div
-                  v-else
-                  class="text-body-2 text-medium-emphasis mt-3"
-                >
-                  Todavía no hay materiales sugeridos para este equipo.
-                </div>
-              </v-card>
-            </v-col>
-          </v-row>
-
-          <v-row dense>
-            <v-col cols="12" lg="5">
-              <v-card rounded="lg" variant="outlined" class="pa-4 h-100">
-                <div class="text-subtitle-2 font-weight-bold mb-3">Señales operativas</div>
-                <v-table density="compact" class="enterprise-table">
-                  <thead>
-                    <tr>
-                      <th>Señal</th>
-                      <th>Valor</th>
-                      <th>Severidad</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="signal in detail.signals" :key="signal.id || signal.signal_key || signal.key">
-                      <td>
-                        <div class="font-weight-medium">{{ signal.signal_label || signal.label }}</div>
-                        <div class="text-caption text-medium-emphasis">{{ signal.signal_category || signal.category }}</div>
-                      </td>
-                      <td>{{ displaySignalValue(signal) }}</td>
-                      <td>
-                        <v-chip :color="severityColor(signal.severity)" variant="tonal" size="small">
-                          {{ signal.severity }}
-                        </v-chip>
-                      </td>
-                    </tr>
-                  </tbody>
-                </v-table>
-              </v-card>
-            </v-col>
-
-            <v-col cols="12" lg="7">
-              <v-card rounded="lg" variant="outlined" class="pa-4">
-                <div class="text-subtitle-2 font-weight-bold mb-3">Insights y recomendaciones</div>
-                <div
-                  v-if="!detail.insights.length"
-                  class="text-body-2 text-medium-emphasis"
-                >
-                  Todavía no hay análisis IA para este período. Puedes generarlo desde esta ventana.
-                </div>
-                <v-timeline v-else density="compact" side="end" align="start">
-                  <v-timeline-item
-                    v-for="insight in detail.insights"
-                    :key="insight.id"
-                    dot-color="secondary"
-                    fill-dot
-                  >
-                    <div class="font-weight-bold">{{ insight.title }}</div>
-                    <div class="text-caption text-medium-emphasis mb-2">
-                      {{ insight.source }} · {{ formatDate(insight.created_at) }} · Prioridad {{ insight.priority }}
-                    </div>
-                    <div class="mb-2">{{ insight.summary }}</div>
-                    <div class="text-body-2 text-medium-emphasis">{{ insight.recommendation }}</div>
-                    <div v-if="insightNationalModels(insight).length" class="mt-3">
-                      <div class="text-caption text-uppercase mb-2">Modelos nacionales recomendados</div>
-                      <v-card
-                        v-for="(model, modelIndex) in insightNationalModels(insight)"
-                        :key="`${insight.id}-national-model-${modelIndex}`"
-                        rounded="lg"
-                        variant="tonal"
-                        color="secondary"
-                        class="pa-3 mb-2"
+              </div>
+              <h3 class="panel-title mt-6">Alertas abiertas consultadas</h3>
+              <v-table v-if="display.alerts.length" class="readable-table"
+                ><thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Nivel</th>
+                    <th>Hallazgo</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="alert in display.alerts" :key="alert.id">
+                    <td>{{ alert.tipo_alerta }}</td>
+                    <td>{{ alert.nivel }}</td>
+                    <td>{{ alert.detalle }}</td>
+                    <td>{{ alert.estado }}</td>
+                  </tr>
+                </tbody></v-table
+              >
+              <p v-else class="text-body-2">
+                Sin alertas abiertas en la consulta. Revisa el estado de la
+                fuente antes de interpretar este resultado.
+              </p>
+            </template>
+            <TwinStructure v-else-if="tab === 'structure'" :state="display" />
+            <template v-else-if="tab === 'events'"
+              ><h3 class="panel-title">Línea de eventos del activo</h3>
+              <p class="text-caption mb-4">
+                Últimos 100 eventos disponibles entre las fuentes consultadas.
+              </p>
+              <p v-if="!display.events.length" class="text-body-2">
+                Sin eventos registrados en las fuentes consultadas.
+              </p>
+              <ol class="event-timeline">
+                <li v-for="event in display.events" :key="event.id">
+                  <time>{{ formatDateTime(event.at) }}</time>
+                  <div>
+                    <small>{{ event.type }}</small
+                    ><strong>{{ event.title }}</strong>
+                    <p>{{ event.detail || "Sin detalle adicional" }}</p>
+                  </div>
+                </li>
+              </ol>
+            </template>
+            <template v-else-if="tab === 'history'"
+              ><h3 class="panel-title">Capturas conservadas</h3>
+              <p class="text-body-2 mb-4">
+                Cada captura conserva la identidad, la estructura, el estado y
+                las fuentes consultadas en ese momento. Se muestran las últimas
+                100.
+              </p>
+              <p v-if="!history.length" class="text-body-2">
+                Todavía no hay capturas. Guarda una desde el estado actual para
+                iniciar el seguimiento.
+              </p>
+              <v-table v-else class="readable-table"
+                ><thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Condición</th>
+                    <th>Horómetro de referencia</th>
+                    <th>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="record in history" :key="record.id">
+                    <td>{{ formatDateTime(record.recorded_at) }}</td>
+                    <td>{{ conditionLabel(record.condition.status) }}</td>
+                    <td>{{ num(record.horometer.estimated) }} h</td>
+                    <td>
+                      <v-btn
+                        size="small"
+                        variant="text"
+                        @click="
+                          openCapture(record.id);
+                          tab = 'state';
+                        "
+                        >Consultar captura</v-btn
                       >
-                        <div class="font-weight-bold">
-                          {{ model.model }}
-                          <span v-if="model.manufacturer"> · {{ model.manufacturer }}</span>
-                        </div>
-                        <div class="text-body-2 mt-1" v-if="model.reason">
-                          {{ model.reason }}
-                        </div>
-                        <div class="text-caption text-medium-emphasis mt-1">
-                          {{ model.country || "Ecuador" }}
-                          <span v-if="model.application"> · {{ model.application }}</span>
-                        </div>
-                      </v-card>
-                    </div>
-                    <div v-if="insightImprovementSteps(insight).length" class="mt-3">
-                      <div class="text-caption text-uppercase mb-1">Pasos de mejora</div>
-                      <ol class="improvement-list">
-                        <li v-for="(step, index) in insightImprovementSteps(insight)" :key="`${insight.id}-${index}`">
-                          {{ step }}
-                        </li>
-                      </ol>
-                    </div>
-                    <div v-if="insightRecommendedMaterials(insight).length" class="mt-3">
-                      <div class="text-caption text-uppercase mb-1">Materiales sugeridos</div>
-                      <div
-                        v-for="material in insightRecommendedMaterials(insight).slice(0, 4)"
-                        :key="material.producto_id || `${material.codigo}-${material.nombre}`"
-                        class="text-body-2 mb-2"
-                      >
-                        <div class="font-weight-medium">
-                          {{ material.codigo || "Sin código" }} · {{ material.nombre || "Material" }}
-                        </div>
-                        <div class="text-medium-emphasis">
-                          Stock {{ material.stock_total ?? 0 }} · {{ material.stock_status || "SIN_STOCK" }}
-                          <span v-if="material.bodega_sugerida">
-                            · Bodega {{ material.bodega_sugerida.codigo || material.bodega_sugerida.nombre }}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </v-timeline-item>
-                </v-timeline>
-              </v-card>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+                    </td>
+                  </tr>
+                </tbody></v-table
+              >
+            </template>
+            <TwinSimulation
+              v-else-if="tab === 'simulation'"
+              :result="simulation"
+              :busy="saving"
+              :disabled="!!historical || display.horometer.estimated === null"
+              @simulate="simulate"
+            />
+          </section>
+          <footer class="twin-footer">
+            {{
+              historical
+                ? "Vista conservada; no se actualiza automáticamente."
+                : "Consulta automática cada 60 segundos mientras la página está visible."
+            }}
+            · Los escenarios y las capturas no cambian el equipo.
+          </footer>
+        </template>
+        <v-card v-else-if="!reading" variant="flat" class="empty-twin"
+          ><v-icon icon="mdi-vector-link" size="54" color="primary" />
+          <h2>
+            {{ selectedId ? "Estado no disponible" : "Selecciona un activo" }}
+          </h2>
+          <p>
+            {{
+              selectedId
+                ? "Revisa el mensaje de la consulta o vincula un equipo válido al modelo."
+                : "Vincula un equipo para reunir su estado, estructura e historial."
+            }}
+          </p>
+          <v-btn
+            v-if="selectedId"
+            variant="tonal"
+            class="mt-4"
+            @click="openForm(selected)"
+            >Revisar vínculo</v-btn
+          ></v-card
+        >
+      </main>
+    </div>
+    <v-dialog v-model="formOpen" max-width="620"
+      ><v-card rounded="xl"
+        ><v-card-title>{{
+          editId ? "Editar vínculo" : "Vincular equipo real"
+        }}</v-card-title
+        ><v-card-text>
+          <v-text-field
+            v-model="assetName"
+            label="Nombre del modelo"
+            maxlength="160"
+            variant="outlined"
+          />
+          <v-autocomplete
+            v-model="equipmentId"
+            :items="options"
+            item-value="id"
+            :item-title="equipmentTitle"
+            label="Equipo"
+            :disabled="!!editId && !!selected?.equipment_id"
+            variant="outlined"
+            :loading="optionsBusy"
+            @update:search="searchEquipment"
+            no-filter
+          />
+          <p class="text-caption">
+            La identidad, la serie y las comparticiones se consultan desde
+            Equipos. El historial conserva el vínculo con el mismo activo
+            físico.
+          </p>
+          <v-btn
+            v-if="editId"
+            color="error"
+            variant="text"
+            class="mt-4"
+            @click="archiveOpen = true"
+            >Archivar modelo</v-btn
+          > </v-card-text
+        ><v-card-actions
+          ><v-spacer /><v-btn @click="formOpen = false">Cancelar</v-btn
+          ><v-btn
+            color="primary"
+            :disabled="!assetName.trim() || !equipmentId"
+            :loading="saving"
+            @click="submitForm"
+            >Guardar</v-btn
+          ></v-card-actions
+        ></v-card
+      ></v-dialog
+    >
+    <v-dialog v-model="archiveOpen" max-width="440"
+      ><v-card title="Archivar modelo"
+        ><v-card-text
+          >El modelo dejará de aparecer en la lista activa. Sus capturas se
+          conservan y el equipo sigue disponible en Equipos.</v-card-text
+        ><v-card-actions
+          ><v-spacer /><v-btn @click="archiveOpen = false">Cancelar</v-btn
+          ><v-btn color="error" :loading="saving" @click="confirmArchive"
+            >Archivar</v-btn
+          ></v-card-actions
+        ></v-card
+      ></v-dialog
+    >
   </div>
 </template>
-
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { api } from "@/app/http/api";
-import { useUiStore } from "@/app/stores/ui.store";
+import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { useAuthStore } from "@/app/stores/auth.store";
-import { useMenuStore } from "@/app/stores/menu.store";
-import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canAccessDigitalTwins } from "@/app/utils/role-access";
 import { formatDateTime } from "@/app/utils/date-time";
-import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
-import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
-
-type TwinRow = {
-  twin?: {
-    id?: string;
-    code?: string;
-    name?: string;
-    equipment_id?: string | null;
-    equipment_code?: string | null;
-    equipment_name?: string | null;
-    equipment_model?: string | null;
-  };
-  health_score?: number;
-  risk_level?: string;
-  operational_status?: string;
-  lubricant?: {
-    latest_state?: string;
-    latest_report_date?: string | null;
-    latest_report_code?: string | null;
-    latest_lubricant?: string | null;
-    latest_lubricant_brand?: string | null;
-    expected_lubricant_code?: string | null;
-    match_status?: string | null;
-  };
-  equipment?: {
-    code?: string | null;
-    operational_name?: string | null;
-    real_name?: string | null;
-    display_name?: string | null;
-    model?: string | null;
-    brand_name?: string | null;
-    criticidad?: string | null;
-    estado_operativo?: string | null;
-    codigo_lubricante?: string | null;
-    components?: Array<{
-      id?: string | null;
-      codigo?: string | null;
-      nombre?: string | null;
-      nombre_oficial?: string | null;
-      categoria?: string | null;
-      descripcion?: string | null;
-      orden?: number;
-    }>;
-  };
-  inventory?: {
-    total_materials?: number;
-    low_stock_materials?: number;
-    recommended_materials?: Array<Record<string, any>>;
-  };
-  snapshot?: TwinRow;
-};
-
-const ui = useUiStore();
-const auth = useAuthStore();
-const menuStore = useMenuStore();
-const now = new Date();
-
-const loading = ref(false);
-const saving = ref(false);
-const codeLoading = ref(false);
-const refreshingAll = ref(false);
-const refreshingTwinId = ref<string | null>(null);
-const analyzingTwinId = ref<string | null>(null);
-const error = ref<string | null>(null);
-const selectedYear = ref(now.getFullYear());
-const selectedMonth = ref(now.getMonth() + 1);
-const search = ref("");
-
-const dashboard = ref<any>({ kpis: [], risk_breakdown: [], rows: [] });
-const equipmentOptions = ref<any[]>([]);
-const formDialog = ref(false);
-const detailDialog = ref(false);
-const editingId = ref<string | null>(null);
-const detail = ref<any | null>(null);
-
-const perms = computed(() =>
-  getPermissionsForAnyComponent(menuStore.tree, ["Gemelos digitales", "Gemelos Digitales"]),
-);
-const canRead = computed(() => canAccessDigitalTwins(auth.user) && perms.value.isReaded);
-const canCreate = computed(() => perms.value.isCreated);
-const canEdit = computed(() => perms.value.isEdited);
-const canDelete = computed(() => perms.value.permitDeleted);
-const canPersistForm = computed(() => (editingId.value ? canEdit.value : canCreate.value));
-
-const form = reactive({
-  code: "",
-  name: "",
-  equipment_id: null as string | null,
-  equipment_code: "",
-  equipment_name: "",
-  equipment_model: "",
-  twin_type: "OPERATIVO",
-  process_scope: "MANTENIMIENTO",
-  ai_enabled: true,
-  status: "ACTIVE",
-  configNotes: "",
-});
-
-const headers = [
-  { title: "Gemelo", key: "name" },
-  { title: "Equipo", key: "equipment" },
-  { title: "Salud", key: "health_score" },
-  { title: "Riesgo", key: "risk_level" },
-  { title: "Estado", key: "operational_status" },
-  { title: "Horas mes", key: "metrics.planned_hours_month" },
-  { title: "Actividades", key: "metrics.weekly_activity_count" },
-  { title: "Lubricante", key: "lubricant" },
-  { title: "Acciones", key: "actions", sortable: false, align: "end" as const },
-] as const;
-
-const yearOptions = computed(() => {
-  const current = now.getFullYear();
-  return Array.from({ length: 12 }, (_, index) => current - 5 + index);
-});
-
-const monthOptions = [
-  { value: 1, title: "Enero" },
-  { value: 2, title: "Febrero" },
-  { value: 3, title: "Marzo" },
-  { value: 4, title: "Abril" },
-  { value: 5, title: "Mayo" },
-  { value: 6, title: "Junio" },
-  { value: 7, title: "Julio" },
-  { value: 8, title: "Agosto" },
-  { value: 9, title: "Septiembre" },
-  { value: 10, title: "Octubre" },
-  { value: 11, title: "Noviembre" },
-  { value: 12, title: "Diciembre" },
-];
-
-const dashboardRows = computed<TwinRow[]>(() => dashboard.value?.rows ?? []);
-
-const twinTypeOptions = ["OPERATIVO", "MANTENIMIENTO", "LUBRICACION", "ENERGETICO"];
-const scopeOptions = ["MANTENIMIENTO", "OPERACION", "PREDICTIVO", "PLANIFICACION"];
-const statusOptions = ["ACTIVE", "INACTIVE"];
-
-function rowData(item: unknown): TwinRow {
-  return (item ?? {}) as TwinRow;
+import { useDigitalTwin } from "@/app/composables/useDigitalTwin";
+import type {
+  TwinAsset,
+  TwinEquipmentOption,
+} from "@/app/types/digital-twin.types";
+import TwinStructure from "@/components/digital-twin/TwinStructure.vue";
+import TwinSimulation from "@/components/digital-twin/TwinSimulation.vue";
+const auth = useAuthStore(),
+  allowed = computed(() => canAccessDigitalTwins(auth.user));
+const {
+  assets,
+  selectedId,
+  selected,
+  search,
+  page,
+  pages,
+  total,
+  state,
+  history,
+  simulation,
+  historical,
+  busy,
+  reading,
+  saving,
+  error,
+  loadAssets,
+  loadState,
+  capture,
+  openCapture,
+  simulate,
+  equipmentOptions,
+  saveAsset,
+  archiveAsset,
+} = useDigitalTwin(() => allowed.value);
+const display = computed(() => historical.value || state.value),
+  tab = ref("state");
+const formOpen = ref(false),
+  archiveOpen = ref(false),
+  editId = ref(""),
+  assetName = ref(""),
+  equipmentId = ref(""),
+  options = ref<TwinEquipmentOption[]>([]),
+  optionsBusy = ref(false);
+const num = (v: number | null) =>
+  v === null
+    ? "—"
+    : new Intl.NumberFormat("es-EC", { maximumFractionDigits: 2 }).format(v);
+const conditionLabel = (value?: string) =>
+  ({
+    CRITICO: "Crítico",
+    ATENCION: "Requiere atención",
+    SIN_HALLAZGOS: "Sin hallazgos",
+    SIN_DATOS: "Datos insuficientes",
+  })[value || ""] || "Sin evaluar";
+const tone = (value?: string) =>
+  value === "CRITICO"
+    ? "error"
+    : value === "ATENCION"
+      ? "warning"
+      : value === "SIN_HALLAZGOS"
+        ? "success"
+        : "secondary";
+const equipmentTitle = (e: TwinEquipmentOption) =>
+  `${e.codigo} · ${e.nombre_real || e.nombre}${e.serie ? ` · Serie ${e.serie}` : ""}`;
+let searchTimer: ReturnType<typeof setTimeout>,
+  equipmentTimer: ReturnType<typeof setTimeout>,
+  optionSequence = 0;
+function scheduleSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    page.value = 1;
+    void loadAssets();
+  }, 300);
 }
-
-function healthColor(value: number | string | undefined) {
-  const numeric = Number(value || 0);
-  if (numeric < 50) return "error";
-  if (numeric < 75) return "warning";
-  return "success";
+function searchEquipment(term: string) {
+  clearTimeout(equipmentTimer);
+  equipmentTimer = setTimeout(() => void loadEquipment(term), 300);
 }
-
-function riskColor(value: string | undefined) {
-  if (String(value).toUpperCase() === "ALTO") return "error";
-  if (String(value).toUpperCase() === "MEDIO") return "warning";
-  return "success";
-}
-
-function statusColor(value: string | undefined) {
-  if (String(value).toUpperCase() === "CRITICO") return "error";
-  if (String(value).toUpperCase() === "EN_OBSERVACION") return "warning";
-  return "success";
-}
-
-function severityColor(value: string | undefined) {
-  if (String(value).toUpperCase() === "CRITICAL") return "error";
-  if (String(value).toUpperCase() === "WARNING") return "warning";
-  return "info";
-}
-
-function riskPercent(value: number) {
-  const total = Math.max(Number(dashboardRows.value.length || 1), 1);
-  return (Number(value || 0) / total) * 100;
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "Sin fecha";
-  return formatDateTime(value, "Sin fecha");
-}
-
-function displaySignalValue(signal: any) {
-  const value = signal.signal_value ?? signal.value ?? 0;
-  const unit = signal.signal_unit ?? signal.unit ?? "";
-  return `${value}${unit ? ` ${unit}` : ""}`;
-}
-
-function insightNationalModels(insight: any) {
-  const payload = insight?.payload_json;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
-  const models = (payload as Record<string, any>).national_models;
-  if (!Array.isArray(models)) return [];
-  return models.filter(
-    (item) => item && typeof item === "object" && !Array.isArray(item) && String(item.model || "").trim(),
-  );
-}
-
-function insightImprovementSteps(insight: any) {
-  const payload = insight?.payload_json;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
-  const steps = (payload as Record<string, any>).improvement_steps;
-  if (!Array.isArray(steps)) return [];
-  return steps.filter((step) => typeof step === "string" && step.trim().length > 0);
-}
-
-function insightRecommendedMaterials(insight: any) {
-  const payload = insight?.payload_json;
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
-  const materials = (payload as Record<string, any>).recommended_materials;
-  if (!Array.isArray(materials)) return [];
-  return materials.filter((item) => item && typeof item === "object");
-}
-
-function lubricantMatchColor(value?: string | null) {
-  const normalized = String(value || "").toUpperCase();
-  if (normalized === "NO_COINCIDE") return "error";
-  if (normalized === "SIN_REFERENCIA" || normalized === "SIN_ANALISIS") return "warning";
-  return "success";
-}
-
-async function loadDashboard() {
-  if (!canRead.value) {
-    dashboard.value = { kpis: [], risk_breakdown: [], rows: [] };
-    return;
-  }
-  loading.value = true;
-  error.value = null;
+async function loadEquipment(term = "") {
+  const seq = ++optionSequence;
+  optionsBusy.value = true;
   try {
-    const { data } = await api.get("/kpi_process/digital-twins/dashboard", {
-      params: {
-        year: selectedYear.value,
-        month: selectedMonth.value,
-        search: search.value || undefined,
-      },
-    });
-    dashboard.value = data;
-  } catch (err: any) {
-    error.value =
-      err?.response?.data?.message ||
-      "No se pudo cargar el dashboard de gemelos digitales.";
+    const rows = await equipmentOptions(term);
+    if (seq === optionSequence) options.value = rows;
+  } catch {
+    error.value = "No se pudo consultar el catálogo de equipos.";
   } finally {
-    loading.value = false;
+    if (seq === optionSequence) optionsBusy.value = false;
   }
 }
-
-async function loadEquipmentOptions() {
-  const { data } = await api.get("/kpi_process/digital-twins/equipment-options");
-  equipmentOptions.value = Array.isArray(data)
-    ? data.map((item: any) => ({
-        ...item,
-        label: buildEquipmentDisplayTitle(item),
-      }))
-    : [];
+async function openForm(asset?: TwinAsset) {
+  editId.value = asset?.id || "";
+  assetName.value = asset?.name || "";
+  equipmentId.value = asset?.equipment_id || "";
+  formOpen.value = true;
+  await loadEquipment(asset?.equipment_code || "");
 }
-
-async function openCreate() {
-  if (!canCreate.value) return;
-  editingId.value = null;
-  Object.assign(form, {
-    code: "",
-    name: "",
-    equipment_id: null,
-    equipment_code: "",
-    equipment_name: "",
-    equipment_model: "",
-    twin_type: "OPERATIVO",
-    process_scope: "MANTENIMIENTO",
-    ai_enabled: true,
-    status: "ACTIVE",
-    configNotes: "",
-  });
-  codeLoading.value = true;
-  try {
-    await loadEquipmentOptions();
-    const { data } = await api.get("/kpi_process/digital-twins/next-code");
-    form.code = data.code;
-    formDialog.value = true;
-  } finally {
-    codeLoading.value = false;
+async function submitForm() {
+  if (
+    await saveAsset(
+      assetName.value,
+      equipmentId.value,
+      editId.value || undefined,
+    )
+  )
+    formOpen.value = false;
+}
+async function confirmArchive() {
+  if (await archiveAsset()) {
+    archiveOpen.value = false;
+    formOpen.value = false;
   }
 }
-
-async function openEdit(id?: string) {
-  if (!canEdit.value) return;
-  if (!id) return;
-  loading.value = true;
-  try {
-    await loadEquipmentOptions();
-    const { data } = await api.get(`/kpi_process/digital-twins/${id}`);
-    editingId.value = id;
-    Object.assign(form, {
-      code: data.code || "",
-      name: data.name || "",
-      equipment_id: data.equipment_id || null,
-      equipment_code: data.equipment_code || "",
-      equipment_name: data.equipment_name || "",
-      equipment_model: data.equipment_model || "",
-      twin_type: data.twin_type || "OPERATIVO",
-      process_scope: data.process_scope || "MANTENIMIENTO",
-      ai_enabled: Boolean(data.ai_enabled ?? true),
-      status: data.status || "ACTIVE",
-      configNotes: String(data.config_json?.notes || ""),
-    });
-    formDialog.value = true;
-  } finally {
-    loading.value = false;
-  }
-}
-
-function handleEquipmentSelected(value: string | null) {
-  const selected = equipmentOptions.value.find((item) => item.id === value);
-  if (!selected) return;
-  form.equipment_code = selected.codigo || "";
-  form.equipment_name = selected.nombre_real || selected.nombre || "";
-  form.equipment_model = selected.modelo || form.equipment_model || "";
-  if (!form.name.trim()) {
-    form.name = `Gemelo ${selected.codigo || selected.nombre_real || selected.nombre}`;
-  }
-}
-
-async function saveTwin() {
-  if (!canPersistForm.value) return;
-  saving.value = true;
-  try {
-    const payload = {
-      code: form.code,
-      name: form.name,
-      equipment_id: form.equipment_id,
-      equipment_code: form.equipment_code,
-      equipment_name: form.equipment_name,
-      equipment_model: form.equipment_model,
-      twin_type: form.twin_type,
-      process_scope: form.process_scope,
-      ai_enabled: form.ai_enabled,
-      status: form.status,
-      config_json: { notes: form.configNotes || null },
-      updated_by: auth.user?.nameUser || auth.user?.nameSurname || "frontend",
-    };
-
-    if (editingId.value) {
-      await api.patch(`/kpi_process/digital-twins/${editingId.value}`, payload);
-      ui.success("Gemelo digital actualizado.");
-    } else {
-      await api.post("/kpi_process/digital-twins", payload);
-      ui.success("Gemelo digital creado.");
-    }
-
-    formDialog.value = false;
-    await loadDashboard();
-  } catch (err: any) {
-    ui.error(err?.response?.data?.message || "No se pudo guardar el gemelo digital.");
-  } finally {
-    saving.value = false;
-  }
-}
-
-async function openDetail(row: TwinRow) {
-  const id = row?.twin?.id;
-  if (!id) return;
-  loading.value = true;
-  try {
-    const { data } = await api.get(`/kpi_process/digital-twins/${id}/detail`, {
-      params: { year: selectedYear.value, month: selectedMonth.value },
-    });
-    detail.value = data;
-    detailDialog.value = true;
-  } catch (err: any) {
-    ui.error(err?.response?.data?.message || "No se pudo cargar el detalle del gemelo digital.");
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function refreshTwin(row: TwinRow) {
-  const id = row?.twin?.id || row?.snapshot?.twin?.id;
-  if (!id) return;
-  refreshingTwinId.value = id;
-  try {
-    await api.post(`/kpi_process/digital-twins/${id}/refresh`, {
-      year: selectedYear.value,
-      month: selectedMonth.value,
-    });
-    await loadDashboard();
-    if (detail.value?.twin?.id === id) {
-      await openDetail({ twin: { id } });
-    }
-    ui.success("Snapshot del gemelo recalculado.");
-  } catch (err: any) {
-    ui.error(err?.response?.data?.message || "No se pudo recalcular el gemelo.");
-  } finally {
-    refreshingTwinId.value = null;
-  }
-}
-
-async function analyzeTwin(row: TwinRow) {
-  const id = row?.twin?.id || row?.snapshot?.twin?.id;
-  if (!id) return;
-  analyzingTwinId.value = id;
-  try {
-    await api.post(`/kpi_process/digital-twins/${id}/ai-analysis`, {
-      year: selectedYear.value,
-      month: selectedMonth.value,
-      created_by: auth.user?.nameUser || auth.user?.nameSurname || "frontend",
-    });
-    if (detail.value?.twin?.id === id) {
-      await openDetail({ twin: { id } });
-    }
-    await loadDashboard();
-    ui.success("Análisis del gemelo generado.");
-  } catch (err: any) {
-    ui.error(err?.response?.data?.message || "No se pudo generar el análisis IA.");
-  } finally {
-    analyzingTwinId.value = null;
-  }
-}
-
-async function refreshAll() {
-  refreshingAll.value = true;
-  try {
-    await api.post("/kpi_process/digital-twins/refresh-all", {
-      year: selectedYear.value,
-      month: selectedMonth.value,
-      search: search.value || undefined,
-    });
-    await loadDashboard();
-    ui.success("KPI de gemelos digitales recalculados.");
-  } catch (err: any) {
-    ui.error(err?.response?.data?.message || "No se pudieron recalcular los KPI.");
-  } finally {
-    refreshingAll.value = false;
-  }
-}
-
-async function removeTwin(row: TwinRow) {
-  if (!canDelete.value) return;
-  const id = row?.twin?.id;
-  const label = row?.twin?.name || row?.twin?.code || "este gemelo digital";
-  if (!id) return;
-  if (!window.confirm(`Se eliminará ${label}. ¿Deseas continuar?`)) return;
-
-  loading.value = true;
-  try {
-    await api.delete(`/kpi_process/digital-twins/${id}`);
-    if (detail.value?.twin?.id === id) {
-      detailDialog.value = false;
-      detail.value = null;
-    }
-    ui.success("Gemelo digital eliminado.");
-    await loadDashboard();
-  } catch (err: any) {
-    ui.error(err?.response?.data?.message || "No se pudo eliminar el gemelo digital.");
-  } finally {
-    loading.value = false;
-  }
-}
-
-watch([selectedYear, selectedMonth], () => {
-  loadDashboard();
-});
-
-watch(search, () => {
-  loadDashboard();
-});
-
 onMounted(() => {
-  if (!canRead.value) return;
-  loadDashboard();
+  if (allowed.value) void loadAssets();
+});
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer);
+  clearTimeout(equipmentTimer);
+  optionSequence++;
 });
 </script>
-
 <style scoped>
-.digital-twins-page {
-  display: grid;
-  gap: 16px;
+.twin-workspace {
+  color: rgb(var(--v-theme-on-surface));
+  padding: 8px 0 24px;
 }
-
-.page-wrap {
+.twin-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: rgb(var(--v-theme-primary));
+  margin-bottom: 6px;
+}
+.twin-heading h1 {
+  font-size: 28px;
+  letter-spacing: -0.7px;
+}
+.twin-heading p {
+  font-size: 14px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.twin-layout {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.twin-fleet,
+.twin-content {
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 18px;
+  min-width: 0;
+}
+.twin-fleet {
+  padding: 18px;
+}
+.fleet-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.fleet-heading h2 {
+  font-size: 14px;
+}
+.fleet-heading > span {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.fleet-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.fleet-item {
+  display: grid;
+  gap: 5px;
+  text-align: left;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+.fleet-item--active {
+  border-color: rgba(var(--v-theme-primary), 0.5);
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+.fleet-item:hover {
+  background: rgba(var(--v-theme-primary), 0.08);
+}
+.fleet-item:focus-visible {
+  outline: 3px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+.fleet-item > small {
+  color: rgb(var(--v-theme-primary));
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.fleet-item > strong {
+  font-size: 14px;
+}
+.fleet-item > span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.fleet-condition {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.fleet-condition small {
+  font-size: 9px;
+  width: 100%;
+  opacity: 0.7;
+  padding-left: 12px;
+}
+.fleet-condition i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-secondary));
+}
+.fleet-condition .error {
+  background: rgb(var(--v-theme-error));
+}
+.fleet-condition .warning {
+  background: rgb(var(--v-theme-warning));
+}
+.fleet-condition .success {
+  background: rgb(var(--v-theme-success));
+}
+.twin-content {
+  padding: 24px;
+}
+.twin-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  margin-bottom: 24px;
 }
-
-.twin-kpi-card {
-  min-height: 148px;
+.toolbar-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
-
-.improvement-list {
-  margin: 0;
-  padding-left: 18px;
+.asset-identity {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 26px;
+  flex-wrap: wrap;
+}
+.asset-symbol {
+  background: rgba(var(--v-theme-primary), 0.07);
+  color: rgb(var(--v-theme-primary));
+  padding: 20px;
+  border-radius: 18px;
+}
+.asset-description {
+  flex: 1;
+  min-width: 180px;
+  overflow-wrap: anywhere;
+}
+.asset-description h2 {
+  font-size: 22px;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+.asset-description p {
+  font-size: 13px;
+  opacity: 0.75;
+}
+.twin-metrics {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
 }
-
-@media (max-width: 960px) {
-  .twin-kpi-card {
-    min-height: auto;
+.twin-metrics article {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.twin-metrics small {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.twin-metrics strong {
+  font-size: 21px;
+  line-height: 1.2;
+}
+.twin-metrics em {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+}
+.twin-metrics span {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.workspace-tabs {
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.twin-panel {
+  padding-top: 24px;
+  min-height: 350px;
+}
+.state-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 30px;
+}
+.panel-title {
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+.asset-facts {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.asset-facts dt {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.asset-facts dd {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.source-row {
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+.source-row strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+}
+.source-row span {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.source-limits {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 12px;
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+.source-limits strong {
+  font-size: 12px;
+}
+.source-limits ul,
+.reason-list {
+  padding-left: 18px;
+}
+.source-limits li {
+  font-size: 11px;
+  opacity: 0.75;
+  line-height: 1.6;
+}
+.reason-list li {
+  font-size: 13px;
+}
+.readable-table :deep(td) {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  min-width: 100px;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+  font-size: 12px;
+}
+.readable-table :deep(th) {
+  font-size: 11px;
+}
+.twin-footer {
+  font-size: 10px;
+  opacity: 0.65;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  margin-top: 28px;
+  padding-top: 15px;
+}
+.event-timeline {
+  list-style: none;
+  padding: 0;
+}
+.event-timeline li {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 18px;
+  border-left: 2px solid rgba(var(--v-theme-primary), 0.2);
+  margin-left: 5px;
+  padding: 0 0 24px 20px;
+}
+.event-timeline time {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.event-timeline small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgb(var(--v-theme-primary));
+}
+.event-timeline strong {
+  display: block;
+  font-size: 13px;
+  margin: 3px 0;
+}
+.event-timeline p {
+  font-size: 12px;
+  opacity: 0.8;
+  overflow-wrap: anywhere;
+}
+.empty-twin {
+  text-align: center;
+  padding: 80px 24px;
+}
+.empty-twin h2 {
+  font-size: 20px;
+  margin: 16px 0 8px;
+}
+.empty-twin p {
+  font-size: 14px;
+  opacity: 0.7;
+}
+@media (max-width: 1200px) {
+  .twin-layout {
+    grid-template-columns: 235px minmax(0, 1fr);
+  }
+  .twin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .state-columns {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .twin-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .twin-layout {
+    grid-template-columns: 1fr;
+  }
+  .fleet-list {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .fleet-item {
+    min-width: 220px;
+    max-width: 260px;
+  }
+  .twin-content {
+    padding: 16px;
+  }
+  .asset-symbol {
+    display: none;
+  }
+  .asset-description h2 {
+    font-size: 20px;
+  }
+  .event-timeline li {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .twin-metrics article {
+    padding: 12px;
+  }
+  .twin-metrics strong {
+    font-size: 18px;
   }
 }
 </style>
-

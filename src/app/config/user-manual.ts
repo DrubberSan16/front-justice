@@ -82,6 +82,7 @@ const moduleCatalog = new Map<string, MaintenanceModuleConfig>(
 );
 
 export const MANUAL_ROUTE_EXCLUSIONS = new Set([
+  "gemelos-digitales",
   "login",
   "manual-usuario",
   "public-work-order-attachment",
@@ -131,7 +132,6 @@ const routeCategoryMap = new Map<string, string>([
   ["dashboard-supervisores", "Reportes"],
   ["dashboard-administracion", "Reportes"],
   ["reporte-diario", "Reportes"],
-  ["gemelos-digitales", "Mantenimiento"],
   ["bitacora", "Mantenimiento"],
   ["estados-equipo", "Mantenimiento"],
   ["eventos-equipo", "Mantenimiento"],
@@ -1832,11 +1832,6 @@ const standaloneFieldGuides: Record<string, UserManualFieldGuide[]> = {
     { key: "equipo", label: "Equipo o grupo", type: "Elegir una opción", required: false, note: "Filtra por equipo o grupo cuando necesites revisar un caso puntual.", example: "Unidades de generación" },
     { key: "observacion", label: "Observaciones del día", type: "Escribir información", required: false, note: "Registra novedades que expliquen diferencias entre lo planificado y lo ejecutado.", example: "Actividad reprogramada por lluvia." },
   ],
-  "gemelos-digitales": [
-    { key: "equipo", label: "Equipo", type: "Elegir una opción", required: true, note: "Selecciona el activo que deseas consultar y confirma su código oficial.", example: "GEN-01 Generador principal" },
-    { key: "componente", label: "Parte o compartimiento", type: "Elegir una opción", required: false, note: "Selecciona la parte específica cuando necesites revisar su historial o condición.", example: "Motor · filtro de combustible" },
-    { key: "periodo", label: "Periodo", type: "Elegir una opción", required: false, note: "Define el intervalo de tiempo para revisar eventos, órdenes y condición del activo.", example: "Últimos 30 días" },
-  ],
 };
 
 const reportLikeRoutes = new Set([
@@ -1848,7 +1843,6 @@ const reportLikeRoutes = new Set([
   "dashboard-supervisores",
   "dashboard-administracion",
   "reporte-diario",
-  "gemelos-digitales",
   "bienvenida",
 ]);
 

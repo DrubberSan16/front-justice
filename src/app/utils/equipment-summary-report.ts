@@ -32,7 +32,7 @@ export function buildEquipmentSummaryRows(
     // Los reportes históricos también incluyen la ubicación al final de la etiqueta.
     const separator = row.label.lastIndexOf(" · ");
     const embedded = separator >= 0 ? locationName({ central: row.label.slice(separator + 3) }) : "";
-    return { ...row, central: registered || explicit || embedded || "Sin ubicación" };
+    return { ...row, central: explicit || embedded || registered || "Sin ubicación" };
   });
 }
 

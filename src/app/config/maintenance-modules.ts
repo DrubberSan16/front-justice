@@ -230,12 +230,13 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     key: "equipos",
     title: "Equipos",
     endpoint: "/kpi_maintenance/equipos",
-    listColumns: [{ key: "codigo" }, { key: "nombre" }, { key: "nombre_real" }, { key: "modelo" }, { key: "equipo_tipo_id" }, { key: "location_id" }, { key: "es_reserva" }],
+    listColumns: [{ key: "codigo" }, { key: "nombre" }, { key: "nombre_real" }, { key: "modelo" }, { key: "serie" }, { key: "equipo_tipo_id" }, { key: "location_id" }, { key: "es_reserva" }],
     fields: [
       { key: "codigo", label: "Código", type: "text", required: true },
       { key: "nombre", label: "Nombre", type: "text", required: true },
       { key: "nombre_real", label: "Nombre real del equipo", type: "text", required: true },
       { key: "modelo", label: "Modelo", type: "text", required: true },
+      { key: "serie", label: "Serie", type: "text" },
       { key: "equipo_tipo_id", label: "Tipo de equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/tipo-equipo" } },
       { key: "location_id", label: "Ubicación", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/locaciones" } },
       { key: "marca_id", label: "Marca", type: "select", relation: { endpoint: "/kpi_inventory/marcas" } },
@@ -257,6 +258,7 @@ export const maintenanceModules: MaintenanceModuleConfig[] = [
     title: "Partes oficiales de equipos",
     endpoint: "/kpi_maintenance/componentes",
     fields: [
+      { key: "serie", label: "Serie", type: "text" },
       { key: "equipo_id", label: "Equipo", type: "select", required: true, relation: { endpoint: "/kpi_maintenance/equipos" } },
       { key: "parent_id", label: "Parte padre", type: "select", relation: { endpoint: "/kpi_maintenance/componentes" } },
       { key: "codigo", label: "Codigo", type: "text", required: true },

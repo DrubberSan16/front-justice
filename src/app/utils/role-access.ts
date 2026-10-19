@@ -112,9 +112,7 @@ export function canManageLubricantAnalyses(user: AuthUser): boolean {
 }
 
 export function canAccessDigitalTwins(user: AuthUser): boolean {
-  if (isSuperAdministrator(user)) return true;
-  if (isAdministrator(user)) return false;
-  return true;
+  return isSuperAdministrator(user);
 }
 
 export function canManageDeletedRecords(user: AuthUser): boolean {

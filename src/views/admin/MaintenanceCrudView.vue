@@ -134,6 +134,12 @@
     </v-data-table-server>
   </v-card>
 
+  <v-dialog v-model="locationHistoryOpen" max-width="850"><v-card rounded="xl">
+    <v-card-title>{{locationHistoryEquipment?.codigo}} · {{locationHistoryEquipment?.nombre_real || locationHistoryEquipment?.nombre}}</v-card-title>
+    <v-card-text><p class="text-body-2 mb-5">Serie: {{locationHistoryEquipment?.serie || 'Sin registrar'}}</p><EquipmentLocationTimeline :entries="locationHistoryEquipment?.historial_ubicaciones || []"/></v-card-text>
+    <v-card-actions><v-btn prepend-icon="mdi-file-pdf-box" @click="locationHistoryPreview.open('pdf',equipmentLocationReport([locationHistoryEquipment]))">PDF</v-btn><v-spacer/><v-btn @click="locationHistoryOpen=false">Cerrar</v-btn></v-card-actions>
+  </v-card></v-dialog>
+  <ReportPreviewDialogs :preview="locationHistoryPreview"/>
   <v-dialog v-model="dialog" :fullscreen="isDialogFullscreen" :max-width="isDialogFullscreen ? undefined : dialogMaxWidth">
     <v-card rounded="xl" class="enterprise-dialog maintenance-dialog-card">
       <v-card-title class="text-subtitle-1 font-weight-bold">{{ editingId ? 'Editar' : 'Crear' }} {{ displayModuleTitle }}</v-card-title>
@@ -285,6 +291,7 @@
               </v-col>
               <v-col cols="12" md="3">
                 <v-text-field v-model="component.nombre" label="Nombre corto" variant="outlined" density="compact" />
+                <v-text-field v-model="component.serie" label="Serie" maxlength="255" variant="outlined" density="compact" />
               </v-col>
               <v-col cols="12" md="4">
                 <v-text-field
@@ -374,6 +381,11 @@
 </template>
 
 <script setup lang="ts">
+import EquipmentLocationTimeline from '@/components/equipment/EquipmentLocationTimeline.vue';
+import {equipmentLocationReport} from '@/app/utils/equipment-location-history';
+import {useReportPreview} from '@/app/utils/report-preview';
+import ReportPreviewDialogs from '@/components/ui/ReportPreviewDialogs.vue';
+
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useDisplay } from "vuetify";
@@ -611,6 +623,7 @@ function defaultEquipmentComponentDrafts() {
 
 function createEmptyEquipmentComponentDraft() {
   return {
+    serie: "",
     id: "",
     codigo: "",
     nombre: "",
@@ -1767,6 +1780,7 @@ function sanitizePayload() {
     payload.componentes = selectedEquipmentComponentRows.value
       .map((component, index) => ({
         id: String(component?.id || "").trim() || undefined,
+        serie: String(component?.serie ?? "").trim(),
         codigo: String(component?.codigo || "").trim() || undefined,
         nombre:
           String(component?.nombre || "").trim() ||
@@ -1959,8 +1973,12 @@ function openDelete(item: any) {
 }
 
 /** Solo se ofrecen las acciones que el rol tiene concedidas sobre el modulo. */
+const locationHistoryEquipment=ref<any>(null);
+const locationHistoryOpen=ref(false);
+const locationHistoryPreview=useReportPreview({title:'Historial de ubicaciones'});
 function rowActions(): RowAction[] {
   return [
+    {key:'locations',label:'Ubicaciones e historial',icon:'mdi-map-marker-path',hidden:!isEquipmentModule.value},
     { key: "edit", label: "Editar", icon: "mdi-pencil", hidden: !canEdit.value },
     {
       key: "delete",
@@ -1974,6 +1992,7 @@ function rowActions(): RowAction[] {
 }
 
 function runRowAction(key: string, item: any) {
+  if (key === 'locations') {locationHistoryEquipment.value=item?._raw ?? item;locationHistoryOpen.value=true;return;}
   if (key === "edit") return void openEdit(item?._raw ?? item);
   if (key === "delete") return openDelete(item?._raw ?? item);
 }

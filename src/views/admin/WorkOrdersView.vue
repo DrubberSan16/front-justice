@@ -2257,6 +2257,7 @@
 </template>
 
 <script setup lang="ts">
+import { equipmentAtWorkOrder } from "@/app/utils/equipment-display";
 import { fetchCanonicalWorkOrderReport, consolidateCanonicalWorkOrderReports } from "@/app/utils/canonical-work-order-report";
 import { reportDisplayLabel, formatWorkOrderHistoryNote, resolveWorkOrderLifecycle } from "@/app/utils/work-order-audit";
 import { computed, onMounted, reactive, ref, watch } from "vue";
@@ -4840,7 +4841,9 @@ const equipmentLabelById = computed(
 function getEquipmentLabel(item: any) {
   if (!item) return "";
   const equipmentId = String(item.equipment_id || item.equipo_id || "");
-  const catalogLabel = equipmentLabelById.value.get(equipmentId);
+  const catalogLabel = item.equipment_location_snapshot
+    ? buildEquipmentDisplayTitle(equipmentAtWorkOrder(equipmentCatalogRows.value.find((e:any)=>String(e.id)===equipmentId),item))
+    : equipmentLabelById.value.get(equipmentId);
   return (
     catalogLabel
     || (item?.equipment_nombre || item?.equipo_nombre
@@ -6534,6 +6537,8 @@ const procedureSuggestedMaterialRows = computed(() => {
 });
 
 const selectedEquipmentLabel = computed(() => {
+  const historic=currentWorkOrderAudit.value;
+  if(historic?.equipment_location_snapshot) return getEquipmentLabel(historic);
   const selected = equipmentOptions.value.find(
     (item: any) => String(item?.value || "") === String(headerForm.equipment_id || ""),
   );

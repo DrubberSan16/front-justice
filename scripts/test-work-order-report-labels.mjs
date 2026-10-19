@@ -273,7 +273,7 @@ const equipmentRelationships = reports.buildReportingRelationshipRows("generatio
 const equipmentSummary = reports.buildEquipmentSummaryRows(equipmentRelationships, [
   { id: "ug07", nombre: "JC - UG07", location_nombre: "CENTRAL CPT" },
 ]);
-assert.equal(equipmentSummary[0].central, "CENTRAL CPT", "Resuelve por el ID del equipo de la OT, sin confundirlo con el ID de la OT ni la bodega");
+assert.equal(equipmentSummary[0].central, "CENTRAL TPTA", "Conserva la ubicación histórica de la OT aunque el catálogo tenga otra ubicación actual");
 assert.equal(equipmentSummary[0].label, equipmentLabel);
 assert.equal(equipmentSummary[0].workOrders, 1);
 assert.equal(equipmentSummary[0].hours, 7);
@@ -292,7 +292,7 @@ assert.deepEqual(sameName.map(row => row.central), ["CENTRAL CPT", "CENTRAL TPTA
 for (const moduleKey of ["generation-units", "equipment"]) {
   const summaryReport = { title: "Consolidado de equipos", fileName: `reporteria-${moduleKey}`, compactPdf: true,
     sheets: [{ name: "Detalle", rows: reports.equipmentSummaryExportRows(equipmentSummary), columns: reports.EQUIPMENT_SUMMARY_COLUMNS, fitColumnsToPage: true }] };
-  await assertPdf(await reports.buildReportPdfBlob(summaryReport), ["CENTRAL CPT", "JC - UG07", "central"]);
+  await assertPdf(await reports.buildReportPdfBlob(summaryReport), ["CENTRAL TPTA", "JC - UG07", "central"]);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await (await reports.buildReportExcelBlob(summaryReport)).arrayBuffer());
   const worksheet = workbook.worksheets[0];
@@ -300,7 +300,7 @@ for (const moduleKey of ["generation-units", "equipment"]) {
   assert.ok(headerRow);
   assert.deepEqual(headerRow.values.slice(1), ["Equipo", "Ubicación o central", "OT", "Horas", "Costo"]);
   const dataRow = worksheet.getRow(headerRow.number + 1);
-  assert.deepEqual(dataRow.values.slice(1), [equipmentLabel, "CENTRAL CPT", 1, 7, 1623.4]);
+  assert.deepEqual(dataRow.values.slice(1), [equipmentLabel, "CENTRAL TPTA", 1, 7, 1623.4]);
 }
 console.log("PASS: ubicación por equipo en PDF/Excel de UG y equipos, identidad, históricos, UUID y totales conservados");
 

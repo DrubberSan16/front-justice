@@ -244,6 +244,8 @@ const equipmentLabel = computed(() => {
   const row = header.value;
   return (
     buildEquipmentDisplayTitle({
+      equipment_location_snapshot: row?.equipment_location_snapshot,
+      equipment_location_label: row?.equipment_location_label,
       codigo: row?.equipment_codigo,
       nombre: row?.equipment_label || row?.equipment_name,
       nombre_real: row?.equipment_nombre_real,

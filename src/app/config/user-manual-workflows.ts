@@ -232,14 +232,6 @@ const workflows: Record<string, WorkflowStep[]> = {
     step("Aplicar y evidenciar", [technician, supervisor], "work-orders", "Órdenes de trabajo",
       "Utiliza las actividades en la OT y registra el trabajo real, sus horas y evidencias.", "OT creada y programada cuando corresponde.", "Procedimiento aplicado con ejecución trazable."),
   ],
-  "gemelos-digitales": [
-    step("Seleccionar el equipo", [operator, technician, supervisor], "gemelos-digitales", "Gemelos digitales",
-      "Selecciona el equipo y revisa su información y representación disponibles.", "Equipo identificado dentro de tus sucursales.", "Contexto del equipo visible."),
-    step("Revisar condición y componentes", [operator, technician, supervisor], "gemelos-digitales", "Gemelos digitales",
-      "Consulta los datos asociados, componentes e historial disponibles para reconocer la condición del equipo.", "Información del equipo cargada.", "Hallazgos identificados para contrastar con operación y mantenimiento."),
-    step("Coordinar la atención", [supervisor], "work-orders", "Órdenes de trabajo",
-      "Verifica el hallazgo en el equipo y registra o consulta una OT si requiere intervención.", "Necesidad confirmada y revisión de órdenes existentes.", "Acción de mantenimiento coordinada sin duplicar trabajo."),
-  ],
   "work-order-tareas": [
     step("Revisar las actividades asignadas", [technician, operator, supervisor], "work-orders", "Órdenes de trabajo",
       "Identifica la OT y las actividades correspondientes a los empleados responsables.", "OT vigente; programación vinculada antes de iniciar una OT ordinaria.", "Actividades a ejecutar confirmadas."),

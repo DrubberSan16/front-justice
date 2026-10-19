@@ -68,8 +68,19 @@ export function buildEquipmentDisplayTitle(item: EquipmentLike) {
 }
 
 export function resolveEquipmentLocation(item: EquipmentLike) {
+  const snapshot = item?.equipment_location_snapshot;
+  if (snapshot) return [snapshot.location_code, snapshot.location_name, snapshot.sucursal_name]
+    .filter(Boolean).filter((value, index, all) => all.indexOf(value) === index).join(' - ') || 'Sin ubicación registrada';
   return firstText(item?.equipment_location_label, item?.ubicacion_label, item?.location_label,
     item?.central, item?.location?.nombre, item?.sample_info?.equipo_ubicacion);
+}
+
+export function equipmentAtWorkOrder(equipment: EquipmentLike, order: EquipmentLike) {
+  return { ...equipment, ...order, nombre: equipment?.nombre || order?.equipment_nombre,
+    modelo: equipment?.modelo || order?.equipment_modelo,
+    marca_nombre: equipment?.marca_nombre || order?.equipment_brand_name,
+    equipment_location_snapshot: order?.equipment_location_snapshot,
+    equipment_location_label: order?.equipment_location_label || equipment?.equipment_location_label };
 }
 
 /**
