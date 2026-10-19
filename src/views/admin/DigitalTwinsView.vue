@@ -168,21 +168,21 @@
               >
             </article>
             <article>
-              <small>Horómetro guardado</small
-              ><strong>{{ num(display.horometer.measured) }} <em>h</em></strong
-              ><span>{{ formatDateTime(display.horometer.measured_at) }}</span>
+              <small>Horómetro del último MPG</small
+              ><strong
+                >{{ num(display.technical?.mpg.horometer ?? null) }}
+                <em>h</em></strong
+              ><span>{{
+                display.technical?.mpg.code || "Sin MPG verificable"
+              }}</span>
             </article>
             <article>
-              <small>{{
-                display.horometer.calculated
-                  ? "Horómetro con avance calculado"
-                  : "Horómetro de referencia"
-              }}</small
+              <small>Horómetro automático actual</small
               ><strong>{{ num(display.horometer.estimated) }} <em>h</em></strong
               ><span>{{
                 display.horometer.calculated
-                  ? "Registro + tiempo en funcionamiento"
-                  : "Sin avance calculado"
+                  ? "Avance automático en funcionamiento"
+                  : "Contador detenido o sin reloj activo"
               }}</span>
             </article>
             <article>
@@ -208,6 +208,7 @@
             show-arrows
             ><v-tab value="state">Estado y fuentes</v-tab
             ><v-tab value="structure">Estructura</v-tab
+            ><v-tab value="technical">Análisis técnico</v-tab
             ><v-tab value="events">Eventos</v-tab
             ><v-tab value="history">Capturas</v-tab
             ><v-tab value="simulation">Simulación</v-tab></v-tabs
@@ -298,10 +299,10 @@
                 </div>
                 <div>
                   <h3 class="panel-title">Origen y vigencia de los datos</h3>
-                  <p class="text-caption mb-4">
-                    Los estados describen los registros consultados. La
-                    antigüedad se marca a los 7 días para el horómetro y a los
-                    30 días en las demás fuentes con fecha.
+                  <p class="text-body-2 mb-4">
+                    Fuentes del activo con cantidades, referencias de
+                    mantenimiento y fechas de los eventos o muestras
+                    correspondientes.
                   </p>
                   <div
                     v-for="source in display.quality"
@@ -310,10 +311,9 @@
                   >
                     <div>
                       <strong>{{ source.label }}</strong
-                      ><span>{{
-                        source.latest_at
-                          ? formatDateTime(source.latest_at)
-                          : "Sin fecha de lectura aplicable"
+                      ><span v-if="source.detail">{{ source.detail }}</span>
+                      <span v-if="source.latest_at" class="d-block mt-1">{{
+                        formatDateTime(source.latest_at)
                       }}</span>
                     </div>
                     <v-chip
@@ -321,7 +321,7 @@
                       :color="
                         source.status === 'NO_DISPONIBLE'
                           ? 'error'
-                          : source.stale
+                          : source.status === 'INCOMPLETA' || source.stale
                             ? 'warning'
                             : 'secondary'
                       "
@@ -329,11 +329,13 @@
                       >{{
                         source.status === "NO_DISPONIBLE"
                           ? "No disponible"
-                          : source.stale
-                            ? "Revisar vigencia"
-                            : source.status === "SIN_REGISTROS"
-                              ? "Sin registros"
-                              : "Disponible"
+                          : source.status === "INCOMPLETA"
+                            ? "Por completar"
+                            : source.stale
+                              ? "Revisar vigencia"
+                              : source.status === "SIN_REGISTROS"
+                                ? "Sin registros"
+                                : "Disponible"
                       }}</v-chip
                     >
                   </div>
@@ -350,31 +352,34 @@
                   </div>
                 </div>
               </div>
-              <h3 class="panel-title mt-6">Alertas abiertas consultadas</h3>
-              <v-table v-if="display.alerts.length" class="readable-table"
-                ><thead>
-                  <tr>
-                    <th>Tipo</th>
-                    <th>Nivel</th>
-                    <th>Hallazgo</th>
-                    <th>Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="alert in display.alerts" :key="alert.id">
-                    <td>{{ alert.tipo_alerta }}</td>
-                    <td>{{ alert.nivel }}</td>
-                    <td>{{ alert.detalle }}</td>
-                    <td>{{ alert.estado }}</td>
-                  </tr>
-                </tbody></v-table
+              <v-card
+                variant="tonal"
+                color="primary"
+                rounded="lg"
+                class="pa-5 mt-6"
               >
-              <p v-else class="text-body-2">
-                Sin alertas abiertas en la consulta. Revisa el estado de la
-                fuente antes de interpretar este resultado.
-              </p>
+                <h3 class="text-subtitle-1">Cruce técnico por compartición</h3>
+                <p class="text-body-2 mt-2 mb-4">
+                  Ficha del equipo, último MPG, mantenimiento ejecutado y
+                  análisis de lubricante vinculados a cada compartición.
+                </p>
+                <v-btn
+                  variant="outlined"
+                  prepend-icon="mdi-text-box-search-outline"
+                  @click="tab = 'technical'"
+                  >Ver análisis técnico</v-btn
+                >
+              </v-card>
             </template>
             <TwinStructure v-else-if="tab === 'structure'" :state="display" />
+            <TwinTechnicalPanel
+              v-else-if="tab === 'technical'"
+              :state="display"
+              :analysis="historical ? null : analysis"
+              :busy="analysisBusy"
+              :historical="!!historical"
+              @analyze="analyze"
+            />
             <TwinEventTimeline
               v-else-if="tab === 'events'"
               :events="display.events"
@@ -556,11 +561,15 @@ import type {
 import TwinStructure from "@/components/digital-twin/TwinStructure.vue";
 import TwinSimulation from "@/components/digital-twin/TwinSimulation.vue";
 import TwinEventTimeline from "@/components/digital-twin/TwinEventTimeline.vue";
+import TwinTechnicalPanel from "@/components/digital-twin/TwinTechnicalPanel.vue";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 const auth = useAuthStore(),
   allowed = computed(() => canAccessDigitalTwins(auth.user));
 const {
   assets,
+  analysis,
+  analysisBusy,
+  analyze,
   selectedId,
   selected,
   search,

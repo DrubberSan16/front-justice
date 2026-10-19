@@ -63,6 +63,7 @@ export type TwinState = {
     explanation: string;
   } | null;
   simulation_basis?: TwinCalibration;
+  technical?: TwinTechnical;
   condition: TwinCondition;
   components: TwinComponent[];
   alerts: Array<{
@@ -94,6 +95,7 @@ export type TwinState = {
     count?: number | null;
     latest_at?: string | null;
     stale?: boolean;
+    detail?: string;
   }>;
   events: Array<{
     id: string;
@@ -115,6 +117,107 @@ export type TwinCapture = {
   horometer: TwinState["horometer"];
   condition: TwinCondition;
   identity: TwinState["identity"];
+};
+export type TwinLab = {
+  code: string;
+  compartment: string;
+  sampled_at: string | null;
+  reported_at: string | null;
+  age_days: number | null;
+  valid_date: boolean;
+  condition: string;
+  diagnosis: string;
+  lubricant: string;
+  measurements: Array<{
+    parametro: string;
+    resultado_numerico: number | null;
+    resultado_texto: string | null;
+    unidad: string | null;
+    linea_base: number | null;
+    nivel_alerta: string | null;
+  }>;
+};
+export type TwinTechnical = {
+  as_of: string;
+  manufacturer: Array<{
+    ref: string;
+    title: string;
+    publisher: string;
+    publication: string;
+    url: string;
+    kind: string;
+    status: string;
+    scope_refs: string[];
+    pages: string;
+    applicability: string;
+    gaps: string[];
+    criteria: string[];
+    reviewed_at: string;
+  }>;
+  component_count: number;
+  component_serial_count: number;
+  scope: string;
+  missing: string[];
+  issues: string[];
+  mpg: {
+    code: string | null;
+    plan: string | null;
+    at: string | null;
+    horometer: number | null;
+    reliable: boolean;
+    hours_since: number | null;
+    interval: number | null;
+  };
+  components: Array<{
+    ref: string;
+    name: string;
+    code: string;
+    category: string;
+    serie: string | null;
+    description: string | null;
+    parent: string | null;
+    closed_orders: number;
+    open_orders: Array<{ code: string; title: string; status: string }>;
+    last_intervention: {
+      code: string;
+      title: string;
+      at: string | null;
+      horometer: number | null;
+      hours_since: number | null;
+    } | null;
+    oil: TwinLab | null;
+    oil_applicability: string;
+    manufacturer_refs: string[];
+    gaps: string[];
+    evidence_refs: string[];
+  }>;
+  facts: Array<{ ref: string; label: string; data: Record<string, unknown> }>;
+};
+export type TwinAnalysis = {
+  available: boolean;
+  stale: boolean;
+  cached?: boolean;
+  report: null | {
+    schema_version: number;
+    model: string;
+    generated_at: string;
+    basis_at: string;
+    basis_horometer: number | null;
+    scope: string;
+    component_names: Record<string, string>;
+    missing: string[];
+    facts: TwinTechnical["facts"];
+    result: {
+      summary: string;
+      components: Array<{
+        component_ref: string;
+        assessment: string;
+        observation: string;
+        recommendation: string;
+        evidence_refs: string[];
+      }>;
+    };
+  };
 };
 export type TwinSimulationInput = {
   days: number;

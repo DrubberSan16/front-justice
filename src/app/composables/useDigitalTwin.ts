@@ -7,6 +7,7 @@ import type {
   TwinSimulation,
   TwinState,
   TwinSimulationInput,
+  TwinAnalysis,
 } from "@/app/types/digital-twin.types";
 
 const endpoint = "/kpi_process/digital-twins";
@@ -21,6 +22,8 @@ export function useDigitalTwin(enabled: () => boolean) {
     history = ref<TwinCapture[]>([]),
     simulation = ref<TwinSimulation | null>(null);
   const busy = ref(false),
+    analysis = ref<TwinAnalysis | null>(null),
+    analysisBusy = ref(false),
     reading = ref(false),
     saving = ref(false),
     error = ref(""),
@@ -70,6 +73,7 @@ export function useDigitalTwin(enabled: () => boolean) {
       if (seq !== sequence) return;
       state.value = data;
       error.value = "";
+      void loadAnalysis();
     } catch (e) {
       if (!controller.signal.aborted && seq === sequence)
         error.value = message(e);
@@ -85,6 +89,35 @@ export function useDigitalTwin(enabled: () => boolean) {
       if (id === selectedId.value) history.value = data;
     } catch (e) {
       error.value = message(e);
+    }
+  }
+  async function loadAnalysis() {
+    const id = selectedId.value;
+    if (!id || !enabled()) return;
+    try {
+      const { data } = await api.get(`${endpoint}/${id}/analysis`);
+      if (id === selectedId.value) analysis.value = data;
+    } catch (e) {
+      if (id === selectedId.value) error.value = message(e);
+    }
+  }
+  async function analyze() {
+    const id = selectedId.value;
+    if (!id || !enabled() || historical.value || analysisBusy.value) return;
+    analysisBusy.value = true;
+    try {
+      const { data } = await api.post(`${endpoint}/${id}/analysis`, undefined, {
+        timeout: 90000,
+        meta: { skipGlobalLoading: true, skipTechnicalHandling: true },
+      } as any);
+      if (id === selectedId.value) {
+        analysis.value = data;
+        error.value = "";
+      }
+    } catch (e) {
+      if (id === selectedId.value) error.value = message(e);
+    } finally {
+      analysisBusy.value = false;
     }
   }
   async function capture() {
@@ -182,6 +215,7 @@ export function useDigitalTwin(enabled: () => boolean) {
     history.value = [];
     simulation.value = null;
     historical.value = null;
+    analysis.value = null;
     if (selectedId.value) {
       void loadState();
       void loadHistory();
@@ -192,7 +226,8 @@ export function useDigitalTwin(enabled: () => boolean) {
       document.visibilityState === "visible" &&
       !historical.value &&
       !reading.value &&
-      !saving.value
+      !saving.value &&
+      !analysisBusy.value
     )
       void loadState();
   }, 60000);
@@ -204,6 +239,9 @@ export function useDigitalTwin(enabled: () => boolean) {
   });
   return {
     assets,
+    analysis,
+    analysisBusy,
+    analyze,
     selectedId,
     selected,
     search,
