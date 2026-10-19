@@ -1,10 +1,10 @@
 import { defineStore } from "pinia";
+import { isRetiredReportComponent } from "@/app/utils/retired-report-menus";
 import type { MenuNode } from "@/app/types/menu.types";
 import { useAuthStore } from "@/app/stores/auth.store";
 import {
   canAccessDigitalTwins,
   canAccessReporting,
-  isGeneralManager,
   isSuperAdministrator,
 } from "@/app/utils/role-access";
 import { cachedGet, DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
@@ -98,6 +98,7 @@ export const useMenuStore = defineStore("menu", {
                   .length ||
                 String(node.status).toUpperCase() === "ACTIVE";
               const isRoleBlocked =
+                isRetiredReportComponent(component) ||
                 (component === "gemelos-digitales" && !canAccessDigitalTwins(auth.user)) ||
                 (component === "reporteria" && !canUseReports);
 
@@ -157,68 +158,6 @@ export const useMenuStore = defineStore("menu", {
             permissions: fullPermissions,
             children: [],
           });
-        }
-        const canAccessDetailedReport =
-          isGeneralManager(auth.user) || isSuperAdministrator(auth.user);
-        if (canAccessDetailedReport) {
-          const isDetailedReport = (node: MenuNode) =>
-            normalizeText(node.urlComponent) === "REPORTE-DETALLADO";
-          const isAdministration = (node: MenuNode) =>
-            normalizeText(node.nombre) === "ADMINISTRACION";
-          const withoutDetailedReport = (nodes: MenuNode[]): MenuNode[] =>
-            nodes
-              .filter((node) => !isDetailedReport(node))
-              .map((node) => ({
-                ...node,
-                children: withoutDetailedReport(node.children ?? []),
-              }));
-          const findAdministration = (nodes: MenuNode[]): MenuNode | null => {
-            for (const node of nodes) {
-              if (isAdministration(node)) return node;
-              const nested = findAdministration(node.children ?? []);
-              if (nested) return nested;
-            }
-            return null;
-          };
-
-          visibleTree = withoutDetailedReport(visibleTree);
-          const administration = findAdministration(visibleTree);
-          const administrationId = administration?.id ?? "system-administracion";
-          const reportNode: MenuNode = {
-            id: "system-reporte-detallado",
-            parentId: administrationId,
-            nombre: "Reporte detallado",
-            descripcion: "Órdenes, aceite e inventario",
-            icon: "mdi-chart-box-outline",
-            urlComponent: "reporte-detallado",
-            menuPosition: "99",
-            status: "ACTIVE",
-            permissions: fullPermissions,
-            children: [],
-          };
-
-          if (administration) {
-            administration.children = [...(administration.children ?? []), reportNode];
-          } else {
-            // Administracion vive dentro de Informes: sin ella, la que se agrega
-            // aqui tambien.
-            addUnderInformes(
-              {
-                id: administrationId,
-                parentId: null,
-                nombre: "Administración",
-                descripcion: "Opciones administrativas",
-                icon: "mdi-shield-crown-outline",
-                urlComponent: "",
-                menuPosition: "90",
-                status: "ACTIVE",
-                permissions: fullPermissions,
-                children: [reportNode],
-              },
-              // Dentro de Informes va antes de Reporteria, que se despliega al final.
-              "3",
-            );
-          }
         }
         this.tree = sortTree(visibleTree);
         this.loadedForUserId = userId;

@@ -311,10 +311,20 @@
           subtitle="Desde el último servicio MPG: horómetro objetivo, horas restantes (negativas si ya pasó), fecha estimada y semáforo con los márgenes de cada equipo."
         >
           <template #actions>
+            <v-select
+              v-model="projectionBrand"
+              :items="projectionBrandOptions"
+              label="Marca"
+              clearable
+              hide-details
+              density="compact"
+              variant="outlined"
+              style="min-width: 200px; max-width: 320px"
+            />
             <SectionExportButtons
               :preview="reportPreview"
               title="Frecuencia por horómetro y proyección"
-              :subtitle="periodoLabel"
+              :subtitle="projectionPeriodLabel"
               :file-name="`proyeccion_horometro_${desde}_${hasta}`"
               :columns="headersProyeccion"
               :rows="proyeccionAplicable"
@@ -726,11 +736,20 @@ const headersConfiabilidad = [
   { title: "MTTR", key: "mttr_horas", align: "end" as const },
 ];
 
-const proyeccionAplicable = computed(() =>
-  (data.value.proyeccion ?? []).filter((row: any) => row.aplica),
+const projectionBrand = ref<string | null>(null);
+const projectionBrandName = (row: any) => String(row.marca ?? "").trim() || "Sin marca";
+const projectionBrandOptions = computed(() =>
+  [...new Set<string>((data.value.proyeccion ?? []).map(projectionBrandName))].sort((a, b) => a.localeCompare(b, "es")),
 );
+const projectionRows = computed(() =>
+  (data.value.proyeccion ?? []).filter((row: any) => !projectionBrand.value || projectionBrandName(row) === projectionBrand.value),
+);
+const projectionPeriodLabel = computed(() =>
+  `${periodoLabel.value}${projectionBrand.value ? ` · Marca: ${projectionBrand.value}` : " · Todas las marcas"}`,
+);
+const proyeccionAplicable = computed(() => projectionRows.value.filter((row: any) => row.aplica));
 const proyeccionSinFrecuencia = computed(() =>
-  (data.value.proyeccion ?? []).filter((row: any) => !row.aplica),
+  projectionRows.value.filter((row: any) => !row.aplica),
 );
 /**
  * Equipos que si se proyectan pero sobre una base supuesta, porque su ultima
@@ -739,7 +758,7 @@ const proyeccionSinFrecuencia = computed(() =>
  * se listan igual, marcados, y el aviso dice como arreglarlo de raiz.
  */
 const proyeccionEstimada = computed(() =>
-  (data.value.proyeccion ?? []).filter(
+  projectionRows.value.filter(
     (row: any) => row.aplica && row.referencia_estimada,
   ),
 );
@@ -898,7 +917,7 @@ function ultimoServicioLabel(fila: any) {
 function reporteProyeccion() {
   return buildSectionReport({
     title: "Frecuencia por horómetro y proyección",
-    subtitle: periodoLabel.value,
+    subtitle: projectionPeriodLabel.value,
     fileName: `proyeccion_horometro_${desde.value}_${hasta.value}`,
     columns: headersProyeccion,
     rows: proyeccionAplicable.value.map((fila: any) => {

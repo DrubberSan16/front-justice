@@ -1,4 +1,5 @@
 import type { RouteLocationRaw, RouteRecordNormalized, Router } from "vue-router";
+import { isRetiredReportComponent } from "@/app/utils/retired-report-menus";
 
 const frontViewModules = import.meta.glob("../../views/**/*.vue");
 const availableViewFiles = new Set(
@@ -61,6 +62,7 @@ function buildAliases(route: RouteRecordNormalized, viewFile: string): string[] 
 
 function isMenuAssignableRoute(route: RouteRecordNormalized): boolean {
   if (typeof route.name !== "string") return false;
+  if (isRetiredReportComponent(route.name)) return false;
   if (!route.path.startsWith("/app/")) return false;
 
   const viewFile = resolveViewFile(route);

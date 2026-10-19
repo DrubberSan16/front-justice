@@ -81,10 +81,12 @@
           </v-chip>
           <v-btn
             variant="outlined"
-            prepend-icon="mdi-open-in-new"
-            @click="openSourceModule"
+            prepend-icon="mdi-file-pdf-box"
+            :loading="exportingReport"
+            :disabled="loading || Boolean(error) || !canExportActiveReport"
+            @click="previewActiveReport"
           >
-            Abrir módulo
+            PDF
           </v-btn>
         </div>
       </section>
@@ -102,6 +104,7 @@
       <template v-else>
         <ReportsDomainDashboard
           v-if="specializedReport"
+          ref="domainDashboard"
           :module-key="activeModule.key"
           :title="activeModule.title"
           :raw-rows="rawRows"
@@ -315,8 +318,8 @@
               ? "Este catálogo no contiene registros visibles en este momento."
               : "Cambie el rango de fechas o confirme que el proceso tenga registros en el módulo origen." }}
           </p>
-          <v-btn variant="outlined" prepend-icon="mdi-open-in-new" @click="openSourceModule">
-            Abrir módulo
+          <v-btn variant="outlined" prepend-icon="mdi-file-pdf-box" :loading="exportingReport" @click="previewActiveReport">
+            PDF
           </v-btn>
         </div>
 
@@ -482,8 +485,8 @@
           </v-data-table>
         </v-card-text>
         <v-card-actions class="detail-dialog__actions">
-          <v-btn variant="outlined" prepend-icon="mdi-open-in-new" @click="openSourceModule">
-            Abrir módulo origen
+          <v-btn variant="outlined" prepend-icon="mdi-file-pdf-box" :loading="exportingReport" @click="previewEventDetail">
+            PDF
           </v-btn>
           <v-spacer />
           <v-btn color="primary" @click="detailDialog = false">Cerrar</v-btn>
@@ -533,14 +536,15 @@
           </v-data-table>
         </v-card-text>
         <v-card-actions class="detail-dialog__actions">
-          <v-btn variant="outlined" prepend-icon="mdi-open-in-new" @click="openSourceModule">
-            Abrir módulo origen
+          <v-btn variant="outlined" prepend-icon="mdi-file-pdf-box" :loading="exportingReport" @click="previewRelationshipDetail">
+            PDF
           </v-btn>
           <v-spacer />
           <v-btn color="primary" @click="relationshipDialog = false">Cerrar</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <ReportPreviewDialogs :preview="moduleReportPreview" />
   </div>
 </template>
 
@@ -567,6 +571,10 @@ import { canAccessReporting } from "@/app/utils/role-access";
 import EChart from "@/components/charts/EChart.vue";
 import ReportsDomainDashboard from "@/components/reports/ReportsDomainDashboard.vue";
 import ReportEquipmentChartTable from "@/components/reports/ReportEquipmentChartTable.vue";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import { useReportPreview } from "@/app/utils/report-preview";
+import { buildReportingModuleReport } from "@/app/utils/reporting-module-report";
+import type { ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
 type ReportEvent = {
@@ -588,6 +596,10 @@ const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const theme = useTheme();
+const moduleReportPreview = useReportPreview({ title: "Informe del módulo" });
+const exportingReport = ref(false);
+const domainDashboard = ref<{ buildModuleReport: () => Promise<ReportDefinition>; canExportModule: boolean } | null>(null);
+const canExportActiveReport = computed(() => !specializedReport.value || Boolean(domainDashboard.value?.canExportModule));
 const canAccess = computed(() => canAccessReporting(auth.user));
 
 const today = currentDateInputValue();
@@ -1338,10 +1350,42 @@ function openSecondaryRelationshipDetail(payload: any) {
   if (row) openRelationshipDetail(row);
 }
 
-function openSourceModule() {
-  detailDialog.value = false;
-  relationshipDialog.value = false;
-  void router.push({ name: activeModule.value.routeName });
+function generalModuleReport(selectedEvents = events.value, selectedRelationships = relationshipRows.value, title?: string) {
+  return buildReportingModuleReport({
+    module: activeModule.value,
+    period: activeRangeLabel.value,
+    fileName: `informe-${activeModule.value.key}-${appliedStartDate.value}-${appliedEndDate.value}`,
+    events: selectedEvents,
+    relationships: selectedRelationships,
+    summary: title ? undefined : [...summaryCards.value, ...(relationshipRows.value.length ? relationshipSummaryCards.value : [])].map(({ label, value }) => ({ label, value })),
+    title,
+    note: ignoredUndatedCount.value ? `${ignoredUndatedCount.value} registro(s) sin fecha válida se excluyen del período.` : undefined,
+  });
+}
+
+async function openModulePdf(build: () => ReportDefinition | Promise<ReportDefinition>) {
+  if (exportingReport.value) return;
+  exportingReport.value = true;
+  try {
+    await moduleReportPreview.open("pdf", await build());
+  } finally {
+    exportingReport.value = false;
+  }
+}
+
+function previewActiveReport() {
+  return openModulePdf(async () => {
+    if (specializedReport.value && domainDashboard.value) return domainDashboard.value.buildModuleReport();
+    return generalModuleReport();
+  });
+}
+
+function previewEventDetail() {
+  return openModulePdf(() => generalModuleReport(detailRows.value, [], detailTitle.value));
+}
+
+function previewRelationshipDetail() {
+  return openModulePdf(() => generalModuleReport([], relationshipDialogRows.value, relationshipDialogTitle.value));
 }
 
 watch(
