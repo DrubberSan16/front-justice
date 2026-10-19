@@ -195,7 +195,15 @@
                   height="340px"
                   @select="openPrimaryRelationshipDetail"
                 />
-                <div class="chart-fallback" :aria-label="relationshipMeta.primaryLabel">
+                <ReportEquipmentChartTable
+                  v-if="activeModule.key === 'alerts'"
+                  :rows="relationshipChartRows"
+                  :title="relationshipMeta.primaryLabel"
+                  value-label="Horas"
+                  :format-value="row => formatRelationshipValue(row, relationshipMeta.primaryField, relationshipMeta.primaryFormat)"
+                  @select="openRelationshipDetail"
+                />
+                <div v-else class="chart-fallback" :aria-label="relationshipMeta.primaryLabel">
                   <v-btn
                     v-for="row in relationshipChartRows.slice(0, 6)"
                     :key="row.key"
@@ -221,7 +229,15 @@
                   height="340px"
                   @select="openSecondaryRelationshipDetail"
                 />
-                <div class="chart-fallback" :aria-label="relationshipMeta.secondaryLabel">
+                <ReportEquipmentChartTable
+                  v-if="activeModule.key === 'alerts'"
+                  :rows="relationshipSecondaryRows"
+                  :title="relationshipMeta.secondaryLabel"
+                  value-label="Costo"
+                  :format-value="row => formatRelationshipValue(row, relationshipMeta.secondaryField, relationshipMeta.secondaryFormat)"
+                  @select="openRelationshipDetail"
+                />
+                <div v-else class="chart-fallback" :aria-label="relationshipMeta.secondaryLabel">
                   <v-btn
                     v-for="row in relationshipSecondaryRows.slice(0, 6)"
                     :key="row.key"
@@ -550,6 +566,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { canAccessReporting } from "@/app/utils/role-access";
 import EChart from "@/components/charts/EChart.vue";
 import ReportsDomainDashboard from "@/components/reports/ReportsDomainDashboard.vue";
+import ReportEquipmentChartTable from "@/components/reports/ReportEquipmentChartTable.vue";
 
 type AnyRow = Record<string, any>;
 type ReportEvent = {

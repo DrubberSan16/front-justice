@@ -1,5 +1,20 @@
 type EquipmentLike = Record<string, any> | null | undefined;
 
+/** Separa la etiqueta histórica del reporte sin dividir los guiones de la unidad. */
+export function splitEquipmentReportLabel(label: string) {
+  const separator = label.lastIndexOf("·");
+  const identity = (separator >= 0 ? label.slice(0, separator) : label).trim();
+  const locationLabel = separator >= 0 ? label.slice(separator + 1).trim() : "";
+  const brandSeparator = identity.indexOf("|");
+  const locationParts = locationLabel.match(/^((?:UBI|LOC)-\S+)\s+-\s+(.+)$/i);
+  return {
+    brand: brandSeparator >= 0 ? identity.slice(0, brandSeparator).trim() || "Sin marca" : "Sin marca",
+    unit: (brandSeparator >= 0 ? identity.slice(brandSeparator + 1).trim() : identity) || "Sin unidad",
+    location: locationParts?.[1] || locationLabel || "Sin ubicación",
+    central: locationParts?.[2] || (locationLabel && !/^(?:UBI|LOC)-\S+$/i.test(locationLabel) ? locationLabel : "Sin central"),
+  };
+}
+
 function firstText(...values: unknown[]) {
   for (const value of values) {
     const text = String(value ?? "").trim();
