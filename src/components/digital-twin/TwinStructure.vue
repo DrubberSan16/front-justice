@@ -24,7 +24,7 @@
         >
       </button>
     </div>
-    <v-card v-if="active" class="mt-5 pa-4" variant="outlined" rounded="lg">
+    <v-card v-if="active" class="mt-6 pa-5" variant="outlined" rounded="lg">
       <h3 class="text-subtitle-1">
         {{ active.nombre_oficial || active.nombre }}
       </h3>
@@ -51,8 +51,16 @@
       <p v-if="!orders.length" class="text-body-2 mt-2">
         Sin OT asociadas a esta compartición en los últimos 100 registros.
       </p>
-      <div v-for="order in orders" :key="order.id" class="mt-2 text-body-2">
-        {{ order.code }} · {{ order.title }} · {{ order.status_workflow }}
+      <div
+        v-for="order in orders"
+        :key="order.id"
+        class="component-order text-body-2"
+      >
+        <strong>{{ order.code }}</strong
+        ><span>{{ order.title }}</span
+        ><v-chip size="small" variant="tonal">{{
+          order.status_workflow
+        }}</v-chip>
       </div>
     </v-card>
   </div>
@@ -77,7 +85,7 @@ const parentName = computed(
       ?.nombre_oficial ||
     (active.value?.parent_id
       ? "Relación sin componente disponible"
-      : props.state.identity.name),
+      : props.state.identity.operational_name || props.state.identity.name),
 );
 const orders = computed(() =>
   props.state.orders.filter((o) => o.equipo_componente_id === selected.value),
@@ -86,36 +94,40 @@ const orders = computed(() =>
 <style scoped>
 .structure-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(225px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 24px;
+  margin-top: 24px;
 }
 .structure-node {
   display: flex;
-  gap: 12px;
+  gap: 18px;
+  align-items: flex-start;
+  min-height: 140px;
   text-align: left;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 12px;
-  padding: 18px;
+  padding: 24px;
   background: rgb(var(--v-theme-surface));
   color: rgb(var(--v-theme-on-surface));
   min-width: 0;
 }
 .structure-node > span {
   display: grid;
-  gap: 5px;
+  gap: 12px;
   overflow-wrap: anywhere;
 }
 .structure-node small {
   color: rgb(var(--v-theme-primary));
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 10px;
+  font-size: 12px;
 }
 .structure-node strong {
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1.5;
 }
 .structure-node span span {
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0.75;
 }
 .structure-node:hover,
@@ -128,10 +140,10 @@ const orders = computed(() =>
   outline-offset: 3px;
 }
 .component-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 24px;
+  margin-top: 24px;
 }
 .component-facts dt {
   font-size: 12px;
@@ -140,5 +152,18 @@ const orders = computed(() =>
 .component-facts dd {
   font-size: 14px;
   overflow-wrap: anywhere;
+  margin-top: 8px;
+}
+.component-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.component-order span {
+  flex: 1;
+  min-width: 150px;
 }
 </style>

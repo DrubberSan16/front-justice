@@ -6,6 +6,7 @@ import type {
   TwinEquipmentOption,
   TwinSimulation,
   TwinState,
+  TwinSimulationInput,
 } from "@/app/types/digital-twin.types";
 
 const endpoint = "/kpi_process/digital-twins";
@@ -118,11 +119,7 @@ export function useDigitalTwin(enabled: () => boolean) {
       error.value = message(e);
     }
   }
-  async function simulate(input: {
-    days: number;
-    hours_per_day: number;
-    downtime_hours: number;
-  }) {
+  async function simulate(input: TwinSimulationInput) {
     if (!enabled() || historical.value) return;
     const id = selectedId.value;
     saving.value = true;

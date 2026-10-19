@@ -62,6 +62,7 @@ export type TwinState = {
     service_code: string | null;
     explanation: string;
   } | null;
+  simulation_basis?: TwinCalibration;
   condition: TwinCondition;
   components: TwinComponent[];
   alerts: Array<{
@@ -100,6 +101,9 @@ export type TwinState = {
     type: string;
     title: string;
     detail: string | null;
+    actor?: string | null;
+    from_status?: string | null;
+    to_status?: string | null;
   }>;
   connection: { mode: string; label: string; sensor_connected: boolean };
   limits: string[];
@@ -112,8 +116,25 @@ export type TwinCapture = {
   condition: TwinCondition;
   identity: TwinState["identity"];
 };
+export type TwinSimulationInput = {
+  days: number;
+  hours_per_day: number;
+  downtime_hours: number;
+  rate_mode?: "MANUAL" | "HISTORICAL";
+  include_possible?: boolean;
+};
+export type TwinCalibration = {
+  hours_per_day: number | null;
+  samples: number;
+  rejected: number;
+  observed_days: number;
+  from: string | null;
+  to: string | null;
+  stale: boolean;
+  source: string;
+};
 export type TwinSimulation = {
-  assumptions: { days: number; hours_per_day: number; downtime_hours: number };
+  assumptions: TwinSimulationInput;
   basis_at: string;
   start: number;
   added_hours: number;
@@ -124,6 +145,46 @@ export type TwinSimulation = {
   target_reliable: boolean;
   points: Array<{ day: number; horometer: number }>;
   explanation: string;
+  next_target: number | null;
+  remaining_after_services: number | null;
+  target_reached: boolean;
+  calibration: TwinCalibration;
+  history: {
+    window_days: number;
+    closed_orders: number;
+    valid_durations: number;
+    rejected_durations: number;
+    recent: Array<{
+      code: string;
+      title: string;
+      kind: string;
+      hours: number;
+      basis: string;
+      closed_at: string | null;
+    }>;
+  };
+  interventions: Array<{
+    id: string;
+    code: string;
+    title: string;
+    category: "OT_REGISTRADA" | "PROGRAMADA" | "MPG_PROYECTADO";
+    at: string | null;
+    end_at: string | null;
+    status: string;
+    duration_hours: number | null;
+    duration_basis: string;
+    samples: number;
+    range: [number, number] | null;
+    reference_codes: string[];
+    requires_stop: boolean | null;
+    included: boolean;
+    overdue: boolean;
+    target: number | null;
+  }>;
+  scheduled_count: number;
+  possible_count: number;
+  operation_lost_hours: number;
+  warnings: string[];
 };
 export type TwinEquipmentOption = {
   id: string;

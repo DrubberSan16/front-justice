@@ -135,8 +135,11 @@
                 {{ display.identity.brand || "Marca sin registrar" }} ·
                 {{ display.identity.code }}
               </div>
-              <h2>{{ display.identity.name }}</h2>
+              <h2>
+                {{ display.identity.operational_name || display.identity.name }}
+              </h2>
               <p>
+                {{ display.identity.name }} ·
                 {{ display.identity.model || "Modelo sin registrar" }} · Serie
                 {{ display.identity.serie || "sin registrar" }}
               </p>
@@ -372,25 +375,10 @@
               </p>
             </template>
             <TwinStructure v-else-if="tab === 'structure'" :state="display" />
-            <template v-else-if="tab === 'events'"
-              ><h3 class="panel-title">Línea de eventos del activo</h3>
-              <p class="text-caption mb-4">
-                Últimos 100 eventos disponibles entre las fuentes consultadas.
-              </p>
-              <p v-if="!display.events.length" class="text-body-2">
-                Sin eventos registrados en las fuentes consultadas.
-              </p>
-              <ol class="event-timeline">
-                <li v-for="event in display.events" :key="event.id">
-                  <time>{{ formatDateTime(event.at) }}</time>
-                  <div>
-                    <small>{{ event.type }}</small
-                    ><strong>{{ event.title }}</strong>
-                    <p>{{ event.detail || "Sin detalle adicional" }}</p>
-                  </div>
-                </li>
-              </ol>
-            </template>
+            <TwinEventTimeline
+              v-else-if="tab === 'events'"
+              :events="display.events"
+            />
             <template v-else-if="tab === 'history'"
               ><h3 class="panel-title">Capturas conservadas</h3>
               <p class="text-body-2 mb-4">
@@ -433,6 +421,7 @@
             </template>
             <TwinSimulation
               v-else-if="tab === 'simulation'"
+              :state="display"
               :result="simulation"
               :busy="saving"
               :disabled="!!historical || display.horometer.estimated === null"
@@ -488,13 +477,33 @@
             item-value="id"
             :item-title="equipmentTitle"
             label="Equipo"
+            class="equipment-link-selector mt-3"
+            hint="Marca · UG / nombre operativo · modelo · código y serie"
+            persistent-hint
             :disabled="!!editId && !!selected?.equipment_id"
             variant="outlined"
             :loading="optionsBusy"
             @update:search="searchEquipment"
             no-filter
-          />
-          <p class="text-caption">
+          >
+            <template #item="{ props: itemProps, item }">
+              <v-list-item v-bind="itemProps" class="py-3">
+                <template #title
+                  ><div class="text-body-2 font-weight-medium text-wrap">
+                    {{ buildEquipmentDisplayTitle(item.raw) }} ·
+                    {{ item.raw.codigo }}
+                  </div></template
+                >
+                <template #subtitle
+                  ><div class="text-caption text-wrap mt-2">
+                    {{ item.raw.nombre_real || "Equipo" }} · Serie
+                    {{ item.raw.serie || "sin registrar" }}
+                  </div></template
+                >
+              </v-list-item>
+            </template>
+          </v-autocomplete>
+          <p class="text-caption mt-5">
             La identidad, la serie y las comparticiones se consultan desde
             Equipos. El historial conserva el vínculo con el mismo activo
             físico.
@@ -546,6 +555,8 @@ import type {
 } from "@/app/types/digital-twin.types";
 import TwinStructure from "@/components/digital-twin/TwinStructure.vue";
 import TwinSimulation from "@/components/digital-twin/TwinSimulation.vue";
+import TwinEventTimeline from "@/components/digital-twin/TwinEventTimeline.vue";
+import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
 const auth = useAuthStore(),
   allowed = computed(() => canAccessDigitalTwins(auth.user));
 const {
@@ -601,8 +612,12 @@ const tone = (value?: string) =>
       : value === "SIN_HALLAZGOS"
         ? "success"
         : "secondary";
-const equipmentTitle = (e: TwinEquipmentOption) =>
-  `${e.codigo} · ${e.nombre_real || e.nombre}${e.serie ? ` · Serie ${e.serie}` : ""}`;
+const equipmentTitle = (e: TwinEquipmentOption | string | null) =>
+  e && typeof e === "object" && e.codigo
+    ? `${buildEquipmentDisplayTitle(e)} · ${e.codigo}${e.serie ? ` · Serie ${e.serie}` : ""}`
+    : typeof e === "string"
+      ? e
+      : "";
 let searchTimer: ReturnType<typeof setTimeout>,
   equipmentTimer: ReturnType<typeof setTimeout>,
   optionSequence = 0;
@@ -801,7 +816,7 @@ onBeforeUnmount(() => {
 }
 .toolbar-actions {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   align-items: center;
   flex-wrap: wrap;
   max-width: 100%;
@@ -871,6 +886,14 @@ onBeforeUnmount(() => {
 .twin-panel {
   padding-top: 24px;
   min-height: 350px;
+}
+.equipment-link-selector :deep(.v-autocomplete__selection),
+.equipment-link-selector :deep(.v-autocomplete__selection-text) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.asset-description p + p {
+  margin-top: 10px;
 }
 .state-columns {
   display: grid;
@@ -953,38 +976,6 @@ onBeforeUnmount(() => {
   margin-top: 28px;
   padding-top: 15px;
 }
-.event-timeline {
-  list-style: none;
-  padding: 0;
-}
-.event-timeline li {
-  display: grid;
-  grid-template-columns: 140px minmax(0, 1fr);
-  gap: 18px;
-  border-left: 2px solid rgba(var(--v-theme-primary), 0.2);
-  margin-left: 5px;
-  padding: 0 0 24px 20px;
-}
-.event-timeline time {
-  font-size: 11px;
-  opacity: 0.7;
-}
-.event-timeline small {
-  display: block;
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: rgb(var(--v-theme-primary));
-}
-.event-timeline strong {
-  display: block;
-  font-size: 13px;
-  margin: 3px 0;
-}
-.event-timeline p {
-  font-size: 12px;
-  opacity: 0.8;
-  overflow-wrap: anywhere;
-}
 .empty-twin {
   text-align: center;
   padding: 80px 24px;
@@ -1033,10 +1024,6 @@ onBeforeUnmount(() => {
   }
   .asset-description h2 {
     font-size: 20px;
-  }
-  .event-timeline li {
-    grid-template-columns: 1fr;
-    gap: 5px;
   }
   .twin-metrics article {
     padding: 12px;
