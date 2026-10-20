@@ -629,7 +629,7 @@ const tone = (value?: string) =>
         : "secondary";
 const equipmentTitle = (e: TwinEquipmentOption | string | null): string =>
   e && typeof e === "object" && e.codigo
-    ? `${buildEquipmentDisplayTitle(e)} · ${e.codigo}${e.serie ? ` · Serie ${e.serie}` : ""}`
+    ? `${buildEquipmentDisplayTitle({ ...e, nombre: e.nombre_real || e.nombre })} · ${e.codigo}${e.serie ? ` · Serie ${e.serie}` : ""}`
     : typeof e === "string"
       ? options.value.find((option) => option.id === e)
         ? equipmentTitle(options.value.find((option) => option.id === e)!)
