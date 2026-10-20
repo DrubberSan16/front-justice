@@ -2258,6 +2258,7 @@
 
 <script setup lang="ts">
 import { equipmentAtWorkOrder } from "@/app/utils/equipment-display";
+import { operatorMaintenanceKindForEquipment } from "@/app/utils/operator-work-order-kind";
 import { fetchCanonicalWorkOrderReport, consolidateCanonicalWorkOrderReports } from "@/app/utils/canonical-work-order-report";
 import { reportDisplayLabel, formatWorkOrderHistoryNote, resolveWorkOrderLifecycle } from "@/app/utils/work-order-audit";
 import { computed, onMounted, reactive, ref, watch } from "vue";
@@ -3007,7 +3008,7 @@ function canCloseOrVoidWorkOrder(item: any) {
     return row.can_close_or_void;
   }
   if (isOperatorRole.value) {
-    return normalizeMaintenanceKindValue(row?.maintenance_kind) === "CEBADO" && isOwner;
+    return ["CEBADO", "SSA"].includes(normalizeMaintenanceKindValue(row?.maintenance_kind)) && isOwner;
   }
   return isOwner;
 }
@@ -3084,10 +3085,14 @@ const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
 const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const isOperatorRole = computed(() => currentRoleName.value === "OPERADOR");
+const operatorMaintenanceKind = computed(() =>
+  operatorMaintenanceKindForEquipment(selectedEquipmentRecord.value),
+);
 const canViewAnnulledWorkOrders = computed(() => isSuperAdministrator(auth.user));
 const maintenanceKindOptionsForCurrentUser = computed(() =>
   isOperatorRole.value
-    ? maintenanceKindOptions.filter((item) => item.value === "CEBADO")
+    ? maintenanceKindOptions.filter((item) => item.value === operatorMaintenanceKind.value ||
+        (isReadOnlyWorkflow.value && item.value === headerForm.maintenance_kind))
     : maintenanceKindOptions,
 );
 const blockingWorkOrderOptions = computed(() =>
@@ -3126,10 +3131,10 @@ const canViewCosts = computed(() => canViewMaterialCosts(auth.user));
 const closeRestrictionText = computed(() => {
   if (!editingId.value || canCloseOrVoidCurrent.value) return "";
   if (isOperatorRole.value) {
-    if (normalizeMaintenanceKindValue(currentWorkOrderRecord.value?.maintenance_kind ?? headerForm.maintenance_kind) !== "CEBADO") {
-      return "El perfil operador solo puede finalizar ordenes de trabajo de tipo Cebado creadas por el mismo.";
+    if (!["CEBADO", "SSA"].includes(normalizeMaintenanceKindValue(currentWorkOrderRecord.value?.maintenance_kind ?? headerForm.maintenance_kind))) {
+      return "El perfil operador solo puede finalizar órdenes de trabajo de tipo Cebado o SSA creadas por él mismo.";
     }
-    return "Solo el operador que creo esta orden de trabajo de tipo Cebado puede finalizarla.";
+    return "Solo el operador que creó esta orden de trabajo de tipo Cebado o SSA puede finalizarla.";
   }
   const owner =
     String(
@@ -7191,7 +7196,7 @@ function resetAllForms() {
   headerForm.maintenance_kind = isProjectMode.value
     ? PROJECT_MAINTENANCE_KIND
     : isOperatorRole.value
-      ? "CEBADO"
+      ? operatorMaintenanceKind.value
       : "CORRECTIVO";
   headerForm.fecha_programacion = "";
   headerForm.status_workflow = "PLANNED";
@@ -7269,7 +7274,7 @@ async function openCreate() {
     headerForm.maintenance_kind = PROJECT_MAINTENANCE_KIND;
     await loadProjectEquipment();
   } else if (isOperatorRole.value) {
-    headerForm.maintenance_kind = "CEBADO";
+    headerForm.maintenance_kind = operatorMaintenanceKind.value;
   }
   await assignNextWorkOrderCode();
 }
@@ -7291,9 +7296,7 @@ async function openEdit(item: any) {
   headerForm.equipo_componentes = getWorkOrderComponentSnapshots(item);
   headerForm.maintenance_kind = isProjectMode.value
     ? PROJECT_MAINTENANCE_KIND
-    : isOperatorRole.value
-      ? "CEBADO"
-      : (item.maintenance_kind ?? "CORRECTIVO");
+    : (item.maintenance_kind ?? "CORRECTIVO");
   const initialWorkflow = normalizeWorkflowStatus(item.status_workflow);
   headerForm.status_workflow = initialWorkflow;
   headerForm.procedimiento_id = item.procedimiento_id ?? "";
@@ -7365,6 +7368,9 @@ async function openEdit(item: any) {
     );
   } else {
     await loadEquipmentComponents(String(headerForm.equipment_id || ""));
+    if (isOperatorRole.value && !isReadOnlyWorkflow.value) {
+      headerForm.maintenance_kind = operatorMaintenanceKind.value;
+    }
   }
   syncWorkOrderHorometerFields({ preserveCurrent: true });
   await loadDetailData();
@@ -7602,7 +7608,7 @@ async function saveHeader(
     return false;
   }
   if (isOperatorRole.value) {
-    headerForm.maintenance_kind = "CEBADO";
+    headerForm.maintenance_kind = operatorMaintenanceKind.value;
   }
 
   if (!editingId.value && !headerForm.code) {
@@ -8553,7 +8559,7 @@ watch(
       // los campos que el usuario aun no ha escrito.
       applyProjectTemplateDefaults(selected, { force: !editingId.value });
     }
-    const suggestedComponentId = isOperatorRole.value
+    const suggestedComponentId = isOperatorRole.value && isCebadoWorkOrder.value
       ? getMotorEquipmentComponentId()
       : getSuggestedProcedureComponentId(selected);
     if (suggestedComponentId && !getHeaderComponentIds().length) {
@@ -8593,7 +8599,7 @@ watch(
       const selected = procedureCatalog.value.find(
         (item: any) => String(item?.id || "") === String(headerForm.procedimiento_id || ""),
       );
-      const suggestedComponentId = isOperatorRole.value
+      const suggestedComponentId = isOperatorRole.value && isCebadoWorkOrder.value
         ? getMotorEquipmentComponentId()
         : getSuggestedProcedureComponentId(selected);
       if (suggestedComponentId) {
@@ -8647,6 +8653,15 @@ watch(
       headerForm.emergency_reason = "";
       headerForm.hora_inicio = "";
       headerForm.hora_fin = "";
+    }
+  },
+);
+
+watch(
+  [isOperatorRole, operatorMaintenanceKind],
+  () => {
+    if (isOperatorRole.value && !isProjectMode.value && !isReadOnlyWorkflow.value) {
+      headerForm.maintenance_kind = operatorMaintenanceKind.value;
     }
   },
 );
