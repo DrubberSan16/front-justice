@@ -35,15 +35,76 @@
           ><span>{{ formatDateTime(state.technical.mpg.at) }}</span>
         </article>
       </div>
-      <section
-        v-if="state.technical.manufacturer?.length"
-        class="manufacturer-evidence"
-      >
-        <h3 class="text-h6">Documentación oficial del fabricante</h3>
-        <p class="text-body-2 text-medium-emphasis mt-2">
-          El alcance se verifica por modelo y compartición. Completa la
-          variante, serie y opciones de placa en Equipos para confirmar su
-          aplicación.
+      <section class="manufacturer-evidence">
+        <div class="analysis-heading">
+          <div>
+            <h3 class="text-h6">Ficha técnica investigada por OpenAI</h3>
+            <p class="text-body-2 text-medium-emphasis mt-2">
+              La búsqueda utiliza marca, modelo, serie y configuración de las
+              comparticiones registradas en Equipos. Cada parámetro conserva el
+              documento y apartado de origen.
+            </p>
+          </div>
+          <v-btn
+            v-if="!historical"
+            variant="outlined"
+            prepend-icon="mdi-magnify"
+            :loading="researchBusy"
+            :disabled="researchBusy || !research?.available"
+            @click="$emit('research')"
+            >{{
+              research?.status === "ERROR"
+                ? "Reintentar búsqueda"
+                : "Volver a buscar"
+            }}</v-btn
+          >
+        </div>
+        <v-alert
+          v-if="researchBusy"
+          type="info"
+          variant="tonal"
+          class="mt-5"
+          role="status"
+          >{{
+            research?.status === "QUEUED"
+              ? "Consulta en cola. OpenAI investigará esta configuración en cuanto termine la búsqueda anterior."
+              : "OpenAI está buscando fichas y manuales del equipo y sus comparticiones. Puedes seguir consultando el historial mientras termina."
+          }}</v-alert
+        >
+        <v-alert
+          v-else-if="research?.status === 'ERROR'"
+          type="warning"
+          variant="tonal"
+          class="mt-5"
+          >{{ research.error }}</v-alert
+        >
+        <p v-else-if="research && !research.available" class="text-body-2 mt-4">
+          La búsqueda OpenAI está pendiente de configuración.
+        </p>
+        <p
+          v-if="state.technical.research?.generated_at"
+          class="text-body-2 mt-5"
+        >
+          {{ state.technical.research.summary }}
+        </p>
+        <p
+          v-if="state.technical.research?.generated_at"
+          class="text-caption text-medium-emphasis mt-3"
+        >
+          Consulta:
+          {{ formatDateTime(state.technical.research.generated_at) }} ·
+          {{ state.technical.research.web_calls }} consultas web ·
+          {{
+            new Set(state.technical.manufacturer.map((d) => d.url)).size
+          }}
+          documentos localizados
+        </p>
+        <p
+          v-if="!state.technical.research?.generated_at"
+          class="text-body-2 mt-4"
+        >
+          Las referencias iniciales se sustituirán con los documentos
+          localizados para esta configuración cuando finalice la búsqueda.
         </p>
         <div class="manufacturer-grid mt-5">
           <article
@@ -66,6 +127,21 @@
                 }}</v-chip
               >
             </div>
+            <p
+              v-if="document.origin === 'OPENAI_WEB'"
+              class="text-caption mt-3"
+            >
+              Búsqueda OpenAI ·
+              {{
+                document.source_type === "OFICIAL"
+                  ? "Sitio del fabricante"
+                  : "Fuente externa por validar"
+              }}{{
+                document.match_level === "FAMILIA"
+                  ? " · Referencia de familia"
+                  : ""
+              }}
+            </p>
             <a
               :href="document.url"
               target="_blank"
@@ -90,13 +166,39 @@
               Compartición:
               {{
                 document.scope_refs
-                  .map(
-                    (ref) =>
-                      state.technical?.components.find((c) => c.ref === ref)
-                        ?.name,
+                  .map((ref) =>
+                    ref === "ACTIVO"
+                      ? "Equipo completo"
+                      : state.technical?.components.find((c) => c.ref === ref)
+                          ?.name,
                   )
                   .join(", ") || "Motor sin vinculación inequívoca"
               }}
+            </p>
+            <v-table
+              v-if="document.parameters?.length"
+              class="lab-measurements manufacturer-parameters mt-4"
+              ><thead>
+                <tr>
+                  <th>Parámetro</th>
+                  <th>Valor documental</th>
+                  <th>Apartado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(parameter, index) in document.parameters"
+                  :key="index"
+                >
+                  <td>{{ parameter.name }}</td>
+                  <td>{{ parameter.value }} {{ parameter.unit }}</td>
+                  <td>{{ parameter.section }}</td>
+                </tr>
+              </tbody></v-table
+            >
+            <p v-if="document.parameters?.length" class="text-caption mt-3">
+              Valores del documento. Las opciones y referencias de familia
+              requieren confirmar su aplicación a la configuración instalada.
             </p>
             <ul v-if="document.criteria.length" class="evidence-gaps mt-4">
               <li v-for="criterion in document.criteria" :key="criterion">
@@ -278,7 +380,12 @@
             color="primary"
             prepend-icon="mdi-text-box-search-outline"
             :loading="busy"
-            :disabled="historical || !analysis?.available"
+            :disabled="
+              historical ||
+              !analysis?.available ||
+              researchBusy ||
+              research?.status !== 'READY'
+            "
             @click="$emit('analyze')"
             >{{
               analysis?.report ? "Actualizar análisis GPT" : "Analizar con GPT"
@@ -370,14 +477,20 @@
 </template>
 <script setup lang="ts">
 import { formatDateTime } from "@/app/utils/date-time";
-import type { TwinState, TwinAnalysis } from "@/app/types/digital-twin.types";
+import type {
+  TwinState,
+  TwinAnalysis,
+  TwinResearch,
+} from "@/app/types/digital-twin.types";
 defineProps<{
   state: TwinState;
   analysis: TwinAnalysis | null;
   busy: boolean;
   historical: boolean;
+  research: TwinResearch | null;
+  researchBusy: boolean;
 }>();
-defineEmits<{ analyze: [] }>();
+defineEmits<{ analyze: []; research: [] }>();
 const number = (v: number | null) =>
   v == null
     ? "—"

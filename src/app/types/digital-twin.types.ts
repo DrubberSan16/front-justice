@@ -153,7 +153,25 @@ export type TwinTechnical = {
     gaps: string[];
     criteria: string[];
     reviewed_at: string;
+    origin?: string;
+    source_type?: string;
+    match_level?: string;
+    covered_models?: string[];
+    parameters?: Array<{
+      name: string;
+      value: string;
+      unit: string;
+      section: string;
+    }>;
   }>;
+  research?: {
+    status: string;
+    configuration_hash: string;
+    generated_at: string | null;
+    expires_at: string | null;
+    summary: string;
+    web_calls: number;
+  };
   component_count: number;
   component_serial_count: number;
   scope: string;
@@ -192,6 +210,16 @@ export type TwinTechnical = {
     evidence_refs: string[];
   }>;
   facts: Array<{ ref: string; label: string; data: Record<string, unknown> }>;
+};
+export type TwinResearch = {
+  available: boolean;
+  status: "IDLE" | "QUEUED" | "RUNNING" | "READY" | "STALE" | "ERROR";
+  error: string | null;
+  configuration_hash: string;
+  cached: boolean;
+  generated_at?: string | null;
+  expires_at?: string | null;
+  document_count?: number;
 };
 export type TwinAnalysis = {
   available: boolean;

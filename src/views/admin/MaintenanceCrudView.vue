@@ -1082,7 +1082,8 @@ function normalizeLabel(item: any) {
 function getRelationFields(mode: "table" | "form" = "table") {
   const cfg = moduleConfig.value;
   if (!cfg) return [];
-  const sourceFields = mode === "form" ? cfg.fields : cfg.fields.slice(0, 6);
+  const tableKeys = cfg.listColumns?.map(column => column.key);
+  const sourceFields = mode === "form" ? cfg.fields : tableKeys?.length ? cfg.fields.filter(field => tableKeys.includes(field.key)) : visibleFields.value.slice(0, 6);
   return sourceFields.filter((field) => field.relation);
 }
 
@@ -1602,8 +1603,8 @@ const rows = computed(() => {
       out._raw = r;
       for (const field of cfg.fields) {
         if (field.type === "select" && field.relation && r[field.key]) {
-          const opt = (relationOptions.value[field.key] ?? []).find((x) => x.value === r[field.key]);
-          out[field.key] = opt?.title ?? r[field.key];
+          const opt = (relationOptions.value[field.key] ?? []).find((x) => String(x.value) === String(r[field.key]));
+          out[field.key] = opt?.title ?? (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(r[field.key])) ? 'Referencia no disponible' : r[field.key]);
         }
         if (isProcedureFrequencyHoursField(field) && r[field.key] !== null && r[field.key] !== undefined && r[field.key] !== "") {
           out[field.key] = formatProcedureFrequencyLabel(r[field.key]);

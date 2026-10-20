@@ -376,9 +376,12 @@
               v-else-if="tab === 'technical'"
               :state="display"
               :analysis="historical ? null : analysis"
+              :research="historical ? null : research"
+              :research-busy="researchBusy"
               :busy="analysisBusy"
               :historical="!!historical"
               @analyze="analyze"
+              @research="researchDocuments"
             />
             <TwinEventTimeline
               v-else-if="tab === 'events'"
@@ -569,6 +572,9 @@ const {
   assets,
   analysis,
   analysisBusy,
+  research,
+  researchBusy,
+  researchDocuments,
   analyze,
   selectedId,
   selected,
@@ -621,11 +627,13 @@ const tone = (value?: string) =>
       : value === "SIN_HALLAZGOS"
         ? "success"
         : "secondary";
-const equipmentTitle = (e: TwinEquipmentOption | string | null) =>
+const equipmentTitle = (e: TwinEquipmentOption | string | null): string =>
   e && typeof e === "object" && e.codigo
     ? `${buildEquipmentDisplayTitle(e)} · ${e.codigo}${e.serie ? ` · Serie ${e.serie}` : ""}`
     : typeof e === "string"
-      ? e
+      ? options.value.find((option) => option.id === e)
+        ? equipmentTitle(options.value.find((option) => option.id === e)!)
+        : "Cargando descripción del equipo…"
       : "";
 let searchTimer: ReturnType<typeof setTimeout>,
   equipmentTimer: ReturnType<typeof setTimeout>,
@@ -639,6 +647,10 @@ function scheduleSearch() {
 }
 function searchEquipment(term: string) {
   clearTimeout(equipmentTimer);
+  const current = options.value.find(
+    (option) => option.id === equipmentId.value,
+  );
+  if (current && term === equipmentTitle(current)) return;
   equipmentTimer = setTimeout(() => void loadEquipment(term), 300);
 }
 async function loadEquipment(term = "") {
@@ -646,7 +658,15 @@ async function loadEquipment(term = "") {
   optionsBusy.value = true;
   try {
     const rows = await equipmentOptions(term);
-    if (seq === optionSequence) options.value = rows;
+    if (seq === optionSequence) {
+      const current = options.value.find(
+        (option) => option.id === equipmentId.value,
+      );
+      options.value =
+        current && !rows.some((row) => row.id === current.id)
+          ? [current, ...rows]
+          : rows;
+    }
   } catch {
     error.value = "No se pudo consultar el catálogo de equipos.";
   } finally {
@@ -657,6 +677,26 @@ async function openForm(asset?: TwinAsset) {
   editId.value = asset?.id || "";
   assetName.value = asset?.name || "";
   equipmentId.value = asset?.equipment_id || "";
+  if (asset?.equipment_id) {
+    const identity = state.value?.identity;
+    const equipment =
+      identity?.id === asset.equipment_id
+        ? {
+            id: asset.equipment_id,
+            codigo: identity.code,
+            nombre: identity.name,
+            nombre_real: identity.operational_name,
+            modelo: identity.model,
+            marca_nombre: identity.brand,
+            serie: identity.serie,
+          }
+        : {
+            id: asset.equipment_id,
+            codigo: asset.equipment_code || "",
+            nombre: asset.equipment_name || "Equipo vinculado",
+          };
+    options.value = [equipment as TwinEquipmentOption];
+  }
   formOpen.value = true;
   await loadEquipment(asset?.equipment_code || "");
 }

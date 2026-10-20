@@ -8,6 +8,7 @@ import type {
   TwinState,
   TwinSimulationInput,
   TwinAnalysis,
+  TwinResearch,
 } from "@/app/types/digital-twin.types";
 
 const endpoint = "/kpi_process/digital-twins";
@@ -24,6 +25,7 @@ export function useDigitalTwin(enabled: () => boolean) {
   const busy = ref(false),
     analysis = ref<TwinAnalysis | null>(null),
     analysisBusy = ref(false),
+    research = ref<TwinResearch | null>(null),
     reading = ref(false),
     saving = ref(false),
     error = ref(""),
@@ -31,6 +33,16 @@ export function useDigitalTwin(enabled: () => boolean) {
   let activeRequest: AbortController | undefined,
     sequence = 0,
     listSequence = 0;
+  let researchTimer: ReturnType<typeof setTimeout> | undefined,
+    researchSequence = 0;
+  const researchBusy = computed(
+    () =>
+      research.value?.status === "QUEUED" ||
+      research.value?.status === "RUNNING",
+  );
+  const researchConfig = {
+    meta: { skipGlobalLoading: true, skipTechnicalHandling: true },
+  } as any;
   const message = (e: any) =>
     typeof e?.response?.data?.message === "string"
       ? e.response.data.message
@@ -74,6 +86,7 @@ export function useDigitalTwin(enabled: () => boolean) {
       state.value = data;
       error.value = "";
       void loadAnalysis();
+      if (!historical.value && !researchBusy.value) void loadResearch();
     } catch (e) {
       if (!controller.signal.aborted && seq === sequence)
         error.value = message(e);
@@ -103,7 +116,15 @@ export function useDigitalTwin(enabled: () => boolean) {
   }
   async function analyze() {
     const id = selectedId.value;
-    if (!id || !enabled() || historical.value || analysisBusy.value) return;
+    if (
+      !id ||
+      !enabled() ||
+      historical.value ||
+      analysisBusy.value ||
+      researchBusy.value ||
+      research.value?.status !== "READY"
+    )
+      return;
     analysisBusy.value = true;
     try {
       const { data } = await api.post(`${endpoint}/${id}/analysis`, undefined, {
@@ -118,6 +139,50 @@ export function useDigitalTwin(enabled: () => boolean) {
       if (id === selectedId.value) error.value = message(e);
     } finally {
       analysisBusy.value = false;
+    }
+  }
+  async function loadResearch(refresh = false) {
+    const id = selectedId.value,
+      seq = ++researchSequence;
+    if (!id || !enabled()) return;
+    clearTimeout(researchTimer);
+    try {
+      let { data } = await api.get(
+        `${endpoint}/${id}/research`,
+        researchConfig,
+      );
+      if (id !== selectedId.value || seq !== researchSequence) return;
+      if (
+        !historical.value &&
+        data.available &&
+        (refresh || data.status === "IDLE" || data.status === "STALE")
+      ) {
+        ({ data } = await api.post(
+          `${endpoint}/${id}/research`,
+          { refresh },
+          researchConfig,
+        ));
+        if (id !== selectedId.value || seq !== researchSequence) return;
+      }
+      const wasBusy = researchBusy.value;
+      research.value = data;
+      if (data.status === "RUNNING" || data.status === "QUEUED")
+        researchTimer = setTimeout(() => void loadResearch(), 3500);
+      else if (
+        !historical.value &&
+        data.status === "READY" &&
+        (wasBusy || state.value?.technical?.research?.status !== "COMPLETE")
+      )
+        void loadState();
+    } catch (e) {
+      if (id === selectedId.value && seq === researchSequence)
+        research.value = {
+          available: true,
+          status: "ERROR",
+          error: message(e),
+          configuration_hash: "",
+          cached: false,
+        };
     }
   }
   async function capture() {
@@ -216,6 +281,9 @@ export function useDigitalTwin(enabled: () => boolean) {
     simulation.value = null;
     historical.value = null;
     analysis.value = null;
+    research.value = null;
+    researchSequence++;
+    clearTimeout(researchTimer);
     if (selectedId.value) {
       void loadState();
       void loadHistory();
@@ -232,6 +300,8 @@ export function useDigitalTwin(enabled: () => boolean) {
       void loadState();
   }, 60000);
   onScopeDispose(() => {
+    clearTimeout(researchTimer);
+    researchSequence++;
     clearInterval(timer);
     activeRequest?.abort();
     sequence++;
@@ -240,6 +310,9 @@ export function useDigitalTwin(enabled: () => boolean) {
   return {
     assets,
     analysis,
+    research,
+    researchBusy,
+    researchDocuments: () => loadResearch(true),
     analysisBusy,
     analyze,
     selectedId,
