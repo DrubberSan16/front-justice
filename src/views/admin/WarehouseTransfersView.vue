@@ -192,6 +192,12 @@
 
           <v-list density="compact" min-width="260">
             <v-list-item
+              prepend-icon="mdi-printer-eye"
+              title="Previsualizar e imprimir"
+              :disabled="!item.id || Boolean(transferPdfDownloadingId)"
+              @click="downloadTransferPdf(item)"
+            />
+            <v-list-item
               v-if="canReadReception && !isAnnulledTransfer(item)"
               prepend-icon="mdi-clipboard-check-outline"
               title="Ver recepción de bodega"
@@ -206,13 +212,6 @@
               "
               :title="guideActionLabel(item)"
               @click="openGuideDialog(item)"
-            />
-            <v-list-item
-              v-if="item.id"
-              prepend-icon="mdi-file-pdf-box"
-              title="Previsualizar transferencia PDF"
-              :disabled="transferPdfDownloadingId === item.id"
-              @click="downloadTransferPdf(item)"
             />
             <v-list-item
               v-if="item.guia_remision_id && !isGuideAuthorizedSummary(item)"
@@ -1421,6 +1420,7 @@
   <PdfPreviewDialog
     :state="transferPdfPreview.state"
     :url="transferPdfPreview.url.value"
+    show-print
     @close="transferPdfPreview.close"
     @download="downloadTransferPdfFromPreview"
     @print="transferPdfPreview.openInNewTab"

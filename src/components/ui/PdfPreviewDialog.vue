@@ -18,6 +18,14 @@
                que se vean como parte del documento y no como otro boton mas. -->
           <slot name="opciones" />
           <v-btn
+            v-if="showPrint"
+            variant="tonal"
+            prepend-icon="mdi-printer"
+            :disabled="!url || state.loading"
+            @click="printPdf"
+            >Imprimir</v-btn
+          >
+          <v-btn
             variant="text"
             prepend-icon="mdi-open-in-new"
             :disabled="!url || state.loading"
@@ -55,6 +63,7 @@
         />
         <iframe
           v-else-if="url"
+          ref="previewFrame"
           :src="url"
           :title="state.title"
           class="pdf-preview__frame"
@@ -68,9 +77,12 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import type { PdfPreviewState } from "@/app/utils/pdf-preview";
 
-defineProps<{ state: PdfPreviewState; url: string }>();
+defineProps<{ state: PdfPreviewState; url: string; showPrint?: boolean }>();
+
+const previewFrame = ref<HTMLIFrameElement | null>(null);
 
 const emit = defineEmits<{
   (event: "close"): void;
@@ -78,6 +90,20 @@ const emit = defineEmits<{
   (event: "print"): void;
   (event: "update:visible", value: boolean): void;
 }>();
+
+function printPdf() {
+  const frameWindow = previewFrame.value?.contentWindow;
+  if (!frameWindow) {
+    emit("print");
+    return;
+  }
+  try {
+    frameWindow.focus();
+    frameWindow.print();
+  } catch {
+    emit("print");
+  }
+}
 </script>
 
 <style scoped>
