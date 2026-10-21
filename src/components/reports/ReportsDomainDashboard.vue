@@ -63,19 +63,10 @@
       </ReportTableCard>
     </section>
 
+    <!-- Lubricantes: reporte con la forma del Dashboard Gerencia, cada muestra
+         validada contra los límites del laboratorio (LubricantReportBoard). -->
     <section v-else-if="isLubricant" class="domain-stack">
-      <div class="metric-grid">
-        <MetricCard label="Muestras analizadas" :value="count(lubricantRows.length)" helper="Informes dentro del período" icon="mdi-test-tube" @preview="previewLubricant" />
-        <MetricCard label="Parámetros normales" :value="count(lubricantTotals.normal)" helper="Resultados sin alerta" icon="mdi-check-circle-outline" @preview="previewLubricant" />
-        <MetricCard label="En precaución" :value="count(lubricantTotals.warning)" helper="Parámetros que requieren seguimiento" icon="mdi-alert-outline" @preview="previewLubricant" />
-        <MetricCard label="Anormales" :value="count(lubricantTotals.abnormal)" helper="Parámetros fuera de condición" icon="mdi-alert-octagon-outline" @preview="previewLubricant" />
-      </div>
-      <ReportTableCard title="Diagnóstico por muestra" subtitle="Equipo, compartimento y condición reportada por el laboratorio." icon="mdi-oil-temperature" wide @preview="previewLubricant">
-        <table class="data-table"><thead><tr><th>Fecha muestra</th><th>Análisis</th><th>Unidad de generación</th><th>Central</th><th>Compartimento</th><th>Diagnóstico</th><th class="number">Normal</th><th class="number">Precaución</th><th class="number">Anormal</th></tr></thead><tbody><tr v-for="row in lubricantRows" :key="String(row.id || row.codigo)"><td>{{ date(row.fecha_muestra) }}</td><td><strong>{{ row.codigo || row.numero_muestra || '-' }}</strong></td><td>{{ buildEquipmentDisplayTitle(row) }}</td><td>{{ resolveEquipmentLocation(row) || 'Sin ubicación' }}</td><td>{{ row.compartimento_principal || '-' }}</td><td><v-chip size="small" variant="tonal">{{ row.estado_diagnostico || row.diagnostico || '-' }}</v-chip></td><td class="number">{{ count(summaryNumber(row, 'normal')) }}</td><td class="number">{{ count(summaryNumber(row, 'precaucion')) }}</td><td class="number">{{ count(summaryNumber(row, 'anormal')) }}</td></tr></tbody></table>
-      </ReportTableCard>
-      <ReportTableCard title="Parámetros que requieren seguimiento" subtitle="Resultados en precaución o anormales, agrupados por muestra." icon="mdi-flask-outline" wide @preview="previewLubricantParameters">
-        <table class="data-table"><thead><tr><th>Análisis</th><th>Equipo</th><th>Grupo</th><th>Parámetro</th><th>Resultado</th><th>Nivel</th></tr></thead><tbody><tr v-for="(row,index) in lubricantAlerts" :key="`${row.analysis}-${row.parameter}-${index}`"><td>{{ row.analysis }}</td><td>{{ row.equipment }}</td><td>{{ row.group }}</td><td><strong>{{ row.parameter }}</strong></td><td>{{ row.result }}</td><td><v-chip size="small" :color="/ANORMAL|CRITIC/.test(row.level) ? 'error' : 'warning'" variant="tonal">{{ row.level }}</v-chip></td></tr></tbody></table>
-      </ReportTableCard>
+      <LubricantReportBoard ref="lubricantBoard" :rows="lubricantRows" :start-date="startDate" :end-date="endDate" />
     </section>
 
     <section v-else-if="isMaterials" class="domain-stack">
@@ -152,7 +143,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
-import { equipmentAtWorkOrder, buildEquipmentDisplayTitle, buildEquipmentManagerLabel, resolveEquipmentLocation } from "@/app/utils/equipment-display";
+import { equipmentAtWorkOrder, buildEquipmentDisplayTitle, buildEquipmentManagerLabel } from "@/app/utils/equipment-display";
 import { formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { formatHorometerForDisplay, formatWorkedDuration } from "@/app/utils/number-format";
 import { transferStateLabel, transferStateColor, isTransferCompleted, transferReceiptTotals } from "@/app/utils/warehouse-reception";
@@ -172,6 +163,7 @@ import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import OperationalDocumentDetailDialog from "@/components/reports/OperationalDocumentDetailDialog.vue";
 import MetricCard from "@/components/reports/ReportMetricCard.vue";
 import ReportTableCard from "@/components/reports/ReportTableCard.vue";
+import LubricantReportBoard from "@/components/reports/LubricantReportBoard.vue";
 
 type AnyRow = Record<string, any>;
 type DocumentType = "kardex" | "transfer" | "purchase" | "service";
@@ -378,31 +370,7 @@ async function loadHorometerAdjustments(){
 function linkedOrders(row:ReportingRelationshipRow){ const map=new Map<string,AnyRow>(); for(const source of row.sourceRows as AnyRow[]){ const details=Array.isArray(source.detalle_ordenes)?source.detalle_ordenes:[]; for(const detail of details){const key=String(detail.work_order_code||detail.work_order_id||""); if(key){const current=map.get(key)||{};map.set(key,{...current,...detail,work_order_id:detail.work_order_id||current.work_order_id,hours:detail.total_horas??detail.effective_duration_hours??detail.flow_duration_hours??current.hours});}} if(source.work_order_code){const key=String(source.work_order_code);const current=map.get(key)||{};map.set(key,{...current,...source,work_order_id:source.work_order_id||current.work_order_id,hours:source.total_horas??source.horas??current.hours});} } return [...map.values()]; }
 
 const lubricantRows = computed(()=>props.rawRows.filter(row=>!isAnnulled(row)));
-function summaryNumber(row:AnyRow,key:string){ const summary=row.resumen_detalles||{}; return Number(summary[key]??summary[`total_${key}`]??0); }
-const lubricantTotals = computed(()=>lubricantRows.value.reduce((sum,row)=>({normal:sum.normal+summaryNumber(row,"normal"),warning:sum.warning+summaryNumber(row,"precaucion"),abnormal:sum.abnormal+summaryNumber(row,"anormal")}),{normal:0,warning:0,abnormal:0}));
-// La lista ya no repite los detalles agrupados (`detalle_grupos`): cada
-// detalle trae su grupo en `grupo_label`.
-const lubricantAlerts = computed(() =>
-  lubricantRows.value.flatMap((row) =>
-    (row.detalles || [])
-      .filter((item: AnyRow) =>
-        /PRECAUC|ANORMAL|CRITIC|ALERTA/.test(
-          normalize(item.nivel_alerta || item.estado),
-        ),
-      )
-      .map((item: AnyRow) => ({
-        analysis: row.codigo || row.numero_muestra || "-",
-        equipment: row.equipo_nombre || "-",
-        group: item.grupo_label || item.grupo || "-",
-        parameter: item.parametro_label || item.parametro || "-",
-        result: [item.resultado_numerico ?? item.resultado_texto, item.unidad]
-          .filter((value) => value !== null && value !== undefined && value !== "")
-          .join(" "),
-        level: normalize(item.nivel_alerta || item.estado) || "PRECAUCION",
-      })),
-  ),
-);
-
+const lubricantBoard = ref<InstanceType<typeof LubricantReportBoard> | null>(null);
 const materialProducts = computed(()=>props.rawRows);
 const stocks = ref<AnyRow[]>([]); const reservationRows = ref<AnyRow[]>([]); const materialCategories = ref<AnyRow[]>([]);
 const categoryMap = computed(()=>new Map(materialCategories.value.map(row=>[String(row.id),String(row.nombre||row.codigo||"")])));
@@ -512,8 +480,6 @@ function buildEquipmentTraceReport(){const rows=equipmentTraceRows.value;return 
 function buildEquipmentSummaryReport(){return reportDefinition("Consolidado de equipos",equipmentSummaryExportRows(equipmentRows.value),EQUIPMENT_SUMMARY_COLUMNS,[],true);}
 function previewEquipmentTable(type:"hours"|"cost"){ void type; return previewEquipmentSummary(); }
 function buildHorometerAdjustmentsReport(){const rows=horometerAdjustmentRows.value;return reportDefinition("Ajustes directos de horómetro",rows.map(r=>({equipo:r.equipmentLabel,fecha:r.changedAt,anterior:r.previous,corregido:r.next,diferencia:r.difference,motivo:r.reason||"Sin motivo registrado",usuario:r.user||"-"})),[{key:"equipo",header:"Equipo",width:34},{key:"fecha",header:"Fecha",format:"datetime",width:15},{key:"anterior",header:"Horómetro anterior",format:"horometer",width:12},{key:"corregido",header:"Corregido a",format:"horometer",width:12},{key:"diferencia",header:"Diferencia",format:"horometer",width:11},{key:"motivo",header:"Motivo",width:34},{key:"usuario",header:"Registrado por",width:18}],[{label:"Ajustes",value:rows.length},{label:"Equipos",value:new Set(rows.map(r=>r.equipmentLabel)).size},{label:"Horas corregidas",value:formatHorometerForDisplay(rows.reduce((sum,r)=>sum+Math.abs(r.difference??0),0))}],true);}
-function buildLubricantReport(){return reportDefinition("Diagnóstico de análisis de lubricante",lubricantRows.value.map(r=>({fecha:r.fecha_muestra,codigo:r.codigo,equipo:buildEquipmentDisplayTitle(r),central:resolveEquipmentLocation(r)||"Sin ubicación",compartimento:r.compartimento_principal,diagnostico:r.estado_diagnostico||r.diagnostico,normal:summaryNumber(r,"normal"),precaucion:summaryNumber(r,"precaucion"),anormal:summaryNumber(r,"anormal")})),[{key:"fecha",header:"Fecha",format:"date"},{key:"codigo",header:"Análisis"},{key:"equipo",header:"Unidad de generación"},{key:"central",header:"Central"},{key:"compartimento",header:"Compartimento"},{key:"diagnostico",header:"Diagnóstico"},{key:"normal",header:"Normal",format:"number"},{key:"precaucion",header:"Precaución",format:"number"},{key:"anormal",header:"Anormal",format:"number"}]);}
-function buildLubricantParametersReport(){return reportDefinition("Parámetros de lubricante que requieren seguimiento",lubricantAlerts.value,[{key:"analysis",header:"Análisis"},{key:"equipment",header:"Equipo"},{key:"group",header:"Grupo"},{key:"parameter",header:"Parámetro"},{key:"result",header:"Resultado"},{key:"level",header:"Nivel"}]);}
 function buildMaterialSummaryReport(){return reportDefinition("Resumen informativo de materiales",materialProducts.value.map(r=>({material:buildProductDisplayTitle(r),categoria:materialCategory(r),tipo:r.es_servicio?"Servicio":r.es_aceite?"Aceite":/REPUEST/.test(normalize(materialCategory(r)))?"Repuesto":"Material",costo:productUnitCost(r)})),[{key:"material",header:"Material"},{key:"categoria",header:"Categoría"},{key:"tipo",header:"Tipo"},{key:"costo",header:"Costo",format:"currency"}]);}
 function buildWarehouseMaterialsReport(){return reportDefinition("Cantidad de materiales por bodega",warehouseMaterialRows.value,[{key:"label",header:"Bodega"},{key:"materials",header:"Materiales distintos",format:"number"},{key:"value",header:"Costo total",format:"currency"}]);}
 function buildTopValueMaterialsReport(){return reportDefinition("Materiales con mayor valor",topValueMaterials.value,[{key:"label",header:"Material"},{key:"stock",header:"Stock",format:"number"},{key:"unitCost",header:"Costo unitario",format:"currency"},{key:"value",header:"Valor",format:"currency"}]);}
@@ -531,8 +497,6 @@ function previewOrders(){return reportPreview.open("pdf",buildOrdersReport());}
 function previewEquipmentTrace(){return reportPreview.open("pdf",buildEquipmentTraceReport());}
 function previewEquipmentSummary(){return reportPreview.open("pdf",buildEquipmentSummaryReport());}
 function previewHorometerAdjustments(){return reportPreview.open("pdf",buildHorometerAdjustmentsReport());}
-function previewLubricant(){return reportPreview.open("pdf",buildLubricantReport());}
-function previewLubricantParameters(){return reportPreview.open("pdf",buildLubricantParametersReport());}
 function previewMaterialSummary(){return reportPreview.open("pdf",buildMaterialSummaryReport());}
 function previewWarehouseMaterials(){return reportPreview.open("pdf",buildWarehouseMaterialsReport());}
 function previewTopValueMaterials(){return reportPreview.open("pdf",buildTopValueMaterialsReport());}
@@ -542,14 +506,14 @@ function previewMaterialTimeline(){return reportPreview.open("pdf",buildMaterial
 function previewOperationalDocuments(){return reportPreview.open("pdf",buildOperationalDocumentsReport());}
 
 async function buildModuleReport(): Promise<ReportDefinition> {
+  // Lubricantes arma su propio reporte, con los detalles que pide al exportar.
+  if (isLubricant.value && lubricantBoard.value) return lubricantBoard.value.buildModuleReport();
   await supportReady;
   let reports: ReportDefinition[] = [];
   if (isWorkOrder.value) {
     reports = [buildOrdersReport(), ...(!isProjectOrders.value ? [buildEquipmentTraceReport()] : [])];
   } else if (isEquipment.value) {
     reports = [buildEquipmentSummaryReport(), buildHorometerAdjustmentsReport(), equipmentLocationReport(props.rawRows)];
-  } else if (isLubricant.value) {
-    reports = [buildLubricantReport(), buildLubricantParametersReport()];
   } else if (isMaterials.value) {
     reports = materialView.value === "detalle"
       ? [buildMaterialTimelineReport()]
@@ -566,7 +530,6 @@ async function buildModuleReport(): Promise<ReportDefinition> {
       ...(reports[0]?.summary || []),
       ...(isWorkOrder.value ? workOrderStatusCards.value.map(card => ({ label: card.label, value: card.rows.length })) : []),
       ...(isEquipment.value ? [{ label: "Equipos con actividad", value: equipmentRows.value.length }, { label: "OT vinculadas", value: totalEquipmentOrders.value }, { label: "Horas trabajadas", value: hours(totalEquipmentHours.value) }, { label: "Costo de mantenimiento", value: currency(totalEquipmentCost.value) }] : []),
-      ...(isLubricant.value ? [{ label: "Muestras analizadas", value: lubricantRows.value.length }, { label: "Parámetros normales", value: lubricantTotals.value.normal }, { label: "En precaución", value: lubricantTotals.value.warning }, { label: "Anormales", value: lubricantTotals.value.abnormal }] : []),
       ...(isMaterials.value && materialView.value !== "detalle" ? [{ label: "Materiales registrados", value: materialProducts.value.length }, { label: "Repuestos", value: materialTypeCounts.value.spares }, { label: "Servicios", value: materialTypeCounts.value.services }, { label: "Aceites", value: materialTypeCounts.value.oils }] : []),
       ...(isMaterials.value && materialView.value === "detalle" ? [{ label: "Material", value: selectedMaterialLabel.value }, { label: "Movimientos del período", value: materialMovements.value.length }] : []),
       ...(isOperationalDocument.value ? documentMetrics.value.map(card => ({ label: card.label, value: card.value })) : []),

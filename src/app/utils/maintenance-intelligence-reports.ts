@@ -8,6 +8,7 @@ import {
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 import { reportDisplayLabel, formatWorkOrderHistoryNote } from "@/app/utils/work-order-audit";
 import { formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
+import { buildEquipmentDisplayTitle, resolveEquipmentLocation } from "@/app/utils/equipment-display";
 import {
   formatCurrencyForDisplay,
   formatHorometerForDisplay,
@@ -1735,6 +1736,65 @@ export function buildProceduresReport(procedures: AnyRow[]) {
     sheets: [
       { name: "Procedimientos", rows: procedureRows, note: "Base documental activa para los tipos de mantenimiento, incluido SSA." },
       { name: "Actividades", rows: activityRows },
+    ],
+  } satisfies ReportDefinition;
+}
+
+export function buildLubricantReport(analyses: AnyRow[]) {
+  const analysisRows = analyses.map((item) => ({
+    codigo: item.codigo,
+    cliente: item.cliente ?? "",
+    unidad_generacion: buildEquipmentDisplayTitle(item),
+    central: resolveEquipmentLocation(item) || "Sin ubicación",
+    lubricante: item.lubricante ?? item.equipo_codigo ?? "",
+    marca_lubricante: item.marca_lubricante ?? item.equipo_nombre ?? "",
+    compartimento_principal: item.compartimento_principal ?? "",
+    fecha_muestra: item.fecha_muestra ?? "",
+    fecha_reporte: item.fecha_reporte ?? "",
+    estado_diagnostico: item.estado_diagnostico ?? "",
+    diagnostico: item.diagnostico ?? "",
+  }));
+
+  const detailRows = analyses.flatMap((item) =>
+    (item.detalles ?? []).map((detail: AnyRow) => ({
+      analisis_codigo: item.codigo,
+      unidad_generacion: buildEquipmentDisplayTitle(item),
+      central: resolveEquipmentLocation(item) || "Sin ubicación",
+      lubricante: item.lubricante ?? item.equipo_codigo ?? "",
+      marca_lubricante: item.marca_lubricante ?? item.equipo_nombre ?? "",
+      compartimento: detail.compartimento ?? "",
+      numero_muestra: detail.numero_muestra ?? "",
+      parametro: detail.parametro ?? "",
+      resultado_numerico: detail.resultado_numerico ?? "",
+      resultado_texto: detail.resultado_texto ?? "",
+      unidad: detail.unidad ?? "",
+      nivel_alerta: detail.nivel_alerta ?? "",
+      tendencia: detail.tendencia ?? "",
+      observacion: detail.observacion ?? "",
+    })),
+  );
+
+  // El servidor marca ANORMAL, nunca ALERTA: este conteo daba siempre cero.
+  const alerts = analyses.filter(
+    (item) => String(item.estado_diagnostico || "").toUpperCase() === "ANORMAL",
+  ).length;
+
+  return {
+    fileName: `analisis_lubricante_${formatDateForInput(new Date())}`,
+    title: "Reporte de análisis de lubricante",
+    subtitle: "Resultados, tendencias y detalle por compartimento para monitoreo predictivo.",
+    summary: [
+      { label: "Análisis cargados", value: analysisRows.length },
+      {
+        label: "Lubricantes registrados",
+        value: new Set(analysisRows.map((item) => item.lubricante).filter(Boolean)).size,
+      },
+      { label: "Casos en alerta", value: alerts },
+      { label: "Parámetros evaluados", value: detailRows.length },
+    ],
+    sheets: [
+      { name: "Análisis", rows: analysisRows, note: "Cabecera consolidada del análisis de lubricantes." },
+      { name: "Detalle", rows: detailRows, groupBy: ["analisis_codigo"] },
     ],
   } satisfies ReportDefinition;
 }

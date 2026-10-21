@@ -197,6 +197,9 @@ export const REPORTING_MODULES: ReportingModule[] = [
     group: "Mantenimiento",
     routeName: "inteligencia-analisis-lubricante",
     endpoint: "/kpi_maintenance/inteligencia/analisis-lubricante",
+    // Lista resumida: trae `hallazgos` (lo fuera de límite) y pesa ~240 KB
+    // en vez de ~4,5 MB; los detalles se piden al abrir un equipo o exportar.
+    requestParams: { resumen: "true" },
     dateFields: ["fecha_muestra", "fecha_reporte", "created_at"],
     titleFields: ["numero_muestra", "codigo", "lubricante", "equipo_nombre"],
     statusFields: ["estado_diagnostico", "condicion", "status"],

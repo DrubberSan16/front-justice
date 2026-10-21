@@ -1336,12 +1336,12 @@ import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import {
   buildDailyReportsReport,
   buildIndicatorsReport,
+  buildLubricantReport,
   buildOilConsumptionReport,
   buildProceduresReport,
   buildWeeklyScheduleReport,
   type ReportChart,
 } from "@/app/utils/maintenance-intelligence-reports";
-import { buildLubricantReport } from "@/app/utils/lubricant-report";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
@@ -2072,11 +2072,11 @@ async function loadFilteredAnalysesWithDetails() {
   return filteredAnalyses.value.map((item) => fullById.get(String(item.id)) ?? item);
 }
 
-async function moduleReport(moduleKey: string, format: "excel" | "pdf") {
+async function moduleReport(moduleKey: string) {
   if (moduleKey === "indicadores") return buildIndicatorsReport(summary);
   if (moduleKey === "procedimientos") return buildProceduresReport(procedures.value);
   if (moduleKey === "analisis") {
-    return buildLubricantReport(await loadFilteredAnalysesWithDetails(), { format });
+    return buildLubricantReport(await loadFilteredAnalysesWithDetails());
   }
   if (moduleKey === "reportes") return buildDailyReportsReport(filteredDailyReports.value);
   return buildWeeklyScheduleReport(filteredSchedules.value);
@@ -2100,7 +2100,7 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
   error.value = null;
 
   try {
-    await reportPreview.open(format === "excel" ? "excel" : "pdf", await moduleReport(moduleKey, format));
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", await moduleReport(moduleKey));
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte solicitado.";
   } finally {

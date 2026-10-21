@@ -1,831 +1,398 @@
 <template>
-  <div class="lub-panel">
+  <div class="dashboard-panel">
     <v-alert v-if="error" type="warning" variant="tonal" :text="error" />
 
-    <div v-else-if="loading" class="lub-panel__state" role="status">
+    <div v-else-if="loading" class="dashboard-state">
       <v-progress-circular indeterminate color="primary" />
-      <span>Cargando el análisis del equipo...</span>
+      <span>Cargando dashboard de lubricante...</span>
     </div>
 
-    <div v-else-if="!dashboard?.selected" class="lub-panel__state">
-      <v-icon icon="mdi-oil" size="28" aria-hidden="true" />
-      <span>Selecciona un equipo para ver la validación de su última muestra y sus tendencias.</span>
+    <div v-else-if="!dashboard?.selected" class="dashboard-state">
+      <v-icon icon="mdi-oil" size="28" />
+      <span>Selecciona un lubricante para ver su historial, tendencias y reporte.</span>
     </div>
 
-    <template v-else>
-      <!-- 1. Quién es y cuántas muestras hay en el rango -->
-      <section class="lub-panel__head" aria-label="Equipo y muestras del rango">
-        <div class="lub-panel__identity">
-          <span class="lub-eyebrow">Equipo y aceite</span>
-          <h3>{{ equipmentTitle(latest ?? dashboard.selected) }}</h3>
-          <p>
-            {{ dashboard.selected.lubricante || "Sin lubricante" }}
-            <template v-if="dashboard.selected.marca_lubricante">· {{ dashboard.selected.marca_lubricante }}</template>
-            · {{ dashboard.selected.compartimentos?.join(", ") || "Sin compartimento" }}
-          </p>
-          <p class="lub-muted">{{ rangeLabel }}</p>
+    <div v-else class="dashboard-grid">
+      <v-card rounded="xl" class="pa-4 enterprise-surface">
+        <div class="d-flex align-start justify-space-between" style="gap: 12px; flex-wrap: wrap;">
+          <div>
+            <div class="text-h6 font-weight-bold">{{ dashboard.selected.lubricante }}</div>
+            <div class="text-body-2 text-medium-emphasis">
+              {{ dashboard.selected.marca_lubricante || "Marca sin registrar" }}
+            </div>
+            <div class="text-body-2 text-medium-emphasis mt-1">
+              {{ equipmentTitle(dashboard.selected) }}
+            </div>
+            <div class="text-caption text-medium-emphasis mt-1">
+              {{ dashboard.selected.compartimentos?.join(" - ") || "Sin compartimentos" }}
+            </div>
+          </div>
+          <div class="d-flex flex-wrap" style="gap: 8px;">
+            <v-chip color="primary" variant="tonal" label>
+              {{ dashboard.metrics?.analisis_filtrados ?? 0 }} analisis
+            </v-chip>
+            <v-chip color="warning" variant="tonal" label>
+              {{ dashboard.metrics?.precauciones ?? 0 }} precauciones
+            </v-chip>
+            <v-chip color="error" variant="tonal" label>
+              {{ dashboard.metrics?.anormales ?? 0 }} anormales
+            </v-chip>
+            <v-chip color="secondary" variant="tonal" label>
+              {{ dashboard.metrics?.sin_dato ?? 0 }} sin dato
+            </v-chip>
+          </div>
         </div>
-        <dl class="lub-panel__counts">
-          <div class="lub-count">
-            <dt>Muestras</dt>
-            <dd>{{ sampleCount }}</dd>
-          </div>
-          <div
-            v-for="entry in levelCounts"
-            :key="entry.level"
-            class="lub-count"
-            :class="`lub-count--${entry.color}`"
-          >
-            <dt>
-              <v-icon :icon="entry.icon" size="16" aria-hidden="true" />
-              {{ entry.title }}
-            </dt>
-            <dd>{{ entry.count }}</dd>
-          </div>
-        </dl>
-      </section>
 
-      <!-- 2. Veredicto de la última muestra, con lo que lo causó -->
-      <section
-        v-if="latest"
-        class="lub-verdict"
-        :class="`lub-verdict--${latestMeta.color}`"
-        aria-labelledby="lub-verdict-title"
-      >
-        <v-icon :icon="latestMeta.icon" size="30" class="lub-verdict__icon" aria-hidden="true" />
-        <div class="lub-verdict__body">
-          <span class="lub-eyebrow">
-            Última muestra · {{ latestDate || "Sin fecha" }}
-            <template v-if="latest.sample_info?.numero_muestra">· {{ latest.sample_info.numero_muestra }}</template>
-          </span>
-          <h4 id="lub-verdict-title">{{ verdictTitle }}</h4>
-          <p>{{ latestMeta.meaning }}</p>
-          <ul v-if="findings.length" class="lub-findings">
-            <li v-for="finding in findings" :key="finding.key">
-              <v-chip size="x-small" :color="finding.meta.color" variant="flat" label>
-                {{ finding.meta.title }}
-              </v-chip>
-              <span>
-                <strong>{{ finding.label }}: {{ finding.resultText }}</strong>
-                <template v-if="finding.triggerText"> — límite {{ finding.triggerText }}.</template>
-                <span v-if="finding.guide" class="lub-muted">{{ " " + finding.guide.outOfRange }}</span>
-              </span>
-            </li>
-          </ul>
+        <div class="dashboard-kpis mt-4">
+          <div class="dashboard-kpi">
+            <div class="text-caption text-medium-emphasis">Lubricantes registrados</div>
+            <div class="text-h5 font-weight-bold">{{ dashboard.metrics?.lubricantes_registrados ?? 0 }}</div>
+          </div>
+          <div class="dashboard-kpi">
+            <div class="text-caption text-medium-emphasis">Compartimentos monitoreados</div>
+            <div class="text-h5 font-weight-bold">{{ dashboard.metrics?.compartimentos_monitoreados ?? 0 }}</div>
+          </div>
+          <div class="dashboard-kpi">
+            <div class="text-caption text-medium-emphasis">Periodo</div>
+            <div class="text-body-1 font-weight-medium">
+              {{ dashboard.filters?.periodo || "GLOBAL" }}
+            </div>
+          </div>
+          <div class="dashboard-kpi">
+            <div class="text-caption text-medium-emphasis">Rango</div>
+            <div class="text-body-1 font-weight-medium">
+              {{ dashboard.filters?.from || "Inicio" }} / {{ dashboard.filters?.to || "Actual" }}
+            </div>
+          </div>
         </div>
-        <dl class="lub-verdict__hours">
-          <div>
-            <dt>Horas del equipo</dt>
-            <dd>{{ formatHours(latest.sample_info?.horas_equipo) }}</dd>
-          </div>
-          <div>
-            <dt>Horas del aceite</dt>
-            <dd>{{ formatHours(latest.sample_info?.horas_lubricante) }}</dd>
-          </div>
-        </dl>
-      </section>
+      </v-card>
 
-      <!-- 3. Cada resultado contra su límite -->
-      <section class="lub-section" aria-labelledby="lub-validation-title">
-        <header class="lub-section__head">
-          <div>
-            <h4 id="lub-validation-title">Validación por parámetro</h4>
-            <p>
-              Resultado de la última muestra frente a los límites que fijó el laboratorio para ese
-              parámetro. «Muestra anterior» ayuda a ver si va subiendo o bajando.
-            </p>
+      <v-card rounded="xl" class="pa-4 enterprise-surface">
+        <div class="text-subtitle-1 font-weight-bold mb-3">Historial de muestras</div>
+        <v-table density="compact" class="report-table">
+          <thead>
+            <tr>
+              <th>Codigo</th>
+              <th>Muestra</th>
+              <th>Fecha informe</th>
+              <th>Equipo</th>
+              <th>Modelo</th>
+              <th>Compartimento</th>
+              <th>Condicion</th>
+              <th>Equipo Hrs/Km</th>
+              <th>Aceite Hrs/Km</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in dashboard.timeline ?? []" :key="item.id">
+              <td>{{ item.codigo }}</td>
+              <td>{{ item.numero_muestra || "Sin muestra" }}</td>
+              <td>{{ item.fecha_reporte || item.fecha_muestra || "Sin fecha" }}</td>
+              <td>{{ equipmentTitle(item) }}</td>
+              <td>{{ item.equipo_modelo || "Sin modelo" }}</td>
+              <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
+              <td>
+                <v-chip size="x-small" :color="conditionColor(item.condicion)" variant="tonal">
+                  {{ item.condicion || "N/D" }}
+                </v-chip>
+              </td>
+              <td>{{ item.horas_equipo ?? "N/A" }}</td>
+              <td>{{ item.horas_lubricante ?? "N/A" }}</td>
+            </tr>
+          </tbody>
+        </v-table>
+      </v-card>
+
+      <v-card rounded="xl" class="pa-4 enterprise-surface">
+        <div class="text-subtitle-1 font-weight-bold mb-3">Ultimo reporte tipo excel</div>
+        <div v-if="dashboard.latest_analysis" class="report-layout">
+          <div class="report-header-grid">
+            <div>
+              <div class="text-caption text-medium-emphasis">Cliente</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.cliente || "Sin cliente" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Compartimento</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.compartimento_principal || "Sin compartimento" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Equipo</div>
+              <div class="font-weight-medium">
+                {{ equipmentTitle(dashboard.latest_analysis) }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Marca</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.equipo_marca || "Sin marca" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Serie</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.equipo_serie || "Sin serie" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Modelo</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.equipo_modelo || "Sin modelo" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Lubricante</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.lubricante || "Sin lubricante" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Marca del lubricante</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.marca_lubricante || "Sin marca" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Numero de muestra</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.numero_muestra || "Sin numero" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Fecha de muestreo</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.fecha_muestra || "Sin fecha" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Fecha de ingreso</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.fecha_ingreso || "Sin fecha" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Fecha de informe</div>
+              <div class="font-weight-medium">
+                {{
+                  dashboard.latest_analysis.sample_info?.fecha_informe ||
+                  dashboard.latest_analysis.fecha_reporte ||
+                  "Sin fecha"
+                }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Equipo Hrs/Km</div>
+              <div class="font-weight-medium">{{ dashboard.latest_analysis.sample_info?.horas_equipo ?? "N/A" }}</div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Aceite Hrs/Km</div>
+              <div class="font-weight-medium">
+                {{ dashboard.latest_analysis.sample_info?.horas_lubricante ?? "N/A" }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Condicion</div>
+              <div class="font-weight-medium">
+                {{
+                  dashboard.latest_analysis.sample_info?.condicion ||
+                  dashboard.latest_analysis.estado_diagnostico ||
+                  "N/D"
+                }}
+              </div>
+            </div>
+            <div>
+              <div class="text-caption text-medium-emphasis">Evaluacion</div>
+              <div class="font-weight-medium">
+                {{
+                  dashboard.latest_analysis.evaluacion_ultima_muestra ||
+                  dashboard.latest_analysis.diagnostico ||
+                  "Sin evaluacion"
+                }}
+              </div>
+            </div>
           </div>
-          <v-switch
-            v-model="onlyOutOfRange"
-            color="primary"
-            density="compact"
-            hide-details
-            inset
-            :label="`Solo fuera de límite (${findings.length})`"
-            :disabled="!findings.length"
+
+          <v-alert
+            class="mt-4"
+            :color="conditionColor(dashboard.latest_analysis.estado_diagnostico)"
+            variant="tonal"
+            :text="dashboard.latest_analysis.diagnostico || 'Sin evaluacion para la ultima muestra.'"
           />
-        </header>
 
-        <div v-if="visibleValidationGroups.length" class="lub-table-wrap">
-          <table class="lub-table">
-            <thead>
-              <tr>
-                <th scope="col">Parámetro</th>
-                <th scope="col" class="lub-num">Resultado</th>
-                <th scope="col">Precaución</th>
-                <th scope="col">Anormal</th>
-                <th scope="col">Estado</th>
-                <th scope="col" class="lub-num">Muestra anterior</th>
-              </tr>
-            </thead>
-            <tbody v-for="group in visibleValidationGroups" :key="group.key">
-              <tr class="lub-table__group">
-                <th colspan="6" scope="colgroup">
-                  {{ group.label }}
-                  <span v-if="group.guide">{{ group.guide }}</span>
-                </th>
-              </tr>
-              <tr
-                v-for="row in group.rows"
-                :key="row.key"
-                :class="`lub-table__row--${row.meta.color}`"
-              >
-                <th scope="row">
-                  <span class="lub-param">{{ row.label }}</span>
-                  <span v-if="row.guide" class="lub-param__guide">{{ row.guide.what }}</span>
-                </th>
-                <td class="lub-num">{{ row.resultText }}</td>
-                <td>{{ row.warningText || "—" }}</td>
-                <td>{{ row.alertText || "—" }}</td>
-                <td>
-                  <v-chip size="small" :color="row.meta.color" variant="tonal" :prepend-icon="row.meta.icon">
-                    {{ row.meta.title }}
-                  </v-chip>
-                </td>
-                <td class="lub-num">
-                  {{ row.previousText }}
-                  <span v-if="row.deltaText" class="lub-delta">{{ row.deltaText }}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div v-else class="lub-panel__state lub-panel__state--compact">
-          La última muestra no trae resultados por parámetro.
-        </div>
-      </section>
-
-      <!-- 4. Tendencias: cada gráfico con sus líneas de límite -->
-      <section class="lub-section" aria-labelledby="lub-trends-title">
-        <header class="lub-section__head">
-          <div>
-            <h4 id="lub-trends-title">Tendencias con sus límites</h4>
-            <p>
-              Línea azul: resultado de cada muestra. Línea ámbar punteada: límite de precaución. Línea roja:
-              límite anormal. Primero van los parámetros que salieron de su límite en el rango.
-            </p>
+          <div class="mt-4" v-for="group in dashboard.detail_groups ?? []" :key="group.key">
+            <div class="text-subtitle-2 font-weight-bold mb-2">{{ group.label }}</div>
+            <v-table density="compact" class="report-table mb-4">
+              <thead>
+                <tr>
+                  <th>Parametro</th>
+                  <th>Resultado</th>
+                  <th>Unidad</th>
+                  <th>Linea base</th>
+                  <th>Tendencia</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="detail in group.detalles" :key="detail.id">
+                  <td>{{ detail.parametro_label || detail.parametro }}</td>
+                  <td>{{ detail.resultado_numerico ?? detail.resultado_texto ?? "N/D" }}</td>
+                  <td>{{ detail.unidad || "-" }}</td>
+                  <td>{{ detail.linea_base_display ?? detail.linea_base_label ?? detail.linea_base_resuelta ?? detail.linea_base ?? "N/D" }}</td>
+                  <td>{{ detail.delta_valor ?? detail.tendencia ?? "N/D" }}</td>
+                  <td>
+                    <v-chip size="x-small" :color="conditionColor(detail.nivel_alerta)" variant="tonal">
+                      {{ detail.nivel_alerta || "N/D" }}
+                    </v-chip>
+                  </td>
+                </tr>
+              </tbody>
+            </v-table>
           </div>
-        </header>
-        <div class="lub-filter" role="group" aria-label="Filtrar gráficos por grupo">
-          <v-btn
-            v-for="option in chartFilterOptions"
-            :key="option.key"
-            size="small"
-            :variant="chartFilter === option.key ? 'flat' : 'tonal'"
-            :color="chartFilter === option.key ? 'primary' : undefined"
-            :aria-pressed="chartFilter === option.key"
-            @click="chartFilter = option.key"
-          >
-            {{ option.title }} · {{ option.count }}
-          </v-btn>
         </div>
-        <div v-if="visibleMetrics.length" class="lub-charts">
-          <LubricantTrendChart
-            v-for="metric in visibleMetrics"
-            :key="metric.key"
-            :title="metric.label"
-            :subtitle="metricSubtitle(metric)"
-            :unit="metric.unit"
-            :points="metric.points"
-          />
-        </div>
-        <div v-else class="lub-panel__state lub-panel__state--compact">
-          No hay resultados numéricos para graficar en este grupo.
-        </div>
-      </section>
+      </v-card>
 
-      <!-- 5. Historial -->
-      <section class="lub-section" aria-labelledby="lub-history-title">
-        <header class="lub-section__head">
-          <div>
-            <h4 id="lub-history-title">Historial de muestras</h4>
-            <p>{{ sampleCount }} muestras en el rango, de la más reciente a la más antigua.</p>
+      <div class="charts-grid">
+        <v-card
+          v-for="section in dashboard.chart_sections ?? []"
+          :key="section.key"
+          rounded="xl"
+          class="pa-4 enterprise-surface"
+        >
+          <div class="text-subtitle-1 font-weight-bold mb-3">{{ section.title }}</div>
+          <div class="chart-grid-inner">
+            <LubricantTrendChart
+              v-for="metric in section.metrics"
+              :key="metric.key"
+              :title="metric.label"
+              :subtitle="metric.group_label"
+              :unit="metric.unit"
+              :points="metric.points"
+            />
+            <div v-if="!section.metrics?.length" class="dashboard-state dashboard-state--compact">
+              Sin metricas para este bloque.
+            </div>
           </div>
-        </header>
-        <div class="lub-table-wrap">
-          <table class="lub-table">
-            <thead>
-              <tr>
-                <th scope="col">Fecha de informe</th>
-                <th scope="col">Código</th>
-                <th scope="col">Muestra</th>
-                <th scope="col">Compartimento</th>
-                <th scope="col">Condición</th>
-                <th scope="col" class="lub-num">Horas equipo</th>
-                <th scope="col" class="lub-num">Horas aceite</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in timelineDesc" :key="item.id">
-                <td>{{ item.fecha_reporte || item.fecha_muestra || "Sin fecha" }}</td>
-                <td>{{ item.codigo }}</td>
-                <td>{{ item.numero_muestra || "Sin muestra" }}</td>
-                <td>{{ item.compartimento_principal || "Sin compartimento" }}</td>
-                <td>
-                  <v-chip
-                    size="x-small"
-                    :color="levelMeta(item.condicion).color"
-                    variant="tonal"
-                    :prepend-icon="levelMeta(item.condicion).icon"
-                  >
-                    {{ levelMeta(item.condicion).title }}
-                  </v-chip>
-                </td>
-                <td class="lub-num">{{ formatHours(item.horas_equipo) }}</td>
-                <td class="lub-num">{{ formatHours(item.horas_lubricante) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </template>
+        </v-card>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
 import LubricantTrendChart from "@/components/maintenance/LubricantTrendChart.vue";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
-import {
-  describeLubricantRule,
-  formatLubricantNumber,
-  lubricantGroupGuide,
-  lubricantLevelMeta,
-  lubricantParameterGuideFor,
-  normalizeLubricantLevel,
-  type LubricantLevel,
-} from "@/app/config/lubricant-analysis";
 
-type AnyRow = Record<string, any>;
-
-type ValidationRow = {
-  key: string;
-  label: string;
-  level: LubricantLevel;
-  meta: (typeof lubricantLevelMeta)[LubricantLevel];
-  resultText: string;
-  warningText: string | null;
-  alertText: string | null;
-  previousText: string;
-  deltaText: string;
-  guide: { what: string; outOfRange: string } | null;
-};
-
-type ValidationGroup = {
-  key: string;
-  label: string;
-  guide: string;
-  rows: ValidationRow[];
-};
-
-const props = defineProps<{
-  dashboard: AnyRow | null;
+defineProps<{
+  dashboard: Record<string, any> | null;
   loading?: boolean;
   error?: string | null;
 }>();
 
-const onlyOutOfRange = ref(false);
-const chartFilter = ref("todos");
-
-watch(
-  () => props.dashboard?.selected?.equipo_id,
-  () => {
-    onlyOutOfRange.value = false;
-    chartFilter.value = "todos";
-  },
-);
-
-function equipmentTitle(item: AnyRow | null | undefined) {
+function equipmentTitle(item: Record<string, any> | null | undefined) {
   return item?.equipo_nombre || item?.equipment_nombre
     ? buildEquipmentDisplayTitle(item)
     : "Sin equipo";
 }
 
-function levelMeta(value: unknown) {
-  return lubricantLevelMeta[normalizeLubricantLevel(value)];
+function conditionColor(value: unknown) {
+  const raw = String(value ?? "").trim().toUpperCase();
+  if (raw === "ANORMAL") return "error";
+  if (raw === "PRECAUCION") return "warning";
+  if (raw === "N/D" || raw === "ND") return "secondary";
+  return "success";
 }
-
-function formatHours(value: unknown) {
-  const text = formatLubricantNumber(value);
-  return text || "—";
-}
-
-const latest = computed<AnyRow | null>(() => props.dashboard?.latest_analysis ?? null);
-const latestLevel = computed<LubricantLevel>(() =>
-  normalizeLubricantLevel(latest.value?.estado_diagnostico ?? latest.value?.sample_info?.condicion),
-);
-const latestMeta = computed(() => lubricantLevelMeta[latestLevel.value]);
-const latestDate = computed(
-  () =>
-    latest.value?.sample_info?.fecha_informe ||
-    latest.value?.fecha_reporte ||
-    latest.value?.fecha_muestra ||
-    "",
-);
-
-const sampleCount = computed(() => Number(props.dashboard?.metrics?.analisis_filtrados ?? 0));
-
-const levelCounts = computed(() => {
-  const metrics = props.dashboard?.metrics ?? {};
-  const anormal = Number(metrics.anormales ?? 0);
-  const precaucion = Number(metrics.precauciones ?? 0);
-  const sinDato = Number(metrics.sin_dato ?? 0);
-  const counts: Record<LubricantLevel, number> = {
-    ANORMAL: anormal,
-    PRECAUCION: precaucion,
-    NORMAL: Math.max(0, sampleCount.value - anormal - precaucion - sinDato),
-    "N/D": sinDato,
-  };
-  return (["ANORMAL", "PRECAUCION", "NORMAL"] as LubricantLevel[]).map((level) => ({
-    level,
-    count: counts[level],
-    ...lubricantLevelMeta[level],
-  }));
-});
-
-const rangeLabel = computed(() => {
-  const filters = props.dashboard?.filters ?? {};
-  if (!filters.from && !filters.to) return "Todo el historial";
-  return `Del ${filters.from || "inicio"} al ${filters.to || "hoy"}`;
-});
-
-/** Series del gráfico por parámetro: de ahí sale el valor de la muestra anterior. */
-const metricsByKey = computed(() => {
-  const map = new Map<string, AnyRow>();
-  for (const section of props.dashboard?.chart_sections ?? []) {
-    for (const metric of section.metrics ?? []) {
-      if (metric?.key) map.set(String(metric.key), metric);
-    }
-  }
-  return map;
-});
-
-function previousPoint(key: string) {
-  const points: AnyRow[] = metricsByKey.value.get(key)?.points ?? [];
-  const latestId = latest.value?.id;
-  const index = points.findIndex((point) => point.analisis_id === latestId);
-  if (index > 0) return points[index - 1];
-  if (index === -1 && points.length) return points[points.length - 1];
-  return null;
-}
-
-function resultText(detail: AnyRow) {
-  const numeric = detail.resultado_numerico;
-  if (numeric !== null && numeric !== undefined && numeric !== "") {
-    return formatLubricantNumber(numeric, detail.unidad) || String(numeric);
-  }
-  return String(detail.resultado_texto ?? "").trim() || "Sin resultado";
-}
-
-/** Orden del informe del laboratorio, para leer la tabla junto al informe impreso. */
-const GROUP_ORDER = Object.keys(lubricantGroupGuide);
-
-function groupPosition(label: unknown) {
-  const index = GROUP_ORDER.indexOf(String(label ?? ""));
-  return index === -1 ? GROUP_ORDER.length : index;
-}
-
-const validationGroups = computed<ValidationGroup[]>(() =>
-  [...(props.dashboard?.detail_groups ?? [])]
-    .sort((a: AnyRow, b: AnyRow) => groupPosition(a.label) - groupPosition(b.label))
-    .map((group: AnyRow) => ({
-    key: String(group.key ?? group.label),
-    label: String(group.label ?? "Otros elementos"),
-    guide: lubricantGroupGuide[String(group.label ?? "")] ?? "",
-    rows: (group.detalles ?? []).map((detail: AnyRow): ValidationRow => {
-      const key = String(detail.parametro_key ?? detail.parametro ?? "");
-      const level = normalizeLubricantLevel(detail.nivel_alerta);
-      const previous = previousPoint(key);
-      const current = Number(detail.resultado_numerico);
-      const previousValue = previous ? Number(previous.valor) : NaN;
-      const delta =
-        Number.isFinite(current) && Number.isFinite(previousValue) && detail.resultado_numerico !== null
-          ? current - previousValue
-          : null;
-      return {
-        key: `${group.key}-${key}-${detail.id ?? ""}`,
-        label: String(detail.parametro_label ?? detail.parametro ?? key),
-        level,
-        meta: lubricantLevelMeta[level],
-        resultText: resultText(detail),
-        warningText: describeLubricantRule(detail.rango_precaucion, detail.unidad),
-        alertText: describeLubricantRule(detail.rango_anormal, detail.unidad),
-        previousText: previous ? formatLubricantNumber(previous.valor, detail.unidad) : "—",
-        deltaText:
-          delta === null || delta === 0
-            ? ""
-            : `${delta > 0 ? "+" : "−"}${formatLubricantNumber(Math.abs(delta))}`,
-        guide: lubricantParameterGuideFor(key),
-      };
-    }),
-  })),
-);
-
-const findings = computed(() =>
-  validationGroups.value
-    .flatMap((group) => group.rows)
-    .filter((row) => row.level === "ANORMAL" || row.level === "PRECAUCION")
-    .sort((a, b) => b.meta.severity - a.meta.severity)
-    .map((row) => ({
-      ...row,
-      triggerText: row.level === "ANORMAL" ? row.alertText : row.warningText,
-    })),
-);
-
-const verdictTitle = computed(() => {
-  if (latestLevel.value === "NORMAL") return "Normal: todos los parámetros dentro de su límite";
-  if (latestLevel.value === "N/D") return "Sin evaluación";
-  const count = findings.value.length;
-  const noun = count === 1 ? "parámetro fuera de límite" : "parámetros fuera de límite";
-  return `${latestMeta.value.title}: ${count} ${noun}`;
-});
-
-const visibleValidationGroups = computed<ValidationGroup[]>(() =>
-  validationGroups.value
-    .map((group) => ({
-      ...group,
-      rows: onlyOutOfRange.value
-        ? group.rows.filter((row) => row.level === "ANORMAL" || row.level === "PRECAUCION")
-        : group.rows,
-    }))
-    .filter((group) => group.rows.length),
-);
-
-const LEVEL_WEIGHT: Record<string, number> = { ANORMAL: 3, PRECAUCION: 2, NORMAL: 1, "N/D": 0 };
-
-/** Primero lo que salió de su límite; dentro de cada grupo, el orden del informe. */
-const sortedSections = computed(() =>
-  (props.dashboard?.chart_sections ?? []).map((section: AnyRow) => ({
-    key: String(section.key),
-    title: String(section.title),
-    metrics: [...(section.metrics ?? [])].sort(
-      (a: AnyRow, b: AnyRow) =>
-        Number(b.fuera_de_rango > 0) - Number(a.fuera_de_rango > 0) ||
-        (LEVEL_WEIGHT[normalizeLubricantLevel(b.ultimo_nivel)] ?? 0) -
-          (LEVEL_WEIGHT[normalizeLubricantLevel(a.ultimo_nivel)] ?? 0),
-    ),
-  })),
-);
-
-const chartFilterOptions = computed(() => {
-  const all = sortedSections.value.flatMap((section: AnyRow) => section.metrics);
-  return [
-    { key: "todos", title: "Todos", count: all.length },
-    {
-      key: "fuera",
-      title: "Fuera de límite",
-      count: all.filter((metric: AnyRow) => Number(metric.fuera_de_rango) > 0).length,
-    },
-    ...sortedSections.value
-      .filter((section: AnyRow) => section.metrics.length)
-      .map((section: AnyRow) => ({ key: section.key, title: section.title, count: section.metrics.length })),
-  ];
-});
-
-const visibleMetrics = computed(() => {
-  const all = sortedSections.value.flatMap((section: AnyRow) => section.metrics);
-  if (chartFilter.value === "todos") {
-    return [...all].sort(
-      (a: AnyRow, b: AnyRow) => Number(b.fuera_de_rango > 0) - Number(a.fuera_de_rango > 0),
-    );
-  }
-  if (chartFilter.value === "fuera") {
-    return all.filter((metric: AnyRow) => Number(metric.fuera_de_rango) > 0);
-  }
-  return sortedSections.value.find((section: AnyRow) => section.key === chartFilter.value)?.metrics ?? [];
-});
-
-function metricSubtitle(metric: AnyRow) {
-  const out = Number(metric.fuera_de_rango ?? 0);
-  const group = metric.group_label || "";
-  if (!out) return `${group} · siempre dentro de límite`;
-  return `${group} · ${out} ${out === 1 ? "muestra" : "muestras"} fuera de límite`;
-}
-
-const timelineDesc = computed(() => [...(props.dashboard?.timeline ?? [])].reverse());
 </script>
 
 <style scoped>
-.lub-panel {
+.dashboard-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
-  min-width: 0;
+  gap: 20px;
 }
 
-.lub-panel > * {
-  min-width: 0;
+.dashboard-grid {
+  display: grid;
+  gap: 20px;
 }
 
-.lub-panel__state {
+.dashboard-state {
+  min-height: 220px;
+  border-radius: 24px;
+  border: 1px dashed var(--surface-border);
+  background: rgba(31, 75, 122, 0.05);
   display: grid;
   place-items: center;
-  gap: 12px;
-  min-height: 200px;
-  padding: 24px;
-  border: 1px dashed rgba(var(--v-theme-on-surface), 0.2);
-  border-radius: 18px;
-  background: rgba(var(--v-theme-on-surface), 0.03);
-  color: rgba(var(--v-theme-on-surface), 0.72);
   text-align: center;
+  gap: 12px;
+  padding: 24px;
+  color: rgba(26, 34, 43, 0.72);
 }
 
-.lub-panel__state--compact {
-  min-height: 120px;
+.dashboard-state--compact {
+  min-height: 160px;
 }
 
-.lub-eyebrow {
-  display: block;
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.78rem;
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+.dashboard-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
 }
 
-.lub-muted {
-  color: rgba(var(--v-theme-on-surface), 0.66);
+.dashboard-kpi {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--surface-border);
+  background: var(--chart-card-bg);
 }
 
-.lub-panel__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
+.report-table {
+  border: 1px solid var(--surface-border);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--chart-card-bg-strong);
+}
+
+.report-layout {
+  display: grid;
   gap: 16px;
 }
 
-.lub-panel__identity h3 {
-  margin: 4px 0 2px;
-  font-size: clamp(1.2rem, 2vw, 1.5rem);
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
-.lub-panel__identity p {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
-.lub-panel__counts {
+.report-header-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(92px, 1fr));
-  gap: 8px;
-  margin: 0;
-}
-
-.lub-count {
-  padding: 10px 14px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 14px;
-  background: rgb(var(--v-theme-surface));
-}
-
-.lub-count dt {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: rgba(var(--v-theme-on-surface), 0.7);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.lub-count dd {
-  margin: 2px 0 0;
-  font-size: 1.5rem;
-  font-weight: 750;
-  font-variant-numeric: tabular-nums;
-}
-
-.lub-count--error dt {
-  color: rgb(var(--v-theme-error));
-}
-
-.lub-count--warning dt {
-  color: rgb(var(--v-theme-warning));
-}
-
-.lub-count--success dt {
-  color: rgb(var(--v-theme-success));
-}
-
-.lub-verdict {
-  --lub-tone: var(--v-theme-success);
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
-  padding: 16px 18px;
-  border: 1px solid rgba(var(--lub-tone), 0.35);
-  border-left: 6px solid rgb(var(--lub-tone));
-  border-radius: 16px;
-  background: rgba(var(--lub-tone), 0.07);
 }
 
-.lub-verdict--warning {
-  --lub-tone: var(--v-theme-warning);
-}
-
-.lub-verdict--error {
-  --lub-tone: var(--v-theme-error);
-}
-
-.lub-verdict--secondary {
-  --lub-tone: var(--v-theme-secondary);
-}
-
-.lub-verdict__icon {
-  color: rgb(var(--lub-tone));
-}
-
-.lub-verdict__body h4 {
-  margin: 2px 0 4px;
-  font-size: 1.15rem;
-}
-
-.lub-verdict__body p {
-  margin: 0;
-}
-
-.lub-findings {
+.charts-grid {
   display: grid;
-  gap: 6px;
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
+  gap: 20px;
 }
 
-.lub-findings li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.lub-verdict__hours {
+.chart-grid-inner {
   display: grid;
-  gap: 8px;
-  margin: 0;
-  text-align: right;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
 }
 
-.lub-verdict__hours dt {
-  color: rgba(var(--v-theme-on-surface), 0.66);
-  font-size: 0.78rem;
-}
-
-.lub-verdict__hours dd {
-  margin: 0;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.lub-section {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
-.lub-section__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.lub-section__head h4 {
-  margin: 0;
-  font-size: 1.08rem;
-}
-
-.lub-section__head p {
-  max-width: 78ch;
-  margin: 4px 0 0;
-  color: rgba(var(--v-theme-on-surface), 0.7);
-  font-size: 0.92rem;
-}
-
-.lub-table-wrap {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
-  border-radius: 14px;
-  background: rgb(var(--v-theme-surface));
-}
-
-.lub-table {
-  width: 100%;
-  min-width: 760px;
-  border-collapse: collapse;
-  font-size: 0.92rem;
-}
-
-.lub-table th,
-.lub-table td {
-  padding: 8px 12px;
-  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.08);
-  text-align: left;
-  vertical-align: top;
-}
-
-.lub-table thead th {
-  border-top: 0;
-  background: rgba(var(--v-theme-on-surface), 0.045);
-  color: rgba(var(--v-theme-on-surface), 0.72);
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.lub-table tbody th {
-  font-weight: 600;
-}
-
-.lub-table__group th {
-  background: rgba(var(--v-theme-primary), 0.06);
-  color: rgb(var(--v-theme-primary));
-  font-size: 0.86rem;
-  font-weight: 750;
-}
-
-.lub-table__group th span {
-  margin-left: 8px;
-  color: rgba(var(--v-theme-on-surface), 0.62);
-  font-weight: 500;
-}
-
-.lub-table__row--warning {
-  background: rgba(var(--v-theme-warning), 0.07);
-}
-
-.lub-table__row--error {
-  background: rgba(var(--v-theme-error), 0.07);
-}
-
-.lub-param {
-  display: block;
-}
-
-.lub-param__guide {
-  display: block;
-  margin-top: 2px;
-  color: rgba(var(--v-theme-on-surface), 0.62);
-  font-size: 0.8rem;
-  font-weight: 400;
-}
-
-.lub-num {
-  text-align: right !important;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.lub-delta {
-  display: block;
-  color: rgba(var(--v-theme-on-surface), 0.6);
-  font-size: 0.8rem;
-}
-
-.lub-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.lub-filter .v-btn {
-  border-radius: 10px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.lub-charts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 14px;
-  min-width: 0;
-}
-
-@media (max-width: 760px) {
-  .lub-panel__counts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
+@media (max-width: 960px) {
+  .dashboard-panel {
+    gap: 14px;
   }
 
-  .lub-verdict {
-    grid-template-columns: auto minmax(0, 1fr);
+  .dashboard-grid,
+  .charts-grid {
+    gap: 14px;
   }
 
-  .lub-verdict__hours {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    text-align: left;
+  .report-header-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-kpi,
+  .dashboard-state {
+    padding: 12px;
   }
 
-  .lub-charts {
-    grid-template-columns: minmax(0, 1fr);
+  .chart-grid-inner {
+    grid-template-columns: 1fr;
   }
 }
 </style>
