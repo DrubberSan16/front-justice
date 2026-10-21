@@ -174,3 +174,347 @@ export function groupLubricantDetails(details: Record<string, any>[]) {
     items: [...items].sort((a, b) => Number(a.orden ?? 999) - Number(b.orden ?? 999)),
   }));
 }
+
+/* ------------------------------------------------------------------------ *
+ * Lectura del reporte: condición, límites del laboratorio y qué significa
+ * cada parámetro. Lo usan la pantalla, los gráficos y los exportes, para que
+ * los tres digan lo mismo con las mismas palabras.
+ * ------------------------------------------------------------------------ */
+
+export type LubricantLevel = "NORMAL" | "PRECAUCION" | "ANORMAL" | "N/D";
+
+/**
+ * Regla de un límite tal como la manda el servidor (sin campos vacíos):
+ * `operator` + `value`, una banda `OUTSIDE_RANGE` (`min`/`max`), un texto
+ * (`POSITIVO`) o la expresión del TBN, que llega ya calculada en
+ * `resolved_value` cuando se conoce la base del aceite nuevo.
+ */
+export type LubricantRule = {
+  raw?: string | null;
+  operator?: string | null;
+  value?: number | null;
+  text?: string | null;
+  expression?: string | null;
+  offset?: number | null;
+  min?: number | null;
+  max?: number | null;
+  max_exclusive?: boolean | null;
+  resolved_value?: number | null;
+};
+
+export function normalizeLubricantLevel(value: unknown): LubricantLevel {
+  const raw = normalizeToken(value);
+  if (["ANORMAL", "ALERTA", "CRITICO", "CRITICAL"].includes(raw)) return "ANORMAL";
+  if (["PRECAUCION", "OBSERVACION", "WARNING"].includes(raw)) return "PRECAUCION";
+  if (["N/D", "ND", "SIN DATO", "SIN EVALUACION", ""].includes(raw)) return "N/D";
+  return "NORMAL";
+}
+
+/**
+ * Las cuatro condiciones con las palabras del instructivo del laboratorio
+ * (VEN-FOR-006A). El color nunca va solo: chip con icono y texto.
+ */
+export const lubricantLevelMeta: Record<
+  LubricantLevel,
+  { title: string; color: string; icon: string; meaning: string; severity: number }
+> = {
+  ANORMAL: {
+    title: "Anormal",
+    color: "error",
+    icon: "mdi-alert-octagon-outline",
+    meaning: "Uno o varios parámetros están fuera de los rangos generales del laboratorio.",
+    severity: 3,
+  },
+  PRECAUCION: {
+    title: "Precaución",
+    color: "warning",
+    icon: "mdi-alert-outline",
+    meaning: "Uno o varios parámetros están en zona tolerable: conviene una acción preventiva.",
+    severity: 2,
+  },
+  NORMAL: {
+    title: "Normal",
+    color: "success",
+    icon: "mdi-check-circle-outline",
+    meaning: "Todos los parámetros están dentro de los rangos generales.",
+    severity: 1,
+  },
+  "N/D": {
+    title: "Sin dato",
+    color: "secondary",
+    icon: "mdi-help-circle-outline",
+    meaning: "La muestra no trae resultado o no fue evaluada.",
+    severity: 0,
+  },
+};
+
+export const LUBRICANT_LEVEL_ORDER: LubricantLevel[] = ["ANORMAL", "PRECAUCION", "NORMAL", "N/D"];
+
+const limitFormatter = new Intl.NumberFormat("es-EC", { maximumFractionDigits: 2 });
+
+export function formatLubricantNumber(value: unknown, unit?: string | null) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (value === null || value === undefined || value === "" || !Number.isFinite(parsed)) {
+    return "";
+  }
+  const text = limitFormatter.format(parsed);
+  return unit ? `${text} ${unit}` : text;
+}
+
+function isRuleNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * Límite en palabras: "desde 100 ppm", "por debajo de 12,3 cSt". El informe
+ * por etiquetas a veces trae en la celda del criterio solo el rótulo de la
+ * columna ("Precaución", "Anormal"): eso no es un límite y no se muestra.
+ */
+export function describeLubricantRule(
+  rule: LubricantRule | null | undefined,
+  unit?: string | null,
+): string | null {
+  if (!rule) return null;
+  if (rule.text) return `si da ${rule.text}`;
+  if (rule.expression === "OUTSIDE_RANGE") {
+    const min = isRuleNumber(rule.min) ? formatLubricantNumber(rule.min) : null;
+    const max = isRuleNumber(rule.max) ? formatLubricantNumber(rule.max) : null;
+    const suffix = unit ? ` ${unit}` : "";
+    if (min && max) return `fuera de ${min} a ${max}${suffix}`;
+    if (min) return `por debajo de ${min}${suffix}`;
+    if (max) return `por encima de ${max}${suffix}`;
+  }
+  if (rule.expression === "BASELINE_PERCENT_MINUS_OFFSET") {
+    const percent = formatLubricantNumber((isRuleNumber(rule.value) ? rule.value : 0.5) * 100);
+    const offset = formatLubricantNumber(isRuleNumber(rule.offset) ? rule.offset : 1);
+    const base = `al bajar a ${percent} % del aceite nuevo menos ${offset}`;
+    return isRuleNumber(rule.resolved_value)
+      ? `${base} (${formatLubricantNumber(rule.resolved_value, unit)})`
+      : base;
+  }
+  if (isRuleNumber(rule.value)) {
+    const limit = formatLubricantNumber(rule.value, unit);
+    switch (rule.operator) {
+      case ">":
+        return `por encima de ${limit}`;
+      case "<":
+        return `por debajo de ${limit}`;
+      case "<=":
+        return `en ${limit} o menos`;
+      case "=":
+        return `igual a ${limit}`;
+      default:
+        return `desde ${limit}`;
+    }
+  }
+  const raw = String(rule.raw ?? "").trim();
+  if (!raw || /^(precauci|anormal|normal)/i.test(normalizeToken(raw).toLowerCase())) {
+    return null;
+  }
+  return raw;
+}
+
+export type LubricantLimitLine = { value: number; direction: "up" | "down" };
+
+/**
+ * Líneas que un gráfico puede trazar para una regla. `up`: se cruza al subir
+ * (hierro "desde 100"); `down`: al bajar (viscosidad "por debajo de 12,3").
+ * Una regla de texto no tiene línea.
+ */
+export function lubricantRuleLines(rule: LubricantRule | null | undefined): LubricantLimitLine[] {
+  if (!rule || rule.text) return [];
+  if (rule.expression === "OUTSIDE_RANGE") {
+    const lines: LubricantLimitLine[] = [];
+    if (isRuleNumber(rule.min)) lines.push({ value: rule.min, direction: "down" });
+    if (isRuleNumber(rule.max)) lines.push({ value: rule.max, direction: "up" });
+    return lines;
+  }
+  if (rule.expression === "BASELINE_PERCENT_MINUS_OFFSET") {
+    return isRuleNumber(rule.resolved_value)
+      ? [{ value: rule.resolved_value, direction: "down" }]
+      : [];
+  }
+  if (!isRuleNumber(rule.value) || rule.operator === "=") return [];
+  return [{ value: rule.value, direction: rule.operator?.startsWith("<") ? "down" : "up" }];
+}
+
+/**
+ * Qué mide cada grupo y cada parámetro, y qué suele indicar cuando sale de su
+ * límite. Las causas del estado del lubricante y de la degradación siguen la
+ * hoja "Posibles causas de anormalidad" del informe del laboratorio; el resto
+ * es la lectura habitual de un análisis de aceite de motor.
+ */
+export const lubricantGroupGuide: Record<string, string> = {
+  "Estado del lubricante":
+    "Si el aceite conserva su viscosidad y su reserva alcalina, y si trae agua, refrigerante o combustible.",
+  "Degradación química":
+    "Cuánto se ha deteriorado el aceite por el calor, los gases de la combustión y el azufre del combustible.",
+  "Contaminación del lubricante":
+    "Lo que entra desde fuera: polvo, refrigerante, agua o ceniza del combustible.",
+  "Desgaste del equipo":
+    "Metales que desprenden las piezas internas al desgastarse. Un salto entre muestras pesa más que el valor suelto.",
+  "Otros elementos":
+    "Aditivos o aleaciones especiales. Se vigilan por cambios bruscos más que por un valor fijo.",
+  "Presencia de aditivos":
+    "Aditivos del aceite nuevo. Si caen, se están agotando; si cambian de golpe, puede haber mezcla con otro aceite.",
+};
+
+export const lubricantParameterGuide: Record<string, { what: string; outOfRange: string }> = {
+  VISCOSIDAD_100C: {
+    what: "Espesor del aceite a temperatura de trabajo.",
+    outOfRange: "Si baja: dilución por combustible. Si sube: oxidación, hollín o mezcla de aceites.",
+  },
+  VISCOSIDAD_40C: {
+    what: "Espesor del aceite en frío, como en el arranque.",
+    outOfRange: "Si baja: dilución por combustible. Si sube: oxidación, hollín o mezcla de aceites.",
+  },
+  INDICE_VISCOSIDAD: {
+    what: "Cuánto cambia la viscosidad con la temperatura; más alto es más estable.",
+    outOfRange: "Una caída indica aceite degradado o mezclado.",
+  },
+  GRADO_VISCOSIDAD: {
+    what: "Si la viscosidad medida corresponde al grado SAE o ISO declarado.",
+    outOfRange: "Fuera de grado: aceite equivocado, mezclado o degradado.",
+  },
+  TBN: {
+    what: "Reserva alcalina: capacidad del aceite para neutralizar los ácidos de la combustión.",
+    outOfRange: "Baja con el uso; por debajo del límite el aceite ya no protege contra la corrosión.",
+  },
+  TAN: {
+    what: "Acidez del aceite.",
+    outOfRange: "Sube con la oxidación y la contaminación.",
+  },
+  HUMEDAD: {
+    what: "Presencia de agua en el aceite.",
+    outOfRange: "Condensación o agua de refrigeración: corroe, agota los aditivos y forma lodos.",
+  },
+  AGUA: {
+    what: "Contenido de agua en el aceite.",
+    outOfRange: "Condensación o agua de refrigeración: corroe, agota los aditivos y forma lodos.",
+  },
+  GLYCOL: {
+    what: "Refrigerante (anticongelante) en el aceite.",
+    outOfRange: "Probable fuga de refrigerante al cárter: ataca los aditivos y sube la viscosidad.",
+  },
+  GLICOL_CUALITATIVO: {
+    what: "Prueba de presencia de refrigerante.",
+    outOfRange: "Positivo: probable fuga de refrigerante al cárter.",
+  },
+  COMBUSTIBLE: {
+    what: "Combustible mezclado en el aceite.",
+    outOfRange: "Combustión incompleta o inyectores defectuosos: el combustible diluye el aceite.",
+  },
+  DILUCION_COMBUSTIBLE: {
+    what: "Porcentaje de combustible en el aceite.",
+    outOfRange: "Combustión incompleta o inyectores defectuosos: el combustible diluye el aceite.",
+  },
+  INSOLUBLES: {
+    what: "Sólidos en suspensión: hollín y productos de oxidación.",
+    outOfRange: "Aceite saturado de residuos; tapa filtros y conductos.",
+  },
+  PUNTO_INFLAMACION: {
+    what: "Temperatura a la que el aceite desprende vapores inflamables.",
+    outOfRange: "Si baja, hay combustible en el aceite.",
+  },
+  CONTEO_PARTICULAS: {
+    what: "Limpieza del aceite: partículas por tamaño según ISO 4406.",
+    outOfRange: "Más partículas: filtración insuficiente o desgaste en curso.",
+  },
+  OXIDACION: {
+    what: "Degradación del aceite por calor y oxígeno.",
+    outOfRange: "Aditivos agotados, contaminación o temperatura de operación alta.",
+  },
+  NITRACION: {
+    what: "Compuestos de nitrógeno que dejan los gases de combustión.",
+    outOfRange: "Paso anormal de gases al cárter, mezcla pobre o alta temperatura.",
+  },
+  SULFATACION: {
+    what: "Productos del azufre que trae el combustible.",
+    outOfRange: "Combustible con mucho azufre; consume la reserva alcalina (TBN).",
+  },
+  HOLLIN: {
+    what: "Carbón que deja la combustión.",
+    outOfRange: "Combustión incompleta o dispersantes agotados: sube la viscosidad y tapa filtros.",
+  },
+  SI: {
+    what: "Silicio: polvo y tierra.",
+    outOfRange: "Entra polvo por el filtro o la admisión de aire; acelera el desgaste.",
+  },
+  NA: {
+    what: "Sodio: aditivo del refrigerante o agua.",
+    outOfRange: "Junto al glicol, señala una fuga de refrigerante.",
+  },
+  V: {
+    what: "Vanadio: ceniza del combustible pesado.",
+    outOfRange: "Residuos de combustión que llegan al aceite.",
+  },
+  NI: {
+    what: "Níquel: combustible pesado o aleaciones de válvulas y engranajes.",
+    outOfRange: "Residuos de combustión o desgaste de piezas aleadas.",
+  },
+  FE: {
+    what: "Hierro: camisas, cigüeñal, árbol de levas y engranajes.",
+    outOfRange: "Desgaste general de piezas de acero.",
+  },
+  CR: {
+    what: "Cromo: anillos de pistón.",
+    outOfRange: "Desgaste de anillos, a menudo por polvo.",
+  },
+  AL: {
+    what: "Aluminio: pistones y cojinetes.",
+    outOfRange: "Desgaste de pistones; con silicio alto puede ser polvo.",
+  },
+  CU: {
+    what: "Cobre: cojinetes, bujes de bronce y enfriador de aceite.",
+    outOfRange: "Desgaste de bujes y cojinetes o corrosión del enfriador.",
+  },
+  PB: {
+    what: "Plomo: metal antifricción de los cojinetes.",
+    outOfRange: "Desgaste de cojinetes.",
+  },
+  SN: {
+    what: "Estaño: cojinetes y recubrimiento de pistones.",
+    outOfRange: "Desgaste de cojinetes o pistones.",
+  },
+  MO: {
+    what: "Molibdeno: aditivo antidesgaste o recubrimiento de anillos.",
+    outOfRange: "Un cambio brusco sugiere otro aceite o desgaste de anillos.",
+  },
+  B: {
+    what: "Boro: aditivo del aceite o del refrigerante.",
+    outOfRange: "Un salto junto al sodio puede indicar refrigerante.",
+  },
+  BA: {
+    what: "Bario: aditivo detergente.",
+    outOfRange: "Un cambio brusco sugiere mezcla con otro aceite.",
+  },
+  TI: {
+    what: "Titanio: aleaciones especiales y pinturas.",
+    outOfRange: "Desgaste de piezas de aleación especial.",
+  },
+  AG: {
+    what: "Plata: cojinetes plateados y soldaduras.",
+    outOfRange: "Desgaste de cojinetes plateados.",
+  },
+  CA: {
+    what: "Calcio: aditivo detergente; da la reserva alcalina.",
+    outOfRange: "Si cae, el aditivo se agota; si cambia de golpe, otro aceite.",
+  },
+  MG: {
+    what: "Magnesio: aditivo detergente.",
+    outOfRange: "Si cae, el aditivo se agota; si cambia de golpe, otro aceite.",
+  },
+  ZN: {
+    what: "Zinc: aditivo antidesgaste.",
+    outOfRange: "Si cae, el aditivo antidesgaste se agota.",
+  },
+  P: {
+    what: "Fósforo: aditivo antidesgaste.",
+    outOfRange: "Si cae, el aditivo antidesgaste se agota.",
+  },
+};
+
+export function lubricantParameterGuideFor(key: unknown) {
+  const template = getLubricantParameterTemplate(key);
+  return lubricantParameterGuide[template?.key ?? normalizeToken(key)] ?? null;
+}

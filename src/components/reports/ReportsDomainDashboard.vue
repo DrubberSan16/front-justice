@@ -380,26 +380,26 @@ function linkedOrders(row:ReportingRelationshipRow){ const map=new Map<string,An
 const lubricantRows = computed(()=>props.rawRows.filter(row=>!isAnnulled(row)));
 function summaryNumber(row:AnyRow,key:string){ const summary=row.resumen_detalles||{}; return Number(summary[key]??summary[`total_${key}`]??0); }
 const lubricantTotals = computed(()=>lubricantRows.value.reduce((sum,row)=>({normal:sum.normal+summaryNumber(row,"normal"),warning:sum.warning+summaryNumber(row,"precaucion"),abnormal:sum.abnormal+summaryNumber(row,"anormal")}),{normal:0,warning:0,abnormal:0}));
+// La lista ya no repite los detalles agrupados (`detalle_grupos`): cada
+// detalle trae su grupo en `grupo_label`.
 const lubricantAlerts = computed(() =>
   lubricantRows.value.flatMap((row) =>
-    (row.detalle_grupos || []).flatMap((group: AnyRow) =>
-      (group.detalles || group.parametros || [])
-        .filter((item: AnyRow) =>
-          /PRECAUC|ANORMAL|CRITIC|ALERTA/.test(
-            normalize(item.nivel_alerta || item.estado),
-          ),
-        )
-        .map((item: AnyRow) => ({
-          analysis: row.codigo || row.numero_muestra || "-",
-          equipment: row.equipo_nombre || "-",
-          group: group.grupo_label || group.nombre || group.grupo || "-",
-          parameter: item.parametro_label || item.parametro || "-",
-          result: [item.resultado_numerico ?? item.resultado_texto, item.unidad]
-            .filter((value) => value !== null && value !== undefined && value !== "")
-            .join(" "),
-          level: normalize(item.nivel_alerta || item.estado) || "PRECAUCION",
-        })),
-    ),
+    (row.detalles || [])
+      .filter((item: AnyRow) =>
+        /PRECAUC|ANORMAL|CRITIC|ALERTA/.test(
+          normalize(item.nivel_alerta || item.estado),
+        ),
+      )
+      .map((item: AnyRow) => ({
+        analysis: row.codigo || row.numero_muestra || "-",
+        equipment: row.equipo_nombre || "-",
+        group: item.grupo_label || item.grupo || "-",
+        parameter: item.parametro_label || item.parametro || "-",
+        result: [item.resultado_numerico ?? item.resultado_texto, item.unidad]
+          .filter((value) => value !== null && value !== undefined && value !== "")
+          .join(" "),
+        level: normalize(item.nivel_alerta || item.estado) || "PRECAUCION",
+      })),
   ),
 );
 

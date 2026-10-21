@@ -36,7 +36,17 @@
 
     <div v-else class="chart-shell">
       <EChart :option="miniOption" height="164px" />
-      <div class="chart-hint">
+      <ul v-if="hasLimits" class="chart-limits" aria-label="Límites vigentes en la última muestra">
+        <li v-if="currentLimits.warning">
+          <span class="chart-limit-swatch chart-limit-swatch--dashed" :style="{ borderColor: limitPaint('warning') }" />
+          Precaución {{ currentLimits.warning }}
+        </li>
+        <li v-if="currentLimits.alert">
+          <span class="chart-limit-swatch" :style="{ borderColor: limitPaint('alert') }" />
+          Anormal {{ currentLimits.alert }}
+        </li>
+      </ul>
+      <div v-else class="chart-hint">
         Haz clic para ampliar y revisar cada muestra.
       </div>
     </div>
@@ -91,6 +101,14 @@
               />
               {{ entry.title }}
             </div>
+            <div v-if="currentLimits.warning" class="chart-legend-item">
+              <span class="chart-limit-swatch chart-limit-swatch--dashed" :style="{ borderColor: limitPaint('warning') }" />
+              Precaución {{ currentLimits.warning }}
+            </div>
+            <div v-if="currentLimits.alert" class="chart-legend-item">
+              <span class="chart-limit-swatch" :style="{ borderColor: limitPaint('alert') }" />
+              Anormal {{ currentLimits.alert }}
+            </div>
           </div>
         </div>
 
@@ -119,6 +137,14 @@
                 {{ levelTitle(selectedPoint.level) }}
               </v-chip>
             </div>
+            <div v-if="selectedPoint.warningText" class="chart-point-detail-row">
+              <span class="chart-point-detail-label">Precaución</span>
+              <span class="chart-point-detail-value">{{ selectedPoint.warningText }}</span>
+            </div>
+            <div v-if="selectedPoint.alertText" class="chart-point-detail-row">
+              <span class="chart-point-detail-label">Anormal</span>
+              <span class="chart-point-detail-value">{{ selectedPoint.alertText }}</span>
+            </div>
             <div class="chart-point-detail-row">
               <span class="chart-point-detail-label">Posicion</span>
               <span class="chart-point-detail-value">
@@ -141,6 +167,8 @@
               <th>Codigo</th>
               <th>Fecha</th>
               <th>Valor</th>
+              <th v-if="hasLimits">Precaución</th>
+              <th v-if="hasLimits">Anormal</th>
               <th>Estado</th>
             </tr>
           </thead>
@@ -155,6 +183,8 @@
               <td>{{ point.codigo || point.label }}</td>
               <td>{{ point.fecha || "Sin fecha" }}</td>
               <td>{{ point.valueLabel }}</td>
+              <td v-if="hasLimits">{{ point.warningText || "—" }}</td>
+              <td v-if="hasLimits">{{ point.alertText || "—" }}</td>
               <td>
                 <v-chip size="x-small" :color="levelColor(point.level)" variant="tonal">
                   {{ levelTitle(point.level) }}
@@ -172,13 +202,21 @@
 import { computed, ref, watch } from "vue";
 import { useDisplay, useTheme } from "vuetify";
 import EChart from "@/components/charts/EChart.vue";
-import { chartInk, chartStatus, seriesColor } from "@/app/config/chart-theme";
+import { chartFontFamily, chartInk, chartStatus, seriesColor } from "@/app/config/chart-theme";
+import {
+  describeLubricantRule,
+  lubricantRuleLines,
+  type LubricantRule,
+} from "@/app/config/lubricant-analysis";
 
 type InputPoint = {
   codigo?: string | null;
   fecha?: string | null;
   valor?: number | null;
   nivel_alerta?: string | null;
+  /** Límites del laboratorio vigentes en esa muestra (pueden cambiar entre informes). */
+  rango_precaucion?: LubricantRule | null;
+  rango_anormal?: LubricantRule | null;
 };
 
 type PointLevel = "normal" | "warning" | "alert";
@@ -192,7 +230,13 @@ type NormalizedPoint = {
   valueLabel: string;
   level: PointLevel;
   index: number;
+  warningText: string | null;
+  alertText: string | null;
+  warningRule: LubricantRule | null;
+  alertRule: LubricantRule | null;
 };
+
+type LimitKind = "warning" | "alert";
 
 const props = defineProps<{
   title: string;
@@ -253,6 +297,7 @@ const levelLegend = computed(() =>
 
 const numericPoints = computed<NormalizedPoint[]>(() =>
   props.points
+    .filter((item) => Number.isFinite(Number(item.valor)) && item.valor !== null)
     .map((item, index) => ({
       key: `${item.codigo || item.fecha || "item"}-${index}`,
       codigo: item.codigo ? String(item.codigo) : null,
@@ -262,11 +307,90 @@ const numericPoints = computed<NormalizedPoint[]>(() =>
       valueLabel: formatValue(Number(item.valor)),
       level: toLevel(item.nivel_alerta),
       index,
-    }))
-    .filter((item) => Number.isFinite(item.value)),
+      warningText: describeLubricantRule(item.rango_precaucion, props.unit),
+      alertText: describeLubricantRule(item.rango_anormal, props.unit),
+      warningRule: item.rango_precaucion ?? null,
+      alertRule: item.rango_anormal ?? null,
+    })),
 );
 
 const hasPoints = computed(() => numericPoints.value.length > 0);
+
+/**
+ * Líneas de límite por punto. Una regla puede dar dos líneas (banda "fuera
+ * de 12,5 a 16,3": una por abajo y otra por arriba), así que cada nivel se
+ * reparte en una serie "sube" y otra "baja". Donde una muestra no traía ese
+ * límite queda un hueco: no se inventa el que no estaba.
+ */
+const limitSeries = computed(() => {
+  const result: Array<{ kind: LimitKind; direction: "up" | "down"; data: Array<number | null> }> = [];
+  for (const kind of ["warning", "alert"] as LimitKind[]) {
+    for (const direction of ["up", "down"] as const) {
+      const data = numericPoints.value.map((point) => {
+        const rule = kind === "warning" ? point.warningRule : point.alertRule;
+        return lubricantRuleLines(rule).find((line) => line.direction === direction)?.value ?? null;
+      });
+      if (data.some((value) => value !== null)) result.push({ kind, direction, data });
+    }
+  }
+  return result;
+});
+
+const hasLimits = computed(() => limitSeries.value.length > 0);
+
+/**
+ * Límite para la leyenda, en palabras: el de la muestra más reciente que lo
+ * traiga. Un informe nuevo sin criterio para ese parámetro no debe dejar la
+ * leyenda vacía mientras el gráfico sigue trazando las líneas anteriores.
+ */
+const currentLimits = computed(() => {
+  const recent = [...numericPoints.value].reverse();
+  return {
+    warning: recent.find((point) => point.warningText)?.warningText ?? null,
+    alert: recent.find((point) => point.alertText)?.alertText ?? null,
+  };
+});
+
+function limitPaint(kind: LimitKind) {
+  const status = chartStatus(isDark.value);
+  return kind === "alert" ? status.critical : status.warning;
+}
+
+function limitTitle(kind: LimitKind) {
+  return kind === "alert" ? "Límite anormal" : "Límite de precaución";
+}
+
+function buildLimitSeries(width: number) {
+  return limitSeries.value.map((line) => ({
+    type: "line" as const,
+    name: limitTitle(line.kind),
+    data: line.data,
+    symbol: "none",
+    silent: true,
+    connectNulls: false,
+    step: "middle" as const,
+    z: 1,
+    lineStyle: {
+      width,
+      type: line.kind === "alert" ? ("solid" as const) : ("dashed" as const),
+      color: limitPaint(line.kind),
+      opacity: 0.85,
+    },
+    tooltip: { show: false },
+    emphasis: { disabled: true },
+  }));
+}
+
+function pointTooltip(point: NormalizedPoint, withDate: boolean) {
+  const lines = [
+    `<strong>${point.codigo || point.label}</strong>`,
+    withDate ? `<div>${point.fecha || "Sin fecha"}</div>` : "",
+    `<div>${point.valueLabel} · ${levelTitle(point.level)}</div>`,
+    point.warningText ? `<div style="opacity:.75">Precaución ${point.warningText}</div>` : "",
+    point.alertText ? `<div style="opacity:.75">Anormal ${point.alertText}</div>` : "",
+  ];
+  return lines.join("");
+}
 
 const yMinLabel = computed(() =>
   hasPoints.value
@@ -304,11 +428,10 @@ const miniOption = computed(() => {
       textStyle: { color: ink.text, fontSize: 12 },
       formatter: (params: any) => {
         const point = numericPoints.value[params?.[0]?.dataIndex];
-        if (!point) return "";
-        return `<strong>${point.label}</strong><div>${point.valueLabel}</div><div style="opacity:.7">${levelTitle(point.level)}</div>`;
+        return point ? pointTooltip(point, true) : "";
       },
     },
-    textStyle: { color: ink.text, fontFamily: "inherit" },
+    textStyle: { color: ink.text, fontFamily: chartFontFamily() },
     xAxis: {
       type: "category" as const,
       data: numericPoints.value.map((point) => point.fecha || point.label),
@@ -326,10 +449,13 @@ const miniOption = computed(() => {
       splitLine: { lineStyle: { color: ink.grid } },
     },
     series: [
+      ...buildLimitSeries(1.5),
       {
         type: "line" as const,
+        name: props.title,
         smooth: false,
         symbolSize: 8,
+        z: 3,
         lineStyle: { width: 2, color: seriesColor(0, isDark.value) },
         data: seriesData(),
       },
@@ -354,16 +480,10 @@ const detailOption = computed(() => {
       textStyle: { color: ink.text, fontSize: 12 },
       formatter: (params: any) => {
         const point = numericPoints.value[params?.[0]?.dataIndex];
-        if (!point) return "";
-        return [
-          `<strong>${point.codigo || point.label}</strong>`,
-          `<div>${point.fecha || "Sin fecha"}</div>`,
-          `<div>${point.valueLabel}</div>`,
-          `<div style="opacity:.7">${levelTitle(point.level)}</div>`,
-        ].join("");
+        return point ? pointTooltip(point, true) : "";
       },
     },
-    textStyle: { color: ink.text, fontFamily: "inherit" },
+    textStyle: { color: ink.text, fontFamily: chartFontFamily() },
     dataZoom: [
       { type: "inside" as const, start: startPercent, end: 100 },
       {
@@ -401,10 +521,13 @@ const detailOption = computed(() => {
       splitLine: { lineStyle: { color: ink.grid } },
     },
     series: [
+      ...buildLimitSeries(2),
       {
         type: "line" as const,
+        name: props.title,
         smooth: false,
         symbolSize: 9,
+        z: 3,
         lineStyle: { width: 2, color: seriesColor(0, isDark.value) },
         emphasis: { focus: "series" as const, scale: 1.4 },
         // Etiqueta directa solo cuando caben: con la serie completa a la vista
@@ -604,6 +727,35 @@ function openDialog() {
   height: 12px;
   border-radius: 999px;
   display: inline-block;
+}
+
+/* Muestra de la línea de límite: el mismo trazo que en el gráfico. */
+.chart-limit-swatch {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px solid;
+  flex: 0 0 auto;
+}
+
+.chart-limit-swatch--dashed {
+  border-top-style: dashed;
+}
+
+.chart-limits {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--chart-label);
+}
+
+.chart-limits li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .chart-table-wrap {

@@ -1336,12 +1336,12 @@ import { formatDateForInput, formatDateTime } from "@/app/utils/date-time";
 import {
   buildDailyReportsReport,
   buildIndicatorsReport,
-  buildLubricantReport,
   buildOilConsumptionReport,
   buildProceduresReport,
   buildWeeklyScheduleReport,
   type ReportChart,
 } from "@/app/utils/maintenance-intelligence-reports";
+import { buildLubricantReport } from "@/app/utils/lubricant-report";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
@@ -1580,7 +1580,9 @@ async function loadIntelligence() {
         params: { year: selectedYear.value, month: selectedMonth.value },
       }),
       api.get("/kpi_maintenance/inteligencia/procedimientos"),
-      api.get("/kpi_maintenance/inteligencia/analisis-lubricante"),
+      // Resumida: la completa pesaba 9 MB y aqui solo se cuenta. Los
+      // detalles se piden al exportar.
+      api.get("/kpi_maintenance/inteligencia/analisis-lubricante", { params: { resumen: true } }),
       api.get("/kpi_maintenance/inteligencia/cronogramas-semanales"),
       api.get("/kpi_maintenance/inteligencia/reportes-diarios"),
     ]);
@@ -2064,10 +2066,18 @@ const operationCadenceChartItems = computed(() => {
   }));
 });
 
-function moduleReport(moduleKey: string) {
+async function loadFilteredAnalysesWithDetails() {
+  const { data } = await api.get("/kpi_maintenance/inteligencia/analisis-lubricante");
+  const fullById = new Map(unwrap<AnyRow[]>(data, []).map((row) => [String(row.id), row]));
+  return filteredAnalyses.value.map((item) => fullById.get(String(item.id)) ?? item);
+}
+
+async function moduleReport(moduleKey: string, format: "excel" | "pdf") {
   if (moduleKey === "indicadores") return buildIndicatorsReport(summary);
   if (moduleKey === "procedimientos") return buildProceduresReport(procedures.value);
-  if (moduleKey === "analisis") return buildLubricantReport(filteredAnalyses.value);
+  if (moduleKey === "analisis") {
+    return buildLubricantReport(await loadFilteredAnalysesWithDetails(), { format });
+  }
   if (moduleKey === "reportes") return buildDailyReportsReport(filteredDailyReports.value);
   return buildWeeklyScheduleReport(filteredSchedules.value);
 }
@@ -2090,7 +2100,7 @@ async function exportModule(moduleKey: string, format: "excel" | "pdf") {
   error.value = null;
 
   try {
-    await reportPreview.open(format === "excel" ? "excel" : "pdf", moduleReport(moduleKey));
+    await reportPreview.open(format === "excel" ? "excel" : "pdf", await moduleReport(moduleKey, format));
   } catch (e: any) {
     error.value = e?.message || "No se pudo generar el reporte solicitado.";
   } finally {
@@ -2368,7 +2378,8 @@ const generatedAtLabel = computed(() => {
 const breakdownItems = computed(() => summary.process_breakdown ?? []);
 
 const analysesInAlert = computed(
-  () => filteredAnalyses.value.filter((item) => String(item.estado_diagnostico || "").toUpperCase() === "ALERTA").length,
+  // El servidor marca ANORMAL, nunca ALERTA: este conteo daba siempre cero.
+  () => filteredAnalyses.value.filter((item) => String(item.estado_diagnostico || "").toUpperCase() === "ANORMAL").length,
 );
 
 const kpiCards = computed<IntelligenceCard[]>(() => [
@@ -2484,7 +2495,10 @@ const procedureDocumentCount = computed(
 );
 
 const analysisDetailCount = computed(() =>
-  filteredAnalyses.value.reduce((acc, item) => acc + Number(item.detalles?.length ?? 0), 0),
+  filteredAnalyses.value.reduce(
+    (acc, item) => acc + Number(item.resumen_detalles?.total ?? item.detalles?.length ?? 0),
+    0,
+  ),
 );
 const analysisLubricantCount = computed(
   () =>
