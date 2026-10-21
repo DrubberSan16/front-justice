@@ -663,6 +663,16 @@
               readonly
             />
           </v-col>
+          <v-col v-if="isProjectMode" cols="12" md="4">
+            <v-text-field
+              :model-value="editingId ? formatWorkOrderOpenDays(projectOpenDays) : 'Se contará al guardar'"
+              label="Días de apertura"
+              variant="outlined"
+              readonly
+              hint="Desde la creación hasta la finalización o anulación; incluye los días en revisión."
+              persistent-hint
+            />
+          </v-col>
           <v-col v-if="!isProjectMode" cols="12" md="4">
             <v-text-field
               :model-value="resolvedHorometroActual == null ? 'Se capturará al iniciar' : formatHorometerForDisplay(resolvedHorometroActual)"
@@ -1685,7 +1695,7 @@
           </v-window-item>
 
           <v-window-item value="history">
-            <v-card variant="outlined" rounded="lg" class="pa-3 mb-3">
+            <v-card v-if="!isProjectMode" variant="outlined" rounded="lg" class="pa-3 mb-3">
               <div class="d-flex flex-wrap align-center justify-space-between" style="gap: 8px;">
                 <div>
                   <div class="text-subtitle-2">Cronologia de horometro</div>
@@ -1743,7 +1753,7 @@
                     <span class="text-caption text-medium-emphasis">{{ formatDateTime(item.changed_at, 'Fecha sin registro') }}</span>
                   </div>
                   <div class="text-body-2 font-weight-medium mb-2"><v-icon size="16" icon="mdi-account-outline" class="mr-1" />{{ getHistoryUser(item) || 'Usuario sin registro' }}</div>
-                  <div class="text-body-2" style="white-space: normal; overflow-wrap: anywhere;">{{ formatWorkOrderHistoryNote(item.note) || 'Sin detalle adicional' }}</div>
+                  <div class="text-body-2" style="white-space: normal; overflow-wrap: anywhere;">{{ formatWorkOrderHistoryNote(item.note, headerForm.maintenance_kind) || 'Sin detalle adicional' }}</div>
                 </v-card>
               </v-timeline-item>
             </v-timeline>
@@ -2261,6 +2271,7 @@ import { equipmentAtWorkOrder } from "@/app/utils/equipment-display";
 import { operatorMaintenanceKindForEquipment } from "@/app/utils/operator-work-order-kind";
 import { fetchCanonicalWorkOrderReport, consolidateCanonicalWorkOrderReports } from "@/app/utils/canonical-work-order-report";
 import { reportDisplayLabel, formatWorkOrderHistoryNote, resolveWorkOrderLifecycle } from "@/app/utils/work-order-audit";
+import { workOrderOpenDays, formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
   formatHorometerForDisplay,
@@ -3170,6 +3181,7 @@ const projectHeaders = [
   { title: "Personal", key: "proyecto_personal_count" },
   { title: "Clase", key: "project_order_label" },
   { title: "Estado", key: "status_workflow" },
+  { title: "Días de apertura", key: "project_open_days_label" },
   { title: "Fecha", key: "operational_date_label" },
   { title: "Acciones", key: "actions", sortable: false },
 ];
@@ -3482,10 +3494,11 @@ const scrapHeaders = computed(() => {
 });
 
 const currentWorkOrderAudit = computed(() => currentWorkOrderRecord.value?._raw ?? currentWorkOrderRecord.value ?? {});
+const projectOpenDays = computed(() => workOrderOpenDays(currentWorkOrderAudit.value, localHistory.value));
 const workOrderPreviewSummary = computed(() => [
   { label: "Estado", value: workflowLabel(headerForm.status_workflow) },
   ...(isProjectMode.value
-    ? [{ label: "Personal", value: projectPersonnelRows.value.length }]
+    ? [{ label: "Días de apertura", value: formatWorkOrderOpenDays(projectOpenDays.value) }, { label: "Personal", value: projectPersonnelRows.value.length }]
     : []),
   { label: "Tareas", value: taskRows.value.length },
   { label: "Adjuntos", value: attachmentRows.value.length },
@@ -3513,6 +3526,7 @@ const workOrderPreviewMainInfo = computed(() => {
     return [
       { label: "Código", value: headerForm.code },
       { label: "Proyecto", value: headerForm.title },
+      { label: "Días de apertura", value: formatWorkOrderOpenDays(projectOpenDays.value) },
       // Las OT guardadas antes de asociar un proyecto no lo tienen: no se
       // enseña una fila vacia.
       ...(selectedProjectEquipmentLabel.value
@@ -3673,7 +3687,7 @@ const reportPreviewHistory = computed(() =>
     to: workflowLabel(item?.to_status),
     user: getHistoryUser(item),
     date: item?.changed_at ? formatDateTime(item.changed_at, "") : "",
-    note: item?.note || "",
+    note: formatWorkOrderHistoryNote(item?.note, headerForm.maintenance_kind),
   })),
 );
 
@@ -3804,6 +3818,7 @@ const workOrderReportDefinition = computed(() =>
       fecha_operativa: getWorkOrderOperationalDate(currentWorkOrderAudit.value),
       horometro_anterior: resolvedHorometroAnterior.value,
       horometro_actual: resolvedHorometroActual.value,
+      dias_apertura: isProjectMode.value ? projectOpenDays.value : null,
       horas_a_realizar: resolvedHorasARealizar.value,
       alerta: selectedAlertLabel.value,
       blocked_by: selectedBlockingOrderLabel.value,
@@ -3850,7 +3865,7 @@ const workOrderReportDefinition = computed(() =>
       desde: workflowLabel(item?.from_status),
       hacia: workflowLabel(item?.to_status),
       usuario: getHistoryUser(item),
-      nota: formatWorkOrderHistoryNote(item?.note),
+      nota: formatWorkOrderHistoryNote(item?.note, headerForm.maintenance_kind),
       fecha: item?.changed_at || "",
     })),
   });
@@ -3885,6 +3900,7 @@ const projectReportData = computed<ProjectWorkOrderReportData>(() => {
     statusLabel: isAnnulledWorkOrder(audit)
       ? "Anulada"
       : workflowLabel(headerForm.status_workflow),
+    openDays: projectOpenDays.value,
     plantilla: selectedProcedureLabel.value || "",
     objetivoGeneral: headerForm.proyecto_objetivo_general || "",
     objetivosEspecificos: [...headerForm.proyecto_objetivos_especificos],
@@ -6440,6 +6456,7 @@ const resolvedHorasARealizar = computed(() => {
  * vez cuando esta OT inicia y permanece independiente del contador del equipo.
  */
 const resolvedHorometroAnterior = computed(() => {
+  if (isProjectMode.value) return null;
   const audit = currentWorkOrderAudit.value ?? {};
   const valorJson = parseValorJson(audit?.valor_json);
   const stored = parseNullableNumber(
@@ -7102,6 +7119,7 @@ const rows = computed(() => {
       operational_date: getWorkOrderOperationalDate(r),
       operational_date_label: getWorkOrderOperationalDateLabel(r),
       proyecto_sucursal_label: getProjectSucursalLabel(r),
+      project_open_days_label: formatWorkOrderOpenDays(workOrderOpenDays(r)),
       proyecto_bodegas_label: getProjectSitesLabel(r?.proyecto_bodegas),
       proyecto_personal_count: Array.isArray(r?.proyecto_personal)
         ? r.proyecto_personal.length

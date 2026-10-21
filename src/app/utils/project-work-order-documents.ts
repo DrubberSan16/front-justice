@@ -7,6 +7,7 @@ import {
   type PdfImageAsset,
 } from "@/app/utils/pdf-branding";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
+import { formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 
 /**
  * Informe de una OT de Proyecto, con el formato del documento de proyecto.
@@ -45,6 +46,7 @@ export type ProjectWorkOrderReportData = {
   empresa: string;
   fecha: string;
   statusLabel: string;
+  openDays?: number | null;
   plantilla: string;
   objetivoGeneral: string;
   objetivosEspecificos: string[];
@@ -160,6 +162,10 @@ function drawProjectWorkOrder(
     ],
   });
   cursorY = (doc as any).lastAutoTable.finalY + 16;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(`Días de apertura: ${formatWorkOrderOpenDays(data.openDays ?? null)}`, marginLeft, cursorY);
+  cursorY += 20;
 
   /** Salta de pagina si lo que sigue no cabe, para no dejar un titulo huerfano. */
   const ensureSpace = (height: number) => {
@@ -602,6 +608,9 @@ function drawProjectWorkOrderSheet(
       { value: safeText(data.plantilla) },
     ],
   );
+  row += 2;
+
+  writeSpanRow(ws, row, [XL_COLUMN_COUNT], [{ value: `Días de apertura: ${formatWorkOrderOpenDays(data.openDays ?? null)}` }]);
   row += 2;
 
   const sectionTitle = (title: string) => {

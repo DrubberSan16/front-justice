@@ -3,6 +3,7 @@ import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { formatHorometerForDisplay } from "@/app/utils/number-format";
 import type { WorkOrderReportData } from "@/app/utils/work-order-report-documents";
 import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
+import { workOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 
 /**
  * Detalle de una orden de trabajo, resuelto en un solo sitio.
@@ -339,12 +340,13 @@ export function buildWorkOrderReportPayload(
     maintenanceKindLabel: context.maintenanceKindLabel,
     maintenanceKind: String(header.maintenance_kind || ''),
     workedHours: workOrderWorkedHours(header, detail.history),
+    openDays: String(header.maintenance_kind).toUpperCase() === "PROYECTO" ? workOrderOpenDays(header, detail.history) : null,
     openedAt: context.formatDate(header?.hora_inicio || header?.created_at),
     closedAt: context.formatDate(header?.hora_fin || header?.closed_at),
-    horometroAnterior: formatHorometerForDisplay(header?.horometro_anterior, {
+    horometroAnterior: String(header.maintenance_kind).toUpperCase() === "PROYECTO" ? "" : formatHorometerForDisplay(header?.horometro_anterior, {
       empty: "-",
     }),
-    horometroActual: formatHorometerForDisplay(header?.horometro_actual, {
+    horometroActual: String(header.maintenance_kind).toUpperCase() === "PROYECTO" ? "" : formatHorometerForDisplay(header?.horometro_actual, {
       empty: "-",
     }),
     totalHours: responsables.reduce((sum, row) => sum + row.hours, 0),

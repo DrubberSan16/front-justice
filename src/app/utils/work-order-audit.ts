@@ -76,17 +76,21 @@ export function resolveWorkOrderLifecycle(header: Record<string, any> = {}, hist
 }
 
 /** Un mismo texto legible en pantalla, PDF y Excel. */
-export function formatWorkOrderHistoryNote(value: unknown): string {
+export function formatWorkOrderHistoryNote(value: unknown, maintenanceKind?: unknown): string {
   if (value == null) return "";
   let text = typeof value === "object" ? String((value as any).descripcion || (value as any).note || (value as any).mensaje || "") : String(value);
   if (/^\s*\{/.test(text)) {
     try { const data = JSON.parse(text); text = String(data.descripcion || data.note || data.mensaje || "Movimiento registrado"); } catch { /* Conserva el texto histórico. */ }
   }
   const labels: Record<string, string> = { PLANNED: "Planificada", IN_PROGRESS: "En proceso", REVIEW: "En revisión", BLOCKED: "Bloqueada", CLOSED: "Finalizada" };
-  return text.replace(/\b(PLANNED|IN_PROGRESS|REVIEW|BLOCKED|CLOSED)\b/g, state => labels[state] || state)
+  const formatted = text.replace(/\b(PLANNED|IN_PROGRESS|REVIEW|BLOCKED|CLOSED)\b/g, state => labels[state] || state)
     .replace(/(?:\\r\\n|\\n|\r?\n|\s*\|\s*)+/g, "; ")
     .replace(/\s*(?:→|->)\s*/g, " a ")
     .replace(/\[WO:[^\]]+\]/gi, "")
     .replace(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, "registro")
     .replace(/\s+/g, " ").replace(/(?:;\s*){2,}/g, "; ").trim();
+  if (String(maintenanceKind || "").toUpperCase() !== "PROYECTO") return formatted;
+  return formatted.split(/;\s*|(?<=[.!?])\s+/)
+    .filter(part => !/horomet/i.test(part.normalize("NFD").replace(/[\u0300-\u036f]/g, "")))
+    .join("; ") || (formatted ? "Actualización de la orden" : "");
 }

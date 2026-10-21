@@ -11,6 +11,7 @@ const { outputFiles } = await build({
   stdin: {
     contents: `
       export * from "@/app/utils/work-order-audit";
+      export * from "@/app/utils/project-work-order-metrics";
       export * from "@/app/utils/work-order-detail";
       export * from "@/app/utils/work-order-report-documents";
       export * from "@/app/utils/project-work-order-documents";
@@ -378,3 +379,70 @@ if (process.env.REPORT_OUTPUT_DIR) {
   await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_flujo_historico.xlsx"), Buffer.from(await trackingExcel.arrayBuffer()));
 }
 console.log("PASS: ciclo de revisión completo, inicio original, anulación independiente e histórico descriptivo en PDF/Excel");
+
+{
+const projectHeader = {
+  code: "OT-PROYECTO", title: "Construccion de plataforma", maintenance_kind: "PROYECTO",
+  status_workflow: "CLOSED", created_at: "2026-10-01T08:00:00", closed_at: "2026-10-08T08:00:00",
+  horometro_anterior: 88888, horometro_actual: 99999,
+  valor_json: { horometro_anterior: 88888, horometro_actual: 99999 },
+  proyecto_personal: [{ rol: "Soldador", nombre: "Luis Torres", dias_laborados: 3, valor_dia: 40 }],
+};
+const projectHistory = [
+  { from_status: "PLANNED", to_status: "IN_PROGRESS", changed_at: "2026-10-02T08:00:00", note: "Inicio de trabajos; Horómetro automático OT registrado: 99999 h" },
+  { from_status: "IN_PROGRESS", to_status: "REVIEW", changed_at: "2026-10-03T08:00:00", note: "Revision del trabajo" },
+  { from_status: "REVIEW", to_status: "CLOSED", changed_at: "2026-10-04T20:00:00", note: "Trabajos entregados" },
+];
+const projectNow = Date.parse("2026-10-10T08:00:00-05:00");
+assert.equal(reports.workOrderOpenDays(projectHeader, projectHistory, projectNow), 3.5, "El cierre real manda sobre una edición posterior; revisión y planificación cuentan");
+assert.equal(reports.workOrderOpenDays({ ...projectHeader, status_workflow: "REVIEW" }, projectHistory, projectNow), 9, "Una OT abierta sigue contando, aun con cierre previo");
+assert.equal(reports.workOrderOpenDays({ ...projectHeader, created_at: "2026-10-01" }, [], projectNow), 7 + 8 / 24, "Una fecha sin hora se interpreta en Guayaquil");
+assert.equal(reports.workOrderOpenDays({ ...projectHeader, status: "ANULADA", valor_json: { annulment: { annulled_at: "2026-10-02T08:00:00-05:00" } } }, [], projectNow), 1);
+assert.equal(reports.workOrderOpenDays({}, [], projectNow), null);
+assert.equal(reports.workOrderOpenDays({ ...projectHeader, closed_at: null }, [], projectNow), null, "No inventa días si falta el cierre de una OT finalizada");
+assert.equal(reports.workOrderOpenDays({ created_at: "2026-10-11", status_workflow: "PLANNED" }, [], projectNow), 0);
+assert.equal(reports.formatWorkOrderHistoryNote(projectHistory[0].note, "PROYECTO"), "Inicio de trabajos");
+assert.match(reports.formatWorkOrderHistoryNote(projectHistory[0].note, "CORRECTIVO"), /Horómetro/);
+
+const projectDetail = {
+  ...canonicalDetail, header: projectHeader, history: projectHistory,
+  tasks: [{ tarea_nombre: "Fabricar plataforma", responsables: [{ display_name: "Ana Perez", horas: 2, costo_hora: 5 }] }],
+  consumptions: [{ producto_id: "acero", bodega_id: "taller", producto_label: "Plancha de acero", bodega_label: "Taller", cantidad: 3, costo_unitario: 4 }],
+  issues: [{ codigo: "EB-QA-01", fecha: "2026-10-02T08:00:00", items: [{ producto_id: "acero", bodega_id: "taller", producto_label: "Plancha de acero", bodega_label: "Taller", cantidad: 2, costo_unitario: 4 }] }],
+};
+const projectCanonical = reports.buildCanonicalWorkOrderReport(projectDetail, true);
+const projectInfo = projectCanonical.sheets[0].section.info;
+assert.equal(projectInfo.find(row => row.label === "Días de apertura").value, reports.formatWorkOrderOpenDays(3.5));
+assert.ok(!/hor[oó]met|88888|99999/i.test(JSON.stringify(projectCanonical)), "El informe de proyecto no contiene lecturas ni notas de horómetro");
+assert.equal(projectCanonical.sheets.find(sheet => sheet.name === "Personal contratado").rows[0].subtotal, 120);
+assert.equal(projectCanonical.sheets.find(sheet => sheet.name === "Consumos").rows[0].subtotal, 12);
+assert.equal(projectCanonical.sheets.find(sheet => sheet.name === "Salidas de material").rows[0].cantidad, 2, "Conserva los ítems realmente entregados");
+assert.equal(projectCanonical.sheets[0].rows[0].costo_total, 10, "Conserva la mano de obra por actividad");
+const projectPdf = await reports.buildReportPdfBlob(projectCanonical);
+const projectExcel = await reports.buildReportExcelBlob(projectCanonical);
+await assertPdf(projectPdf, ["Días de apertura", "Inicio de trabajos", "Trabajos entregados"]);
+await assertExcel(projectExcel, ["Días de apertura", "Inicio de trabajos", "Trabajos entregados"], 1);
+const projectConsolidated = reports.consolidateCanonicalWorkOrderReports([projectCanonical, projectCanonical], { title: "OT Proyecto", fileName: "proyectos" });
+await assertPdf(await reports.buildReportPdfBlob(projectConsolidated), ["Días de apertura"]);
+const legacyProjectPayload = reports.buildWorkOrderReportPayload(projectDetail, {
+  equipmentLabel: "Plataforma", statusLabel: "Finalizada", maintenanceKindLabel: "Proyecto",
+  materialLabel: () => "Acero", formatDate: String, formatCurrency: String, showCosts: true,
+});
+const legacyProjectPdf = await reports.buildWorkOrderReportPdfBlob(legacyProjectPayload);
+await assertPdf(legacyProjectPdf, ["Días de apertura"]);
+assert.equal(legacyProjectPayload.horometroAnterior, "");
+assert.equal(legacyProjectPayload.horometroActual, "");
+assert.ok(!/Horómetro|\(88888\)|\(99999\)/i.test(Buffer.from(await legacyProjectPdf.arrayBuffer()).toString("latin1")));
+const draftProjectPdf = await reports.buildProjectWorkOrdersPdfBlob([{ ...project, openDays: 3.5 }]);
+await assertPdf(draftProjectPdf, ["Días de apertura"]);
+await assertExcel(await reports.buildProjectWorkOrdersExcelBlob([{ ...project, openDays: 3.5 }]), ["Días de apertura"], 1);
+const maintenanceReport = reports.buildCanonicalWorkOrderReport({ ...canonicalDetail, header: { ...canonicalDetail.header, maintenance_kind: "CORRECTIVO" } }, true);
+assert.ok(maintenanceReport.sheets[0].section.info.some(row => row.label === "Horómetro inicial"), "Las OT de mantenimiento conservan sus horómetros");
+assert.ok(!maintenanceReport.sheets[0].section.info.some(row => row.label === "Días de apertura"));
+if (process.env.REPORT_OUTPUT_DIR) {
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_proyecto_dias.pdf"), Buffer.from(await projectPdf.arrayBuffer()));
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_proyecto_dias.xlsx"), Buffer.from(await projectExcel.arrayBuffer()));
+  await writeFile(path.join(process.env.REPORT_OUTPUT_DIR, "ot_proyecto_borrador.pdf"), Buffer.from(await draftProjectPdf.arrayBuffer()));
+}
+console.log("PASS: OT Proyecto sin horómetros, días de apertura hasta cierre/anulación, trabajo, entregas y mano de obra conservados en PDF/Excel");
+}

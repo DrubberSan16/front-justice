@@ -120,6 +120,7 @@
 <script setup lang="ts">
 import { buildCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
 import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
+import { workOrderOpenDays, formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { computed, ref, watch } from "vue";
@@ -217,8 +218,11 @@ const facts = computed(() => {
     { label: "Iniciada por", value: actors.processedBy || "Sin registro" },
     { label: "Finalizada por", value: actors.approvedBy || "Sin registro" },
   ];
-  const visible = String(row?.maintenance_kind || "").toUpperCase() === "PROYECTO"
-    ? base.filter(item => item.label !== "Horómetro") : base;
+  const isProject = String(row?.maintenance_kind || "").toUpperCase() === "PROYECTO";
+  const visible = isProject
+    ? base.filter(item => item.label !== "Horómetro").map(item => item.label === "Equipo" ? { ...item, label: "Proyecto" } : item)
+    : base;
+  if (isProject) visible.push({ label: "Días de apertura", value: formatWorkOrderOpenDays(workOrderOpenDays(row, detail.value.history)) });
   if (!showCosts.value) return visible;
   return [
     ...visible,

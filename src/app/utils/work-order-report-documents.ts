@@ -1,6 +1,7 @@
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 import { reportDisplayLabel } from "@/app/utils/work-order-audit";
 import { formatNumberForDisplay } from "@/app/utils/number-format";
+import { formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 
 /**
  * Informe de una orden de trabajo en PDF.
@@ -34,6 +35,7 @@ export type WorkOrderReportData = {
   maintenanceKindLabel: string;
   maintenanceKind?: string;
   workedHours?: number | null;
+  openDays?: number | null;
   openedAt: string;
   closedAt: string;
   horometroAnterior: string;
@@ -138,12 +140,16 @@ export async function buildWorkOrderReportPdfBlob(
     theme: "grid",
     styles: { fontSize: 8.5, cellPadding: 4 },
     headStyles: { fillColor: [31, 61, 122], textColor: 255, fontStyle: "bold" },
-    head: [String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'CEBADO'
+    head: [String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'PROYECTO'
+      ? ["Días de apertura", "Horas - hombre", "Costo total"]
+      : String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'CEBADO'
       ? ["Horas trabajadas", "Horas - hombre", "Costo total"]
       : ["Horómetro inicial", "Horómetro final", "Horas - hombre", "Costo total"]],
     body: [
       [
-        ...(String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'CEBADO'
+        ...(String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'PROYECTO'
+          ? [formatWorkOrderOpenDays(data.openDays ?? null)]
+          : String(data.maintenanceKind || data.maintenanceKindLabel).toUpperCase() === 'CEBADO'
           ? [data.workedHours == null ? 'Sin registro de inicio' : `${formatNumber(data.workedHours)} h`]
           : [safeText(data.horometroAnterior), safeText(data.horometroActual)]),
         `${formatNumber(data.totalHours)} h`,

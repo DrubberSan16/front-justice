@@ -7,6 +7,7 @@ import {
 } from "@/app/utils/date-time";
 import { drawPdfCompanyLogo, getCompanyLogoAsset } from "@/app/utils/pdf-branding";
 import { reportDisplayLabel, formatWorkOrderHistoryNote } from "@/app/utils/work-order-audit";
+import { formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 import { buildEquipmentDisplayTitle, resolveEquipmentLocation } from "@/app/utils/equipment-display";
 import {
   formatCurrencyForDisplay,
@@ -2399,6 +2400,7 @@ export function buildWorkOrderReport(payload: {
       horometro_anterior: header.horometro_anterior ?? "",
       horometro_actual: header.horometro_actual ?? "",
       horas_trabajadas: header.horas_trabajadas ?? null,
+      dias_apertura: header.dias_apertura ?? null,
       es_reserva: header.es_reserva,
       horas_a_realizar: header.horas_a_realizar ?? "",
       alerta: header.alerta || "",
@@ -2437,7 +2439,7 @@ export function buildWorkOrderReport(payload: {
     subtitle: repairText(
       [
         header.equipment_label || header.equipo_nombre || header.equipment_id,
-        formatCompartimientoSummary(
+        String(header.maintenance_kind || header.tipo_mantenimiento).toUpperCase() === "PROYECTO" ? "" : formatCompartimientoSummary(
           header.equipment_component_label || header.equipo_componente_nombre_oficial,
         ),
         header.maintenance_kind || header.tipo_mantenimiento,
@@ -2542,7 +2544,7 @@ function buildWorkOrderSectionSheets(
     },
     { label: "Mantenimiento", value: header.tipo_mantenimiento || "-" },
     { label: "Clase", value: header.clase_orden || "-" },
-    ...(isPriming ? [{ label: "Horas trabajadas (hh:mm:ss)", value: header.horas_trabajadas == null ? "Sin registro de inicio" : formatWorkedDuration(header.horas_trabajadas) }] : [
+    ...(isProject ? [{ label: "Días de apertura", value: formatWorkOrderOpenDays(header.dias_apertura ?? null) }] : isPriming ? [{ label: "Horas trabajadas (hh:mm:ss)", value: header.horas_trabajadas == null ? "Sin registro de inicio" : formatWorkedDuration(header.horas_trabajadas) }] : [
       { label: "Horómetro inicial", value: formatHorometer(header.horometro_anterior) },
       { label: "Horómetro final", value: formatHorometer(header.horometro_actual) },
     ]),
@@ -2570,8 +2572,10 @@ function buildWorkOrderSectionSheets(
   ];
   if (isProject) {
     for (let index = info.length - 1; index >= 0; index--) {
-      if (/Horómetro/.test(info[index]!.label)) info.splice(index, 1);
+      if (["Compartimientos", "Reserva del equipo"].includes(info[index]!.label)) info.splice(index, 1);
     }
+    const projectLabel = info.find(item => item.label === "Equipo");
+    if (projectLabel) projectLabel.label = "Proyecto";
   }
   if (showCosts) {
     info.push(
@@ -2660,7 +2664,7 @@ function buildWorkOrderSectionSheets(
       timeline: true,
       rows: [...order.history].sort((a, b) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime()).map(row => ({
         ...row, transicion: row.desde && row.desde !== row.hacia ? `${row.desde} a ${row.hacia}` : row.hacia,
-        nota: formatWorkOrderHistoryNote(row.nota), usuario: reportDisplayLabel(row.usuario) || "Usuario sin registro",
+        nota: formatWorkOrderHistoryNote(row.nota, header.tipo_mantenimiento), usuario: reportDisplayLabel(row.usuario) || "Usuario sin registro",
       })),
       note: "Cronología de seguimiento · eventos más recientes primero. Cada cambio entre En proceso y En revisión conserva su fecha y usuario.",
       minRowHeight: 30,

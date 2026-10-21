@@ -1207,14 +1207,15 @@
                 ><span
                   ><small>Finalización</small
                   >{{ formatTime(order.closed_at) }}</span
-                ><span v-if="order.maintenance_kind !== 'CEBADO'"
+                ><span v-if="!['CEBADO', 'PROYECTO'].includes(order.maintenance_kind)"
                   ><small>Horómetro anterior</small
                   >{{ formatHorometro(order.horometro_anterior) }}</span
-                ><span v-if="order.maintenance_kind !== 'CEBADO'"
+                ><span v-if="!['CEBADO', 'PROYECTO'].includes(order.maintenance_kind)"
                   ><small>Horómetro actual</small
                   >{{ formatHorometro(order.horometro_actual) }}</span
                 >
                 <span v-if="order.maintenance_kind === 'CEBADO'"><small>Horas trabajadas</small>{{ order.horas_trabajadas == null ? 'Sin registro de inicio' : formatWorkedDuration(order.horas_trabajadas) }}</span>
+                <span v-if="order.maintenance_kind === 'PROYECTO'"><small>Días de apertura</small>{{ formatWorkOrderOpenDays(workOrderOpenDays(order)) }}</span>
               </div>
               <div class="order-card__action">
                 Ver detalle <v-icon icon="mdi-chevron-right" />
@@ -1365,19 +1366,20 @@
                 <span>Finalizada</span
                 ><strong>{{ formatDateTime(detailHeader.closed_at) }}</strong>
               </article>
-              <article v-if="detailHeader.maintenance_kind !== 'CEBADO'">
+              <article v-if="!['CEBADO', 'PROYECTO'].includes(detailHeader.maintenance_kind)">
                 <span>Horómetro anterior</span
                 ><strong>{{
                   formatHorometro(detailHeader.horometro_anterior)
                 }}</strong>
               </article>
-              <article v-if="detailHeader.maintenance_kind !== 'CEBADO'">
+              <article v-if="!['CEBADO', 'PROYECTO'].includes(detailHeader.maintenance_kind)">
                 <span>Horómetro actual</span
                 ><strong>{{
                   formatHorometro(detailHeader.horometro_actual)
                 }}</strong>
               </article>
               <article v-if="detailHeader.maintenance_kind === 'CEBADO'"><span>Horas trabajadas</span><strong>{{ detailWorkedHours == null ? 'Sin registro de inicio' : `${formatNumber(detailWorkedHours)} h` }}</strong></article>
+              <article v-if="detailHeader.maintenance_kind === 'PROYECTO'"><span>Días de apertura</span><strong>{{ formatWorkOrderOpenDays(workOrderOpenDays(detailHeader, detailHistory)) }}</strong></article>
               <article>
                 <span>Horas de trabajo</span
                 ><strong>{{ formatNumber(totalResponsibleHours) }} h</strong>
@@ -1699,6 +1701,7 @@ import { buildPrimingCentralOptions, filterPrimingRows } from "@/app/utils/primi
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { buildOilControlSummary } from "@/app/utils/oil-control-summary";
 import { workOrderWorkedHours } from "@/app/utils/work-order-hours";
+import { workOrderOpenDays, formatWorkOrderOpenDays } from "@/app/utils/project-work-order-metrics";
 import { resolveWorkOrderReportActors } from "@/app/utils/work-order-audit";
 import { useTheme } from "vuetify";
 import { api } from "@/app/http/api";
