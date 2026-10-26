@@ -277,6 +277,7 @@
         <div class="d-flex flex-wrap ga-3 mb-5">
           <v-select v-model="controlScope" :items="[{ title: 'Todos los tipos de OT', value: 'all' }, { title: 'Solo OT de cebado', value: 'cebado' }]" label="Tipo de OT" variant="outlined" hide-details style="min-width:220px" />
           <v-autocomplete v-model="controlEquipmentId" :items="controlEquipmentOptions" label="Equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+          <v-select v-model="controlStatus" :items="CONTROL_STATUS_OPTIONS" label="Estado de OT" variant="outlined" hide-details style="min-width:220px" />
         </div>
         <v-alert v-if="controlError" type="error" variant="tonal" class="mb-4">{{ controlError }}</v-alert>
         <!-- Cuadricula de dos columnas y no el riel del resumen: en el riel cada
@@ -367,6 +368,68 @@
             @point="openEquipmentFromChart"
           />
         </div>
+        <!-- Lectura financiera pedida por Gerencia: cebado y MPG separados por
+             generador, cada uno con su costo, y una fila de total al final. Es
+             la misma tabla que abre el PDF y el Excel. -->
+        <div class="equipment-heading">
+          <h3>Consumo y costo de aceite por generador</h3>
+        </div>
+        <v-data-table
+          :headers="oilGeneratorHeaders"
+          :items="oilGeneratorDisplayRows"
+          :items-per-page="-1"
+          hide-default-footer
+          density="comfortable"
+          class="manager-table mb-6"
+          :loading="loading || primingLoading"
+          no-data-text="Sin órdenes de trabajo para los filtros seleccionados."
+        >
+          <template #body.append>
+            <tr v-if="oilGeneratorDisplayRows.length" class="totals-row">
+              <td
+                v-for="header in oilGeneratorHeaders"
+                :key="`oil-total-${header.key}`"
+                :class="header.align === 'end' ? 'text-end' : ''"
+              >{{ oilGeneratorCell(oilFinancial.total, header.key) }}</td>
+            </tr>
+          </template>
+        </v-data-table>
+        <template v-if="oilInventoryRows.length">
+          <div class="equipment-heading">
+            <h3>Movimiento de inventario · Aceite</h3>
+            <span v-if="controlInventory" class="equipment-heading__tools">
+              Saldo actual en bodega:
+              {{ formatNumber(controlInventory.saldo_actual?.cantidad) }} gal
+            </span>
+          </div>
+          <v-table density="comfortable" class="manager-table oil-inventory-table mb-2">
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th class="text-end">Cantidad (gal)</th>
+                <th v-if="canViewCosts" class="text-end">Costo unitario</th>
+                <th v-if="canViewCosts" class="text-end">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="line in oilInventoryRows"
+                :key="line.concepto"
+                :class="{ 'totals-row': line.kind === 'total', 'oil-inventory-table__opening': line.kind === 'group' }"
+              >
+                <td>{{ line.concepto }}</td>
+                <td class="text-end">{{ formatNumber(line.cantidad) }}</td>
+                <td v-if="canViewCosts" class="text-end">{{ formatCurrency(line.costo_unitario) }}</td>
+                <td v-if="canViewCosts" class="text-end">{{ formatCurrency(line.costo_total) }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+          <p v-if="oilReconciliation" class="oil-reconciliation mb-6">
+            Conciliación: las órdenes registran {{ formatNumber(oilReconciliation.orders) }} gal y
+            bodega entregó {{ formatNumber(oilReconciliation.outputs) }} gal
+            (diferencia {{ formatNumber(oilReconciliation.difference) }} gal).
+          </p>
+        </template>
         <div class="equipment-heading">
           <h3>Consumo por equipo</h3>
           <div class="equipment-heading__tools">
@@ -566,6 +629,7 @@
               file-name="gerencia_inventario"
               :columns="inventoryExportColumns"
               :rows="inventoryReportRows"
+              :load-report="loadInventoryExportReport"
             />
           </div>
           <div class="inventory-searches">
@@ -864,15 +928,29 @@
               separados por tipo de equipo.
             </p>
           </div>
-          <v-btn
-            variant="tonal"
-            color="primary"
-            prepend-icon="mdi-refresh"
-            :loading="maintenanceCostLoading"
-            :disabled="invalidMaintenanceCostRange"
-            @click="loadMaintenanceCostReport"
-            >Actualizar</v-btn
-          >
+          <div class="d-flex align-center flex-wrap ga-2">
+            <!-- Gerencia no podia imprimir esta seccion: no tenia exportacion.
+                 El archivo es el reporte financiero de repuestos con los
+                 filtros que estan aplicados en pantalla. -->
+            <SectionExportButtons
+              :preview="sectionPreview"
+              title="Reporte financiero de repuestos y mantenimiento"
+              :subtitle="maintenanceCostFiltersLabel"
+              file-name="gerencia_costo_mantenimiento"
+              :columns="[]"
+              :rows="maintenanceCostRawRows"
+              :load-report="loadMaintenanceFinancialReport"
+            />
+            <v-btn
+              variant="tonal"
+              color="primary"
+              prepend-icon="mdi-refresh"
+              :loading="maintenanceCostLoading"
+              :disabled="invalidMaintenanceCostRange"
+              @click="loadMaintenanceCostReport"
+              >Actualizar</v-btn
+            >
+          </div>
         </div>
 
         <div class="system-filters system-filters--cost">
@@ -895,6 +973,42 @@
             hide-details
             clearable
             @update:model-value="loadMaintenanceCostReport"
+          />
+          <v-autocomplete
+            v-model="maintenanceCostEquipmentFilter"
+            :items="maintenanceCostEquipmentOptions"
+            label="Equipo / generador"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
+          />
+          <v-select
+            v-model="maintenanceCostKindFilter"
+            :items="maintenanceCostKindOptions"
+            label="Tipo de OT"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
+          />
+          <v-select
+            v-model="maintenanceCostCategoryFilter"
+            :items="MAINTENANCE_COST_CATEGORY_OPTIONS"
+            label="Categoría de material"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
+          />
+          <v-text-field
+            v-model="maintenanceCostSearch"
+            label="Buscar OT o artículo"
+            prepend-inner-icon="mdi-magnify"
+            variant="outlined"
+            density="comfortable"
+            hide-details
+            clearable
           />
         </div>
 
@@ -991,14 +1105,8 @@
                     :key="`total-${header.key}`"
                   >
                     <template v-if="index === 0">Total del tab</template>
-                    <template v-else-if="header.key === 'costo_materiales'">{{
-                      formatCurrency(tab.totalMateriales)
-                    }}</template>
-                    <template v-else-if="header.key === 'costo_mano_obra'">{{
-                      formatCurrency(tab.totalManoObra)
-                    }}</template>
-                    <template v-else-if="header.key === 'total_costo'">{{
-                      formatCurrency(tab.totalCosto)
+                    <template v-else-if="header.key.startsWith('costo_') || header.key === 'total_costo'">{{
+                      formatCurrency(sumMaintenanceCost(tab.rawRows, header.key))
                     }}</template>
                     <template v-else-if="header.key === 'total_cantidad'">{{
                       formatNumber(tab.totalCantidad, 4)
@@ -1690,7 +1798,14 @@
 </template>
 
 <script setup lang="ts">
-import { buildOilOrderReport } from "@/app/utils/oil-consumption-report";
+import {
+  buildOilFinancialReport,
+  oilInventoryLines,
+  summarizeOilByGenerator,
+  type OilInventory,
+} from "@/app/utils/oil-consumption-report";
+import { buildMaintenanceFinancialReport } from "@/app/utils/maintenance-cost-financial-report";
+import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
 import {
   buildReportPdfBlob,
@@ -1815,15 +1930,38 @@ const generationEquipments = ref<AnyRow[]>([]);
 const controlRows = ref<AnyRow[]>([]);
 const controlError = ref<string | null>(null);
 const controlEquipments = ref<AnyRow[]>([]);
+const controlInventory = ref<OilInventory | null>(null);
 const controlScope = ref("all");
 const controlEquipmentId = ref<string | null>(null);
+/**
+ * Estado de la OT, pedido por Gerencia junto a fechas, central, equipo y tipo:
+ * el costo cerrado del período se lee con las OT cerradas, y las abiertas
+ * muestran lo que todavía se está consumiendo.
+ */
+const controlStatus = ref<"all" | "closed" | "open">("all");
+const CONTROL_STATUS_OPTIONS = [
+  { title: "Todos los estados", value: "all" },
+  { title: "Solo OT cerradas", value: "closed" },
+  { title: "OT abiertas o en proceso", value: "open" },
+];
+const branchScope = useBranchScopeStore();
 const controlEquipmentOptions = computed(() => controlEquipments.value.map(row => ({ value: String(row.id), title: [row.codigo, row.nombre].filter(Boolean).join(" - ") })));
-const controlFilterLabel = computed(() => `${rangeLabel.value} · ${controlScope.value === 'cebado' ? 'Solo OT de cebado' : 'Todos los tipos de OT'} · ${controlEquipmentOptions.value.find(row => row.value === controlEquipmentId.value)?.title || 'Todos los equipos'}${primingCentral.value ? ` · ${primingCentral.value}` : ''}`);
+const controlFilterLabel = computed(() => [
+  rangeLabel.value,
+  `Central: ${branchScope.selectedLabel || "Todas"}`,
+  controlScope.value === "cebado" ? "Solo OT de cebado" : "Todos los tipos de OT",
+  controlEquipmentOptions.value.find(row => row.value === controlEquipmentId.value)?.title || "Todos los equipos",
+  CONTROL_STATUS_OPTIONS.find(option => option.value === controlStatus.value)?.title || "",
+  primingCentral.value || "",
+].filter(Boolean).join(" · "));
 const primingLocations = ref<AnyRow[]>([]);
 const primingCentral = ref<string | null>(null);
 const primingCentralOptions = computed(() => buildPrimingCentralOptions(primingLocations.value, controlRows.value));
+const statusFilteredControlRows = computed(() => controlStatus.value === "all"
+  ? controlRows.value
+  : controlRows.value.filter(row => (String(row.work_order_status || "").toUpperCase() === "CLOSED") === (controlStatus.value === "closed")));
 const oilReport = computed(() => buildOilControlSummary(
-  filterPrimingRows(controlRows.value, primingCentral.value),
+  filterPrimingRows(statusFilteredControlRows.value, primingCentral.value),
   filterPrimingRows(controlEquipments.value.filter(row => !controlEquipmentId.value || String(row.id) === controlEquipmentId.value), primingCentral.value), endDate.value,
 ));
 const rawPrimingRows = computed(() => oilReport.value.priming);
@@ -1904,29 +2042,66 @@ const inventoryHeaders = computed(() => [
 const sectionPreview = useReportPreview({
   title: "Previsualización de la sección",
 });
-async function loadPrimingExportReport() {
+/**
+ * Las dos exportaciones del control (la sección y la tarjeta del resumen) y la
+ * del Dashboard Administración arman el mismo reporte operativo-financiero.
+ */
+async function loadOilExportReport() {
   if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
   if (primingLoading.value) throw new Error("Espera a que termine de actualizar el control.");
-  return buildOilOrderReport({
+  return buildOilFinancialReport({
     rows: oilWorkOrders.value,
-    mode: "management", subtitle: controlFilterLabel.value,
+    inventory: controlInventory.value,
+    filtersLabel: controlFilterLabel.value,
     fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
     showCosts: canViewCosts.value,
   });
 }
+const loadPrimingExportReport = loadOilExportReport;
 
-async function loadOilExportReport() {
-  if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
-  if (primingLoading.value) throw new Error("Espera a que termine de actualizar el control.");
-  return oilExportReport.value;
+/** Consumo y costo por generador, con su fila de total, para la pantalla. */
+const oilFinancial = computed(() => summarizeOilByGenerator(oilWorkOrders.value));
+const oilInventoryRows = computed(() => oilInventoryLines(controlInventory.value));
+const oilGeneratorHeaders = computed(() => [
+  { title: "Equipo", key: "equipo" },
+  { title: "OT de cebado", key: "ot_cebado", align: "end" as const },
+  { title: "Horas trabajadas cebado", key: "horas_cebado", align: "end" as const },
+  { title: "Aceite cebado (gal)", key: "gal_cebado", align: "end" as const },
+  ...(canViewCosts.value ? [{ title: "Costo cebado", key: "costo_cebado", align: "end" as const }] : []),
+  { title: "OT MPG", key: "ot_mpg", align: "end" as const },
+  { title: "Aceite MPG (gal)", key: "gal_mpg", align: "end" as const },
+  ...(canViewCosts.value ? [{ title: "Costo MPG", key: "costo_mpg", align: "end" as const }] : []),
+  ...(oilFinancial.value.total.ot_otros
+    ? [
+        { title: "Aceite otros tipos (gal)", key: "gal_otros", align: "end" as const },
+        ...(canViewCosts.value ? [{ title: "Costo otros tipos", key: "costo_otros", align: "end" as const }] : []),
+      ]
+    : []),
+  { title: "Total aceite (gal)", key: "gal_total", align: "end" as const },
+  ...(canViewCosts.value ? [{ title: "Total costo aceite", key: "costo_total", align: "end" as const }] : []),
+]);
+function oilGeneratorCell(row: AnyRow, key: string) {
+  if (key === "equipo") return row.equipo;
+  if (key === "horas_cebado") return formatWorkedDuration(row.horas_cebado, { empty: "00:00:00" });
+  if (key.startsWith("ot_")) return formatCount(row[key]);
+  if (key.startsWith("costo_")) return formatCurrency(row[key]);
+  return formatNumber(row[key]);
 }
-
-const oilExportReport = computed(() => buildOilOrderReport({
-  rows: oilWorkOrders.value, mode: "management",
-  subtitle: controlFilterLabel.value,
-  fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
-  showCosts: canViewCosts.value,
-}));
+const oilGeneratorDisplayRows = computed(() =>
+  oilFinancial.value.generators.map((row) => Object.fromEntries(
+    oilGeneratorHeaders.value.map((header) => [header.key, oilGeneratorCell(row, header.key)]),
+  )),
+);
+/** Galones de las OT frente a lo que salió de bodega en el mismo período. */
+const oilReconciliation = computed(() => {
+  if (!controlInventory.value) return null;
+  const outputs = Number(controlInventory.value.salidas?.cantidad || 0);
+  return {
+    orders: oilFinancial.value.total.gal_total,
+    outputs,
+    difference: outputs - oilFinancial.value.total.gal_total,
+  };
+});
 const inventoryExportColumns = computed(() =>
   inventoryHeaders.value.map((header: any) => ({
     key: String(header.key),
@@ -1949,6 +2124,118 @@ const inventoryReportRows = computed(() =>
     material_label: materialLabel(row),
   })),
 );
+
+/**
+ * Inventario del período completo para exportar.
+ *
+ * La tabla pagina en el servidor (10 materiales por página) y el PDF tomaba
+ * solo la página visible: salía una hoja y sin el costo total, aunque en
+ * pantalla había más materiales. Aquí se recorren todas las páginas con los
+ * mismos filtros y el reporte cierra con la fila de totales del servidor.
+ */
+async function loadInventoryExportReport() {
+  if (invalidDateRange.value) throw new Error("Revisa el rango de fechas.");
+  const groups: AnyRow[] = [];
+  let totals: AnyRow = inventoryTotals.value;
+  for (let page = 1; page <= 100; page += 1) {
+    const { data } = await api.get("/kpi_inventory/kardex/resumen-material", {
+      params: {
+        desde: startDate.value,
+        hasta: endDate.value,
+        search: inventorySearch.value.trim() || undefined,
+        equipment_id: inventoryEquipmentId.value || undefined,
+        page,
+        limit: 1000,
+      },
+    });
+    const payload = unwrap(data);
+    const pageRows: AnyRow[] = Array.isArray(payload?.groups) ? payload.groups : [];
+    groups.push(...pageRows);
+    totals = payload?.totals || totals;
+    if (!pageRows.length || page >= Number(payload?.pagination?.totalPages || 1)) break;
+  }
+  const costs = canViewCosts.value;
+  const rows = groups.map((row) => ({
+    material: materialLabel(row),
+    unidad: row.unidad_label || "",
+    stock_inicial: Number(row.stock_inicial || 0),
+    entradas: Number(row.entradas || 0),
+    salidas: Number(row.salidas || 0),
+    stock_final: Number(row.stock_final || 0),
+    ...(costs
+      ? {
+          costo_unitario: Number(row.costo_unitario || 0),
+          costo_entradas: Number(row.costo_entradas || 0),
+          costo_salidas: Number(row.costo_salidas || 0),
+        }
+      : {}),
+  }));
+  const totalRow = {
+    material: `TOTAL · ${formatCount(groups.length)} materiales`,
+    entradas: Number(totals?.entradas || 0),
+    salidas: Number(totals?.salidas || 0),
+    ...(costs
+      ? {
+          costo_entradas: Number(totals?.costo_entradas || 0),
+          costo_salidas: Number(totals?.costo_salidas || 0),
+        }
+      : {}),
+  };
+  const equipment = selectedInventoryEquipmentLabel.value;
+  return buildSectionReport({
+    title: "Inventario del período",
+    subtitle: [
+      rangeLabel.value,
+      `Central: ${branchScope.selectedLabel || "Todas"}`,
+      equipment ? `Unidad: ${equipment}` : "",
+      inventorySearch.value.trim() ? `Búsqueda: ${inventorySearch.value.trim()}` : "",
+    ].filter(Boolean).join(" · "),
+    fileName: `gerencia_inventario_${startDate.value}_${endDate.value}`,
+    sheetName: "Inventario del período",
+    orientation: "landscape",
+    columns: [
+      { key: "material", title: "Material", width: 40 },
+      { key: "unidad", title: "Unidad", width: 10 },
+      { key: "stock_inicial", title: "Stock inicial", format: "number", width: 11 },
+      { key: "entradas", title: "Ingresó", format: "number", width: 11 },
+      { key: "salidas", title: "Salió", format: "number", width: 11 },
+      { key: "stock_final", title: "Stock final", format: "number", width: 11 },
+      ...(costs
+        ? ([
+            { key: "costo_unitario", title: "Costo por ítem", format: "currency", width: 12 },
+            { key: "costo_entradas", title: "Valor ingresado", format: "currency", width: 13 },
+            { key: "costo_salidas", title: "Valor salido", format: "currency", width: 13 },
+          ] as SectionReportColumn[])
+        : []),
+    ],
+    rows: [...rows, totalRow],
+    rowKinds: [...rows.map(() => null), "total"],
+    summary: [
+      { label: "Materiales", value: formatCount(groups.length) },
+      { label: "Movimientos", value: formatCount(totals?.movimientos || 0) },
+      { label: "Ingresó", value: formatNumber(totals?.entradas || 0) },
+      { label: "Salió", value: formatNumber(totals?.salidas || 0) },
+      ...(costs
+        ? [
+            { label: "Valor ingresado", value: formatCurrency(totals?.costo_entradas || 0) },
+            { label: "Valor salido", value: formatCurrency(totals?.costo_salidas || 0) },
+            { label: "Gasto total", value: formatCurrency(totals?.costo_total || 0) },
+          ]
+        : []),
+    ],
+    charts: [
+      {
+        title: "Entradas y salidas del Kardex",
+        type: "bar",
+        unit: "movimientos",
+        points: reportChartPoints(inventoryFlowPoints.value),
+      },
+    ],
+    note: costs
+      ? "Gasto total = valor ingresado + valor salido del período, igual que en pantalla. Las cantidades suman unidades de medida distintas: léalas por material."
+      : "Las cantidades suman unidades de medida distintas: léalas por material.",
+  });
+}
 
 /**
  * Cabeceras del control de cebado.
@@ -2753,10 +3040,12 @@ async function loadOilReport() {
   const payload = unwrap(data);
   controlRows.value = Array.isArray(payload?.filas) ? payload.filas : [];
   controlEquipments.value = Array.isArray(payload?.equipos) ? payload.equipos : [];
+  controlInventory.value = payload?.inventario ?? null;
   primingDetailDialog.value = false;
   } catch (cause: any) {
     if (request !== controlRequest) return;
     controlRows.value = [];
+    controlInventory.value = null;
     controlError.value = cause?.response?.data?.message || "No se pudo actualizar el control de cebado y aceite.";
     throw cause;
   } finally {
@@ -3115,6 +3404,9 @@ const SYSTEM_FIELD_LABELS: Record<string, string> = {
   total_materiales: "Total ítems",
   materiales: "Materiales",
   total_cantidad: "Cantidad",
+  costo_repuestos: "Repuestos",
+  costo_aceite: "Aceite",
+  costo_insumos: "Insumos",
   costo_materiales: "Costo materiales",
   costo_mano_obra: "Mano de obra",
   total_costo: "Costo total",
@@ -3150,6 +3442,11 @@ const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
   costo_mantenimiento: {
     OT: [
       ...SYSTEM_OT_COLUMNS,
+      // Repuestos + aceite + insumos = costo de materiales (categorias
+      // excluyentes que clasifica el servidor).
+      "costo_repuestos",
+      "costo_aceite",
+      "costo_insumos",
       "costo_materiales",
       "costo_mano_obra",
       "total_costo",
@@ -3232,6 +3529,9 @@ const SYSTEM_HIDDEN_FIELDS = new Set([
   "responsables_meta",
   "equipos_lista",
   "period_key",
+  // Detalle por material del costo de mantenimiento: se lee en el reporte
+  // financiero de repuestos, no como columna.
+  "materiales_detalle",
   // El tipo de equipo solo lo usa la seccion de costo de mantenimiento, que
   // arma sus pestanas con el; como columna repetiria lo que ya dice el equipo.
   "equipment_type_id",
@@ -3588,12 +3888,77 @@ const maintenanceCostWarehouseOptions = computed<AnyRow[]>(() => {
   return systemWarehouseOptions.value;
 });
 
-const maintenanceCostRawRows = computed<AnyRow[]>(() => {
+const maintenanceCostAllRows = computed<AnyRow[]>(() => {
   const rows = maintenanceCostPayload.value?.reports?.costo_mantenimiento?.rows;
   return Array.isArray(rows)
     ? enrichMaintenanceCostRows(rows, laborCostByOrder(maintenanceCostPayload.value))
     : [];
 });
+
+/**
+ * Filtros del reporte financiero de repuestos: generador, tipo de OT,
+ * categoria del material y una busqueda por OT o articulo. El periodo, la
+ * central (sucursal activa) y la bodega ya filtran en el servidor.
+ */
+const maintenanceCostEquipmentFilter = ref<string | null>(null);
+const maintenanceCostKindFilter = ref<string | null>(null);
+const maintenanceCostCategoryFilter = ref<string | null>(null);
+const maintenanceCostSearch = ref("");
+const MAINTENANCE_COST_CATEGORY_OPTIONS = [
+  { title: "Repuestos", value: "REPUESTOS" },
+  { title: "Aceite", value: "ACEITE" },
+  { title: "Insumos", value: "INSUMOS" },
+];
+const maintenanceCostEquipmentOptions = computed(() => {
+  const options = new Map<string, string>();
+  for (const row of maintenanceCostAllRows.value) {
+    const id = String(row?.equipment_id || "").trim();
+    if (id) options.set(id, maintenanceCostEquipmentLabel(row) || "Sin equipo");
+  }
+  return [...options.entries()]
+    .map(([value, title]) => ({ value, title }))
+    .sort((left, right) => left.title.localeCompare(right.title, "es", { numeric: true }));
+});
+const maintenanceCostKindOptions = computed(() =>
+  [...new Set(maintenanceCostAllRows.value
+    .map((row) => String(row?.maintenance_kind_label || "").trim())
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")),
+);
+const maintenanceCostRawRows = computed<AnyRow[]>(() => {
+  const search = maintenanceCostSearch.value.trim().toLowerCase();
+  const category = maintenanceCostCategoryFilter.value;
+  return maintenanceCostAllRows.value.filter((row) => {
+    if (maintenanceCostEquipmentFilter.value && String(row?.equipment_id || "") !== maintenanceCostEquipmentFilter.value) return false;
+    if (maintenanceCostKindFilter.value && String(row?.maintenance_kind_label || "") !== maintenanceCostKindFilter.value) return false;
+    const materials: AnyRow[] = Array.isArray(row?.materiales_detalle) ? row.materiales_detalle : [];
+    if (category && !materials.some((material) => material?.categoria_costo === category)) return false;
+    if (!search) return true;
+    return [row?.work_order_code, maintenanceCostEquipmentLabel(row), ...materials.flatMap((material) => [material?.material_codigo, material?.material_label])]
+      .some((value) => String(value || "").toLowerCase().includes(search));
+  });
+});
+
+const maintenanceCostFiltersLabel = computed(() => [
+  rangeLabel.value,
+  `Central: ${branchScope.selectedLabel || "Todas"}`,
+  maintenanceCostWarehouseOptions.value.find((item) => item.id === maintenanceCostWarehouseId.value)?.label || "Todas las bodegas",
+  maintenanceCostEquipmentOptions.value.find((item) => item.value === maintenanceCostEquipmentFilter.value)?.title || "Todos los equipos",
+  maintenanceCostKindFilter.value || "Todos los tipos de OT",
+  MAINTENANCE_COST_CATEGORY_OPTIONS.find((item) => item.value === maintenanceCostCategoryFilter.value)?.title || "",
+  maintenanceCostSearch.value.trim() ? `Búsqueda: ${maintenanceCostSearch.value.trim()}` : "",
+].filter(Boolean).join(" · "));
+
+async function loadMaintenanceFinancialReport() {
+  if (invalidMaintenanceCostRange.value) throw new Error("Revisa el rango de fechas.");
+  if (maintenanceCostLoading.value) throw new Error("Espera a que termine de actualizar el costo de mantenimiento.");
+  return buildMaintenanceFinancialReport({
+    rows: maintenanceCostRawRows.value,
+    filtersLabel: maintenanceCostFiltersLabel.value,
+    fileName: `gerencia_costo_mantenimiento_${maintenanceCostStart.value}_${maintenanceCostEnd.value}`,
+    equipmentLabel: maintenanceCostEquipmentLabel,
+    category: maintenanceCostCategoryFilter.value,
+  });
+}
 
 const maintenanceCostHeaders = computed(() => {
   const keys = systemVisibleKeys(
@@ -4876,27 +5241,7 @@ async function previewSummaryPdf(section: SectionWorkspaceKey) {
   }
 
   if (section === "inventory") {
-    await sectionPreview.open(
-      "pdf",
-      buildSectionReport({
-        ...common,
-        title: "Consolidado de inventario del período",
-        columns: inventoryExportColumns.value,
-        rows: inventoryReportRows.value,
-        summary: [
-          { label: "Movimientos", value: inventoryTotals.value.movimientos || 0 },
-          { label: "Materiales", value: inventoryTotals.value.materiales || 0 },
-        ],
-        charts: [
-          {
-            title: "Entradas y salidas del Kardex",
-            type: "bar",
-            unit: "movimientos",
-            points: reportChartPoints(inventoryFlowPoints.value),
-          },
-        ],
-      }),
-    );
+    await sectionPreview.open("pdf", await loadInventoryExportReport());
     return;
   }
 
@@ -5420,8 +5765,14 @@ onMounted(() => {
 }
 
 .system-filters--cost {
-  grid-template-columns: minmax(260px, auto) minmax(240px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
   align-items: center;
+}
+/* El rango va en su propia fila: los cinco filtros del reporte financiero se
+   reparten debajo sin que la etiqueta larga del rango les quite ancho. */
+.system-filters--cost > .v-chip {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 @media (min-width: 960px) and (min-height: 700px) {
@@ -5543,6 +5894,16 @@ onMounted(() => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.oil-inventory-table {
+  max-width: 760px;
+}
+.oil-inventory-table__opening td {
+  font-weight: 600;
+}
+.oil-reconciliation {
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  font-size: 0.88rem;
 }
 .equipment-filter {
   border-radius: 10px;

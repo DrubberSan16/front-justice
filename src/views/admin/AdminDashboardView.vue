@@ -570,7 +570,8 @@ import { useDataChanged } from "@/app/utils/use-data-changed";
 import { getPermissionsForAnyComponent } from "@/app/utils/menu-permissions";
 import { canViewMaterialCosts } from "@/app/utils/role-access";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
-import { buildOilOrderReport } from "@/app/utils/oil-consumption-report";
+import { buildOilFinancialReport } from "@/app/utils/oil-consumption-report";
+import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import SectionExportButtons from "@/components/ui/SectionExportButtons.vue";
 import { buildSectionReport } from "@/app/utils/section-report";
 import { operationalClock, operationalHours } from "@/app/utils/operational-horometer";
@@ -1306,14 +1307,28 @@ function money(value: unknown) {
   return formatCurrencyForDisplay(value);
 }
 
+/**
+ * Mismo reporte que el Dashboard Gerencia: misma consulta, mismo armado. Los
+ * dos tableros exportaban documentos distintos del mismo control y Gerencia
+ * pidio que fueran iguales.
+ */
+const branchScope = useBranchScopeStore();
 async function loadCebadoExportReport() {
-  const { data: response } = await api.get("/kpi_maintenance/dashboard-administracion/detalle", {
-    params: { bloque: "aceite", desde: desde.value, hasta: hasta.value, equipo_id: equipoId.value || undefined },
+  const { data: response } = await api.get("/kpi_maintenance/dashboard-administracion/control-cebado-aceite", {
+    params: { desde: desde.value, hasta: hasta.value, equipo_id: equipoId.value || undefined },
   });
   const payload = response?.data ?? response;
-  return buildOilOrderReport({
-    rows: Array.isArray(payload?.filas) ? payload.filas : [], mode: "control",
-    subtitle: periodoLabel.value, fileName: `cebado_${desde.value}_${hasta.value}`,
+  const equipo = equiposFiltro.value.find((item: any) => item.value === equipoId.value)?.label;
+  return buildOilFinancialReport({
+    rows: Array.isArray(payload?.filas) ? payload.filas : [],
+    inventory: payload?.inventario ?? null,
+    filtersLabel: [
+      periodoLabel.value,
+      `Central: ${branchScope.selectedLabel || "Todas"}`,
+      "Todos los tipos de OT",
+      equipo || "Todos los equipos",
+    ].join(" · "),
+    fileName: `cebado_${desde.value}_${hasta.value}`,
     showCosts: canViewCosts.value,
   });
 }

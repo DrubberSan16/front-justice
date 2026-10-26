@@ -11,6 +11,7 @@ const { outputFiles } = await build({
   stdin: {
     contents: `
       export * from "@/app/utils/oil-consumption-report";
+      export * from "@/app/utils/maintenance-cost-financial-report";
       export * from "@/app/utils/work-order-detail";
       export * from "@/app/utils/work-order-report-documents";
       export * from "@/app/utils/project-work-order-documents";
@@ -69,13 +70,11 @@ await mkdir(output, { recursive: true });
   assert.equal(summary.totals.total_costo, 31.25);
   assert.equal(summary.by_equipment[0].total_ordenes, 2);
   assert.equal(summary.priming[0].galones_periodo, summary.totals.total_cantidad);
-  const onlyPriming = reports.buildOilOrderReport({ rows: [priming], mode: 'management', subtitle: '', fileName: 'cebado', showCosts: true });
-  assert.ok(!onlyPriming.sheets[0].columns.some(column => /horometro/.test(column.key)));
-  assert.equal(onlyPriming.sheets[0].rows[0].horas_trabajadas, '01:30:00');
-  assert.equal(onlyPriming.sheets[0].rows[0].reserva, 'En reserva');
-  const mixed = reports.buildOilOrderReport({ rows: [priming, zero], mode: 'management', subtitle: '', fileName: 'mixed', showCosts: true });
-  assert.equal(mixed.sheets[0].rows[0].horometro_inicial, '');
-  assert.equal(mixed.sheets[0].rows[1].horometro_final, 120, 'Los demás tipos conservan sus lecturas');
+  const onlyPriming = reports.buildOilFinancialReport({ rows: [priming], filtersLabel: '', fileName: 'cebado', showCosts: true });
+  assert.equal(onlyPriming.sheets[1].rows[0].horas_cebado, '01:30:00');
+  assert.equal(onlyPriming.sheets[1].rows[0].horometro_inicial, '', 'El cebado no lleva horómetros');
+  const mixed = reports.buildOilFinancialReport({ rows: [priming, zero], filtersLabel: '', fileName: 'mixed', showCosts: true });
+  assert.equal(mixed.sheets[1].rows[1].horometro_final, 120, 'Los demás tipos conservan sus lecturas');
   const history = [
     { changed_at: '2026-10-01T09:00:00-05:00', from_status: 'IN_PROGRESS', to_status: 'REVIEW' },
     { changed_at: '2026-10-01T11:00:00-05:00', from_status: 'REVIEW', to_status: 'IN_PROGRESS' },
@@ -87,39 +86,112 @@ await mkdir(output, { recursive: true });
   assert.ok(info.some(row => row.label === 'Horas trabajadas (hh:mm:ss)' && row.value === '02:00:00'));
   assert.ok(!info.some(row => /Horómetro (inicial|final)/.test(row.label)));
 }
-for (const mode of ["control", "management"]) {
-  const report = reports.buildOilOrderReport({ rows: [sample], mode,
-    subtitle: "01/10/2026 a 13/10/2026", fileName: mode, showCosts: true });
-  const sheet = report.sheets[0];
-  assert.equal(sheet.columns.length, mode === "control" ? 7 : 10);
-  assert.equal(sheet.rows[0].fecha, "01-10-2026", "Respeta America/Guayaquil");
-  assert.equal(sheet.rows[0].tipo, "Mantenimiento MPG");
-  assert.equal(sheet.rows[0].equipo, mode === "control" ? "UG07" : "UG07 - CUMMINS");
-  if (mode === "management") assert.equal(sheet.rows[0].horometro_inicial, 0);
-  assert.equal(sheet.rows[0].costo, 31.25);
-  assert.ok(!JSON.stringify(sheet.rows).includes(sample.equipment_id));
+{
+  // Gerencia y Administración exportan el mismo reporte operativo-financiero.
+  const priming = { ...sample, maintenance_kind: "CEBADO", work_order_code: "OT-A00306", horas_trabajadas: 0.5, cantidad: 2, subtotal: 25 };
+  const corrective = { ...sample, maintenance_kind: "CORRECTIVO", work_order_code: "OT-A00307", cantidad: 1, subtotal: 12.5 };
+  const flow = (cantidad, costo) => ({ cantidad, costo });
+  const inventory = {
+    existencia_inicial: flow(100, 1250), compras: flow(50, 650), transferencias_recibidas: flow(0, 0),
+    devoluciones: flow(0, 0), ajustes: flow(0, 0), salidas: flow(6, 75), transferencias_enviadas: flow(0, 0),
+    existencia_final: flow(144, 1825), saldo_actual: flow(140, 1775),
+  };
+  const report = reports.buildOilFinancialReport({ rows: [sample, priming, corrective], inventory,
+    filtersLabel: "01 oct 2026 al 13 oct 2026 · Central: SUC-002 - TPTA", fileName: "financiero", showCosts: true });
+  const [generators, detail, stock, reconciliation] = report.sheets;
+  // Cebado, MPG y otros tipos son excluyentes y el total es su suma.
+  assert.equal(generators.rows.length, 2, "Un generador y la fila de total");
+  const [ug07, total] = generators.rows;
+  assert.equal(ug07.equipo, "UG07 - CUMMINS");
+  assert.equal(ug07.ot_cebado, 1);
+  assert.equal(ug07.horas_cebado, "00:30:00");
+  assert.equal(ug07.gal_cebado, 2);
+  assert.equal(ug07.gal_mpg, 2.5);
+  assert.equal(ug07.gal_otros, 1);
+  assert.equal(ug07.gal_total, 5.5);
+  assert.equal(ug07.costo_total, 68.75);
+  assert.equal(total.equipo, "TOTAL");
+  assert.equal(generators.rowKinds.at(-1), "total");
+  // El detalle por OT cierra con el total de galones y de costo.
+  assert.equal(detail.rows.length, 4);
+  assert.equal(detail.rows[0].fecha, "01-10-2026", "Respeta America/Guayaquil");
+  assert.equal(detail.rows[0].tipo, "Mantenimiento MPG");
+  assert.equal(detail.rows[0].horometro_inicial, 0);
+  assert.equal(detail.rows.at(-1).galones, 5.5);
+  assert.equal(detail.rows.at(-1).costo, 68.75);
+  // Inventario: la cuenta se lee de la existencia inicial a la final, y la
+  // conciliación compara las OT con lo que salió de bodega.
+  assert.equal(stock.rows[0].concepto, "Existencia inicial");
+  assert.equal(stock.rows.at(-1).cantidad, 144);
+  assert.equal(stock.rows[1].costo_unitario, 13);
+  assert.equal(reconciliation.rows[2].cantidad, 0.5);
+  assert.ok(report.summary.some(item => item.label === "OT de cebado" && item.value === "1 · 1 equipos"));
+  assert.ok(report.summary.some(item => item.label === "Saldo de aceite en bodega" && String(item.value).startsWith("140")));
+  assert.ok(report.subtitle.includes("Central: SUC-002 - TPTA"));
+  assert.ok(!JSON.stringify(report.sheets).includes(sample.equipment_id));
   const excel = await reports.buildReportExcelBlob(report);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(await excel.arrayBuffer());
   const cells = [];
-  workbook.worksheets[0].eachRow(row => cells.push(...row.values));
-  assert.ok(cells.includes(2.5));
-  assert.ok(cells.includes(31.25));
-  assert.ok(cells.includes(mode === "control" ? "UG07" : "UG07 - CUMMINS"));
+  workbook.worksheets.forEach(sheet => sheet.eachRow(row => cells.push(...row.values)));
+  assert.ok(cells.includes(5.5));
+  assert.ok(cells.includes(68.75));
+  assert.ok(cells.includes("UG07 - CUMMINS"));
   const pdf = await reports.buildReportPdfBlob(report);
   const bytes = Buffer.from(await pdf.arrayBuffer());
   assert.ok(bytes.toString("latin1").startsWith("%PDF"));
-  assert.ok(bytes.toString("latin1").includes("UG07"));
-  await writeFile(path.join(output, `${mode}.pdf`), bytes);
-  await writeFile(path.join(output, `${mode}.xlsx`), Buffer.from(await excel.arrayBuffer()));
-  const hidden = reports.buildOilOrderReport({ rows: [sample], mode, subtitle: "", fileName: mode, showCosts: false });
-  assert.ok(!hidden.sheets[0].columns.some(column => column.key === "costo"));
-  assert.ok(!("costo" in hidden.sheets[0].rows[0]));
-  const missing = reports.buildOilOrderReport({ rows: [{ equipment_name: "UG01" }], mode, subtitle: "", fileName: mode, showCosts: true });
-  assert.equal(missing.sheets[0].rows[0].fecha, "");
-  if (mode === "management") {
-    assert.equal(missing.sheets[0].rows[0].equipo, "UG01 - Sin marca");
-    assert.equal(missing.sheets[0].rows[0].horometro_inicial, "");
-  }
+  await writeFile(path.join(output, "financiero.pdf"), bytes);
+  await writeFile(path.join(output, "financiero.xlsx"), Buffer.from(await excel.arrayBuffer()));
+  const hidden = reports.buildOilFinancialReport({ rows: [sample], inventory, filtersLabel: "", fileName: "sin-costos", showCosts: false });
+  assert.ok(!hidden.sheets.some(sheet => sheet.columns.some(column => /costo/.test(column.key))));
+  assert.ok(!hidden.summary.some(item => /Costo/.test(item.label)));
+  const missing = reports.buildOilFinancialReport({ rows: [{ equipment_name: "UG01" }], filtersLabel: "", fileName: "faltantes", showCosts: true });
+  assert.equal(missing.sheets[1].rows[0].fecha, "");
+  assert.equal(missing.sheets[1].rows[0].equipo, "UG01");
+  assert.equal(missing.sheets.length, 2, "Sin inventario no hay hoja de bodega");
 }
-console.log("Oil reports: unified totals, reserve, priming hours without review, local dates, names, Excel/PDF and cost permissions passed.");
+{
+  // Reporte financiero de repuestos con la OT-A00382 del ejemplo de Gerencia:
+  // repuestos + aceite + insumos + mano de obra = total oficial de la OT.
+  const material = (codigo, nombre, categoria, cantidad, costo) => ({
+    producto_id: codigo, material_codigo: codigo, material_label: `${codigo} - ${nombre}`,
+    categoria_costo: categoria, bodega_label: "BOD-002 - TIPUTINI TPTA",
+    cantidad, costo_total: costo, costo_unitario: costo / cantidad,
+  });
+  const ot = {
+    work_order_code: "OT-A00382", fecha_referencia: "2026-10-20T10:00:00", equipment_id: "eq-ug11",
+    equipment_name: "CATERPILLAR | JC - UG11 - 3516", maintenance_kind_label: "Preventivo",
+    costo_repuestos: 479.45, costo_aceite: 1062.5, costo_insumos: 81.7,
+    costo_materiales: 1623.65, costo_mano_obra: 33.33, total_costo: 1656.98,
+    materiales_detalle: [
+      material("P535114 /PA3904", "FILTRO DE AIRE CATERPILLAR", "REPUESTOS", 2, 350.74),
+      material("FUSIB-0.5AMP", "FUSIBLE DE 0.50 AMP", "INSUMOS", 1, 0),
+      material("ACT-MOTOR-15W40", "ACEITE GULF", "ACEITE", 85, 1062.5),
+      material("FUSIB-3AMP", "FUSIBLE DE 3AMP", "INSUMOS", 3, 0),
+      material("Q. HIGH PERF-CAN", "DESENGRASANTE PERFORMANCE", "INSUMOS", 1, 81.7),
+      material("PF789010", "FILTRO RACOR", "REPUESTOS", 2, 22.76),
+      material("P7003", "FILTRO ACEITE CATERPILLAR", "REPUESTOS", 3, 105.95),
+    ],
+  };
+  const report = reports.buildMaintenanceFinancialReport({ rows: [ot], filtersLabel: "oct 2026 · Central: SUC-002 - TPTA", fileName: "repuestos" });
+  const [composition, byMachine, byKind, byMonth, byArticle, detail] = report.sheets;
+  const total = composition.rows.at(-1);
+  assert.equal(total.orden, "TOTAL");
+  assert.equal(Number((total.repuestos + total.aceite + total.insumos + total.mano_obra).toFixed(2)), 1656.98);
+  assert.equal(total.total, 1656.98);
+  assert.equal(byMachine.rows[0].grupo, "CATERPILLAR | JC - UG11 - 3516");
+  assert.equal(byKind.rows[0].grupo, "Preventivo");
+  assert.equal(byMonth.rows[0].grupo, "oct 2026");
+  assert.equal(byArticle.rows[0].codigo, "ACT-MOTOR-15W40", "Por artículo, el de mayor costo primero");
+  assert.equal(detail.rows.length, 8, "Siete materiales y el total");
+  assert.equal(detail.rows.at(-1).costo, 1623.65);
+  assert.ok(report.summary.some(item => item.label === "Total mantenimiento" && item.value.includes("1.656,98")));
+  const onlySpareParts = reports.buildMaintenanceFinancialReport({ rows: [ot], filtersLabel: "", fileName: "solo-repuestos", category: "REPUESTOS" });
+  assert.equal(onlySpareParts.sheets[5].rows.length, 4, "Tres repuestos y el total");
+  assert.equal(onlySpareParts.sheets[4].name, "Repuestos por artículo");
+  const pdf = await reports.buildReportPdfBlob(report);
+  await writeFile(path.join(output, "repuestos.pdf"), Buffer.from(await pdf.arrayBuffer()));
+  const excel = await reports.buildReportExcelBlob(report);
+  await writeFile(path.join(output, "repuestos.xlsx"), Buffer.from(await excel.arrayBuffer()));
+}
+console.log("Oil reports: financial report with totals per generator and OT, inventory, reconciliation, spare parts cost composition, local dates, Excel/PDF and cost permissions passed.");
