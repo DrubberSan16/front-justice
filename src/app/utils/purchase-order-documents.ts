@@ -207,16 +207,25 @@ export async function buildPurchaseOrderPdfBlob(
   doc.text("Ced/RUC:", marginLeft + 270, cursorY);
   doc.text("REF:", rightX - 120, cursorY);
 
+  // Cada valor se parte en renglones dentro de su propia columna. En una sola
+  // linea, un proveedor largo ("CECUAMAQ, CORPORACION ECUATORIANA INDUSTRIAL
+  // ...") se escribia encima del Ced/RUC y del numero en la OC impresa.
   doc.setFont("helvetica", "normal");
-  doc.text(safeText(order.proveedor_nombre, "Sin proveedor"), marginLeft + 56, cursorY);
-  doc.text(
-    safeText(order.proveedor_identificacion, "-"),
-    marginLeft + 320,
-    cursorY,
+  const supplierLines = doc.splitTextToSize(
+    safeText(order.proveedor_nombre, "Sin proveedor"),
+    270 - 56 - 8,
   );
-  doc.text(safeText(order.referencia, "-"), rightX, cursorY, { align: "right" });
+  const identificationLines = doc.splitTextToSize(
+    safeText(order.proveedor_identificacion, "-"),
+    rightX - 120 - (marginLeft + 320) - 8,
+  );
+  const referenceLines = doc.splitTextToSize(safeText(order.referencia, "-"), 92);
+  doc.text(supplierLines, marginLeft + 56, cursorY);
+  doc.text(identificationLines, marginLeft + 320, cursorY);
+  doc.text(referenceLines, rightX, cursorY, { align: "right" });
 
-  cursorY += 18;
+  cursorY +=
+    Math.max(supplierLines.length, identificationLines.length, referenceLines.length) * 11 + 7;
   doc.setFont("helvetica", "bold");
   doc.text("Vendedor:", marginLeft, cursorY);
   if (order.bodega_label) {

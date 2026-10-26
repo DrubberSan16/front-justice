@@ -72,8 +72,12 @@ function materialName(material: Row) {
 
 /** "UG05" de "MTU | JC - UG05 - 12V4000 (...)": la etiqueta corta del gráfico. */
 function shortEquipment(label: string) {
-  return label.match(/UG[\s-]*\d+/i)?.[0].replace(/[\s-]/g, "").toUpperCase()
-    || (label.length > 18 ? `${label.slice(0, 17)}…` : label);
+  const ug = label.match(/UG[\s-]*\d+/i)?.[0].replace(/[\s-]/g, "").toUpperCase();
+  if (ug) return ug;
+  if (/\bSSA\b/i.test(label)) return "SSA";
+  // Sin UG se toma el nombre, sin la marca: "GENERAL | SISTEMA DE FILTRADO" -> "SISTEMA DE FILTRADO".
+  const name = label.split("|").pop()?.split("·")[0]?.trim() || label;
+  return name.length > 18 ? `${name.slice(0, 17)}…` : name;
 }
 
 const costColumns = (width = 12): ReportColumn[] => [
@@ -205,7 +209,10 @@ export function buildMaintenanceFinancialReport(options: {
       rows: [...compositionRows, { orden: "TOTAL", fecha: `${formatCountForDisplay(total.ordenes)} OT`, ...total }],
       rowKinds: [...compositionRows.map(() => null), "total"],
       emptyMessage: "Sin órdenes de mantenimiento para los filtros seleccionados.",
-      note: "Total OT = repuestos + aceite + insumos + mano de obra. Las tres categorías de material son excluyentes.",
+      note:
+        "Total OT = repuestos + aceite + insumos + mano de obra. Las tres categorías de material son excluyentes. " +
+        "Una OT entra al período por su fecha de cierre (o de inicio si sigue abierta); el control de cebado y aceite " +
+        "la ubica por su fecha de inicio, por eso el aceite de los dos reportes puede diferir en las OT que cruzan de mes.",
     },
     groupSheet("Costo por máquina", { key: "grupo", header: "Equipo", width: 32 }, sortByTotal(byEquipment), total),
     groupSheet("Costo por tipo de OT", { key: "grupo", header: "Tipo de OT", width: 20 }, sortByTotal(byKind), total),

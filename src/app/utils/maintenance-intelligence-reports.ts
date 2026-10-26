@@ -1887,7 +1887,10 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
 
   const plot = { x: 76, y: 102, width: 842, height: canvas.height - 175 };
   const tallest = Math.max(...points.map((point) => point.value), 0);
-  const maximum = stacked ? niceChartMaximum(tallest * 1.12) : Math.max(tallest, 1);
+  // Las barras llevan su valor encima: necesitan el mismo aire que las apiladas.
+  const maximum = stacked || chart.type === "bar"
+    ? niceChartMaximum(tallest * 1.12)
+    : Math.max(tallest, 1);
 
   // La leyenda se ajusta por filas para conservar todas las marcas.
   if (stacked) {
@@ -1974,6 +1977,12 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
       gradient.addColorStop(1, "#8eb9df");
       context.fillStyle = gradient;
       context.fillRect(x, y, barWidth, height);
+      // El valor encima de cada barra, como en el modelo que pidió Gerencia:
+      // sin él había que adivinar la cifra contra el eje.
+      context.fillStyle = "#1f2937";
+      context.font = "bold 12px Arial";
+      context.textAlign = "center";
+      context.fillText(formatChartValue(point.value), x + barWidth / 2, y - 6, spacing - 4);
     });
   } else {
     context.strokeStyle = "#2f6cab";
@@ -1996,20 +2005,30 @@ function buildReportChartDataUrl(chart: ReportChart): string | null {
     });
   }
 
-  const labelStride = Math.max(1, Math.ceil(points.length / 8));
+  // Se rotulaba una barra de cada dos en cuanto había más de ocho: en el PDF
+  // de cebado la mitad de las máquinas salía sin nombre ni marca. Ahora solo
+  // se salta cuando las etiquetas de verdad no caben, midiendo el texto, y
+  // cada una se ajusta al ancho de su barra para no montarse en la vecina.
+  context.font = "12px Arial";
+  const labelOf = (text: string) => (text.length > 18 ? `${text.slice(0, 16)}…` : text);
+  const widestLabel = Math.max(
+    ...points.map((point) => context.measureText(labelOf(point.label)).width),
+    0,
+  );
+  const labelStride = Math.max(1, Math.ceil((Math.min(widestLabel, 110) + 8) / spacing));
+  const labelRoom = Math.max(spacing * labelStride - 6, 24);
   context.textAlign = "center";
   points.forEach((point, index) => {
-    if (index % labelStride !== 0 && index !== points.length - 1) return;
+    if (index % labelStride !== 0) return;
     const x = plot.x + spacing * index + spacing / 2;
-    const label = point.label.length > 18 ? `${point.label.slice(0, 16)}…` : point.label;
     context.fillStyle = "#5b6b7b";
     context.font = "12px Arial";
-    context.fillText(label, x, plot.y + plot.height + 24);
+    context.fillText(labelOf(point.label), x, plot.y + plot.height + 24, labelRoom);
     if (point.caption) {
       const caption = point.caption.length > 20 ? `${point.caption.slice(0, 18)}…` : point.caption;
       context.fillStyle = "#1f4e78";
       context.font = "bold 12px Arial";
-      context.fillText(caption, x, plot.y + plot.height + 41);
+      context.fillText(caption, x, plot.y + plot.height + 41, labelRoom);
     }
   });
   context.textAlign = "right";

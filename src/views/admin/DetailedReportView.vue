@@ -2071,7 +2071,7 @@ const oilGeneratorHeaders = computed(() => [
   { title: "OT MPG", key: "ot_mpg", align: "end" as const },
   { title: "Aceite MPG (gal)", key: "gal_mpg", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Costo MPG", key: "costo_mpg", align: "end" as const }] : []),
-  ...(oilFinancial.value.total.ot_otros
+  ...(oilFinancial.value.total.gal_otros || oilFinancial.value.total.costo_otros
     ? [
         { title: "Aceite otros tipos (gal)", key: "gal_otros", align: "end" as const },
         ...(canViewCosts.value ? [{ title: "Costo otros tipos", key: "costo_otros", align: "end" as const }] : []),
@@ -2193,6 +2193,9 @@ async function loadInventoryExportReport() {
     fileName: `gerencia_inventario_${startDate.value}_${endDate.value}`,
     sheetName: "Inventario del período",
     orientation: "landscape",
+    // Resumen, gráfico y tabla seguidos: sin esto la primera hoja quedaba con
+    // solo las cifras y el gráfico iba solo en otra.
+    compactPdf: true,
     columns: [
       { key: "material", title: "Material", width: 40 },
       { key: "unidad", title: "Unidad", width: 10 },
@@ -2227,7 +2230,8 @@ async function loadInventoryExportReport() {
       {
         title: "Entradas y salidas del Kardex",
         type: "bar",
-        unit: "movimientos",
+        unit: "cantidad",
+        heightScale: 0.6,
         points: reportChartPoints(inventoryFlowPoints.value),
       },
     ],

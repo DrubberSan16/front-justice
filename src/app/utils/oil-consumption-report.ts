@@ -102,7 +102,9 @@ export function oilStatusLabel(row: Row) {
 function generatorParts(row: Row) {
   const name = String(row?.equipment_name || row?.equipo_nombre || "Sin equipo").trim();
   const ug = name.match(/UG[\s-]*\d+/i)?.[0].replace(/[\s-]/g, "").toUpperCase() || name;
-  const marca = String(row?.equipment_brand_name || "").trim();
+  // Sin marca real ("N/A" en el SSA) se muestra solo el equipo.
+  const rawBrand = String(row?.equipment_brand_name || "").trim();
+  const marca = /^(n\/?a|sin marca)$/i.test(rawBrand) ? "" : rawBrand;
   return { ug, marca, equipo: marca ? `${ug} - ${marca}` : ug };
 }
 
@@ -220,7 +222,8 @@ export function buildOilFinancialReport(options: {
   const { generators, total } = summarizeOilByGenerator(rows);
   const primingEquipments = generators.filter((group) => group.ot_cebado > 0).length;
   const mpgEquipments = generators.filter((group) => group.ot_mpg > 0).length;
-  const hasOthers = total.ot_otros > 0;
+  // Correctivos y proyectos sin aceite no merecen dos columnas en cero.
+  const hasOthers = total.gal_otros > 0 || total.costo_otros > 0;
 
   const summary: ReportSummaryItem[] = [
     { label: "Aceite consumido (gal)", value: formatNumberForDisplay(total.gal_total) },
