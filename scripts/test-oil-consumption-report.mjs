@@ -124,7 +124,12 @@ await mkdir(output, { recursive: true });
   assert.equal(stock.rows[0].concepto, "Existencia inicial");
   assert.equal(stock.rows.at(-1).cantidad, 144);
   assert.equal(stock.rows[1].costo_unitario, 13);
-  assert.equal(reconciliation.rows[2].cantidad, 0.5);
+  assert.equal(reconciliation.rows.at(-1).concepto, "Diferencia");
+  assert.equal(reconciliation.rows.at(-1).cantidad, 0.5);
+  // Sin observaciones no hay columna vacía de observación.
+  assert.ok(!detail.columns.some(column => column.key === "observacion"));
+  assert.equal(detail.columns[0].header, "Fecha salida bodega");
+  assert.equal(detail.columns[1].key, "fecha_ot");
   assert.ok(report.summary.some(item => item.label === "OT de cebado" && item.value === "1 · 1 equipos"));
   assert.ok(report.summary.some(item => item.label === "Saldo de aceite en bodega" && String(item.value).startsWith("140")));
   assert.ok(report.subtitle.includes("Central: SUC-002 - TPTA"));
@@ -149,6 +154,47 @@ await mkdir(output, { recursive: true });
   assert.equal(missing.sheets[1].rows[0].fecha, "");
   assert.equal(missing.sheets[1].rows[0].equipo, "UG01");
   assert.equal(missing.sheets.length, 2, "Sin inventario no hay hoja de bodega");
+}
+{
+  // Bodega (Word de control de cebado, oct 2026): la OT-A00245 se inició el
+  // 25-08 pero el EB salió el 27-09. El reporte la fecha por la salida y deja
+  // la fecha de la OT al lado; la conciliación descuenta lo entregado a OT de
+  // otra sucursal y las salidas sin OT van en su propia línea de inventario.
+  const flow = (cantidad, costo) => ({ cantidad, costo });
+  const rows = [
+    { ...sample, maintenance_kind: "CEBADO", work_order_code: "OT-A00245", cantidad: 2, subtotal: 25,
+      fecha_referencia: "2026-09-27T11:11:08", fecha_salida: "2026-09-27T11:11:08", fecha_ot: "2026-08-25T08:00:00" },
+    { ...sample, maintenance_kind: "CEBADO", work_order_code: "OT-A00137", cantidad: 2, subtotal: 25,
+      fecha_referencia: "2026-09-10T21:00:14", fecha_salida: "2026-09-10T21:00:14", fecha_ot: "2026-09-10T20:00:00",
+      observacion: "La OT registra 4 gal; bodega entregó 2 gal" },
+    // Sin EB: entra por su propia fecha, pero la columna de salida queda vacía.
+    { ...sample, maintenance_kind: "CEBADO", work_order_code: "OT-A00163", cantidad: 0, subtotal: 0,
+      fecha_referencia: "2026-09-15T10:00:00", fecha_salida: null, fecha_ot: "2026-09-15T10:00:00",
+      observacion: "La OT registra 15 gal sin salida de bodega" },
+  ];
+  const inventory = {
+    existencia_inicial: flow(1000, 12500), compras: flow(0, 0), transferencias_recibidas: flow(0, 0),
+    devoluciones: flow(0, 0), ajustes: flow(0, 0), salidas: flow(14, 175),
+    salidas_otra_sucursal: flow(10, 125), salidas_sin_ot: flow(200, 2500),
+    salidas_otra_sucursal_detalle: [{ work_order_code: "OT-A00347", equipment_name: "JC - UG12",
+      central: "UBI-A00003 - CENTRAL CPT - CPT", fecha: "2026-10-05T10:00:00", cantidad: 10, costo: 125 }],
+    transferencias_enviadas: flow(0, 0), existencia_final: flow(786, 9825), saldo_actual: flow(786, 9825),
+  };
+  const report = reports.buildOilFinancialReport({ rows, inventory, filtersLabel: "", fileName: "bodega", showCosts: true });
+  const [, detail, stock, reconciliation] = report.sheets;
+  assert.equal(detail.rows[0].fecha, "27-09-2026");
+  assert.equal(detail.rows[0].fecha_ot, "25-08-2026");
+  assert.equal(detail.columns.at(-1).key, "observacion");
+  assert.equal(detail.rows[1].observacion, "La OT registra 4 gal; bodega entregó 2 gal");
+  assert.equal(detail.rows[2].fecha, "", "Sin EB no hay fecha de salida");
+  assert.equal(detail.rows[2].fecha_ot, "15-09-2026");
+  assert.ok(stock.rows.some(row => row.concepto === "(-) Salidas sin orden de trabajo" && row.cantidad === 200));
+  assert.deepEqual(reconciliation.rows.map(row => row.cantidad), [14, 10, 10, 4, 0]);
+  assert.ok(reconciliation.rows[2].concepto.includes("OT-A00347 · 05-10-2026 · UG12 · UBI-A00003 - CENTRAL CPT - CPT"));
+  assert.equal(reconciliation.rowKinds.length, reconciliation.rows.length);
+  const screen = reports.oilReconciliation(4, 50, inventory);
+  assert.equal(screen.difference, 0);
+  assert.equal(screen.otherBranches, 10);
 }
 {
   // Reporte financiero de repuestos con la OT-A00382 del ejemplo de Gerencia:

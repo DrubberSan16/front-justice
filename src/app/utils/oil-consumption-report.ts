@@ -36,7 +36,18 @@ export type OilInventory = {
   transferencias_recibidas: OilFlow;
   devoluciones: OilFlow;
   ajustes: OilFlow;
+  /** Salidas a OT, incluidas las de OT de otra sucursal atendidas desde estas bodegas. */
   salidas: OilFlow;
+  salidas_otra_sucursal?: OilFlow;
+  /** Esas mismas salidas OT por OT, para que bodega las encuentre por código. */
+  salidas_otra_sucursal_detalle?: Array<OilFlow & {
+    work_order_code: string;
+    equipment_name?: string | null;
+    central?: string | null;
+    fecha?: string | null;
+  }>;
+  /** Ajustes de stock por bodega y egresos manuales: salen sin OT. */
+  salidas_sin_ot?: OilFlow;
   transferencias_enviadas: OilFlow;
   existencia_final: OilFlow;
   saldo_actual: OilFlow;
@@ -192,14 +203,50 @@ export function oilInventoryLines(inventory: OilInventory | null | undefined) {
   };
   return [
     line("Existencia inicial", inventory.existencia_inicial, 0, "group"),
-    line("(+) Compras", inventory.compras, 1),
+    line("(+) Compras e ingresos", inventory.compras, 1),
     line("(+) Transferencias recibidas", inventory.transferencias_recibidas, 1),
     line("(+) Devoluciones de OT", inventory.devoluciones, 1),
     line("(±) Ajustes de inventario", inventory.ajustes, 1),
-    line("(-) Salidas por consumo", inventory.salidas, -1),
+    line("(-) Salidas a órdenes de trabajo", inventory.salidas, -1),
+    line("(-) Salidas sin orden de trabajo", inventory.salidas_sin_ot, -1),
     line("(-) Transferencias enviadas", inventory.transferencias_enviadas, -1),
     line("Existencia final", inventory.existencia_final, 0, "total"),
   ];
+}
+
+/**
+ * Aceite del reporte frente a las salidas de bodega a OT del mismo período.
+ *
+ * El reporte cuenta lo que bodega entregó a cada OT en la fecha del EB, así
+ * que solo quedan dos causas de diferencia, y la primera se calcula aparte:
+ * OT de otra sucursal atendidas desde estas bodegas, y OT que los filtros de
+ * equipo, tipo o estado dejan fuera.
+ */
+export function oilReconciliation(
+  totalGallons: number,
+  totalCost: number,
+  inventory: OilInventory | null | undefined,
+) {
+  if (!inventory) return null;
+  const outputs = Number(inventory.salidas?.cantidad || 0);
+  const outputsCost = Number(inventory.salidas?.costo || 0);
+  const otherBranches = Number(inventory.salidas_otra_sucursal?.cantidad || 0);
+  const otherBranchesCost = Number(inventory.salidas_otra_sucursal?.costo || 0);
+  // El reporte cuenta neto de devoluciones; las salidas de bodega, en bruto.
+  const returns = Number(inventory.devoluciones?.cantidad || 0);
+  const returnsCost = Number(inventory.devoluciones?.costo || 0);
+  return {
+    orders: totalGallons,
+    ordersCost: totalCost,
+    outputs,
+    outputsCost,
+    otherBranches,
+    otherBranchesCost,
+    returns,
+    returnsCost,
+    difference: round(outputs - otherBranches - returns - totalGallons),
+    differenceCost: round(outputsCost - otherBranchesCost - returnsCost - totalCost),
+  };
 }
 
 function hours(value: number) {
@@ -263,7 +310,10 @@ export function buildOilFinancialReport(options: {
     const gallons = Number(row?.cantidad ?? 0) || 0;
     const cost = Number(row?.subtotal ?? 0) || 0;
     return {
-      fecha: formatDateOnly(row?.fecha_referencia, ""),
+      // Vacía cuando bodega no entregó nada: la OT entra por su propia fecha,
+      // pero mostrarla aquí haría buscar en el Kardex un EB que no existe.
+      fecha: formatDateOnly(row && "fecha_salida" in row ? row.fecha_salida : row?.fecha_referencia, ""),
+      fecha_ot: formatDateOnly(row?.fecha_ot, ""),
       orden: row?.work_order_code || "",
       central: row?.central || "Sin ubicación",
       equipo: generatorParts(row).equipo,
@@ -275,10 +325,14 @@ export function buildOilFinancialReport(options: {
       galones: gallons,
       costo_galon: gallons ? round(cost / gallons) : 0,
       costo: cost,
+      observacion: row?.observacion || "",
     };
   });
+  // Solo hay columna de observación cuando alguna OT no cuadra con bodega.
+  const hasObservations = detailRows.some((row) => row.observacion);
   const detailColumns: ReportColumn[] = [
-    { key: "fecha", header: "Fecha", width: 10 },
+    { key: "fecha", header: "Fecha salida bodega", width: 10 },
+    { key: "fecha_ot", header: "Inicio en OT", width: 10 },
     { key: "orden", header: "OT", width: 11 },
     { key: "central", header: "Central", width: 16 },
     { key: "equipo", header: "Equipo", width: 15 },
@@ -290,6 +344,7 @@ export function buildOilFinancialReport(options: {
     { key: "galones", header: "Aceite (gal)", width: 10, format: "number" },
     ...money("costo_galon", "Costo/gal (USD)", 10),
     ...money("costo", "Costo aceite (USD)"),
+    ...(hasObservations ? [{ key: "observacion", header: "Observación", width: 26 }] : []),
   ];
   const detailTotal = {
     fecha: "TOTAL",
@@ -315,13 +370,29 @@ export function buildOilFinancialReport(options: {
       rows: [...detailRows, detailTotal],
       rowKinds: [...detailRows.map(() => null), "total"],
       emptyMessage: "Sin órdenes de trabajo para los filtros seleccionados.",
+      note:
+        "Galones, costo y fecha son los de la salida de bodega (EB), igual que el Kardex: la OT cae en el período en que se le entregó el aceite. " +
+        "Inicio en OT es la hora de inicio registrada en la orden. Una OT sin salida de bodega aparece en esa fecha, con cero y sin fecha de salida.",
     },
   ];
 
   if (inventory) {
     const lines = oilInventoryLines(inventory);
-    const outputs = Number(inventory.salidas?.cantidad || 0);
-    const outputsCost = Number(inventory.salidas?.costo || 0);
+    const reconciliation = oilReconciliation(total.gal_total, total.costo_total, inventory)!;
+    // Cada OT de otra sucursal en su renglón: bodega la busca por código en su kardex.
+    const otherBranchRows = (inventory.salidas_otra_sucursal_detalle || []).map((item) => ({
+      concepto: `      ${[
+        item.work_order_code,
+        formatDateOnly(item.fecha, ""),
+        item.equipment_name ? generatorParts(item).equipo : "",
+        item.central || "",
+      ].filter(Boolean).join(" · ")}`,
+      cantidad: Number(item.cantidad || 0),
+      costo: Number(item.costo || 0),
+    }));
+    const returnRows = reconciliation.returns
+      ? [{ concepto: "(-) Devoluciones de OT a bodega", cantidad: reconciliation.returns, costo: reconciliation.returnsCost }]
+      : [];
     sheets.push({
       name: "Movimiento de inventario · Aceite",
       fitColumnsToPage: true,
@@ -346,18 +417,18 @@ export function buildOilFinancialReport(options: {
         ...money("costo", "Costo (USD)", 14),
       ],
       rows: [
-        { concepto: "Aceite consumido según órdenes de trabajo", cantidad: total.gal_total, costo: total.costo_total },
-        { concepto: "Salidas de bodega por consumo", cantidad: outputs, costo: outputsCost },
-        {
-          concepto: "Diferencia (bodega - órdenes)",
-          cantidad: round(outputs - total.gal_total),
-          costo: round(outputsCost - total.costo_total),
-        },
+        { concepto: "Salidas de bodega a órdenes de trabajo", cantidad: reconciliation.outputs, costo: reconciliation.outputsCost },
+        { concepto: "(-) Entregado a OT de otras sucursales", cantidad: reconciliation.otherBranches, costo: reconciliation.otherBranchesCost },
+        ...otherBranchRows,
+        ...returnRows,
+        { concepto: "(-) Aceite de las OT de este reporte", cantidad: total.gal_total, costo: total.costo_total },
+        { concepto: "Diferencia", cantidad: reconciliation.difference, costo: reconciliation.differenceCost },
       ],
-      rowKinds: [null, null, "total"],
+      rowKinds: [null, null, ...otherBranchRows.map(() => null), ...returnRows.map(() => null), null, "total"],
       note:
-        "Una diferencia aparece cuando el aceite sale de bodega en una fecha distinta a la de su OT, " +
-        "cuando sale para un uso que no es una orden de trabajo o cuando la OT queda fuera de los filtros aplicados.",
+        "El reporte toma el aceite de la salida de bodega, así que la diferencia es cero salvo por OT de esta sucursal atendidas desde bodegas de otra, " +
+        "o cuando los filtros de equipo, tipo o estado dejan OT fuera. " +
+        "Las salidas sin orden de trabajo (ajustes de stock y egresos manuales) están en el movimiento de inventario y no entran aquí.",
     });
   }
 

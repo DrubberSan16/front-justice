@@ -211,8 +211,9 @@ export function buildMaintenanceFinancialReport(options: {
       emptyMessage: "Sin órdenes de mantenimiento para los filtros seleccionados.",
       note:
         "Total OT = repuestos + aceite + insumos + mano de obra. Las tres categorías de material son excluyentes. " +
-        "Una OT entra al período por su fecha de cierre (o de inicio si sigue abierta); el control de cebado y aceite " +
-        "la ubica por su fecha de inicio, por eso el aceite de los dos reportes puede diferir en las OT que cruzan de mes.",
+        "Una OT entra al período por su fecha de cierre (o de inicio si sigue abierta) con el material registrado en ella; " +
+        "el control de cebado y aceite cuenta el aceite que bodega entregó, en la fecha del egreso, por eso el aceite de los " +
+        "dos reportes puede diferir en las OT que cruzan de mes o que registran más de lo entregado.",
     },
     groupSheet("Costo por máquina", { key: "grupo", header: "Equipo", width: 32 }, sortByTotal(byEquipment), total),
     groupSheet("Costo por tipo de OT", { key: "grupo", header: "Tipo de OT", width: 20 }, sortByTotal(byKind), total),

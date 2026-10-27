@@ -425,8 +425,10 @@
             </tbody>
           </v-table>
           <p v-if="oilReconciliation" class="oil-reconciliation mb-6">
-            Conciliación: las órdenes registran {{ formatNumber(oilReconciliation.orders) }} gal y
-            bodega entregó {{ formatNumber(oilReconciliation.outputs) }} gal
+            Conciliación: bodega entregó {{ formatNumber(oilReconciliation.outputs) }} gal a órdenes de trabajo<template v-if="oilReconciliation.otherBranches">,
+            {{ formatNumber(oilReconciliation.otherBranches) }} de ellos a OT de otras sucursales
+            ({{ (controlInventory?.salidas_otra_sucursal_detalle || []).map((item) => item.work_order_code).join(", ") }})</template>;
+            las OT de este reporte suman {{ formatNumber(oilReconciliation.orders) }} gal
             (diferencia {{ formatNumber(oilReconciliation.difference) }} gal).
           </p>
         </template>
@@ -533,6 +535,8 @@
         <v-data-table :headers="controlOrderHeaders" :items="oilWorkOrders" :loading="loading || primingLoading" :items-per-page="10" class="manager-table mb-6" no-data-text="Sin OT para los filtros seleccionados.">
           <template #item.work_order_code="{ item }"><button type="button" class="order-link" @click="openOrderDetail({ ...item, id: item.work_order_id, code: item.work_order_code })">{{ item.work_order_code }}</button></template>
           <template #item.fecha_referencia="{ item }">{{ formatShortDate(item.fecha_referencia) }}</template>
+          <template #item.fecha_salida="{ item }">{{ item.fecha_salida ? formatShortDate(item.fecha_salida) : 'Sin salida' }}</template>
+          <template #item.fecha_ot="{ item }">{{ formatShortDate(item.fecha_ot) }}</template>
           <template #item.equipment_name="{ item }">{{ equipmentLabel(item) }}</template>
           <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
           <template #item.horometro_inicial="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_inicial) }}</template>
@@ -1801,6 +1805,7 @@
 import {
   buildOilFinancialReport,
   oilInventoryLines,
+  oilReconciliation as buildOilReconciliation,
   summarizeOilByGenerator,
   type OilInventory,
 } from "@/app/utils/oil-consumption-report";
@@ -2093,15 +2098,13 @@ const oilGeneratorDisplayRows = computed(() =>
   )),
 );
 /** Galones de las OT frente a lo que salió de bodega en el mismo período. */
-const oilReconciliation = computed(() => {
-  if (!controlInventory.value) return null;
-  const outputs = Number(controlInventory.value.salidas?.cantidad || 0);
-  return {
-    orders: oilFinancial.value.total.gal_total,
-    outputs,
-    difference: outputs - oilFinancial.value.total.gal_total,
-  };
-});
+const oilReconciliation = computed(() =>
+  buildOilReconciliation(
+    oilFinancial.value.total.gal_total,
+    oilFinancial.value.total.costo_total,
+    controlInventory.value,
+  ),
+);
 const inventoryExportColumns = computed(() =>
   inventoryHeaders.value.map((header: any) => ({
     key: String(header.key),
@@ -2269,7 +2272,8 @@ const primingHeaders = computed(() => [
 ]);
 
 const controlOrderHeaders = computed(() => [
-  { title: "OT", key: "work_order_code" }, { title: "Fecha", key: "fecha_referencia" },
+  { title: "OT", key: "work_order_code" }, { title: "Fecha salida bodega", key: "fecha_salida" },
+  { title: "Inicio en OT", key: "fecha_ot" },
   { title: "Equipo", key: "equipment_name" }, { title: "Reserva", key: "es_reserva" },
   { title: "Tipo", key: "maintenance_kind_label" },
   ...(controlScope.value === "cebado" ? [] : [
@@ -2278,6 +2282,9 @@ const controlOrderHeaders = computed(() => [
   { title: "Horas trabajadas cebado (hh:mm:ss)", key: "horas_trabajadas" },
   { title: "Aceite consumido", key: "cantidad" }, { title: "Control", key: "semaforo" },
   ...(canViewCosts.value ? [{ title: "Costo aceite", key: "subtotal" }] : []),
+  ...(oilWorkOrders.value.some((row: AnyRow) => row?.observacion)
+    ? [{ title: "Observación", key: "observacion", sortable: false }]
+    : []),
 ]);
 function primingSemaforoColor(value: AnyRow) { return value?.nivel === 'ROJO' ? 'error' : value?.nivel === 'AMARILLO' ? 'warning' : 'success'; }
 

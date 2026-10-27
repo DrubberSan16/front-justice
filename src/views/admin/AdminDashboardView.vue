@@ -512,6 +512,7 @@
                   <span v-else>{{ row(item).orden }}</span>
                 </template>
                 <template #item.fecha="{ item }">{{ fechaCorta(row(item).fecha) }}</template>
+                <template #item.fecha_ot="{ item }">{{ fechaCorta(row(item).fecha_ot) }}</template>
                 <template #item.semaforo="{ item }">
                   <StatusChip
                     v-if="row(item).semaforo"
@@ -1114,7 +1115,7 @@ const detalleFilas = ref<any[]>([]);
 
 const EXPLICACIONES: Record<string, string> = {
   cebado:
-    "Cada fila es una orden de cebado con el total de aceite que consumió. El nivel se calcula sobre esa orden: hasta 5 galones es normal, entre 5 y 10 exige seguimiento y desde 10 es consumo crítico. La tendencia compara cada orden con la anterior del mismo equipo.",
+    "Cada fila es una orden de cebado con el aceite que bodega le entregó, en la fecha de la salida de bodega, igual que el Kardex. El nivel se calcula sobre esa orden: hasta 5 galones es normal, entre 5 y 10 exige seguimiento y desde 10 es consumo crítico. La tendencia compara cada orden con la anterior del mismo equipo.",
   repuestos:
     "El costo sale de sumar el subtotal de cada línea de consumo registrada en las órdenes del equipo dentro del período.",
   correctivos:
@@ -1133,7 +1134,8 @@ const TITULOS: Record<string, string> = {
 const HEADERS_DETALLE: Record<string, any[]> = {
   cebado: [
     { title: "Orden", key: "orden" },
-    { title: "Fecha", key: "fecha" },
+    { title: "Fecha salida bodega", key: "fecha" },
+    { title: "Inicio en OT", key: "fecha_ot" },
     { title: "Producto", key: "producto" },
     { title: "Horas trabajadas (hh:mm:ss)", key: "horas_trabajadas", align: "end" as const },
     { title: "Galones", key: "galones", align: "end" as const },
