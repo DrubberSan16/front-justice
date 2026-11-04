@@ -190,7 +190,7 @@
                   <div>
                     <span class="section-eyebrow">Relación principal</span>
                     <h3>{{ relationshipMeta.primaryLabel }}</h3>
-                    <p>Seleccione una barra para ver las OT, equipos, bodegas o materiales relacionados.</p>
+                    <p>{{ isProjects ? 'Seleccione una barra para ver las OT y materiales del proyecto.' : 'Seleccione una barra para ver las OT, equipos, bodegas o materiales relacionados.' }}</p>
                   </div>
                 </div>
                 <EChart
@@ -206,7 +206,7 @@
                   :format-value="row => formatRelationshipValue(row, relationshipMeta.primaryField, relationshipMeta.primaryFormat)"
                   @select="openRelationshipDetail"
                 />
-                <div v-else class="chart-fallback" :aria-label="relationshipMeta.primaryLabel">
+                <div v-else class="chart-fallback chart-fallback--relationships" :aria-label="relationshipMeta.primaryLabel">
                   <v-btn
                     v-for="row in relationshipChartRows.slice(0, 6)"
                     :key="row.key"
@@ -214,7 +214,8 @@
                     size="small"
                     @click="openRelationshipDetail(row)"
                   >
-                    {{ row.label }}: {{ formatRelationshipValue(row, relationshipMeta.primaryField, relationshipMeta.primaryFormat) }}
+                    <span class="chart-fallback__label">{{ row.label }}</span>
+                    <strong class="chart-fallback__value">{{ formatRelationshipValue(row, relationshipMeta.primaryField, relationshipMeta.primaryFormat) }}</strong>
                   </v-btn>
                 </div>
               </article>
@@ -240,7 +241,7 @@
                   :format-value="row => formatRelationshipValue(row, relationshipMeta.secondaryField, relationshipMeta.secondaryFormat)"
                   @select="openRelationshipDetail"
                 />
-                <div v-else class="chart-fallback" :aria-label="relationshipMeta.secondaryLabel">
+                <div v-else class="chart-fallback chart-fallback--relationships" :aria-label="relationshipMeta.secondaryLabel">
                   <v-btn
                     v-for="row in relationshipSecondaryRows.slice(0, 6)"
                     :key="row.key"
@@ -248,7 +249,8 @@
                     size="small"
                     @click="openRelationshipDetail(row)"
                   >
-                    {{ row.label }}: {{ formatRelationshipValue(row, relationshipMeta.secondaryField, relationshipMeta.secondaryFormat) }}
+                    <span class="chart-fallback__label">{{ row.label }}</span>
+                    <strong class="chart-fallback__value">{{ formatRelationshipValue(row, relationshipMeta.secondaryField, relationshipMeta.secondaryFormat) }}</strong>
                   </v-btn>
                 </div>
               </article>
@@ -636,6 +638,7 @@ const detailHeaders = [
 ];
 
 const activeModule = computed(() => getReportingModule(activeModuleKey.value));
+const isProjects = computed(() => activeModule.value.key === "projects");
 const materialView = computed(() => String(route.query.vista || "informativo"));
 const specializedReport = computed(() =>
   [
@@ -669,6 +672,7 @@ const relationshipRows = computed(() =>
   buildReportingRelationshipRows(activeModule.value.key, relationshipPayload.value),
 );
 const relationshipEntityLabel = computed(() => {
+  if (isProjects.value) return "Proyecto";
   if (relationshipMeta.value.profile === "WORK_ORDER") return "Orden de trabajo";
   if (relationshipMeta.value.profile === "EQUIPMENT") return "Equipo";
   if (relationshipMeta.value.profile === "WAREHOUSE") return "Bodega";
@@ -707,10 +711,10 @@ const relationshipSummaryCards = computed(() => {
   }
   if (relationshipMeta.value.profile === "EQUIPMENT") {
     return [
-      { label: "Equipos con actividad", value: formatCount(rows.length), helper: relationshipRangeLabel.value, icon: "mdi-engine-outline" },
-      { label: "OT relacionadas", value: formatCount(workOrders), helper: "Órdenes distintas por equipo", icon: "mdi-clipboard-check-multiple-outline" },
+      { label: isProjects.value ? "Proyectos con actividad" : "Equipos con actividad", value: formatCount(rows.length), helper: relationshipRangeLabel.value, icon: isProjects.value ? "mdi-office-building-cog-outline" : "mdi-engine-outline" },
+      { label: isProjects.value ? "OT de proyecto" : "OT relacionadas", value: formatCount(workOrders), helper: isProjects.value ? "Órdenes distintas por proyecto" : "Órdenes distintas por equipo", icon: "mdi-clipboard-check-multiple-outline" },
       { label: "Horas trabajadas", value: formatHours(sum("hours")), helper: "Carga humana registrada", icon: "mdi-clock-check-outline" },
-      { label: "Costo de mantenimiento", value: formatCurrency(sum("maintenanceCost")), helper: "Material utilizado en las OT", icon: "mdi-cash-wrench" },
+      { label: isProjects.value ? "Costo de materiales" : "Costo de mantenimiento", value: formatCurrency(sum(relationshipMeta.value.secondaryField)), helper: "Material utilizado en las OT", icon: "mdi-cash-wrench" },
     ];
   }
   if (relationshipMeta.value.profile === "WAREHOUSE") {
@@ -783,9 +787,9 @@ const relationshipHeaders = computed(() => {
   return [
     ...common,
     { title: "Horas", key: "hours", align: "end" as const },
-    { title: "Costo mantenimiento", key: "maintenanceCost", align: "end" as const },
+    ...(!isProjects.value ? [{ title: "Costo mantenimiento", key: "maintenanceCost", align: "end" as const }] : []),
     { title: "Unidades consumidas", key: "consumedQuantity", align: "end" as const },
-    { title: "Valor consumido", key: "consumptionValue", align: "end" as const },
+    { title: isProjects.value ? "Costo de materiales" : "Valor consumido", key: "consumptionValue", align: "end" as const },
     { title: "Bodegas", key: "relatedWarehouses" },
     { title: "Materiales", key: "relatedMaterials" },
   ];
@@ -1054,9 +1058,11 @@ function buildRelationshipChartOption(
       enabled: true,
       description: `${label}. Cada barra abre el detalle de la relación seleccionada.`,
     },
-    grid: { ...base.grid, left: 18, right: 46, bottom: 30, containLabel: true },
+    grid: { ...base.grid, left: 18, right: 70, bottom: 30, containLabel: true },
     tooltip: {
       ...base.tooltip,
+      confine: true,
+      extraCssText: "max-width: min(360px, calc(100vw - 48px)); white-space: normal; overflow-wrap: anywhere;",
       trigger: "axis",
       axisPointer: { type: "shadow" },
       formatter: (items: any) => {
@@ -1083,6 +1089,10 @@ function buildRelationshipChartOption(
       data: ordered.map((row) => row.label),
       axisLabel: { ...base.xAxis.axisLabel, width: 180, overflow: "truncate" },
     },
+    media: [
+      { query: { maxWidth: 360 }, option: { yAxis: { axisLabel: { width: 100 } }, xAxis: { splitNumber: 2 } } },
+      { option: { yAxis: { axisLabel: { width: 180 } }, xAxis: { splitNumber: 5 } } },
+    ],
     series: [{
       name: label,
       type: "bar",
@@ -1410,6 +1420,8 @@ onMounted(() => {
   --report-border: rgba(var(--v-theme-on-surface), 0.12);
   --report-muted: rgba(var(--v-theme-on-surface), 0.68);
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 20px;
   padding-bottom: 32px;
 }
@@ -1419,6 +1431,7 @@ onMounted(() => {
   top: 8px;
   z-index: 20;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -1493,6 +1506,7 @@ onMounted(() => {
 
 .module-heading { padding: 4px 2px; }
 .module-heading__identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.module-heading__identity > div { min-width: 0; overflow-wrap: anywhere; }
 .module-heading__identity > .v-icon { flex: 0 0 auto; color: rgb(var(--v-theme-primary)); }
 .module-heading__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
@@ -1504,9 +1518,10 @@ onMounted(() => {
 .summary-card small { display: block; color: var(--report-muted); }
 .summary-card strong { display: block; margin: 4px 0; font-size: clamp(1.45rem, 2vw, 2rem); line-height: 1; }
 .summary-card small { font-size: 0.76rem; }
+.summary-card > div:last-child { min-width: 0; overflow-wrap: anywhere; }
 .insight-banner { margin: 0; }
 
-.relationship-section { display: grid; gap: 16px; padding: 22px; border-radius: 20px; background: linear-gradient(135deg, rgba(var(--v-theme-secondary), 0.07), transparent 42%), rgb(var(--v-theme-surface)); }
+.relationship-section { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 16px; padding: 22px; border-radius: 20px; background: linear-gradient(135deg, rgba(var(--v-theme-secondary), 0.07), transparent 42%), rgb(var(--v-theme-surface)); }
 .relationship-section__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .relationship-section__heading > div { max-width: 860px; }
 .relationship-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -1516,7 +1531,7 @@ onMounted(() => {
 .relationship-summary__card small { color: var(--report-muted); }
 .relationship-summary__card strong { margin-block: 3px; font-size: clamp(1.3rem, 2vw, 1.8rem); line-height: 1.1; }
 .relationship-summary__card small { font-size: 0.76rem; line-height: 1.35; }
-.relationship-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.relationship-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
 .relationship-table-card { overflow: hidden; border-radius: 18px; background: rgb(var(--v-theme-surface)); }
 .relationship-table-card > .chart-card__heading { padding: 18px 20px 12px; }
 .relationship-table { border-top: 1px solid var(--report-border); }
@@ -1527,7 +1542,7 @@ onMounted(() => {
 .relationship-empty div { display: grid; gap: 3px; }
 .relationship-empty strong { color: rgb(var(--v-theme-on-surface)); }
 
-.chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
 .chart-card { min-width: 0; padding: 20px; border-radius: 18px; }
 .chart-card--wide { grid-column: 1 / -1; }
 .chart-card__heading { align-items: flex-start; margin-bottom: 10px; }
@@ -1539,7 +1554,14 @@ onMounted(() => {
 .empty-report p { margin: 0; }
 .empty-report p { max-width: 620px; }
 .chart-fallback { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; border-top: 1px solid var(--report-border); padding-top: 8px; }
-.chart-fallback .v-btn { min-height: 40px; text-transform: none; }
+.chart-fallback .v-btn { max-width: 100%; min-width: 0; height: auto; min-height: 40px; padding-block: 10px; text-transform: none; letter-spacing: normal; }
+.chart-fallback :deep(.v-btn__content) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.chart-fallback--relationships { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
+.chart-fallback--relationships .v-btn { width: 100%; justify-content: stretch; text-align: left; }
+.chart-fallback--relationships .v-btn + .v-btn { border-top: 1px solid var(--report-border); }
+.chart-fallback--relationships :deep(.v-btn__content) { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; width: 100%; line-height: 1.5; }
+.chart-fallback__label { flex: 1; min-width: 0; }
+.chart-fallback__value { flex: 0 0 auto; text-align: right; font-variant-numeric: tabular-nums; }
 
 .recent-card { overflow: hidden; border-radius: 18px; }
 .recent-card > .chart-card__heading { padding: 20px 20px 12px; }
@@ -1576,11 +1598,8 @@ onMounted(() => {
   .relationship-charts { grid-template-columns: 1fr; }
   .chart-card--wide { grid-column: auto; }
   .recent-card { overflow-x: auto; }
-  .recent-card > .chart-card__heading { min-width: 700px; }
-  .recent-table { min-width: 700px; }
-  .relationship-table-card { overflow-x: auto; }
-  .relationship-table-card > .chart-card__heading,
-  .relationship-table { min-width: 760px; }
+  .recent-table :deep(table) { min-width: 700px; }
+  .relationship-table :deep(table) { min-width: 760px; }
   .detail-dialog__actions { align-items: stretch; flex-direction: column; }
   .detail-dialog__actions .v-spacer { display: none; }
 }

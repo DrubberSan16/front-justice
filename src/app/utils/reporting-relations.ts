@@ -91,6 +91,9 @@ export function relationshipProfileForModule(
 }
 
 export function relationshipGroupForModule(moduleKey: string) {
+  // Conservar el tipo de cada OT antes de consolidar los proyectos. La
+  // agrupación EQUIPO mezcla tipos y ya no permite separar sus importes.
+  if (moduleKey === "projects") return "OT";
   const profile = relationshipProfileForModule(moduleKey);
   if (profile === "WORK_ORDER") return "OT";
   if (profile === "EQUIPMENT") return "EQUIPO";
@@ -118,16 +121,20 @@ export function relationshipMetaForModule(
     };
   }
   if (profile === "EQUIPMENT") {
+    const isProject = moduleKey === "projects";
     return {
       profile,
-      title: "Equipos relacionados con sus OT, horas y materiales",
-      description:
-        "Cada equipo consolida las órdenes atendidas, las horas registradas y el costo de los materiales utilizados durante el período.",
-      primaryLabel: "Horas por equipo",
+      title: isProject ? "Proyectos con sus OT, horas y materiales" : "Equipos relacionados con sus OT, horas y materiales",
+      description: isProject
+        ? "Cada proyecto consolida únicamente sus OT de proyecto, las horas registradas y el costo de los materiales utilizados durante el período."
+        : "Cada equipo consolida las órdenes atendidas, las horas registradas y el costo de los materiales utilizados durante el período.",
+      primaryLabel: isProject ? "Horas por proyecto" : "Horas por equipo",
       primaryField: "hours",
       primaryFormat: "hours",
-      secondaryLabel: "Costo de mantenimiento por equipo",
-      secondaryField: "maintenanceCost",
+      secondaryLabel: isProject ? "Costo de materiales por proyecto" : "Costo de mantenimiento por equipo",
+      // El reporte de mantenimiento excluye PROYECTO; sus materiales están
+      // en inventario_consumido, que conserva el tipo de la OT al pedir OT.
+      secondaryField: isProject ? "consumptionValue" : "maintenanceCost",
       secondaryFormat: "currency",
     };
   }
@@ -229,7 +236,7 @@ function isProjectRow(row: AnyRow) {
 }
 
 function rowBelongsToModule(moduleKey: string, row: AnyRow) {
-  if (moduleKey === "project-work-orders") return isProjectRow(row);
+  if (moduleKey === "project-work-orders" || moduleKey === "projects") return isProjectRow(row);
   if (moduleKey === "work-orders") return !isProjectRow(row);
   return true;
 }

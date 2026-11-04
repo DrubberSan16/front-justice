@@ -25,6 +25,7 @@ export function buildReportingModuleReport(options: {
 }): ReportDefinition {
   const { module, events } = options;
   const meta = relationshipMetaForModule(module.key);
+  const isProject = module.key === "projects";
   const groups = new Map<string, number>();
   for (const event of events) groups.set(event.status, (groups.get(event.status) || 0) + 1);
   const relationships = options.relationships || [];
@@ -51,7 +52,7 @@ export function buildReportingModuleReport(options: {
         unit: format === "currency" ? "USD" : format === "hours" ? "Horas" : "Unidades",
         points: [...relationships].sort((a, b) => Number(b[field] || 0) - Number(a[field] || 0)).slice(0, 10).map(row => {
           const equipment = splitEquipmentReportLabel(row.label);
-          return { label: meta.profile === "EQUIPMENT" ? equipment.unit : row.label, caption: meta.profile === "EQUIPMENT" ? equipment.brand : undefined, value: Number(row[field] || 0) };
+          return { label: meta.profile === "EQUIPMENT" && !isProject ? equipment.unit : row.label, caption: meta.profile === "EQUIPMENT" && !isProject ? equipment.brand : undefined, value: Number(row[field] || 0) };
         }),
       })) : []),
     ],
@@ -76,7 +77,7 @@ export function buildReportingModuleReport(options: {
         note: meta.description,
         fitColumnsToPage: true,
         columns: [
-          ...(meta.profile === "EQUIPMENT" ? equipmentColumns : [{ key: "label", header: "Registro relacionado", width: 45 }]),
+          ...(isProject ? [{ key: "label", header: "Proyecto", width: 45 }] : meta.profile === "EQUIPMENT" ? equipmentColumns : [{ key: "label", header: "Registro relacionado", width: 45 }]),
           { key: "workOrders", header: "OT", format: "number" as const, width: 9 },
           { key: meta.primaryField, header: meta.primaryLabel, format: meta.primaryFormat, width: 18 },
           { key: meta.secondaryField, header: meta.secondaryLabel, format: meta.secondaryFormat, width: 18 },
