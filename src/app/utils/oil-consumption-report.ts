@@ -295,8 +295,8 @@ export function buildOilFinancialReport(options: {
     ...money("costo_mpg", "Costo mantenimiento (USD)"),
     ...(hasOthers
       ? [
-          { key: "gal_otros", header: "Aceite otros tipos (gal)", width: 11, format: "number" as const },
-          ...money("costo_otros", "Costo otros tipos (USD)"),
+          { key: "gal_otros", header: "Aceite en otras OT (gal)", width: 11, format: "number" as const },
+          ...money("costo_otros", "Costo otras OT (USD)"),
         ]
       : []),
     { key: "gal_total", header: "Total aceite (gal)", width: 11, format: "number" },
@@ -361,7 +361,7 @@ export function buildOilFinancialReport(options: {
       rows: [...generators.map(generatorRow), generatorRow(total)],
       rowKinds: [...generators.map(() => null), "total"],
       emptyMessage: "Sin órdenes de trabajo para los filtros seleccionados.",
-      note: "Cebado, mantenimiento MPG y otros tipos son columnas excluyentes: cada galón se cuenta una sola vez y el total es su suma.",
+      note: "Cebado, mantenimiento MPG y otras OT son columnas excluyentes: cada galón se cuenta una sola vez y el total es su suma.",
     },
     {
       name: "Detalle por orden de trabajo",

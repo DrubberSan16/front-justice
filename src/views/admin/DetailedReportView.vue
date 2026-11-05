@@ -2078,8 +2078,8 @@ const oilGeneratorHeaders = computed(() => [
   ...(canViewCosts.value ? [{ title: "Costo MPG", key: "costo_mpg", align: "end" as const }] : []),
   ...(oilFinancial.value.total.gal_otros || oilFinancial.value.total.costo_otros
     ? [
-        { title: "Aceite otros tipos (gal)", key: "gal_otros", align: "end" as const },
-        ...(canViewCosts.value ? [{ title: "Costo otros tipos", key: "costo_otros", align: "end" as const }] : []),
+        { title: "Aceite en otras OT (gal)", key: "gal_otros", align: "end" as const },
+        ...(canViewCosts.value ? [{ title: "Costo otras OT", key: "costo_otros", align: "end" as const }] : []),
       ]
     : []),
   { title: "Total aceite (gal)", key: "gal_total", align: "end" as const },
