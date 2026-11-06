@@ -1,4 +1,5 @@
 import { parseAppDate } from "@/app/utils/date-time";
+import { oilKindLabel, oilProcedureHours } from "@/app/utils/oil-consumption-report";
 
 type Row = Record<string, any>;
 
@@ -7,10 +8,9 @@ export function buildOilControlSummary(rows: Row[], equipments: Row[], endDate: 
   const groups = new Map<string, Row>();
   const daily = new Map<string, Row>();
   const end = parseAppDate(`${endDate}T23:59:59.999`)?.getTime() ?? Date.now();
-  const types: Record<string, string> = { CEBADO: "Cebado", PREVENTIVO: "Mantenimiento MPG", MPG: "Mantenimiento MPG", CORRECTIVO: "Correctivo", PROYECTO: "Proyecto" };
   const workOrders = rows.map<Row>(row => ({
     ...row, orden: row.work_order_code, fecha: row.fecha_referencia,
-    tipo: row.maintenance_kind, maintenance_kind_label: types[row.maintenance_kind] || row.maintenance_kind,
+    tipo: row.maintenance_kind, maintenance_kind_label: oilKindLabel(row), procedimiento_horas: oilProcedureHours(row),
     equipment_label: [row.equipment_code, row.equipment_name].filter(Boolean).join(" - ") || "Sin equipo",
     horometro_anterior: row.maintenance_kind === "CEBADO" ? null : row.horometro_inicial,
     horometro_actual: row.maintenance_kind === "CEBADO" ? null : row.horometro_final,

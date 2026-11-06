@@ -26,6 +26,7 @@ export type ReportingModule = {
   valueFields: string[];
   ownerFields?: string[];
   valueLabel?: string;
+  valueFormat?: "number" | "currency";
 };
 
 const auditDates = ["updated_at", "created_at"];
@@ -59,6 +60,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     valueFields: ["costo_total", "total"],
     ownerFields: ["responsable_nombre", "created_by_label", "updated_by_label"],
     valueLabel: "Costo registrado",
+    valueFormat: "currency",
   },
   {
     key: "project-work-orders",
@@ -78,6 +80,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     valueFields: ["costo_total", "total_mano_obra", "total"],
     ownerFields: ["responsable_nombre", "created_by_label", "updated_by_label"],
     valueLabel: "Valor registrado",
+    valueFormat: "currency",
   },
   {
     key: "generation-units",
@@ -350,6 +353,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     routeName: "ordenes-compra",
     endpoint: "/kpi_inventory/ordenes-compra",
     serverDateParams: { from: "desde", to: "hasta" },
+    requestParams: { include_details: "true" },
     dateFields: ["fecha_emision", "fecha", "created_at"],
     titleFields: ["codigo", "numero", "proveedor_nombre"],
     statusFields: commonStatus,
@@ -357,6 +361,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     valueFields: ["total", "total_final", "subtotal"],
     ownerFields: ["emitido_por_nombre", ...auditOwner],
     valueLabel: "Valor comprado",
+    valueFormat: "currency",
   },
   {
     key: "service-orders",
@@ -375,6 +380,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     valueFields: ["total", "total_final", "subtotal"],
     ownerFields: ["emitido_por_nombre", ...auditOwner],
     valueLabel: "Valor contratado",
+    valueFormat: "currency",
   },
 ];
 

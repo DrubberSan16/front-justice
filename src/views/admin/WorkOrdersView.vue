@@ -6277,6 +6277,7 @@ function resolveWorkOrderSaveErrorMessage(error: any) {
 }
 
 function validateTaskRowsForSave(options?: { enforceRequiredCapture?: boolean }) {
+  if (options?.enforceRequiredCapture && !validateClosureResponsibles()) return false;
   for (const row of taskRows.value) {
     try {
       buildTaskPersistencePayload(row, options);
@@ -6286,6 +6287,13 @@ function validateTaskRowsForSave(options?: { enforceRequiredCapture?: boolean })
     }
   }
   return true;
+}
+
+function validateClosureResponsibles() {
+  if (taskRows.value.some((task) => getTaskResponsibles(task).length > 0)) return true;
+  ui.error("Asigna al menos un responsable en las tareas de la OT antes de finalizarla.");
+  tab.value = "tareas";
+  return false;
 }
 
 function resolveNextLocalTaskOrder() {
@@ -7510,6 +7518,7 @@ async function prepareClose() {
     ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return;
   }
+  if (!validateClosureResponsibles()) return;
   if (workOrderMaterialShortfallRows.value.length && !trimmedShortfallReason.value) {
     shortfallReasonTouched.value = false;
     closeShortfallDialog.value = true;
@@ -7555,6 +7564,7 @@ function cancelCloseShortfallReason() {
 }
 
 async function confirmCloseShortfallReason() {
+  if (!validateClosureResponsibles()) return;
   const trimmedReason = String(headerForm.close_shortfall_reason || "").trim();
   if (!trimmedReason) {
     ui.error("Debes indicar el motivo del menor uso de material reservado.");
@@ -7616,6 +7626,7 @@ async function saveHeader(
   if (!validateRequiredWorkOrderOutcomeFields()) {
     return false;
   }
+  if (normalizedWorkflow.value === "CLOSED" && !validateClosureResponsibles()) return false;
   if (!editingId.value && headerForm.is_emergency && !String(headerForm.emergency_reason || "").trim()) {
     ui.error("Debes indicar por que la orden es emergente.");
     return false;

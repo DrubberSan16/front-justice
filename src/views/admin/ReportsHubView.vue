@@ -475,6 +475,7 @@
             clearable
           />
           <v-data-table
+            class="report-detail-table"
             :headers="detailHeaders"
             :items="detailRows"
             :search="detailSearch"
@@ -484,6 +485,8 @@
             <template #item.status="{ item }">
               <v-chip size="small" variant="tonal">{{ item.status }}</v-chip>
             </template>
+            <template #item.value="{ item }">{{ activeModule.valueFormat === 'currency' ? formatCurrency(item.value) : formatNumber(item.value) }}</template>
+            <template #item.actions="{ item }"><v-btn icon="mdi-printer-outline" variant="text" :aria-label="`Imprimir ${item.title}`" :loading="exportingReport" @click="previewSingleEvent(item)" /></template>
           </v-data-table>
         </v-card-text>
         <v-card-actions class="detail-dialog__actions">
@@ -567,6 +570,7 @@ import {
   relationshipMetaForModule,
   type ReportingRelationshipRow,
 } from "@/app/utils/reporting-relations";
+import { formatCountForDisplay, formatNumberForDisplay, formatCurrencyForDisplay } from "@/app/utils/number-format";
 import { currentDateInputValue, formatDateOnly, formatDateForInput, parseAppDate } from "@/app/utils/date-time";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { canAccessReporting } from "@/app/utils/role-access";
@@ -630,11 +634,13 @@ const relationshipDialogTitle = ref("Detalle relacionado");
 const relationshipDialogRows = ref<ReportingRelationshipRow[]>([]);
 const relationshipSearch = ref("");
 const detailHeaders = [
-  { title: "Fecha", key: "dateLabel" },
   { title: "Registro", key: "title" },
+  { title: "Fecha", key: "dateLabel" },
   { title: "Estado", key: "status" },
   { title: "Clasificación", key: "category" },
   { title: "Responsable", key: "owner" },
+  { title: "Valor", key: "value", align: "end" as const },
+  { title: "Imprimir", key: "actions", sortable: false },
 ];
 
 const activeModule = computed(() => getReportingModule(activeModuleKey.value));
@@ -1134,20 +1140,9 @@ const relationshipSecondaryChartOption = computed(() =>
   ),
 );
 
-function formatCount(value: unknown) {
-  return new Intl.NumberFormat("es-EC", { maximumFractionDigits: 0 }).format(Number(value || 0));
-}
-function formatNumber(value: unknown) {
-  return new Intl.NumberFormat("es-EC", { maximumFractionDigits: 2 }).format(Number(value || 0));
-}
-function formatCurrency(value: unknown) {
-  return new Intl.NumberFormat("es-EC", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value || 0));
-}
+function formatCount(value: unknown) { return formatCountForDisplay(value); }
+function formatNumber(value: unknown) { return formatNumberForDisplay(value); }
+function formatCurrency(value: unknown) { return formatCurrencyForDisplay(value); }
 function formatCompactCurrency(value: unknown) {
   return new Intl.NumberFormat("es-EC", {
     style: "currency",
@@ -1390,6 +1385,10 @@ function previewActiveReport() {
   });
 }
 
+function previewSingleEvent(event: ReportEvent) {
+  return openModulePdf(() => generalModuleReport([event], [], event.title));
+}
+
 function previewEventDetail() {
   return openModulePdf(() => generalModuleReport(detailRows.value, [], detailTitle.value));
 }
@@ -1568,6 +1567,9 @@ onMounted(() => {
 .recent-table { border-top: 1px solid var(--report-border); }
 .recent-table small { display: block; margin-top: 2px; color: var(--report-muted); }
 .recent-table th { white-space: nowrap; }
+.report-detail-table :deep(thead th:first-child),
+.report-detail-table :deep(tbody td:first-child:not([colspan])) { position: sticky; left: 0; z-index: 1; background: rgb(var(--v-theme-surface)); }
+.report-detail-table :deep(thead th:first-child) { z-index: 2; }
 .detail-dialog__title { align-items: flex-start; padding: 22px 24px 12px; white-space: normal; }
 .detail-dialog__actions { padding: 12px 24px 20px; }
 

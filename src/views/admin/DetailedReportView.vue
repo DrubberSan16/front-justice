@@ -263,6 +263,7 @@
             <p>{{ rangeLabel }} · Galones y costo registrados.</p>
           </div>
           <div class="d-flex align-center flex-wrap ga-2">
+            <v-select v-model="oilExportSection" :items="OIL_EXPORT_SECTIONS" label="Reporte a imprimir" variant="outlined" density="compact" hide-details style="min-width:240px" />
             <SectionExportButtons
               :preview="sectionPreview"
               title="Control de cebado y aceite"
@@ -278,6 +279,8 @@
           <v-select v-model="controlScope" :items="[{ title: 'Todos los tipos de OT', value: 'all' }, { title: 'Solo OT de cebado', value: 'cebado' }]" label="Tipo de OT" variant="outlined" hide-details style="min-width:220px" />
           <v-autocomplete v-model="controlEquipmentId" :items="controlEquipmentOptions" label="Equipo" clearable variant="outlined" hide-details style="min-width:220px" />
           <v-select v-model="controlStatus" :items="CONTROL_STATUS_OPTIONS" label="Estado de OT" variant="outlined" hide-details style="min-width:220px" />
+          <v-select v-model="controlBrand" :items="controlBrandOptions" label="Marca del equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+          <v-select v-model="controlProcedureHours" :items="controlProcedureHourOptions" label="Procedimiento MPG (h)" clearable variant="outlined" hide-details style="min-width:220px" />
         </div>
         <v-alert v-if="controlError" type="error" variant="tonal" class="mb-4">{{ controlError }}</v-alert>
         <!-- Cuadricula de dos columnas y no el riel del resumen: en el riel cada
@@ -374,6 +377,7 @@
         <div class="equipment-heading">
           <h3>Consumo y costo de aceite por generador</h3>
         </div>
+        <p v-if="oilFinancial.total.gal_otros || oilFinancial.total.costo_otros" class="text-caption mb-3">El total incluye el aceite de correctivos y proyectos, disponible en el detalle por OT.</p>
         <v-data-table
           :headers="oilGeneratorHeaders"
           :items="oilGeneratorDisplayRows"
@@ -402,6 +406,7 @@
               {{ formatNumber(controlInventory.saldo_actual?.cantidad) }} gal
             </span>
           </div>
+          <p class="text-caption mb-3">Inventario de toda la sucursal y período; los filtros de equipo, marca, procedimiento, tipo y estado se aplican únicamente a las OT.</p>
           <v-table density="comfortable" class="manager-table oil-inventory-table mb-2">
             <thead>
               <tr>
@@ -429,7 +434,7 @@
             {{ formatNumber(oilReconciliation.otherBranches) }} de ellos a OT de otras sucursales
             ({{ (controlInventory?.salidas_otra_sucursal_detalle || []).map((item) => item.work_order_code).join(", ") }})</template>;
             las OT de este reporte suman {{ formatNumber(oilReconciliation.orders) }} gal
-            (diferencia {{ formatNumber(oilReconciliation.difference) }} gal).
+            (diferencia {{ formatNumber(oilReconciliation.difference) }} gal). Los filtros de OT pueden excluir salidas de esta comparación; esa diferencia no representa un descuadre de bodega.
           </p>
         </template>
         <div class="equipment-heading">
@@ -503,7 +508,8 @@
               orden.
             </p>
           </div>
-          <div class="d-flex align-center" style="gap:8px">
+          <div class="d-flex flex-wrap align-center ga-2">
+            <v-select v-model="oilExportSection" :items="OIL_EXPORT_SECTIONS" label="Reporte a imprimir" variant="outlined" density="compact" hide-details style="min-width:220px" />
             <SectionExportButtons
               :preview="sectionPreview"
               title="Control de cebado y aceite"
@@ -531,13 +537,18 @@
           >
         </div>
         <v-select v-model="primingCentral" :items="primingCentralOptions" label="Filtrar por central / ubicación" clearable hide-details class="mb-4" variant="outlined" />
-        <h3 class="mb-3">Órdenes del control</h3>
+        <div v-if="sectionWorkspace === 'priming'" class="d-flex flex-wrap ga-3 mb-4">
+          <v-select v-model="controlBrand" :items="controlBrandOptions" label="Marca del equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+          <v-select v-model="controlProcedureHours" :items="controlProcedureHourOptions" label="Procedimiento MPG (h)" clearable variant="outlined" hide-details style="min-width:220px" />
+        </div>
+        <h3 class="mb-3">Detalle por OT</h3>
         <v-data-table :headers="controlOrderHeaders" :items="oilWorkOrders" :loading="loading || primingLoading" :items-per-page="10" class="manager-table mb-6" no-data-text="Sin OT para los filtros seleccionados.">
           <template #item.work_order_code="{ item }"><button type="button" class="order-link" @click="openOrderDetail({ ...item, id: item.work_order_id, code: item.work_order_code })">{{ item.work_order_code }}</button></template>
           <template #item.fecha_referencia="{ item }">{{ formatShortDate(item.fecha_referencia) }}</template>
           <template #item.fecha_salida="{ item }">{{ item.fecha_salida ? formatShortDate(item.fecha_salida) : 'Sin salida' }}</template>
           <template #item.fecha_ot="{ item }">{{ formatShortDate(item.fecha_ot) }}</template>
           <template #item.equipment_name="{ item }">{{ equipmentLabel(item) }}</template>
+          <template #item.procedimiento_horas="{ item }">{{ item.procedimiento_horas != null ? `${formatCount(item.procedimiento_horas)} h` : '—' }}</template>
           <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
           <template #item.horometro_inicial="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_inicial) }}</template>
           <template #item.horometro_final="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_final) }}</template>
@@ -933,6 +944,7 @@
             </p>
           </div>
           <div class="d-flex align-center flex-wrap ga-2">
+            <v-select v-model="maintenanceExportSection" :items="MAINTENANCE_EXPORT_SECTIONS" label="Reporte a imprimir" variant="outlined" density="compact" hide-details style="min-width:260px" />
             <!-- Gerencia no podia imprimir esta seccion: no tenia exportacion.
                  El archivo es el reporte financiero de repuestos con los
                  filtros que estan aplicados en pantalla. -->
@@ -1015,6 +1027,8 @@
             clearable
           />
         </div>
+
+        <p class="text-caption mb-3">Para consultar los repuestos de cada OT, selecciona la categoría Repuestos y el reporte Detalle de materiales / repuestos por OT. PDF y Excel conservan los filtros de la tabla.</p>
 
         <v-alert
           v-if="invalidMaintenanceCostRange"
@@ -1807,9 +1821,12 @@ import {
   oilInventoryLines,
   oilReconciliation as buildOilReconciliation,
   summarizeOilByGenerator,
+  filterOilControlRows,
+  oilProcedureHourOptions,
   type OilInventory,
+  type OilReportSection,
 } from "@/app/utils/oil-consumption-report";
-import { buildMaintenanceFinancialReport } from "@/app/utils/maintenance-cost-financial-report";
+import { buildMaintenanceFinancialReport, type MaintenanceFinancialSection } from "@/app/utils/maintenance-cost-financial-report";
 import { useBranchScopeStore } from "@/app/stores/branch-scope.store";
 import { fetchCanonicalWorkOrderReport } from "@/app/utils/canonical-work-order-report";
 import {
@@ -1938,6 +1955,21 @@ const controlEquipments = ref<AnyRow[]>([]);
 const controlInventory = ref<OilInventory | null>(null);
 const controlScope = ref("all");
 const controlEquipmentId = ref<string | null>(null);
+const controlBrand = ref<string | null>(null);
+const controlProcedureHours = ref<number | null>(null);
+const oilExportSection = ref<OilReportSection>("generators");
+const controlProcedureHourOptions = computed(() => oilProcedureHourOptions(controlRows.value));
+const OIL_EXPORT_SECTIONS = [
+  { title: "Consumo por generador", value: "generators" },
+  { title: "Detalle por OT", value: "orders" },
+  { title: "Movimiento de inventario", value: "inventory" },
+  { title: "Conciliación con bodega", value: "reconciliation" },
+  { title: "Informe completo", value: "all" },
+];
+const controlBrandOptions = computed(() => [...new Set([
+  "CATERPILLAR", "MTU", "CUMMINS",
+  ...controlRows.value.map(row => String(row.equipment_brand_name || "").trim().toUpperCase()).filter(Boolean),
+])].sort((a, b) => a.localeCompare(b, "es")));
 /**
  * Estado de la OT, pedido por Gerencia junto a fechas, central, equipo y tipo:
  * el costo cerrado del período se lee con las OT cerradas, y las abiertas
@@ -1958,6 +1990,8 @@ const controlFilterLabel = computed(() => [
   controlEquipmentOptions.value.find(row => row.value === controlEquipmentId.value)?.title || "Todos los equipos",
   CONTROL_STATUS_OPTIONS.find(option => option.value === controlStatus.value)?.title || "",
   primingCentral.value || "",
+  controlBrand.value ? `Marca: ${controlBrand.value}` : "",
+  controlProcedureHours.value ? `Procedimiento MPG: ${controlProcedureHours.value} h` : "",
 ].filter(Boolean).join(" · "));
 const primingLocations = ref<AnyRow[]>([]);
 const primingCentral = ref<string | null>(null);
@@ -1965,10 +1999,16 @@ const primingCentralOptions = computed(() => buildPrimingCentralOptions(primingL
 const statusFilteredControlRows = computed(() => controlStatus.value === "all"
   ? controlRows.value
   : controlRows.value.filter(row => (String(row.work_order_status || "").toUpperCase() === "CLOSED") === (controlStatus.value === "closed")));
-const oilReport = computed(() => buildOilControlSummary(
-  filterPrimingRows(statusFilteredControlRows.value, primingCentral.value),
-  filterPrimingRows(controlEquipments.value.filter(row => !controlEquipmentId.value || String(row.id) === controlEquipmentId.value), primingCentral.value), endDate.value,
-));
+const oilReport = computed(() => {
+  const rows = filterOilControlRows(filterPrimingRows(statusFilteredControlRows.value, primingCentral.value),
+    { brand: controlBrand.value, hours: controlProcedureHours.value });
+  const equipmentIds = new Set(rows.map(row => String(row.equipment_id)));
+  const equipments = filterPrimingRows(controlEquipments.value.filter(row =>
+    (!controlEquipmentId.value || String(row.id) === controlEquipmentId.value)
+    && (!controlBrand.value || String(row.equipment_brand_name || "").trim().toUpperCase() === controlBrand.value)
+    && (!controlProcedureHours.value || equipmentIds.has(String(row.id)))), primingCentral.value);
+  return buildOilControlSummary(rows, equipments, endDate.value);
+});
 const rawPrimingRows = computed(() => oilReport.value.priming);
 const primingRows = computed(() => filterPrimingRows(rawPrimingRows.value, primingCentral.value));
 const primingLoading = ref(false);
@@ -2060,6 +2100,7 @@ async function loadOilExportReport() {
     filtersLabel: controlFilterLabel.value,
     fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
     showCosts: canViewCosts.value,
+    section: oilExportSection.value,
   });
 }
 const loadPrimingExportReport = loadOilExportReport;
@@ -2069,19 +2110,12 @@ const oilFinancial = computed(() => summarizeOilByGenerator(oilWorkOrders.value)
 const oilInventoryRows = computed(() => oilInventoryLines(controlInventory.value));
 const oilGeneratorHeaders = computed(() => [
   { title: "Equipo", key: "equipo" },
-  { title: "OT de cebado", key: "ot_cebado", align: "end" as const },
   { title: "Horas trabajadas cebado", key: "horas_cebado", align: "end" as const },
   { title: "Aceite cebado (gal)", key: "gal_cebado", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Costo cebado", key: "costo_cebado", align: "end" as const }] : []),
   { title: "OT MPG", key: "ot_mpg", align: "end" as const },
   { title: "Aceite MPG (gal)", key: "gal_mpg", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Costo MPG", key: "costo_mpg", align: "end" as const }] : []),
-  ...(oilFinancial.value.total.gal_otros || oilFinancial.value.total.costo_otros
-    ? [
-        { title: "Aceite en otras OT (gal)", key: "gal_otros", align: "end" as const },
-        ...(canViewCosts.value ? [{ title: "Costo otras OT", key: "costo_otros", align: "end" as const }] : []),
-      ]
-    : []),
   { title: "Total aceite (gal)", key: "gal_total", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Total costo aceite", key: "costo_total", align: "end" as const }] : []),
 ]);
@@ -2276,6 +2310,7 @@ const controlOrderHeaders = computed(() => [
   { title: "Inicio en OT", key: "fecha_ot" },
   { title: "Equipo", key: "equipment_name" }, { title: "Reserva", key: "es_reserva" },
   { title: "Tipo", key: "maintenance_kind_label" },
+  { title: "Procedimiento MPG (h)", key: "procedimiento_horas", align: "end" as const },
   ...(controlScope.value === "cebado" ? [] : [
     { title: "Horómetro inicial", key: "horometro_inicial" }, { title: "Horómetro final", key: "horometro_final" },
   ]),
@@ -3463,6 +3498,7 @@ const SYSTEM_COLUMN_OVERRIDES: Record<string, Record<string, string[]>> = {
       "total_costo",
       "total_cantidad",
       "total_materiales",
+      "materiales",
     ],
   },
   responsables_ot: {
@@ -3914,7 +3950,17 @@ const maintenanceCostAllRows = computed<AnyRow[]>(() => {
 const maintenanceCostEquipmentFilter = ref<string | null>(null);
 const maintenanceCostKindFilter = ref<string | null>(null);
 const maintenanceCostCategoryFilter = ref<string | null>(null);
-const maintenanceCostSearch = ref("");
+const maintenanceCostSearch = ref<string | null>("");
+const maintenanceExportSection = ref<MaintenanceFinancialSection>("orders");
+const MAINTENANCE_EXPORT_SECTIONS = [
+  { title: "Composición del costo por OT", value: "orders" },
+  { title: "Costo por máquina", value: "equipment" },
+  { title: "Costo por tipo de OT", value: "kind" },
+  { title: "Costo por período", value: "period" },
+  { title: "Costo por artículo", value: "articles" },
+  { title: "Detalle de materiales / repuestos por OT", value: "materials" },
+  { title: "Informe completo", value: "all" },
+];
 const MAINTENANCE_COST_CATEGORY_OPTIONS = [
   { title: "Repuestos", value: "REPUESTOS" },
   { title: "Aceite", value: "ACEITE" },
@@ -3936,7 +3982,7 @@ const maintenanceCostKindOptions = computed(() =>
     .filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")),
 );
 const maintenanceCostRawRows = computed<AnyRow[]>(() => {
-  const search = maintenanceCostSearch.value.trim().toLowerCase();
+  const search = (maintenanceCostSearch.value || "").trim().toLowerCase();
   const category = maintenanceCostCategoryFilter.value;
   return maintenanceCostAllRows.value.filter((row) => {
     if (maintenanceCostEquipmentFilter.value && String(row?.equipment_id || "") !== maintenanceCostEquipmentFilter.value) return false;
@@ -3956,7 +4002,7 @@ const maintenanceCostFiltersLabel = computed(() => [
   maintenanceCostEquipmentOptions.value.find((item) => item.value === maintenanceCostEquipmentFilter.value)?.title || "Todos los equipos",
   maintenanceCostKindFilter.value || "Todos los tipos de OT",
   MAINTENANCE_COST_CATEGORY_OPTIONS.find((item) => item.value === maintenanceCostCategoryFilter.value)?.title || "",
-  maintenanceCostSearch.value.trim() ? `Búsqueda: ${maintenanceCostSearch.value.trim()}` : "",
+  (maintenanceCostSearch.value || "").trim() ? `Búsqueda: ${(maintenanceCostSearch.value || "").trim()}` : "",
 ].filter(Boolean).join(" · "));
 
 async function loadMaintenanceFinancialReport() {
@@ -3968,6 +4014,7 @@ async function loadMaintenanceFinancialReport() {
     fileName: `gerencia_costo_mantenimiento_${maintenanceCostStart.value}_${maintenanceCostEnd.value}`,
     equipmentLabel: maintenanceCostEquipmentLabel,
     category: maintenanceCostCategoryFilter.value,
+    section: maintenanceExportSection.value,
   });
 }
 

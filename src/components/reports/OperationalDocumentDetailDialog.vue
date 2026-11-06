@@ -19,28 +19,36 @@
           </div>
           <div v-if="items.length" class="document-table-wrap">
             <table>
-              <thead><tr><th>Material o detalle</th><th class="number">Cantidad</th><th class="number">Costo unitario</th><th class="number">Total</th></tr></thead>
-              <tbody><tr v-for="(item, index) in items" :key="String(item.id || index)"><td>{{ itemLabel(item) }}</td><td class="number">{{ number(item.cantidad ?? item.quantity) }}</td><td class="number">{{ currency(item.costo_unitario ?? item.precio_unitario ?? item.precio) }}</td><td class="number">{{ currency(item.subtotal ?? item.total ?? Number(item.cantidad || 0) * Number(item.costo_unitario || item.precio_unitario || 0)) }}</td></tr></tbody>
+              <thead><tr><th>Material o detalle</th><th class="number">Cantidad</th><th class="number">Costo unitario</th><th class="number">Subtotal neto</th><th v-if="documentType === 'purchase'" class="number">IVA</th><th v-if="documentType === 'purchase'" class="number">Total con IVA</th></tr></thead>
+              <tbody><tr v-for="(item, index) in items" :key="String(item.id || index)"><td>{{ itemLabel(item) }}</td><td class="number">{{ number(item.cantidad ?? item.quantity) }}</td><td class="number">{{ currency(item.costo_unitario ?? item.precio_unitario ?? item.precio) }}</td><td class="number">{{ currency(item.subtotal ?? item.total ?? Number(item.cantidad || 0) * Number(item.costo_unitario || item.precio_unitario || 0)) }}</td><td v-if="documentType === 'purchase'" class="number">{{ currency(item.iva_total) }}</td><td v-if="documentType === 'purchase'" class="number">{{ currency(item.total) }}</td></tr></tbody>
             </table>
           </div>
           <v-alert v-else type="info" variant="tonal">El documento no registra líneas de detalle visibles.</v-alert>
         </template>
       </v-card-text>
       <v-divider />
-      <v-card-actions class="px-5 py-4"><v-spacer /><v-btn color="primary" @click="emit('update:modelValue', false)">Cerrar</v-btn></v-card-actions>
+      <v-card-actions class="px-5 py-4"><v-btn variant="outlined" prepend-icon="mdi-printer-outline" :disabled="loading || Boolean(error) || !documentId" @click="previewDocument">Imprimir documento</v-btn><v-spacer /><v-btn color="primary" @click="emit('update:modelValue', false)">Cerrar</v-btn></v-card-actions>
     </v-card>
   </v-dialog>
+  <ReportPreviewDialogs :preview="reportPreview" />
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { api } from "@/app/http/api";
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
+import { formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
+import { buildPurchaseReport, purchaseLines } from "@/app/utils/purchase-report";
+import { useReportPreview } from "@/app/utils/report-preview";
+import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
+import type { ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 import { formatDateTime } from "@/app/utils/date-time";
 
 type DocumentType = "kardex" | "transfer" | "purchase" | "service";
 const props = defineProps<{ modelValue: boolean; documentId: string | null; documentType: DocumentType; documentCode?: string }>();
 const emit = defineEmits<{ (event: "update:modelValue", value: boolean): void; (event: "openReference", value: string): void }>();
+const reportPreview = useReportPreview({ title: "Imprimir documento" });
+let loadSequence = 0;
 const loading = ref(false);
 const error = ref("");
 const document = ref<Record<string, any>>({});
@@ -74,22 +82,41 @@ const facts = computed(() => {
 
 function itemLabel(item: Record<string, any>) {
   return buildProductDisplayTitle({
-    codigo: item.producto_codigo || item.codigo_producto || item.codigo,
+    codigo: props.documentType === "purchase" ? undefined : item.producto_codigo || item.codigo_producto || item.codigo,
     nombre: item.producto_nombre || item.nombre_producto || item.nombre,
     descripcion: item.producto_descripcion || item.descripcion_producto || item.descripcion,
   }) || String(item.descripcion_producto || item.descripcion || item.concepto || item.producto_label || "Detalle");
 }
-function number(value: unknown) { return new Intl.NumberFormat("es-EC", { maximumFractionDigits: 2 }).format(Number(value || 0)); }
-function currency(value: unknown) { return new Intl.NumberFormat("es-EC", { style: "currency", currency: "USD" }).format(Number(value || 0)); }
+function number(value: unknown) { return formatNumberForDisplay(value); }
+function currency(value: unknown) { return formatCurrencyForDisplay(value); }
+function previewDocument() {
+  const row = document.value;
+  const report: ReportDefinition = props.documentType === "purchase"
+    ? buildPurchaseReport(purchaseLines([row]), typeLabel.value, displayCode.value)
+    : {
+      title: `${typeLabel.value} · ${displayCode.value}`, fileName: `documento-${displayCode.value}`, compactPdf: true,
+      summary: facts.value.map(fact => ({ label: fact.label, value: fact.value })),
+      sheets: [{ name: "Detalle del documento", fitColumnsToPage: true, columns: [
+        { key: "label", header: "Material o detalle", width: 60 },
+        { key: "quantity", header: "Cantidad", format: "number", width: 20 },
+        { key: "unitCost", header: "Costo unitario", format: "currency", width: 22 },
+        { key: "subtotal", header: "Subtotal", format: "currency", width: 22 },
+      ], rows: items.value.map((item: Record<string, any>) => ({ label: itemLabel(item), quantity: item.cantidad ?? item.quantity, unitCost: item.costo_unitario ?? item.precio_unitario ?? item.precio, subtotal: item.subtotal ?? item.total ?? Number(item.cantidad || 0) * Number(item.costo_unitario || item.precio_unitario || 0) })) }],
+    };
+  return reportPreview.open("pdf", report);
+}
 async function load() {
   if (!props.documentId) return;
+  const sequence = ++loadSequence;
   loading.value = true; error.value = ""; document.value = {};
   try {
     const { data } = await api.get(`${endpoints[props.documentType]}/${props.documentId}`);
+    if (sequence !== loadSequence) return;
     document.value = data?.data ?? data ?? {};
   } catch (requestError: any) {
+    if (sequence !== loadSequence) return;
     error.value = requestError?.response?.data?.message || requestError?.message || "No se pudo consultar el documento.";
-  } finally { loading.value = false; }
+  } finally { if (sequence === loadSequence) loading.value = false; }
 }
 watch(() => [props.modelValue, props.documentId, props.documentType] as const, ([open]) => { if (open) void load(); }, { immediate: true });
 </script>

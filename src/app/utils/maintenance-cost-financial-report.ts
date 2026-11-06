@@ -7,6 +7,7 @@ import type {
 } from "@/app/utils/maintenance-intelligence-reports";
 
 type Row = Record<string, any>;
+export type MaintenanceFinancialSection = "all" | "orders" | "equipment" | "kind" | "period" | "articles" | "materials";
 
 /**
  * Reporte financiero del costo de mantenimiento: repuestos, aceite, insumos y
@@ -118,6 +119,7 @@ export function buildMaintenanceFinancialReport(options: {
   equipmentLabel?: (row: Row) => string;
   /** Solo se listan los materiales de esta categoría en el detalle y por artículo. */
   category?: string | null;
+  section?: MaintenanceFinancialSection;
 }): ReportDefinition {
   const equipmentOf = (row: Row) =>
     options.equipmentLabel?.(row) || String(row?.equipment_name || row?.equipment_label || "Sin equipo");
@@ -242,7 +244,7 @@ export function buildMaintenanceFinancialReport(options: {
       note: "La cantidad total suma unidades de medida distintas: léala por artículo.",
     },
     {
-      name: "Detalle de materiales por OT",
+      name: categoryLabel ? `Detalle de ${categoryLabel.toLowerCase()} por OT` : "Detalle de materiales por OT",
       fitColumnsToPage: true,
       columns: [
         { key: "orden", header: "OT", width: 11 },
@@ -270,7 +272,7 @@ export function buildMaintenanceFinancialReport(options: {
     .slice(0, 15);
 
   return {
-    fileName: options.fileName,
+    fileName: options.section && options.section !== "all" ? `${options.fileName}_${options.section}` : options.fileName,
     title: "Reporte financiero de repuestos y mantenimiento",
     subtitle: options.filtersLabel,
     orientation: "landscape",
@@ -283,7 +285,7 @@ export function buildMaintenanceFinancialReport(options: {
       { label: "Total mantenimiento", value: formatCurrencyForDisplay(total.total) },
       { label: "Órdenes de trabajo", value: formatCountForDisplay(total.ordenes) },
     ],
-    charts: repuestosByEquipment.length
+    charts: repuestosByEquipment.length && (!options.section || options.section === "all" || options.section === "equipment")
       ? [{
           title: "Costo de repuestos por máquina",
           subtitle: "Las 15 máquinas con mayor costo de repuestos",
@@ -295,6 +297,8 @@ export function buildMaintenanceFinancialReport(options: {
           })),
         }]
       : [],
-    sheets,
+    sheets: options.section && options.section !== "all"
+      ? sheets.filter((_, index) => index === ({ orders: 0, equipment: 1, kind: 2, period: 3, articles: 4, materials: 5 }[options.section as Exclude<MaintenanceFinancialSection, "all">]))
+      : sheets,
   };
 }

@@ -62,6 +62,51 @@ const sample = {
 const output = path.join(root, "tmp", "oil-report-validation");
 await mkdir(output, { recursive: true });
 {
+  // Las MPG que se guardaron como correctivas deben sumar al mantenimiento,
+  // mientras las correctivas reales siguen en el total general y el detalle.
+  const mpg500 = { ...sample, maintenance_kind: "CORRECTIVO", plan_name: "MPG 500 HORAS MTU", equipment_brand_name: "MTU", cantidad: 20, subtotal: 250 };
+  const mpg300 = { ...sample, maintenance_kind: "CORRECTIVO", procedimiento_nombre: "MPG 300 HRS - CAT", procedimiento_horas: "300", equipment_brand_name: "Caterpillar", cantidad: 10, subtotal: 125 };
+  const corrective = { ...sample, maintenance_kind: "CORRECTIVO", cantidad: 3, subtotal: 37.5 };
+  const priming = { ...mpg500, maintenance_kind: "CEBADO", cantidad: 1, subtotal: 12.5 };
+  assert.equal(reports.oilKind(mpg500), "MPG");
+  assert.equal(reports.oilKindLabel(mpg500), "Mantenimiento MPG");
+  assert.equal(reports.oilProcedureHours(mpg500), 500);
+  assert.equal(reports.oilProcedureHours(mpg300), 300);
+  assert.deepEqual(reports.oilProcedureHourOptions([mpg500, mpg300, { ...sample, plan_name: 'MPG 250 HRS - CAT' }, { ...sample, plan_name: 'MPG 1000 HRS - CAT' }]).map(option => option.value), [250, 300, 500, 1000], "Ofrece todos los intervalos presentes, además de 300/500 h");
+  assert.equal(reports.oilKind(priming), "CEBADO", "Un cebado no hereda el servicio del plan");
+  assert.equal(reports.oilProcedureHours(priming), null);
+  assert.equal(reports.oilKind({ ...mpg500, maintenance_kind: "PROYECTO" }), "OTROS");
+  assert.equal(reports.oilProcedureHours({ ...sample, horas_trabajadas: 500, horometro_final: 500 }), null, "No confunde duración ni horómetro con frecuencia MPG");
+  const rows = [mpg500, mpg300, corrective, priming];
+  const filtered = reports.filterOilControlRows(rows, { brand: "mtu", hours: 500 });
+  assert.deepEqual(filtered, [mpg500]);
+  assert.deepEqual(reports.filterOilControlRows(rows, { brand: "CATERPILLAR", hours: 300 }), [mpg300]);
+  assert.equal(reports.filterOilControlRows(rows, {}).length, rows.length);
+  const summary = reports.buildOilControlSummary(rows, [], "2026-10-31");
+  assert.equal(summary.work_orders[0].procedimiento_horas, 500);
+  assert.equal(summary.work_orders[0].maintenance_kind_label, "Mantenimiento MPG");
+  assert.equal(summary.work_orders[0].maintenance_kind, "CORRECTIVO", "Conserva el tipo persistido");
+  const report = reports.buildOilFinancialReport({ rows, fileName: "kleber", filtersLabel: "", showCosts: true });
+  const [generators, detail] = report.sheets;
+  assert.equal(generators.rows.at(-1).gal_mpg, 30);
+  assert.equal(generators.rows.at(-1).gal_otros, 3);
+  assert.equal(generators.rows.at(-1).gal_total, 34, "Ocultar otras OT no las quita del total");
+  assert.equal(generators.rows.at(-1).costo_total, 425);
+  assert.ok(!generators.columns.some(column => ["ot_cebado", "gal_otros", "costo_otros"].includes(column.key)));
+  assert.equal(detail.rows[0].procedimiento_horas, 500);
+  assert.equal(detail.rows[1].procedimiento_horas, 300);
+  assert.equal(detail.rows[2].procedimiento_horas, "");
+  const isolated = reports.buildOilFinancialReport({ rows: filtered, fileName: "kleber", filtersLabel: "MTU · 500 h", showCosts: true, section: "orders" });
+  assert.equal(isolated.sheets.length, 1);
+  assert.equal(isolated.sheets[0].name, "Detalle por orden de trabajo");
+  assert.equal(isolated.sheets[0].rows.at(-1).galones, 20);
+  assert.equal(isolated.charts.length, 0, "Imprime solamente el detalle elegido");
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await (await reports.buildReportExcelBlob(isolated)).arrayBuffer());
+  assert.equal(workbook.worksheets.length, 1, "El Excel también sale individual");
+  await writeFile(path.join(output, "kleber-detalle-mpg-500.pdf"), Buffer.from(await (await reports.buildReportPdfBlob(isolated)).arrayBuffer()));
+}
+{
   const priming = { ...sample, maintenance_kind: 'CEBADO', work_order_id: 'ot-priming', horas_trabajadas: 1.5, es_reserva: true };
   const zero = { ...sample, work_order_id: 'ot-zero', cantidad: 0, subtotal: 0 };
   const summary = reports.buildOilControlSummary([priming, zero], [{ id: sample.equipment_id, nombre: sample.equipment_name }], '2026-10-16');
@@ -99,6 +144,12 @@ await mkdir(output, { recursive: true });
   const report = reports.buildOilFinancialReport({ rows: [sample, priming, corrective], inventory,
     filtersLabel: "01 oct 2026 al 13 oct 2026 · Central: SUC-002 - TPTA", fileName: "financiero", showCosts: true });
   const [generators, detail, stock, reconciliation] = report.sheets;
+  for (const [section, sheetName] of [["generators", generators.name], ["orders", detail.name], ["inventory", stock.name], ["reconciliation", reconciliation.name]]) {
+    const single = reports.buildOilFinancialReport({ rows: [sample, priming, corrective], inventory, filtersLabel: "", fileName: "individual", showCosts: true, section });
+    assert.equal(single.sheets.length, 1);
+    assert.equal(single.sheets[0].name, sheetName);
+    assert.ok(single.fileName.endsWith(`_${section}`));
+  }
   // Cebado, MPG y otros tipos son excluyentes y el total es su suma.
   assert.equal(generators.rows.length, 2, "Un generador y la fila de total");
   const [ug07, total] = generators.rows;
@@ -235,6 +286,17 @@ await mkdir(output, { recursive: true });
   const onlySpareParts = reports.buildMaintenanceFinancialReport({ rows: [ot], filtersLabel: "", fileName: "solo-repuestos", category: "REPUESTOS" });
   assert.equal(onlySpareParts.sheets[5].rows.length, 4, "Tres repuestos y el total");
   assert.equal(onlySpareParts.sheets[4].name, "Repuestos por artículo");
+  assert.equal(onlySpareParts.sheets[5].name, "Detalle de repuestos por OT");
+  for (const [index, section] of ["orders", "equipment", "kind", "period", "articles", "materials"].entries()) {
+    const single = reports.buildMaintenanceFinancialReport({ rows: [ot], filtersLabel: "", fileName: "individual", category: "REPUESTOS", section });
+    assert.equal(single.sheets.length, 1);
+    assert.deepEqual(single.sheets[0], onlySpareParts.sheets[index], "Reutiliza cada hoja financiera existente sin duplicarla");
+    if (section === "materials") {
+      assert.ok(single.sheets[0].rows.slice(0, -1).every(row => row.orden === ot.work_order_code && row.clasificacion === "Repuestos"));
+      assert.equal(single.charts.length, 0);
+      await writeFile(path.join(output, "kleber-repuestos-por-ot.pdf"), Buffer.from(await (await reports.buildReportPdfBlob(single)).arrayBuffer()));
+    }
+  }
   const pdf = await reports.buildReportPdfBlob(report);
   await writeFile(path.join(output, "repuestos.pdf"), Buffer.from(await pdf.arrayBuffer()));
   const excel = await reports.buildReportExcelBlob(report);

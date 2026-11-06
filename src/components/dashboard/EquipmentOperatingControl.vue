@@ -148,6 +148,14 @@
               <v-chip size="small" :color="stateFor(item).value === 'FUNCIONAMIENTO' ? 'success' : 'secondary'" variant="tonal">
                 {{ stateFor(item).value === 'FUNCIONAMIENTO' ? 'Contador en marcha' : 'Contador detenido' }}
               </v-chip>
+              <v-btn
+                v-if="canEdit"
+                variant="text"
+                prepend-icon="mdi-pencil-outline"
+                :disabled="stateFor(item).saving"
+                :aria-label="`Registrar horómetro de ${equipmentHeaderLabel(item)}`"
+                @click="openHorometerDialog(item)"
+              >Registrar lectura</v-btn>
             </div>
 
             <p v-if="stateFor(item).error" class="equipment-card__error">{{ stateFor(item).error }}</p>
@@ -181,6 +189,40 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    <v-dialog v-model="horometerDialog" max-width="460" :persistent="horometerSaving">
+      <v-card rounded="xl" title="Registrar horómetro">
+        <v-card-text>
+          <p class="mb-3">{{ horometerEquipment ? equipmentHeaderLabel(horometerEquipment) : '' }}</p>
+          <p class="text-body-2 text-medium-emphasis mb-3">
+            Registra la lectura del contador físico en horas. Las correcciones a una lectura menor requieren un perfil administrativo y un motivo.
+          </p>
+          <v-text-field
+            v-model="horometerReading"
+            label="Horómetro actual (h)"
+            type="number"
+            min="0"
+            step="1"
+            variant="outlined"
+            :disabled="horometerSaving"
+          />
+          <v-textarea
+            v-model="horometerReason"
+            label="Motivo del ajuste"
+            hint="Obligatorio si corriges la lectura hacia abajo."
+            persistent-hint
+            rows="2"
+            variant="outlined"
+            :disabled="horometerSaving"
+          />
+          <v-alert v-if="horometerError" type="error" variant="tonal" class="mt-3">{{ horometerError }}</v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn :disabled="horometerSaving" @click="horometerDialog = false">Cancelar</v-btn>
+          <v-btn color="primary" variant="flat" :loading="horometerSaving" @click="saveHorometer">Guardar lectura</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
     <div class="equipment-panel__sr-live" aria-live="polite">{{ liveMessage }}</div>
 
 
@@ -192,7 +234,8 @@ import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { api } from "@/app/http/api";
 import { formatDateTime } from "@/app/utils/date-time";
 import { buildEquipmentDisplayTitle } from "@/app/utils/equipment-display";
-import { operationalClock } from "@/app/utils/operational-horometer";
+import { operationalClock, operationalHours } from "@/app/utils/operational-horometer";
+import { formatHorometerForInput, parseHorometerInput } from "@/app/utils/number-format";
 
 export type EquipmentControlItem = {
   es_reserva?: boolean;
@@ -264,6 +307,12 @@ const stopEquipment = ref<EquipmentControlItem | null>(null);
 const stopReserve = ref(false);
 const stopSaving = ref(false);
 const stopError = ref<string | null>(null);
+const horometerDialog = ref(false);
+const horometerEquipment = ref<EquipmentControlItem | null>(null);
+const horometerReading = ref("");
+const horometerReason = ref("");
+const horometerSaving = ref(false);
+const horometerError = ref<string | null>(null);
 const clockNow = ref(Date.now());
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 function clockReading(item: EquipmentControlItem) {
@@ -318,6 +367,55 @@ function leverAriaLabel(item: EquipmentControlItem) {
 
 function canEditLabel() {
   return props.canEdit ? " Presiona para cambiar." : " Solo lectura, sin permiso de edición.";
+}
+
+function openHorometerDialog(item: EquipmentControlItem) {
+  if (!props.canEdit || stateFor(item).saving) return;
+  horometerEquipment.value = item;
+  const state = stateFor(item);
+  horometerReading.value = formatHorometerForInput(
+    operationalHours(state.operatingBase, state.value, state.operatingSince),
+  );
+  horometerReason.value = "";
+  horometerError.value = null;
+  horometerDialog.value = true;
+}
+
+async function saveHorometer() {
+  const item = horometerEquipment.value;
+  if (!props.canEdit || !item || horometerSaving.value || stateFor(item).saving) return;
+  const reading = parseHorometerInput(horometerReading.value);
+  if (reading === null || reading < 0) {
+    horometerError.value = "Indica un horómetro válido, mayor o igual a cero.";
+    return;
+  }
+  const state = stateFor(item);
+  horometerSaving.value = true;
+  state.saving = true;
+  horometerError.value = null;
+  try {
+    const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/horometro`, {
+      horometro_actual: reading,
+      motivo: horometerReason.value.trim() || undefined,
+    });
+    const updated = data?.data ?? data ?? {};
+    state.operatingBase = Number(updated.horometro_operativo_base ?? updated.horometro_actual ?? reading);
+    state.operatingSince = updated.horometro_operativo_desde ?? null;
+    state.horometerUpdatedAt = updated.fecha_ultima_lectura ?? null;
+    emit("horometer-updated", {
+      id: item.id,
+      horometro_actual: state.operatingBase,
+      fecha_ultima_lectura: state.horometerUpdatedAt,
+      horometro_operativo_desde: state.operatingSince,
+    });
+    liveMessage.value = `Horómetro de ${equipmentHeaderLabel(item)} actualizado.`;
+    horometerDialog.value = false;
+  } catch (error: any) {
+    horometerError.value = error?.response?.data?.message || "No se pudo registrar el horómetro.";
+  } finally {
+    state.saving = false;
+    horometerSaving.value = false;
+  }
 }
 
 async function toggleFuncionamiento(item: EquipmentControlItem) {
