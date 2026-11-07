@@ -269,8 +269,6 @@ export function buildOilFinancialReport(options: {
   const { generators, total } = summarizeOilByGenerator(rows);
   const primingEquipments = generators.filter((group) => group.ot_cebado > 0).length;
   const mpgEquipments = generators.filter((group) => group.ot_mpg > 0).length;
-  // Correctivos y proyectos sin aceite no merecen dos columnas en cero.
-  const hasOthers = total.gal_otros > 0 || total.costo_otros > 0;
 
   const summary: ReportSummaryItem[] = [
     { label: "Aceite consumido (gal)", value: formatNumberForDisplay(total.gal_total) },
@@ -287,18 +285,11 @@ export function buildOilFinancialReport(options: {
 
   const generatorColumns: ReportColumn[] = [
     { key: "equipo", header: "Equipo", width: 20 },
-    { key: "ot_cebado", header: "OT de cebado", width: 9 },
     { key: "horas_cebado", header: "Horas trabajadas cebado", width: 12, format: "text" },
     { key: "gal_cebado", header: "Aceite cebado (gal)", width: 11, format: "number" },
     ...money("costo_cebado", "Costo cebado (USD)"),
     { key: "gal_mpg", header: "Aceite mantenimiento MPG (gal)", width: 12, format: "number" },
     ...money("costo_mpg", "Costo mantenimiento (USD)"),
-    ...(hasOthers
-      ? [
-          { key: "gal_otros", header: "Aceite en otras OT (gal)", width: 11, format: "number" as const },
-          ...money("costo_otros", "Costo otras OT (USD)"),
-        ]
-      : []),
     { key: "gal_total", header: "Total aceite (gal)", width: 11, format: "number" },
     ...money("costo_total", "Total costo aceite (USD)"),
   ];
@@ -318,6 +309,8 @@ export function buildOilFinancialReport(options: {
       central: row?.central || "Sin ubicación",
       equipo: generatorParts(row).equipo,
       tipo: oilKindLabel(row),
+      mpg_interval_hours: row?.mpg_interval_hours ?? "",
+      marca: row?.equipment_brand_name || "Sin marca",
       estado: oilStatusLabel(row),
       horometro_inicial: kind === "CEBADO" ? "" : row?.horometro_inicial ?? "",
       horometro_final: kind === "CEBADO" ? "" : row?.horometro_final ?? "",
@@ -337,6 +330,8 @@ export function buildOilFinancialReport(options: {
     { key: "central", header: "Central", width: 16 },
     { key: "equipo", header: "Equipo", width: 15 },
     { key: "tipo", header: "Tipo", width: 14 },
+    { key: "marca", header: "Marca", width: 12 },
+    { key: "mpg_interval_hours", header: "Frecuencia MPG (h)", width: 11, format: "number" },
     { key: "estado", header: "Estado", width: 10 },
     { key: "horometro_inicial", header: "Horómetro inicial", width: 11, format: "horometer" },
     { key: "horometro_final", header: "Horómetro final", width: 11, format: "horometer" },
@@ -361,7 +356,7 @@ export function buildOilFinancialReport(options: {
       rows: [...generators.map(generatorRow), generatorRow(total)],
       rowKinds: [...generators.map(() => null), "total"],
       emptyMessage: "Sin órdenes de trabajo para los filtros seleccionados.",
-      note: "Cebado, mantenimiento MPG y otras OT son columnas excluyentes: cada galón se cuenta una sola vez y el total es su suma.",
+      note: "El total incluye el aceite de todas las OT seleccionadas, también el de otros tipos. Cada galón se cuenta una sola vez. El detalle identifica cada orden.",
     },
     {
       name: "Detalle por orden de trabajo",

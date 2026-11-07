@@ -64,6 +64,8 @@
           <div class="d-flex flex-wrap ga-3 mt-3">
             <v-select v-model="controlScope" :items="[{ title: 'Todos los tipos de OT', value: 'all' }, { title: 'Solo OT de cebado', value: 'cebado' }]" label="Control de cebado y aceite · Tipo de OT" variant="outlined" density="comfortable" hide-details style="min-width:240px" />
             <v-autocomplete v-model="controlEquipmentId" :items="controlEquipmentOptions" label="Control de cebado y aceite · Equipo" clearable variant="outlined" density="comfortable" hide-details style="min-width:240px" />
+            <v-autocomplete v-model="controlBrand" :items="controlBrandOptions" label="Marca del equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+            <v-select v-model="controlMpgHours" :items="controlMpgOptions" label="Frecuencia MPG (horas)" clearable variant="outlined" hide-details style="min-width:220px" />
           </div>
         </div>
       </section>
@@ -277,6 +279,8 @@
         <div class="d-flex flex-wrap ga-3 mb-5">
           <v-select v-model="controlScope" :items="[{ title: 'Todos los tipos de OT', value: 'all' }, { title: 'Solo OT de cebado', value: 'cebado' }]" label="Tipo de OT" variant="outlined" hide-details style="min-width:220px" />
           <v-autocomplete v-model="controlEquipmentId" :items="controlEquipmentOptions" label="Equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+          <v-autocomplete v-model="controlBrand" :items="controlBrandOptions" label="Marca del equipo" clearable variant="outlined" hide-details style="min-width:220px" />
+          <v-select v-model="controlMpgHours" :items="controlMpgOptions" label="Frecuencia MPG (horas)" clearable variant="outlined" hide-details style="min-width:220px" />
           <v-select v-model="controlStatus" :items="CONTROL_STATUS_OPTIONS" label="Estado de OT" variant="outlined" hide-details style="min-width:220px" />
         </div>
         <v-alert v-if="controlError" type="error" variant="tonal" class="mb-4">{{ controlError }}</v-alert>
@@ -1938,6 +1942,11 @@ const controlEquipments = ref<AnyRow[]>([]);
 const controlInventory = ref<OilInventory | null>(null);
 const controlScope = ref("all");
 const controlEquipmentId = ref<string | null>(null);
+const controlBrand = ref<string | null>(null);
+const controlMpgHours = ref<number | null>(null);
+const controlBrandOptions = computed(() => [...new Set(controlRows.value.map(row => String(row.equipment_brand_name || "Sin marca")))].sort());
+const controlMpgOptions = computed(() => [...new Set([300, 500, ...controlRows.value.map(row => Number(row.mpg_interval_hours)).filter(value => value > 0)])].sort((a, b) => a - b).map(value => ({ value, title: `${value} horas` })));
+const controlHasDetailFilters = computed(() => Boolean(controlEquipmentId.value || controlBrand.value || controlMpgHours.value || controlScope.value !== "all" || controlStatus.value !== "all" || primingCentral.value));
 /**
  * Estado de la OT, pedido por Gerencia junto a fechas, central, equipo y tipo:
  * el costo cerrado del período se lee con las OT cerradas, y las abiertas
@@ -1957,17 +1966,21 @@ const controlFilterLabel = computed(() => [
   controlScope.value === "cebado" ? "Solo OT de cebado" : "Todos los tipos de OT",
   controlEquipmentOptions.value.find(row => row.value === controlEquipmentId.value)?.title || "Todos los equipos",
   CONTROL_STATUS_OPTIONS.find(option => option.value === controlStatus.value)?.title || "",
+  controlBrand.value ? `Marca: ${controlBrand.value}` : "",
+  controlMpgHours.value ? `MPG: ${controlMpgHours.value} horas` : "",
   primingCentral.value || "",
 ].filter(Boolean).join(" · "));
 const primingLocations = ref<AnyRow[]>([]);
 const primingCentral = ref<string | null>(null);
 const primingCentralOptions = computed(() => buildPrimingCentralOptions(primingLocations.value, controlRows.value));
-const statusFilteredControlRows = computed(() => controlStatus.value === "all"
-  ? controlRows.value
-  : controlRows.value.filter(row => (String(row.work_order_status || "").toUpperCase() === "CLOSED") === (controlStatus.value === "closed")));
+const statusFilteredControlRows = computed(() => controlRows.value.filter(row =>
+  (controlStatus.value === "all" || (String(row.work_order_status || "").toUpperCase() === "CLOSED") === (controlStatus.value === "closed"))
+  && (!controlBrand.value || String(row.equipment_brand_name || "Sin marca") === controlBrand.value)
+  && (!controlMpgHours.value || Number(row.mpg_interval_hours) === controlMpgHours.value)));
 const oilReport = computed(() => buildOilControlSummary(
   filterPrimingRows(statusFilteredControlRows.value, primingCentral.value),
-  filterPrimingRows(controlEquipments.value.filter(row => !controlEquipmentId.value || String(row.id) === controlEquipmentId.value), primingCentral.value), endDate.value,
+  filterPrimingRows(controlEquipments.value.filter(row => (!controlEquipmentId.value || String(row.id) === controlEquipmentId.value)
+    && (!(controlBrand.value || controlMpgHours.value) || statusFilteredControlRows.value.some(order => String(order.equipment_id) === String(row.id)))), primingCentral.value), endDate.value,
 ));
 const rawPrimingRows = computed(() => oilReport.value.priming);
 const primingRows = computed(() => filterPrimingRows(rawPrimingRows.value, primingCentral.value));
@@ -2056,7 +2069,7 @@ async function loadOilExportReport() {
   if (primingLoading.value) throw new Error("Espera a que termine de actualizar el control.");
   return buildOilFinancialReport({
     rows: oilWorkOrders.value,
-    inventory: controlInventory.value,
+    inventory: controlHasDetailFilters.value ? null : controlInventory.value,
     filtersLabel: controlFilterLabel.value,
     fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
     showCosts: canViewCosts.value,
@@ -2069,19 +2082,12 @@ const oilFinancial = computed(() => summarizeOilByGenerator(oilWorkOrders.value)
 const oilInventoryRows = computed(() => oilInventoryLines(controlInventory.value));
 const oilGeneratorHeaders = computed(() => [
   { title: "Equipo", key: "equipo" },
-  { title: "OT de cebado", key: "ot_cebado", align: "end" as const },
   { title: "Horas trabajadas cebado", key: "horas_cebado", align: "end" as const },
   { title: "Aceite cebado (gal)", key: "gal_cebado", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Costo cebado", key: "costo_cebado", align: "end" as const }] : []),
   { title: "OT MPG", key: "ot_mpg", align: "end" as const },
   { title: "Aceite MPG (gal)", key: "gal_mpg", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Costo MPG", key: "costo_mpg", align: "end" as const }] : []),
-  ...(oilFinancial.value.total.gal_otros || oilFinancial.value.total.costo_otros
-    ? [
-        { title: "Aceite en otras OT (gal)", key: "gal_otros", align: "end" as const },
-        ...(canViewCosts.value ? [{ title: "Costo otras OT", key: "costo_otros", align: "end" as const }] : []),
-      ]
-    : []),
   { title: "Total aceite (gal)", key: "gal_total", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Total costo aceite", key: "costo_total", align: "end" as const }] : []),
 ]);
@@ -2099,7 +2105,7 @@ const oilGeneratorDisplayRows = computed(() =>
 );
 /** Galones de las OT frente a lo que salió de bodega en el mismo período. */
 const oilReconciliation = computed(() =>
-  buildOilReconciliation(
+  controlHasDetailFilters.value ? null : buildOilReconciliation(
     oilFinancial.value.total.gal_total,
     oilFinancial.value.total.costo_total,
     controlInventory.value,
@@ -2276,6 +2282,8 @@ const controlOrderHeaders = computed(() => [
   { title: "Inicio en OT", key: "fecha_ot" },
   { title: "Equipo", key: "equipment_name" }, { title: "Reserva", key: "es_reserva" },
   { title: "Tipo", key: "maintenance_kind_label" },
+  { title: "Marca", key: "equipment_brand_name" },
+  { title: "Frecuencia MPG (h)", key: "mpg_interval_hours" },
   ...(controlScope.value === "cebado" ? [] : [
     { title: "Horómetro inicial", key: "horometro_inicial" }, { title: "Horómetro final", key: "horometro_final" },
   ]),

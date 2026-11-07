@@ -5,6 +5,8 @@ import {
 } from "@/app/utils/maintenance-intelligence-reports";
 import { useExcelPreview } from "@/app/utils/excel-preview";
 import { usePdfPreview } from "@/app/utils/pdf-preview";
+import { reactive } from "vue";
+import { selectReportSection } from "./report-section-selection";
 
 /**
  * Previsualizacion de un reporte en sus dos formatos.
@@ -23,8 +25,33 @@ export function useReportPreview(defaults?: { title?: string }) {
   const pdf = usePdfPreview({ title: defaults?.title });
   const excel = useExcelPreview({ title: defaults?.title });
   let currentReport: ReportDefinition | null = null;
+  let pendingReport: ReportDefinition | null = null;
+  const selection = reactive({ visible: false, index: 0, title: "", options: [] as { title: string; value: number }[] });
 
   async function open(format: ReportPreviewFormat, report: ReportDefinition) {
+    if (format === "pdf" && report.sheets.length > 1) {
+      pendingReport = report;
+      selection.title = report.title;
+      selection.index = 0;
+      selection.options = [
+        ...report.sheets.map((sheet, value) => ({ title: sheet.name, value })),
+        ...((report.summary?.length || report.charts?.length) ? [{ title: "Solo resumen y gráficos", value: -2 }] : []),
+        { title: "Informe completo (todos los reportes)", value: -1 },
+      ];
+      selection.visible = true;
+      return;
+    }
+    return render(format, report);
+  }
+
+  async function confirmSelection() {
+    if (!pendingReport) return;
+    const report = selectReportSection(pendingReport, selection.index);
+    selection.visible = false;
+    await render("pdf", report);
+  }
+
+  async function render(format: ReportPreviewFormat, report: ReportDefinition) {
     currentReport = report;
     const options = {
       title: report.title,
@@ -44,6 +71,7 @@ export function useReportPreview(defaults?: { title?: string }) {
   }
 
   function close() {
+    selection.visible = false;
     pdf.close();
     excel.close();
   }
@@ -52,7 +80,7 @@ export function useReportPreview(defaults?: { title?: string }) {
     if (currentReport) await open("excel", currentReport);
   }
 
-  return { pdf, excel, open, openExcel, close, isPdf };
+  return { pdf, excel, open, openExcel, close, isPdf, selection, confirmSelection };
 }
 
 export type ReportPreview = ReturnType<typeof useReportPreview>;

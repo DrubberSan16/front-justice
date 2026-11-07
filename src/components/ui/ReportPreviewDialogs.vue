@@ -1,4 +1,14 @@
 <template>
+  <v-dialog v-model="preview.selection.visible" max-width="600">
+    <v-card rounded="xl" title="Seleccionar reporte para imprimir">
+      <v-card-text>
+        <p class="mb-4">{{ preview.selection.title }}</p>
+        <v-select v-model="preview.selection.index" :items="preview.selection.options" label="Reporte" variant="outlined" hide-details />
+        <p class="text-body-2 mt-3">Puedes imprimir cada reporte por separado o elegir el informe completo.</p>
+      </v-card-text>
+      <v-card-actions><v-spacer /><v-btn @click="preview.selection.visible = false">Cancelar</v-btn><v-btn color="primary" variant="flat" @click="preview.confirmSelection">Ver PDF</v-btn></v-card-actions>
+    </v-card>
+  </v-dialog>
   <PdfPreviewDialog
     :state="preview.pdf.state"
     :url="preview.pdf.url.value"

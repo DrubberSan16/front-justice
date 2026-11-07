@@ -145,6 +145,7 @@
                 <span>{{ clockReading(item) }}</span>
               </div>
               <span class="equipment-card__horometer-date">Horas · minutos · segundos</span>
+              <v-btn v-if="canEdit" size="small" variant="tonal" prepend-icon="mdi-pencil" :disabled="stateFor(item).saving" @click="openHorometer(item)">Ajustar horómetro</v-btn>
               <v-chip size="small" :color="stateFor(item).value === 'FUNCIONAMIENTO' ? 'success' : 'secondary'" variant="tonal">
                 {{ stateFor(item).value === 'FUNCIONAMIENTO' ? 'Contador en marcha' : 'Contador detenido' }}
               </v-chip>
@@ -185,6 +186,17 @@
 
 
   </v-card>
+  <v-dialog v-model="horometerDialog" max-width="520" :persistent="horometerSaving">
+    <v-card rounded="xl" title="Ajustar horómetro">
+      <v-card-text>
+        <p class="mb-4">{{ horometerEquipment ? equipmentHeaderLabel(horometerEquipment) : '' }}</p>
+        <v-text-field v-model="horometerValue" label="Lectura actual (horas)" type="number" min="0" step="0.01" variant="outlined" hint="Ingresa la lectura real del contador de la máquina." persistent-hint :disabled="horometerSaving" />
+        <v-textarea v-model="horometerReason" label="Motivo del ajuste" rows="2" variant="outlined" class="mt-3" :disabled="horometerSaving" />
+        <v-alert v-if="horometerError" type="error" variant="tonal" role="alert">{{ horometerError }}</v-alert>
+      </v-card-text>
+      <v-card-actions><v-spacer /><v-btn :disabled="horometerSaving" @click="horometerDialog = false">Cancelar</v-btn><v-btn color="primary" variant="flat" :loading="horometerSaving" @click="saveHorometer">Guardar lectura</v-btn></v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup lang="ts">
@@ -265,6 +277,51 @@ const stopReserve = ref(false);
 const stopSaving = ref(false);
 const stopError = ref<string | null>(null);
 const clockNow = ref(Date.now());
+const horometerDialog = ref(false);
+const horometerEquipment = ref<EquipmentControlItem | null>(null);
+const horometerValue = ref("");
+const horometerReason = ref("");
+const horometerError = ref("");
+const horometerSaving = ref(false);
+function openHorometer(item: EquipmentControlItem) {
+  if (!props.canEdit || stateFor(item).saving) return;
+  horometerEquipment.value = item;
+  horometerValue.value = "";
+  horometerReason.value = "";
+  horometerError.value = "";
+  horometerDialog.value = true;
+}
+async function saveHorometer() {
+  const item = horometerEquipment.value;
+  if (!props.canEdit || !item || horometerSaving.value) return;
+  const reading = Number(horometerValue.value);
+  if (!horometerValue.value.trim() || !Number.isFinite(reading) || reading < 0) {
+    horometerError.value = "Ingresa una lectura válida, mayor o igual a cero.";
+    return;
+  }
+  if (!horometerReason.value.trim()) {
+    horometerError.value = "Indica el motivo del ajuste para conservar su historial.";
+    return;
+  }
+  const state = stateFor(item);
+  if (state.saving) return;
+  horometerSaving.value = state.saving = true;
+  horometerError.value = "";
+  try {
+    const { data } = await api.patch(`/kpi_maintenance/equipos/${item.id}/horometro`, { horometro_actual: reading, motivo: horometerReason.value.trim() });
+    const updated = data?.data ?? data;
+    state.operatingBase = Number(updated.horometro_operativo_base ?? updated.horometro_actual);
+    state.operatingSince = updated.horometro_operativo_desde ?? null;
+    state.horometerUpdatedAt = updated.fecha_ultima_lectura ?? null;
+    emit("horometer-updated", { id: item.id, horometro_actual: Number(updated.horometro_actual), fecha_ultima_lectura: state.horometerUpdatedAt, horometro_operativo_desde: state.operatingSince });
+    liveMessage.value = `Horómetro de ${equipmentHeaderLabel(item)} actualizado.`;
+    horometerDialog.value = false;
+  } catch (error: any) {
+    horometerError.value = error?.response?.data?.message || "No se pudo guardar la lectura. Intenta nuevamente.";
+  } finally {
+    horometerSaving.value = state.saving = false;
+  }
+}
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 function clockReading(item: EquipmentControlItem) {
   const state = stateFor(item);

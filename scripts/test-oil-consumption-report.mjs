@@ -23,6 +23,8 @@ const { outputFiles } = await build({
       export * from "@/app/utils/reporting-relations";
       export * from "@/app/utils/work-order-hours";
       export * from "@/app/utils/oil-control-summary";
+      export * from "@/app/utils/purchase-report";
+      export * from "@/app/utils/report-section-selection";
     `,
     resolveDir: root,
   },
@@ -241,3 +243,33 @@ await mkdir(output, { recursive: true });
   await writeFile(path.join(output, "repuestos.xlsx"), Buffer.from(await excel.arrayBuffer()));
 }
 console.log("Oil reports: financial report with totals per generator and OT, inventory, reconciliation, spare parts cost composition, local dates, Excel/PDF and cost permissions passed.");
+
+// Requisitos de operación y compras: categorías mixtas sin inflar importes.
+{
+  const row = { ...sample, mpg_interval_hours: 500 };
+  const oil = reports.buildOilFinancialReport({ rows: [row], filtersLabel: '', fileName: 'audit', showCosts: true });
+  assert.ok(!oil.sheets[0].columns.some(c => ['ot_cebado', 'gal_otros', 'costo_otros'].includes(c.key)));
+  assert.equal(oil.sheets[1].rows[0].mpg_interval_hours, 500);
+  assert.equal(oil.sheets[1].rows[0].marca, 'CUMMINS');
+  const line = (id, category, total) => ({ id, producto_id: id, categoria_id: category, categoria_nombre: category, nombre_producto: id, cantidad: '2', costo_unitario: '50', subtotal: String(total / 1.15), iva_total: String(total - total / 1.15), total: String(total) });
+  const orders = [
+    { id: 'oc1', codigo: 'OC-1', estado: 'EMITIDA', total: 345, detalles: [line('filtro', 'repuestos', 115), line('aceite', 'aceites', 230)] },
+    { id: 'oc2', codigo: 'OC-2', estado: 'EMITIDA', detalles: [line('filtro2', 'repuestos', 57.5)] },
+    { id: 'oc3', codigo: 'OC-3', estado: 'ANULADA', detalles: [line('anulado', 'repuestos', 999)] },
+  ];
+  const report = reports.buildPurchaseReport(orders, 'repuestos', 'Noviembre');
+  assert.equal(report.summary.find(s => s.label === 'Total compras (USD)').value, 172.5);
+  assert.equal(report.sheets[1].rows.find(r => r.order === 'OC-1').total, 115, 'Filtrar categoría no suma toda la OC mixta');
+  assert.equal(report.sheets[2].rows.length, 3, 'Dos artículos y su total');
+  assert.equal(report.sheets[0].rows.at(-1).total, report.sheets[2].rows.at(-1).total);
+  const individual = reports.selectReportSection(report, 2);
+  assert.equal(individual.sheets.length, 1);
+  assert.equal(individual.sheets[0].name, 'Artículos comprados por OC');
+  assert.deepEqual(individual.summary, []);
+  assert.deepEqual(individual.charts, []);
+  assert.equal(reports.selectReportSection(report, -1), report);
+  assert.equal(reports.selectReportSection(report, -2).sheets.length, 0);
+  assert.throws(() => reports.selectReportSection(report, 99));
+  assert.equal(reports.buildPurchaseReport(orders, 'inexistente', '').summary.at(-1).value, 0);
+}
+console.log('PASS: columnas de aceite, frecuencia MPG, compras por categoría y PDF individual.');

@@ -349,6 +349,7 @@ export const REPORTING_MODULES: ReportingModule[] = [
     group: "Inventario",
     routeName: "ordenes-compra",
     endpoint: "/kpi_inventory/ordenes-compra",
+    requestParams: { include_details: "true" },
     serverDateParams: { from: "desde", to: "hasta" },
     dateFields: ["fecha_emision", "fecha", "created_at"],
     titleFields: ["codigo", "numero", "proveedor_nombre"],

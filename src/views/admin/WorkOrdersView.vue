@@ -6277,6 +6277,11 @@ function resolveWorkOrderSaveErrorMessage(error: any) {
 }
 
 function validateTaskRowsForSave(options?: { enforceRequiredCapture?: boolean }) {
+  if (options?.enforceRequiredCapture && !taskRows.value.some(task => getTaskResponsibles(task).some(person => person.empleado_id || person.user_id))) {
+    tab.value = "tareas";
+    ui.error("Asigna al menos un responsable en las tareas antes de cerrar la orden de trabajo.");
+    return false;
+  }
   for (const row of taskRows.value) {
     try {
       buildTaskPersistencePayload(row, options);
@@ -7502,6 +7507,11 @@ async function moveToReview() {
 }
 
 async function prepareClose() {
+  if (!taskRows.value.some(task => getTaskResponsibles(task).some(person => person.empleado_id || person.user_id))) {
+    tab.value = "tareas";
+    ui.error("Asigna al menos un responsable en las tareas antes de cerrar la orden de trabajo.");
+    return;
+  }
   if (isReadOnlyWorkflow.value) {
     ui.error(readOnlyWorkflowMessage());
     return;

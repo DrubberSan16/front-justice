@@ -108,6 +108,7 @@
       </template>
     </section>
 
+    <PurchaseReportBoard v-else-if="moduleKey === 'purchase-orders'" ref="purchaseBoard" :rows="rawRows" :start-date="startDate" :end-date="endDate" />
     <section v-else-if="isOperationalDocument" class="domain-stack">
       <div class="metric-grid">
         <MetricCard v-for="card in documentMetrics" :key="card.label" :label="card.label" :value="card.value" :helper="card.helper" :icon="card.icon" @preview="previewOperationalDocuments" />
@@ -163,6 +164,7 @@ import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import OperationalDocumentDetailDialog from "@/components/reports/OperationalDocumentDetailDialog.vue";
 import MetricCard from "@/components/reports/ReportMetricCard.vue";
 import ReportTableCard from "@/components/reports/ReportTableCard.vue";
+import PurchaseReportBoard from "./PurchaseReportBoard.vue";
 import LubricantReportBoard from "@/components/reports/LubricantReportBoard.vue";
 
 type AnyRow = Record<string, any>;
@@ -186,6 +188,7 @@ function previewLocations(){return reportPreview.open('pdf',equipmentLocationRep
 const isLubricant = computed(() => props.moduleKey === "lubricant-analysis");
 const isMaterials = computed(() => props.moduleKey === "materials");
 const isOperationalDocument = computed(() => ["warehouse-transfers","warehouse-reservations","purchase-orders","service-orders"].includes(props.moduleKey));
+const purchaseBoard = ref<InstanceType<typeof PurchaseReportBoard> | null>(null);
 const relationshipRows = computed(() => buildReportingRelationshipRows(props.moduleKey, props.relationshipPayload));
 const materialView = computed(() => props.materialView === "detalle" ? "detalle" : "informativo");
 const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
@@ -506,6 +509,7 @@ function previewMaterialTimeline(){return reportPreview.open("pdf",buildMaterial
 function previewOperationalDocuments(){return reportPreview.open("pdf",buildOperationalDocumentsReport());}
 
 async function buildModuleReport(): Promise<ReportDefinition> {
+  if (props.moduleKey === "purchase-orders" && purchaseBoard.value) return purchaseBoard.value.buildModuleReport();
   // Lubricantes arma su propio reporte, con los detalles que pide al exportar.
   if (isLubricant.value && lubricantBoard.value) return lubricantBoard.value.buildModuleReport();
   await supportReady;
