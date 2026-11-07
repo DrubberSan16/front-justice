@@ -67,6 +67,22 @@ await mkdir(output, { recursive: true });
   // mientras las correctivas reales siguen en el total general y el detalle.
   const mpg500 = { ...sample, maintenance_kind: "CORRECTIVO", plan_name: "MPG 500 HORAS MTU", equipment_brand_name: "MTU", cantidad: 20, subtotal: 250 };
   const mpg300 = { ...sample, maintenance_kind: "CORRECTIVO", procedimiento_nombre: "MPG 300 HRS - CAT", procedimiento_horas: "300", equipment_brand_name: "Caterpillar", cantidad: 10, subtotal: 125 };
+  // Respuesta del backend anterior: la programación de 6 h no sustituye al MPG 500 H.
+  for (const unit of ["H", "HR", "HRS", "HORA", "HORAS"]) {
+    const legacy = { ...mpg500, plan_name: `MPG 500 ${unit}`, mpg_interval_hours: 6, procedure_hours: 6 };
+    assert.equal(reports.oilProcedureHours(legacy), 500);
+    assert.deepEqual(reports.filterOilControlRows([legacy], { hours: 500 }), [legacy]);
+    assert.deepEqual(reports.filterOilControlRows([legacy], { hours: 6 }), []);
+    assert.deepEqual(reports.oilProcedureHourOptions([legacy]).map(option => option.value), [300, 500]);
+  }
+  for (const field of ["procedure_name", "procedimiento_nombre", "plan_name", "work_order_title"]) {
+    const named = { ...sample, maintenance_kind: "CORRECTIVO", [field]: "Servicio mpg: 500,5 h", mpg_interval_hours: 6 };
+    assert.equal(reports.oilKind(named), "MPG");
+    assert.equal(reports.oilProcedureHours(named), 500.5);
+  }
+  assert.equal(reports.oilProcedureHours({ ...sample, maintenance_kind: "CORRECTIVO", procedure_name: "Servicio preventivo", procedimiento_nombre: "MPG 500 H", mpg_interval_hours: 6 }), 500, "Examina ambos aliases si una respuesta histórica los trae distintos");
+  assert.equal(reports.oilProcedureHours({ ...sample, mpg_interval_hours: 750 }), 750, "Conserva intervalos explícitos sin nombre de servicio");
+  assert.equal(reports.oilProcedureHours({ ...sample, plan_name: "MPG 500 HP" }), null, "No interpreta potencia como horas");
   const corrective = { ...sample, maintenance_kind: "CORRECTIVO", cantidad: 3, subtotal: 37.5 };
   const priming = { ...mpg500, maintenance_kind: "CEBADO", cantidad: 1, subtotal: 12.5 };
   assert.equal(reports.oilKind(mpg500), "MPG");

@@ -97,8 +97,8 @@ export function oilKind(row: Row): OilKind {
   if (kind === "CEBADO") return "CEBADO";
   if (kind === "PREVENTIVO" || kind === "MPG") return "MPG";
   // Una MPG puede estar guardada como correctiva: manda el servicio realizado.
-  if (kind !== "PROYECTO" && [row?.plan_name, row?.procedimiento_nombre, kind]
-    .some(value => /^\s*MPG[\s-]*\d+\s*H/i.test(String(value || "")))) return "MPG";
+  if (kind !== "PROYECTO" && [row?.procedure_name, row?.procedimiento_nombre, row?.plan_name, row?.work_order_title, kind]
+    .some(value => /\bMPG\s*[-:]?\s*\d+(?:[.,]\d+)?\s*(?:H(?:RS?)?\b|HORAS?\b)/i.test(String(value || "")))) return "MPG";
   return "OTROS";
 }
 
@@ -116,12 +116,15 @@ export function oilStatusLabel(row: Row) {
 /** Frecuencia del servicio MPG; no es duración del trabajo ni horómetro. */
 export function oilProcedureHours(row: Row): number | null {
   if (oilKind(row) !== "MPG") return null;
+  // El nombre del servicio conserva el intervalo aunque un backend antiguo
+  // haya enviado la frecuencia de programación (6 h) como mpg_interval_hours.
+  for (const name of [row?.procedure_name, row?.procedimiento_nombre, row?.plan_name, row?.work_order_title, row?.maintenance_kind]) {
+    const match = String(name || "").match(/\bMPG\s*[-:]?\s*(\d+(?:[.,]\d+)?)\s*(?:H(?:RS?)?\b|HORAS?\b)/i);
+    const hours = Number(match?.[1]?.replace(",", "."));
+    if (Number.isFinite(hours) && hours > 0) return hours;
+  }
   const interval = Number(row?.mpg_interval_hours);
   if (Number.isFinite(interval) && interval > 0) return interval;
-  for (const name of [row?.procedimiento_nombre, row?.plan_name, row?.maintenance_kind]) {
-    const match = String(name || "").match(/^\s*MPG[\s-]*(\d+)\s*H/i);
-    if (match && Number(match[1]) > 0) return Number(match[1]);
-  }
   const frequency = Number(row?.procedimiento_horas ?? row?.procedure_hours);
   return Number.isFinite(frequency) && frequency > 0 ? frequency : null;
 }
