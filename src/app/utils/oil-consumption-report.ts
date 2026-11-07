@@ -93,13 +93,17 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function oilKind(row: Row): OilKind {
-  const kind = String(row?.maintenance_kind || row?.tipo || "").toUpperCase();
+  const kind = String(row?.maintenance_kind || row?.tipo || "").trim().toUpperCase();
   if (kind === "CEBADO") return "CEBADO";
   if (kind === "PREVENTIVO" || kind === "MPG") return "MPG";
+  // Una MPG puede estar guardada como correctiva: manda el servicio realizado.
+  if (kind !== "PROYECTO" && [row?.plan_name, row?.procedimiento_nombre, kind]
+    .some(value => /^\s*MPG[\s-]*\d+\s*H/i.test(String(value || "")))) return "MPG";
   return "OTROS";
 }
 
 export function oilKindLabel(row: Row) {
+  if (oilKind(row) === "MPG") return "Mantenimiento MPG";
   const kind = String(row?.maintenance_kind || row?.tipo || "").toUpperCase();
   return KIND_LABELS[kind] || String(row?.maintenance_kind_label || kind || "Sin tipo");
 }
@@ -108,6 +112,31 @@ export function oilStatusLabel(row: Row) {
   const status = String(row?.work_order_status || "").toUpperCase();
   return STATUS_LABELS[status] || String(row?.work_order_status || "");
 }
+
+/** Frecuencia del servicio MPG; no es duración del trabajo ni horómetro. */
+export function oilProcedureHours(row: Row): number | null {
+  if (oilKind(row) !== "MPG") return null;
+  const interval = Number(row?.mpg_interval_hours);
+  if (Number.isFinite(interval) && interval > 0) return interval;
+  for (const name of [row?.procedimiento_nombre, row?.plan_name, row?.maintenance_kind]) {
+    const match = String(name || "").match(/^\s*MPG[\s-]*(\d+)\s*H/i);
+    if (match && Number(match[1]) > 0) return Number(match[1]);
+  }
+  const frequency = Number(row?.procedimiento_horas ?? row?.procedure_hours);
+  return Number.isFinite(frequency) && frequency > 0 ? frequency : null;
+}
+
+export function filterOilControlRows(rows: Row[], filters: { brand?: string | null; hours?: number | null }) {
+  return rows.filter(row => (!filters.brand || String(row?.equipment_brand_name || "").trim().toUpperCase() === filters.brand.trim().toUpperCase())
+    && (!filters.hours || oilProcedureHours(row) === filters.hours));
+}
+
+export function oilProcedureHourOptions(rows: Row[]) {
+  return [...new Set([300, 500, ...rows.map(oilProcedureHours).filter((hours): hours is number => hours != null)])]
+    .sort((a, b) => a - b).map(value => ({ title: `${value} h`, value }));
+}
+
+export type OilReportSection = "all" | "generators" | "orders" | "inventory" | "reconciliation";
 
 /** "UG05 - MTU": así conoce Gerencia cada generador. */
 function generatorParts(row: Row) {
@@ -264,6 +293,7 @@ export function buildOilFinancialReport(options: {
   filtersLabel: string;
   fileName: string;
   showCosts: boolean;
+  section?: OilReportSection;
 }): ReportDefinition {
   const { rows, inventory, showCosts } = options;
   const { generators, total } = summarizeOilByGenerator(rows);
@@ -309,7 +339,7 @@ export function buildOilFinancialReport(options: {
       central: row?.central || "Sin ubicación",
       equipo: generatorParts(row).equipo,
       tipo: oilKindLabel(row),
-      mpg_interval_hours: row?.mpg_interval_hours ?? "",
+      procedimiento_horas: oilProcedureHours(row) ?? "",
       marca: row?.equipment_brand_name || "Sin marca",
       estado: oilStatusLabel(row),
       horometro_inicial: kind === "CEBADO" ? "" : row?.horometro_inicial ?? "",
@@ -331,7 +361,7 @@ export function buildOilFinancialReport(options: {
     { key: "equipo", header: "Equipo", width: 15 },
     { key: "tipo", header: "Tipo", width: 14 },
     { key: "marca", header: "Marca", width: 12 },
-    { key: "mpg_interval_hours", header: "Frecuencia MPG (h)", width: 11, format: "number" },
+    { key: "procedimiento_horas", header: "Procedimiento MPG (h)", width: 12, format: "number" },
     { key: "estado", header: "Estado", width: 10 },
     { key: "horometro_inicial", header: "Horómetro inicial", width: 11, format: "horometer" },
     { key: "horometro_final", header: "Horómetro final", width: 11, format: "horometer" },
@@ -356,7 +386,7 @@ export function buildOilFinancialReport(options: {
       rows: [...generators.map(generatorRow), generatorRow(total)],
       rowKinds: [...generators.map(() => null), "total"],
       emptyMessage: "Sin órdenes de trabajo para los filtros seleccionados.",
-      note: "El total incluye el aceite de todas las OT seleccionadas, también el de otros tipos. Cada galón se cuenta una sola vez. El detalle identifica cada orden.",
+      note: "El total incluye todo el aceite, también el de correctivos y proyectos; su desglose está en el detalle por OT. Los servicios con plan o procedimiento MPG se cuentan como mantenimiento MPG.",
     },
     {
       name: "Detalle por orden de trabajo",
@@ -367,7 +397,8 @@ export function buildOilFinancialReport(options: {
       emptyMessage: "Sin órdenes de trabajo para los filtros seleccionados.",
       note:
         "Galones, costo y fecha son los de la salida de bodega (EB), igual que el Kardex: la OT cae en el período en que se le entregó el aceite. " +
-        "Inicio en OT es la hora de inicio registrada en la orden. Una OT sin salida de bodega aparece en esa fecha, con cero y sin fecha de salida.",
+        "Inicio en OT es la hora de inicio registrada en la orden. Una OT sin salida de bodega aparece en esa fecha, con cero y sin fecha de salida. " +
+        "Procedimiento MPG (h) indica la frecuencia del servicio, no la duración del trabajo ni la lectura del horómetro.",
     },
   ];
 
@@ -400,7 +431,7 @@ export function buildOilFinancialReport(options: {
       rows: lines.map(({ sign, kind, ...line }) => line),
       rowKinds: lines.map((line) => line.kind),
       note:
-        `Bodegas de la sucursal activa; la existencia se cuenta desde el stock real de hoy. ` +
+        `Bodegas de la sucursal activa y período completo, sin filtrar por equipo, marca, procedimiento, tipo ni estado de OT; la existencia se cuenta desde el stock real de hoy. ` +
         `Saldo actual en bodega: ${formatNumberForDisplay(inventory.saldo_actual?.cantidad || 0)} gal.`,
     });
     sheets.push({
@@ -422,7 +453,7 @@ export function buildOilFinancialReport(options: {
       rowKinds: [null, null, ...otherBranchRows.map(() => null), ...returnRows.map(() => null), null, "total"],
       note:
         "El reporte toma el aceite de la salida de bodega, así que la diferencia es cero salvo por OT de esta sucursal atendidas desde bodegas de otra, " +
-        "o cuando los filtros de equipo, tipo o estado dejan OT fuera. " +
+        "o cuando los filtros de equipo, marca, procedimiento MPG, tipo o estado dejan OT fuera. La diferencia con un subconjunto de OT no representa un descuadre de bodega. " +
         "Las salidas sin orden de trabajo (ajustes de stock y egresos manuales) están en el movimiento de inventario y no entran aquí.",
     });
   }
@@ -440,13 +471,15 @@ export function buildOilFinancialReport(options: {
     : [];
 
   return {
-    fileName: options.fileName,
+    fileName: options.section && options.section !== "all" ? `${options.fileName}_${options.section}` : options.fileName,
     title: "Control de cebado y aceite",
     subtitle: `Reporte operativo-financiero · ${options.filtersLabel}`,
     orientation: "landscape",
     compactPdf: true,
     summary,
-    charts,
-    sheets,
+    charts: !options.section || options.section === "all" || options.section === "generators" ? charts : [],
+    sheets: options.section && options.section !== "all"
+      ? sheets.filter((_, index) => index === ({ generators: 0, orders: 1, inventory: 2, reconciliation: 3 }[options.section as Exclude<OilReportSection, "all">]))
+      : sheets,
   };
 }

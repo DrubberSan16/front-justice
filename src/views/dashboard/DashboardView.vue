@@ -792,7 +792,10 @@ const canAccessIntelligenceView = computed(() =>
   canReadComponent(menu.tree, "inteligencia-mantenimiento"),
 );
 const canEditEquiposFuncionamiento = computed(
-  () => getPermissionsForAnyComponent(menu.tree, ["Equipos", "Equipo"]).isEdited,
+  () => {
+    const permissions = getPermissionsForAnyComponent(menu.tree, ["equipos"]);
+    return permissions.isReaded && permissions.isEdited;
+  },
 );
 
 const users = ref<AnyRow[]>([]);

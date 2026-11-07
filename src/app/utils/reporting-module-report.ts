@@ -68,7 +68,7 @@ export function buildReportingModuleReport(options: {
           { key: "status", header: "Estado", width: 18 },
           { key: "category", header: "Clasificación", width: 22 },
           { key: "owner", header: "Responsable", width: 26 },
-          { key: "value", header: module.valueLabel || "Valor", format: "number", width: 18 },
+          { key: "value", header: module.valueLabel || "Valor", format: module.valueFormat || "number", width: 18 },
         ],
         rows: events.map(({ dateLabel, title, status, category, owner, value }) => ({ dateLabel, title, status, category, owner, value })),
       },

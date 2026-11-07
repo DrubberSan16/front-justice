@@ -108,7 +108,8 @@
       </template>
     </section>
 
-    <PurchaseReportBoard v-else-if="moduleKey === 'purchase-orders'" ref="purchaseBoard" :rows="rawRows" :start-date="startDate" :end-date="endDate" />
+    <PurchaseReportBoard v-else-if="moduleKey === 'purchase-orders'" ref="purchaseBoard" :rows="rawRows" :start-date="startDate" :end-date="endDate" @open-order="id => openOperationalDocument({ id }, 'purchase')" />
+
     <section v-else-if="isOperationalDocument" class="domain-stack">
       <div class="metric-grid">
         <MetricCard v-for="card in documentMetrics" :key="card.label" :label="card.label" :value="card.value" :helper="card.helper" :icon="card.icon" @preview="previewOperationalDocuments" />
@@ -162,9 +163,9 @@ import EChart from "@/components/charts/EChart.vue";
 import WorkOrderDetailDialog from "@/components/maintenance/WorkOrderDetailDialog.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import OperationalDocumentDetailDialog from "@/components/reports/OperationalDocumentDetailDialog.vue";
+import PurchaseReportBoard from "@/components/reports/PurchaseReportBoard.vue";
 import MetricCard from "@/components/reports/ReportMetricCard.vue";
 import ReportTableCard from "@/components/reports/ReportTableCard.vue";
-import PurchaseReportBoard from "./PurchaseReportBoard.vue";
 import LubricantReportBoard from "@/components/reports/LubricantReportBoard.vue";
 
 type AnyRow = Record<string, any>;
@@ -174,6 +175,7 @@ type OrderResponsible = { key: string; label: string; hours: number; hourlyCost:
 type OrderSummary = { key: string; id: string; code: string; title: string; status: string; equipmentKey: string; equipmentLabel: string; duration: number; openDays: number | null; workedHours: number | null; isPriming: boolean; reserve: boolean; responsibles: OrderResponsible[]; responsibleHours: number; horometerInitial: number | null; horometerFinal: number | null; cost: number; laborCost: number; contractedCost: number; totalCost: number; materials: OrderMaterial[]; startedAt: number };
 type OrderMaterialRow = { key: string; label: string; quantity: number | null; scrap: boolean | null };
 const props = defineProps<{ moduleKey: string; title: string; rawRows: AnyRow[]; relationshipPayload: AnyRow | null; startDate: string; endDate: string; materialView?: string }>();
+const purchaseBoard = ref<InstanceType<typeof PurchaseReportBoard> | null>(null);
 const theme = useTheme();
 const reportPreview = useReportPreview({ title: "Previsualización del informe" });
 const isWorkOrder = computed(() => ["work-orders","project-work-orders"].includes(props.moduleKey));
@@ -188,7 +190,6 @@ function previewLocations(){return reportPreview.open('pdf',equipmentLocationRep
 const isLubricant = computed(() => props.moduleKey === "lubricant-analysis");
 const isMaterials = computed(() => props.moduleKey === "materials");
 const isOperationalDocument = computed(() => ["warehouse-transfers","warehouse-reservations","purchase-orders","service-orders"].includes(props.moduleKey));
-const purchaseBoard = ref<InstanceType<typeof PurchaseReportBoard> | null>(null);
 const relationshipRows = computed(() => buildReportingRelationshipRows(props.moduleKey, props.relationshipPayload));
 const materialView = computed(() => props.materialView === "detalle" ? "detalle" : "informativo");
 const normalize = (value: unknown) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
@@ -509,8 +510,8 @@ function previewMaterialTimeline(){return reportPreview.open("pdf",buildMaterial
 function previewOperationalDocuments(){return reportPreview.open("pdf",buildOperationalDocumentsReport());}
 
 async function buildModuleReport(): Promise<ReportDefinition> {
-  if (props.moduleKey === "purchase-orders" && purchaseBoard.value) return purchaseBoard.value.buildModuleReport();
   // Lubricantes arma su propio reporte, con los detalles que pide al exportar.
+  if (props.moduleKey === "purchase-orders" && purchaseBoard.value) return purchaseBoard.value.buildModuleReport();
   if (isLubricant.value && lubricantBoard.value) return lubricantBoard.value.buildModuleReport();
   await supportReady;
   let reports: ReportDefinition[] = [];
