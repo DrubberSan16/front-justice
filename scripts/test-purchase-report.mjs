@@ -9,7 +9,7 @@ const fixture = new Module(path.join(root, "scripts/purchase-report-fixture.cjs"
 fixture.filename = path.join(root, "scripts/purchase-report-fixture.cjs");
 fixture.paths = Module._nodeModulePaths(root);
 fixture._compile(outputFiles[0].text, fixture.filename);
-const { purchaseLines, purchaseTotals, groupPurchaseLines, buildPurchaseReport } = fixture.exports;
+const { purchaseLines, purchaseTotals, groupPurchaseLines, buildPurchaseReport, purchaseTotalsDisplay } = fixture.exports;
 const mixed = { id: "oc1", codigo: "OC-001", fecha_emision: "2026-11-06", estado: "EMITIDA", total: "9999", detalles: [
   { id: "a", categoria_id: "spares", categoria_nombre: "Repuestos", nombre_producto: "Filtro", descripcion_producto: "Motor", cantidad: "2.5", costo_unitario: "10", subtotal: "20", iva_total: "3", total: "23" },
   { id: "b", categoria_id: "oil", categoria_nombre: "Aceites", nombre_producto: "Aceite", cantidad: "1", costo_unitario: "100", subtotal: "100", iva_total: "15", total: "115" },
@@ -38,6 +38,18 @@ for (const sheet of report.sheets) {
   assert.equal(sheet.columns.find(column => column.key === "total").format, "currency");
 }
 assert.equal(buildPurchaseReport(spares.filter(line => line.orderId === "oc1"), "noviembre").sheets[2].rows.length, 2, "Impresión individual contiene solo las líneas de esa orden más el total");
+const categorySheet = buildPurchaseReport(lines, "noviembre").sheets[0];
+assert.deepEqual(categorySheet.rowKinds, ["group", "detail", "detail", "group", "detail", "total"]);
+assert.deepEqual(categorySheet.rows.map(row => row.material), ["Repuestos", "Filtro (Motor)", "Perno", "Aceites", "Aceite", "TOTAL"]);
+assert.equal(categorySheet.rows[0].code, "2 órdenes");
+assert.equal(categorySheet.rows[0].total, 26.0763);
+assert.equal(categorySheet.rows[3].total, 115);
+const foreign = purchaseLines([{ id: "eur", moneda: "eur", detalles: [{ categoria_id: "oil", categoria_nombre: "Aceites", total: 42 }] }]);
+const mixedCurrencyLines = [...lines, ...foreign];
+const mixedCurrency = buildPurchaseReport(mixedCurrencyLines, "noviembre").sheets[0];
+assert.deepEqual(mixedCurrency.rows.slice(-2).map(row => [row.currency, row.total]), [["USD", 141.0763], ["EUR", 42]]);
+assert.match(purchaseTotalsDisplay(mixedCurrencyLines).total, /\$\s*141,08 · 42,00 EUR/);
+assert.ok(mixedCurrency.columns.some(column => column.key === "currency"));
 const missing = purchaseLines([{ id: "legacy", estado: "EMITIDA", subtotal: "10", iva_total: "1.5", total: "11.5" }]);
 assert.equal(missing[0].missingDetail, true);
 assert.equal(missing[0].category, "Sin detalle disponible");
