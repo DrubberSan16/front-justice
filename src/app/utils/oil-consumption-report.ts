@@ -330,12 +330,12 @@ export function buildOilFinancialReport(options: {
   ];
 
   const money = (key: string, header: string, width = 12): ReportColumn[] =>
-    showCosts ? [{ key, header, width, format: "currency" }] : [];
+    showCosts ? [{ key, header, width, format: "usd" }] : [];
 
   const generatorColumns: ReportColumn[] = [
     { key: "equipo", header: "Equipo", width: 20 },
     ...(options.showMpgHorometers ? [{ key: "horometros_mpg", header: "Horómetros MPG: inicial / final (h)", width: 34, format: "text" as const }] : []),
-    { key: "horas_cebado", header: "Horas trabajadas cebado", width: 12, format: "text" },
+    { key: "horas_cebado", header: "Horas trabajadas cebado (hh:mm:ss)", width: 12, format: "text" },
     { key: "gal_cebado", header: "Aceite cebado (gal)", width: 11, format: "number" },
     ...money("costo_cebado", "Costo cebado (USD)"),
     { key: "gal_mpg", header: "Aceite mantenimiento MPG (gal)", width: 12, format: "number" },
@@ -445,7 +445,7 @@ export function buildOilFinancialReport(options: {
       columns: [
         { key: "concepto", header: "Concepto", width: 30 },
         { key: "cantidad", header: "Cantidad (gal)", width: 14, format: "number" },
-        ...money("costo_unitario", "Costo unitario (USD)", 14),
+        ...money("costo_unitario", "Costo unitario (USD/gal)", 14),
         ...money("costo_total", "Total (USD)", 14),
       ],
       rows: lines.map(({ sign, kind, ...line }) => line),

@@ -82,11 +82,11 @@ function shortEquipment(label: string) {
 }
 
 const costColumns = (width = 12): ReportColumn[] => [
-  { key: "repuestos", header: "Repuestos (USD)", width, format: "currency" },
-  { key: "aceite", header: "Aceite (USD)", width, format: "currency" },
-  { key: "insumos", header: "Insumos (USD)", width, format: "currency" },
-  { key: "mano_obra", header: "Mano de obra (USD)", width, format: "currency" },
-  { key: "total", header: "Total OT (USD)", width, format: "currency" },
+  { key: "repuestos", header: "Repuestos (USD)", width, format: "usd" },
+  { key: "aceite", header: "Aceite (USD)", width, format: "usd" },
+  { key: "insumos", header: "Insumos (USD)", width, format: "usd" },
+  { key: "mano_obra", header: "Mano de obra (USD)", width, format: "usd" },
+  { key: "total", header: "Total OT (USD)", width, format: "usd" },
 ];
 
 function groupSheet(
@@ -257,7 +257,7 @@ export function buildMaintenanceFinancialReport(options: {
         { key: "clasificacion", header: "Clasificación", width: 12 },
         { key: "cantidad", header: "Cantidad", width: 10, format: "number" },
         { key: "ordenes", header: "OT", width: 7 },
-        { key: "costo", header: "Costo (USD)", width: 13, format: "currency" },
+        { key: "costo", header: "Costo (USD)", width: 13, format: "usd" },
       ],
       rows: [...articles, { codigo: "TOTAL", material: `${formatCountForDisplay(articles.length)} artículos`, ...articleTotal }],
       rowKinds: [...articles.map(() => null), "total"],
@@ -277,8 +277,8 @@ export function buildMaintenanceFinancialReport(options: {
         { key: "material", header: "Material", width: 28 },
         { key: "clasificacion", header: "Clasificación", width: 11 },
         { key: "cantidad", header: "Cantidad", width: 9, format: "number" },
-        { key: "costo_unitario", header: "Costo unitario (USD)", width: 11, format: "currency" },
-        { key: "costo", header: "Costo (USD)", width: 11, format: "currency" },
+        { key: "costo_unitario", header: "Costo unitario (USD)", width: 11, format: "usd" },
+        { key: "costo", header: "Costo (USD)", width: 11, format: "usd" },
       ],
       rows: [...detailRows, { orden: "TOTAL", costo: detailTotal }],
       rowKinds: [...detailRows.map(() => null), "total"],

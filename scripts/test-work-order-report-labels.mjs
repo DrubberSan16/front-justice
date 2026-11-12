@@ -115,6 +115,28 @@ serviceOrdersWorkbook.worksheets[0].eachRow(row => {
 });
 assert.deepEqual(serviceAmounts, [207, 1840, 90.14].map(amount => [amount, '"$"#,##0.00']));
 
+const mixedReport = {
+  title: "Importes y cantidades", fileName: "importes-y-cantidades", compactPdf: true,
+  sheets: [{ name: "Detalle", fitColumnsToPage: true, columns: [
+    { key: "total", header: "Importe", currencyKey: "moneda" },
+    { key: "moneda", header: "Moneda" },
+    { key: "horas", header: "Duración (h)", format: "hours" },
+    { key: "aceite", header: "Consumo (gal)", format: "number" },
+  ], rows: [{ total: 207, moneda: "USD", horas: 7.75, aceite: 84.5 }, { total: 180, moneda: "EUR" }] }],
+};
+const mixedPdf = await reports.buildReportPdfBlob(mixedReport);
+await assertPdf(mixedPdf, ["$207,00", "180,00", "EUR", "7,75 h", "84,50"]);
+const mixedText = Buffer.from(await mixedPdf.arrayBuffer()).toString("latin1");
+assert.ok(!/\$(?:180|7,75|84,50)/.test(mixedText));
+const mixedWorkbook = new ExcelJS.Workbook();
+await mixedWorkbook.xlsx.load(await (await reports.buildReportExcelBlob(mixedReport)).arrayBuffer());
+const mixedAmounts = [];
+mixedWorkbook.worksheets[0].eachRow(row => {
+  const cell = row.getCell(1);
+  if (typeof cell.value === "number") mixedAmounts.push([cell.value, cell.numFmt]);
+});
+assert.deepEqual(mixedAmounts, [[207, '"$"#,##0.00'], [180, '#,##0.00']]);
+
 await assertPdf(await reports.buildWorkOrderReportPdfBlob(detailPayload), ["Ana Perez", "Luis Torres", "Maria Lopez"]);
 await assertPdf(await reports.buildWorkOrderReportPdfBlob({ ...detailPayload, updatedBy: uuid }), ["Sin registro"]);
 

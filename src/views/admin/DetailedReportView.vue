@@ -413,8 +413,8 @@
               <tr>
                 <th>Concepto</th>
                 <th class="text-end">Cantidad (gal)</th>
-                <th v-if="canViewCosts" class="text-end">Costo unitario</th>
-                <th v-if="canViewCosts" class="text-end">Total</th>
+                <th v-if="canViewCosts" class="text-end">Costo unitario (USD/gal)</th>
+                <th v-if="canViewCosts" class="text-end">Total (USD)</th>
               </tr>
             </thead>
             <tbody>

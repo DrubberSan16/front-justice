@@ -57,6 +57,7 @@ export type ReportColumn = {
   key: string;
   header?: string;
   width?: number;
+  currencyKey?: string;
   format?:
     | "text"
     | "number"
@@ -500,6 +501,7 @@ function resolveColumns(sheet: ReportSheet, rows: AnyRow[]) {
         : prettifyLabel(column.key),
       width: column.width ?? inferColumnWidth(column.key, rows),
       format: column.format ?? inferColumnFormat(column.key),
+      currencyKey: column.currencyKey,
     }));
   }
 
@@ -520,6 +522,11 @@ function resolveRowValueByKey(row: AnyRow, key: string, header?: string) {
   const repairedHeader = repairText(header || "");
   if (repairedHeader && Object.prototype.hasOwnProperty.call(row, repairedHeader)) return row[repairedHeader];
   return "";
+}
+
+function columnFormatForRow(row: AnyRow, column: ReportColumn) {
+  if (!column.currencyKey) return column.format;
+  return resolveRowValueByKey(row, column.currencyKey) === "USD" ? "usd" : "currency";
 }
 
 function resolveColumnValue(row: AnyRow, column: { key: string; header?: string }) {
@@ -1001,7 +1008,7 @@ export async function buildReportExcelBlob(report: ReportDefinition) {
           const cell = row.getCell(columnIndex + 1);
           const formattedValue = formatSheetValue(resolveColumnValue(entry.row ?? {}, column));
           cell.value = formattedValue;
-          applyCellFormat(cell, column.format);
+          applyCellFormat(cell, columnFormatForRow(entry.row ?? {}, column));
           cell.border = {
             top: { style: "thin", color: { argb: REPORT_THEME.border } },
             left: { style: "thin", color: { argb: REPORT_THEME.border } },
@@ -1554,7 +1561,7 @@ export async function buildReportPdfBlob(report: ReportDefinition) {
       head: [columns.map((column) => repairText(column.header))],
       body: safeRows.map((row) =>
         columns.map((column) =>
-          repairText(formatColumnValueForPdf(resolveColumnValue(row, column), column.format)),
+          repairText(formatColumnValueForPdf(resolveColumnValue(row, column), columnFormatForRow(row, column))),
         ),
       ),
       didParseCell: (hookData: any) => {
