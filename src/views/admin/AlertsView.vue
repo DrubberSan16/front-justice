@@ -380,6 +380,16 @@
                     {{ shortAlertId(alert) }}
                   </div>
                   <v-btn
+                    v-if="alert.equipo_id"
+                    color="primary"
+                    variant="tonal"
+                    size="small"
+                    prepend-icon="mdi-history"
+                    @click="openEquipmentHistory(alert)"
+                  >
+                    Ver historial del equipo
+                  </v-btn>
+                  <v-btn
                     v-if="hasAlertDetails(alert)"
                     variant="text"
                     color="primary"
@@ -536,6 +546,12 @@
         </aside>
       </v-col>
     </v-row>
+    <EquipmentMaintenanceHistoryDialog
+      v-model="equipmentHistoryOpen"
+      :equipment-id="String(historyAlert?.equipo_id || '')"
+      :equipment-label="displayText(historyAlert?.equipo_label || historyAlert?.equipo_nombre, 'Equipo')"
+      :linked="historyLinkedOrders"
+    />
   </div>
 </template>
 
@@ -548,8 +564,10 @@ import { useUiStore } from "@/app/stores/ui.store";
 import { listAllPages } from "@/app/utils/list-all-pages";
 import { formatDateTime, parseAppDate } from "@/app/utils/date-time";
 import MassPurgeButton from "@/components/common/MassPurgeButton.vue";
+import EquipmentMaintenanceHistoryDialog from "@/components/maintenance/EquipmentMaintenanceHistoryDialog.vue";
 
 type AlertRow = Record<string, any>;
+type AlertWorkOrder = { id: string; code?: string | null; label?: string; status_workflow?: string | null };
 type SelectOption = { title: string; value: string };
 type BucketFilter = "categoria" | "origen";
 
@@ -563,6 +581,14 @@ const alerts = ref<AlertRow[]>([]);
 const currentPage = ref(1);
 const itemsPerPage = ref(10);
 const expandedAlertKeys = ref<string[]>([]);
+const equipmentHistoryOpen = ref(false);
+const historyAlert = ref<AlertRow | null>(null);
+const historyLinkedOrders = computed(() => workOrderItems(historyAlert.value).filter(order => order.id));
+
+function openEquipmentHistory(alert: AlertRow) {
+  historyAlert.value = alert;
+  equipmentHistoryOpen.value = true;
+}
 const summary = ref<Record<string, any>>({
   generated_at: null,
   totals: {
@@ -662,12 +688,13 @@ function inventoryAlertItems(item: any) {
   return Array.isArray(payload?.inventory_items) ? payload.inventory_items : [];
 }
 
-function workOrderItems(item: any) {
+function workOrderItems(item: AlertRow | null): AlertWorkOrder[] {
   if (Array.isArray(item?.work_orders) && item.work_orders.length) return item.work_orders;
   if (!item?.work_order_title) return [];
   return [
     {
-      id: item.work_order_id || item.work_order_title,
+      id: item.work_order_id || "",
+      code: item.work_order_code,
       label: item.work_order_title,
       status_workflow: item.work_order_status,
     },
@@ -1529,6 +1556,7 @@ function setMotionRoot(el: unknown) {
 
 .alert-card__footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
