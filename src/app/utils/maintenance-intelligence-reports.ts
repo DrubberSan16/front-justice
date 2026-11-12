@@ -61,6 +61,7 @@ export type ReportColumn = {
     | "text"
     | "number"
     | "currency"
+    | "usd"
     | "date"
     | "datetime"
     | "hours"
@@ -411,6 +412,11 @@ function formatColumnValueForPdf(
   if (format === "horometer") {
     return formatHorometerForDisplay(value, { empty: "" });
   }
+  if (format === "usd") {
+    if (value == null || String(value).trim() === "") return "";
+    const amount = Number(value);
+    return Number.isFinite(amount) ? formatCurrencyForDisplay(amount) : "";
+  }
   const formatted = formatValue(value);
   if (
     typeof formatted === "number" &&
@@ -622,8 +628,8 @@ function buildGroupedRows(rows: AnyRow[], groupBy?: string[]) {
 }
 
 function applyCellFormat(cell: any, format: ReportColumn["format"]) {
-  if (format === "currency") {
-    cell.numFmt = '#,##0.00';
+  if (format === "currency" || format === "usd") {
+    cell.numFmt = format === "usd" ? '"$"#,##0.00' : '#,##0.00';
     cell.alignment = { horizontal: "right", vertical: "middle" };
     return;
   }

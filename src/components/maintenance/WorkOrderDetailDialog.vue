@@ -205,13 +205,13 @@ const facts = computed(() => {
     { label: "Inicio", value: formatDate(row?.hora_inicio || row?.created_at) },
     { label: "Cierre", value: formatDate(row?.hora_fin || row?.closed_at) },
     ...(String(row?.maintenance_kind).toUpperCase() === "CEBADO" ? [{ label: "Horas trabajadas", value: worked == null ? "Sin registro de inicio" : formatWorkedDuration(worked) }] : [{
-      label: "Horómetro",
+      label: "Horómetro del equipo",
       value: [row?.horometro_anterior, row?.horometro_actual]
         .map((value) => formatHorometerForDisplay(value, { empty: "-" }))
         .join("  →  "),
     }]),
     {
-      label: "Horas registradas",
+      label: "Horas-hombre registradas",
       value: `${formatNumber(totalHours.value)} h`,
     },
     { label: "Registrada por", value: actors.createdBy || "Sin registro" },
@@ -220,7 +220,7 @@ const facts = computed(() => {
   ];
   const isProject = String(row?.maintenance_kind || "").toUpperCase() === "PROYECTO";
   const visible = isProject
-    ? base.filter(item => item.label !== "Horómetro").map(item => item.label === "Equipo" ? { ...item, label: "Proyecto" } : item)
+    ? base.filter(item => item.label !== "Horómetro del equipo").map(item => item.label === "Equipo" ? { ...item, label: "Proyecto" } : item)
     : base;
   if (isProject) visible.push({ label: "Días de apertura", value: formatWorkOrderOpenDays(workOrderOpenDays(row, detail.value.history)) });
   if (!showCosts.value) return visible;

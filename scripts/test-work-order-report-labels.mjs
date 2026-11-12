@@ -100,6 +100,21 @@ async function assertExcel(blob, expected, sheetCount) {
   for (const label of expected) assert.ok(text.includes(label), `Falta en Excel: ${label}`);
 }
 
+const serviceOrdersReport = {
+  title: "Órdenes de servicio", fileName: "ordenes-servicio", compactPdf: true,
+  sheets: [{ name: "Detalle", columns: [{ key: "total", header: "Total (USD)", format: "usd" }],
+    rows: [{ total: "207.0000" }, { total: "1840.0000" }, { total: "90.1370" }, { total: null }] }],
+};
+await assertPdf(await reports.buildReportPdfBlob(serviceOrdersReport), ["$207,00", "$1.840,00", "$90,14"]);
+const serviceOrdersWorkbook = new ExcelJS.Workbook();
+await serviceOrdersWorkbook.xlsx.load(await (await reports.buildReportExcelBlob(serviceOrdersReport)).arrayBuffer());
+const serviceAmounts = [];
+serviceOrdersWorkbook.worksheets[0].eachRow(row => {
+  const cell = row.getCell(1);
+  if (typeof cell.value === "number") serviceAmounts.push([cell.value, cell.numFmt]);
+});
+assert.deepEqual(serviceAmounts, [207, 1840, 90.14].map(amount => [amount, '"$"#,##0.00']));
+
 await assertPdf(await reports.buildWorkOrderReportPdfBlob(detailPayload), ["Ana Perez", "Luis Torres", "Maria Lopez"]);
 await assertPdf(await reports.buildWorkOrderReportPdfBlob({ ...detailPayload, updatedBy: uuid }), ["Sin registro"]);
 
