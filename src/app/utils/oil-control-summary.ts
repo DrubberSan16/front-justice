@@ -1,10 +1,12 @@
 import { parseAppDate } from "@/app/utils/date-time";
-import { oilKindLabel, oilProcedureHours } from "@/app/utils/oil-consumption-report";
+import { oilKindLabel, oilProcedureHours, isOilReportEquipment } from "@/app/utils/oil-consumption-report";
 
 type Row = Record<string, any>;
 
 /** Un mismo conjunto filtrado sustenta tablas, indicadores y exportaciones. */
 export function buildOilControlSummary(rows: Row[], equipments: Row[], endDate: string) {
+  rows = rows.filter(isOilReportEquipment);
+  equipments = equipments.filter(isOilReportEquipment);
   const groups = new Map<string, Row>();
   const daily = new Map<string, Row>();
   const end = parseAppDate(`${endDate}T23:59:59.999`)?.getTime() ?? Date.now();

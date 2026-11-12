@@ -56,8 +56,8 @@ function addTo(bucket: CostBucket, costs: Record<CostKey, number>) {
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 function monthKey(value: unknown) {
-  const match = String(value ?? "").match(/^(\d{4})-(\d{2})/);
-  return match ? `${match[1]}-${match[2]}` : "Sin fecha";
+  const match = formatDateOnly(value, "").match(/^\d{2}-(\d{2})-(\d{4})$/);
+  return match ? `${match[2]}-${match[1]}` : "Sin fecha";
 }
 function monthLabel(key: string) {
   const match = key.match(/^(\d{4})-(\d{2})$/);
@@ -129,6 +129,7 @@ export function buildMaintenanceFinancialReport(options: {
   const byEquipment = new Map<string, CostBucket>();
   const byKind = new Map<string, CostBucket>();
   const byMonth = new Map<string, CostBucket>();
+  const monthOrders = new Map<string, Set<string>>();
   const byArticle = new Map<string, Row>();
   const detailRows: Row[] = [];
 
@@ -138,20 +139,41 @@ export function buildMaintenanceFinancialReport(options: {
     for (const [map, key] of [
       [byEquipment, equipmentOf(row)],
       [byKind, kindOf(row)],
-      [byMonth, monthKey(row?.fecha_referencia)],
     ] as const) {
       const bucket = map.get(key) ?? emptyBucket();
       addTo(bucket, costs);
       map.set(key, bucket);
     }
     const materials: Row[] = Array.isArray(row?.materiales_detalle) ? row.materiales_detalle : [];
+    // Aceite por fecha del Kardex; las demás partidas conservan la fecha de la OT.
+    const periodCosts = new Map<string, Record<CostKey, number>>();
+    const baseMonth = monthKey(row?.fecha_referencia);
+    const ledgerOil = row?.aceite_fuente === 'KARDEX';
+    if (!row?.solo_aceite_periodo || !ledgerOil) periodCosts.set(baseMonth, {
+      ...costs, aceite: ledgerOil ? 0 : costs.aceite, total: costs.total - (ledgerOil ? costs.aceite : 0),
+    });
+    if (ledgerOil) for (const material of materials.filter(item => item.categoria_costo === 'ACEITE')) {
+      const key = monthKey(material.fecha_referencia);
+      const part = periodCosts.get(key) ?? { repuestos: 0, aceite: 0, insumos: 0, mano_obra: 0, total: 0 };
+      const oilCost = Number(material.costo_total || 0);
+      part.aceite += oilCost; part.total += oilCost;
+      periodCosts.set(key, part);
+    }
+    for (const [key, part] of periodCosts) {
+      const bucket = byMonth.get(key) ?? emptyBucket();
+      addTo(bucket, part);
+      const ids = monthOrders.get(key) ?? new Set<string>();
+      ids.add(String(row.work_order_id || row.work_order_code));
+      monthOrders.set(key, ids); bucket.ordenes = ids.size;
+      byMonth.set(key, bucket);
+    }
     for (const material of materials) {
       if (options.category && material?.categoria_costo !== options.category) continue;
       const cost = Number(material?.costo_total || 0);
       const quantity = Number(material?.cantidad || 0);
       detailRows.push({
         orden: row?.work_order_code || "",
-        fecha: formatDateOnly(row?.fecha_referencia, ""),
+        fecha: formatDateOnly(material?.fecha_referencia || row?.fecha_referencia, ""),
         equipo: equipmentOf(row),
         tipo: kindOf(row),
         bodega: material?.bodega_label || "",
@@ -213,9 +235,8 @@ export function buildMaintenanceFinancialReport(options: {
       emptyMessage: "Sin órdenes de mantenimiento para los filtros seleccionados.",
       note:
         "Total OT = repuestos + aceite + insumos + mano de obra. Las tres categorías de material son excluyentes. " +
-        "Una OT entra al período por su fecha de cierre (o de inicio si sigue abierta) con el material registrado en ella; " +
-        "el control de cebado y aceite cuenta el aceite que bodega entregó, en la fecha del egreso, por eso el aceite de los " +
-        "dos reportes puede diferir en las OT que cruzan de mes o que registran más de lo entregado.",
+        "El aceite se contabiliza por cantidad, costo y fecha del Kardex, igual que el control de cebado y aceite; las devoluciones restan. " +
+        "Repuestos, insumos y mano de obra conservan la fecha de la OT. Una OT de otro mes puede aparecer solo por su aceite entregado en este período.",
     },
     groupSheet("Costo por máquina", { key: "grupo", header: "Equipo", width: 32 }, sortByTotal(byEquipment), total),
     groupSheet("Costo por tipo de OT", { key: "grupo", header: "Tipo de OT", width: 20 }, sortByTotal(byKind), total),

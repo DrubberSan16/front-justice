@@ -1,6 +1,7 @@
 import { formatDateOnly } from "@/app/utils/date-time";
 import {
   formatCountForDisplay,
+  formatHorometerForDisplay,
   formatCurrencyForDisplay,
   formatNumberForDisplay,
   formatWorkedDuration,
@@ -71,6 +72,7 @@ export type OilGeneratorRow = {
   costo_otros: number;
   gal_total: number;
   costo_total: number;
+  horometros_mpg: string;
 };
 
 const KIND_LABELS: Record<string, string> = {
@@ -129,8 +131,14 @@ export function oilProcedureHours(row: Row): number | null {
   return Number.isFinite(frequency) && frequency > 0 ? frequency : null;
 }
 
+/** Los auxiliares no forman parte del control de las máquinas generadoras. */
+export function isOilReportEquipment(row: Row) {
+  const identity = [row?.equipment_name, row?.equipo_nombre, row?.nombre, row?.equipment_type_name, row?.equipment_type_label].filter(Boolean).join(' ');
+  return !/\bSSA\b|FILTRADO/i.test(identity);
+}
+
 export function filterOilControlRows(rows: Row[], filters: { brand?: string | null; hours?: number | null }) {
-  return rows.filter(row => (!filters.brand || String(row?.equipment_brand_name || "").trim().toUpperCase() === filters.brand.trim().toUpperCase())
+  return rows.filter(row => isOilReportEquipment(row) && (!filters.brand || String(row?.equipment_brand_name || "").trim().toUpperCase() === filters.brand.trim().toUpperCase())
     && (!filters.hours || oilProcedureHours(row) === filters.hours));
 }
 
@@ -165,12 +173,12 @@ export function summarizeOilByGenerator(rows: Row[]): {
 } {
   const groups = new Map<string, OilGeneratorRow>();
   const blank = (key: string, parts: { ug: string; marca: string; equipo: string }, central = ""): OilGeneratorRow => ({
-    key, ...parts, central,
+    key, ...parts, central, horometros_mpg: "",
     ot_cebado: 0, ot_mpg: 0, ot_otros: 0, horas_cebado: 0,
     gal_cebado: 0, costo_cebado: 0, gal_mpg: 0, costo_mpg: 0,
     gal_otros: 0, costo_otros: 0, gal_total: 0, costo_total: 0,
   });
-  for (const row of rows) {
+  for (const row of rows.filter(isOilReportEquipment)) {
     const parts = generatorParts(row);
     const key = String(row?.equipment_id || parts.equipo);
     const group = groups.get(key) ?? blank(key, parts, String(row?.central || ""));
@@ -184,6 +192,9 @@ export function summarizeOilByGenerator(rows: Row[]): {
       group.costo_cebado += cost;
     } else if (kind === "MPG") {
       group.ot_mpg += 1;
+      const initial = formatHorometerForDisplay(row?.horometro_inicial, { empty: 'Sin lectura' });
+      const final = formatHorometerForDisplay(row?.horometro_final, { empty: 'Sin lectura registrada' });
+      group.horometros_mpg += `${group.horometros_mpg ? '\n' : ''}${row?.work_order_code || 'MPG'}: ${initial} / ${final}`;
       group.gal_mpg += gallons;
       group.costo_mpg += cost;
     } else {
@@ -236,12 +247,15 @@ export function oilInventoryLines(inventory: OilInventory | null | undefined) {
   return [
     line("Existencia inicial", inventory.existencia_inicial, 0, "group"),
     line("(+) Compras e ingresos", inventory.compras, 1),
-    line("(+) Transferencias recibidas", inventory.transferencias_recibidas, 1),
     line("(+) Devoluciones de OT", inventory.devoluciones, 1),
     line("(±) Ajustes de inventario", inventory.ajustes, 1),
     line("(-) Salidas a órdenes de trabajo", inventory.salidas, -1),
     line("(-) Salidas sin orden de trabajo", inventory.salidas_sin_ot, -1),
-    line("(-) Transferencias enviadas", inventory.transferencias_enviadas, -1),
+    // Los traslados internos se compensan; quitar solo la entrada rompería el saldo.
+    line("(±) Movimiento neto entre bodegas", {
+      cantidad: round(Number(inventory.transferencias_recibidas?.cantidad || 0) - Number(inventory.transferencias_enviadas?.cantidad || 0)),
+      costo: round(Number(inventory.transferencias_recibidas?.costo || 0) - Number(inventory.transferencias_enviadas?.costo || 0)),
+    }, 1),
     line("Existencia final", inventory.existencia_final, 0, "total"),
   ];
 }
@@ -297,8 +311,10 @@ export function buildOilFinancialReport(options: {
   fileName: string;
   showCosts: boolean;
   section?: OilReportSection;
+  showMpgHorometers?: boolean;
 }): ReportDefinition {
-  const { rows, inventory, showCosts } = options;
+  const { inventory, showCosts } = options;
+  const rows = options.rows.filter(isOilReportEquipment);
   const { generators, total } = summarizeOilByGenerator(rows);
   const primingEquipments = generators.filter((group) => group.ot_cebado > 0).length;
   const mpgEquipments = generators.filter((group) => group.ot_mpg > 0).length;
@@ -318,6 +334,7 @@ export function buildOilFinancialReport(options: {
 
   const generatorColumns: ReportColumn[] = [
     { key: "equipo", header: "Equipo", width: 20 },
+    ...(options.showMpgHorometers ? [{ key: "horometros_mpg", header: "Horómetros MPG: inicial / final (h)", width: 34, format: "text" as const }] : []),
     { key: "horas_cebado", header: "Horas trabajadas cebado", width: 12, format: "text" },
     { key: "gal_cebado", header: "Aceite cebado (gal)", width: 11, format: "number" },
     ...money("costo_cebado", "Costo cebado (USD)"),
@@ -346,7 +363,7 @@ export function buildOilFinancialReport(options: {
       marca: row?.equipment_brand_name || "Sin marca",
       estado: oilStatusLabel(row),
       horometro_inicial: kind === "CEBADO" ? "" : row?.horometro_inicial ?? "",
-      horometro_final: kind === "CEBADO" ? "" : row?.horometro_final ?? "",
+      horometro_final: kind === "CEBADO" ? "" : formatHorometerForDisplay(row?.horometro_final, { empty: "Sin lectura registrada" }),
       horas_cebado: kind === "CEBADO" ? formatWorkedDuration(row?.horas_trabajadas, { empty: "" }) : "",
       galones: gallons,
       costo_galon: gallons ? round(cost / gallons) : 0,
@@ -367,7 +384,7 @@ export function buildOilFinancialReport(options: {
     { key: "procedimiento_horas", header: "Procedimiento MPG (h)", width: 12, format: "number" },
     { key: "estado", header: "Estado", width: 10 },
     { key: "horometro_inicial", header: "Horómetro inicial", width: 11, format: "horometer" },
-    { key: "horometro_final", header: "Horómetro final", width: 11, format: "horometer" },
+    { key: "horometro_final", header: "Horómetro final", width: 13, format: "text" },
     { key: "horas_cebado", header: "Horas cebado (hh:mm:ss)", width: 11, format: "text" },
     { key: "galones", header: "Aceite (gal)", width: 10, format: "number" },
     ...money("costo_galon", "Costo/gal (USD)", 10),
@@ -400,7 +417,7 @@ export function buildOilFinancialReport(options: {
       emptyMessage: "Sin órdenes de trabajo para los filtros seleccionados.",
       note:
         "Galones, costo y fecha son los de la salida de bodega (EB), igual que el Kardex: la OT cae en el período en que se le entregó el aceite. " +
-        "Inicio en OT es la hora de inicio registrada en la orden. Una OT sin salida de bodega aparece en esa fecha, con cero y sin fecha de salida. " +
+        "Inicio en OT es la hora de inicio registrada en la orden. Si el egreso solo contiene otros materiales, se muestra su fecha y cero aceite. Sin egreso, la fecha queda vacía. " +
         "Procedimiento MPG (h) indica la frecuencia del servicio, no la duración del trabajo ni la lectura del horómetro.",
     },
   ];
@@ -435,7 +452,7 @@ export function buildOilFinancialReport(options: {
       rowKinds: lines.map((line) => line.kind),
       note:
         `Bodegas de la sucursal activa y período completo, sin filtrar por equipo, marca, procedimiento, tipo ni estado de OT; la existencia se cuenta desde el stock real de hoy. ` +
-        `Saldo actual en bodega: ${formatNumberForDisplay(inventory.saldo_actual?.cantidad || 0)} gal.`,
+        `Los movimientos entre bodegas se presentan por su efecto neto. Saldo actual en bodega: ${formatNumberForDisplay(inventory.saldo_actual?.cantidad || 0)} gal.`,
     });
     sheets.push({
       name: "Conciliación con bodega",

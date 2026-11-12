@@ -388,6 +388,7 @@
           :loading="loading || primingLoading"
           no-data-text="Sin órdenes de trabajo para los filtros seleccionados."
         >
+          <template #item.horometros_mpg="{ item }"><span style="white-space: pre-line">{{ item.horometros_mpg }}</span></template>
           <template #body.append>
             <tr v-if="oilGeneratorDisplayRows.length" class="totals-row">
               <td
@@ -551,7 +552,7 @@
           <template #item.procedimiento_horas="{ item }">{{ item.procedimiento_horas != null ? `${formatCount(item.procedimiento_horas)} h` : '—' }}</template>
           <template #item.es_reserva="{ item }"><v-chip size="small" :color="item.es_reserva ? 'info' : 'secondary'" variant="tonal">{{ item.es_reserva ? 'En reserva' : 'Sin reserva' }}</v-chip></template>
           <template #item.horometro_inicial="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_inicial) }}</template>
-          <template #item.horometro_final="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : formatHorometro(item.horometro_final) }}</template>
+          <template #item.horometro_final="{ item }">{{ item.maintenance_kind === 'CEBADO' ? '—' : item.horometro_final == null ? 'Sin lectura registrada' : formatHorometro(item.horometro_final) }}</template>
           <template #item.horas_trabajadas="{ item }">{{ item.maintenance_kind === 'CEBADO' && item.horas_trabajadas != null ? formatWorkedDuration(item.horas_trabajadas) : '—' }}</template>
           <template #item.cantidad="{ item }">{{ formatNumber(item.cantidad) }} gal</template>
           <template #item.subtotal="{ item }">{{ formatCurrency(item.subtotal) }}</template>
@@ -2104,6 +2105,7 @@ async function loadOilExportReport() {
     fileName: `gerencia_cebado_aceite_${startDate.value}_${endDate.value}`,
     showCosts: canViewCosts.value,
     section: oilExportSection.value,
+    showMpgHorometers: Boolean(controlProcedureHours.value),
   });
 }
 const loadPrimingExportReport = loadOilExportReport;
@@ -2113,6 +2115,7 @@ const oilFinancial = computed(() => summarizeOilByGenerator(oilWorkOrders.value)
 const oilInventoryRows = computed(() => oilInventoryLines(controlHasDetailFilters.value ? null : controlInventory.value));
 const oilGeneratorHeaders = computed(() => [
   { title: "Equipo", key: "equipo" },
+  ...(controlProcedureHours.value ? [{ title: "Horómetros MPG: inicial / final (h)", key: "horometros_mpg" }] : []),
   { title: "Horas trabajadas cebado", key: "horas_cebado", align: "end" as const },
   { title: "Aceite cebado (gal)", key: "gal_cebado", align: "end" as const },
   ...(canViewCosts.value ? [{ title: "Costo cebado", key: "costo_cebado", align: "end" as const }] : []),
@@ -2123,7 +2126,7 @@ const oilGeneratorHeaders = computed(() => [
   ...(canViewCosts.value ? [{ title: "Total costo aceite", key: "costo_total", align: "end" as const }] : []),
 ]);
 function oilGeneratorCell(row: AnyRow, key: string) {
-  if (key === "equipo") return row.equipo;
+  if (key === "equipo" || key === "horometros_mpg") return row[key];
   if (key === "horas_cebado") return formatWorkedDuration(row.horas_cebado, { empty: "00:00:00" });
   if (key.startsWith("ot_")) return formatCount(row[key]);
   if (key.startsWith("costo_")) return formatCurrency(row[key]);

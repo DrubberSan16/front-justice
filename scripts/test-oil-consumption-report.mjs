@@ -136,7 +136,7 @@ await mkdir(output, { recursive: true });
   assert.equal(onlyPriming.sheets[1].rows[0].horas_cebado, '01:30:00');
   assert.equal(onlyPriming.sheets[1].rows[0].horometro_inicial, '', 'El cebado no lleva horómetros');
   const mixed = reports.buildOilFinancialReport({ rows: [priming, zero], filtersLabel: '', fileName: 'mixed', showCosts: true });
-  assert.equal(mixed.sheets[1].rows[1].horometro_final, 120, 'Los demás tipos conservan sus lecturas');
+  assert.equal(mixed.sheets[1].rows[1].horometro_final, '120 h', 'Los demás tipos conservan sus lecturas');
   const history = [
     { changed_at: '2026-10-01T09:00:00-05:00', from_status: 'IN_PROGRESS', to_status: 'REVIEW' },
     { changed_at: '2026-10-01T11:00:00-05:00', from_status: 'REVIEW', to_status: 'IN_PROGRESS' },
@@ -319,6 +319,50 @@ await mkdir(output, { recursive: true });
   const excel = await reports.buildReportExcelBlob(report);
   await writeFile(path.join(output, "repuestos.xlsx"), Buffer.from(await excel.arrayBuffer()));
 }
+
+{
+  const auxiliary = { ...sample, equipment_id: 'ssa', equipment_name: 'SSA', cantidad: 99, subtotal: 999 };
+  const filtration = { ...auxiliary, equipment_name: 'SISTEMA DE FILTRADO CPT' };
+  const mpg = { ...sample, plan_name: 'MPG 500 HRS', horometro_inicial: 42268, horometro_final: 42510 };
+  const missing = { ...mpg, work_order_code: 'OT-A00575', horometro_final: null };
+  const report = reports.buildOilFinancialReport({ rows: [auxiliary, filtration, mpg, missing], filtersLabel: '', fileName: 'mpg', showCosts: true, showMpgHorometers: true });
+  assert.equal(report.sheets[0].rows.length, 2);
+  assert.equal(report.sheets[1].rows.length, 3);
+  assert.ok(report.sheets[0].columns.some(c => c.key === 'horometros_mpg'));
+  assert.match(report.sheets[0].rows[0].horometros_mpg, /42\.268/);
+  assert.match(report.sheets[0].rows[0].horometros_mpg, /OT-A00575.*Sin lectura registrada/);
+  assert.equal(report.sheets[1].rows[1].horometro_final, 'Sin lectura registrada');
+  assert.equal(report.sheets[0].columns.find(c => c.key === 'horometros_mpg').format, 'text');
+  const pdfText=Buffer.from(await (await reports.buildReportPdfBlob(report)).arrayBuffer()).toString('latin1');
+  assert.match(pdfText,/42\.268/);
+  assert.equal(reports.buildOilControlSummary([auxiliary, filtration, mpg], [auxiliary, filtration], '2026-10-31').work_orders.length, 1);
+  const flow = (cantidad, costo) => ({ cantidad, costo });
+  const inventory = { existencia_inicial: flow(100, 1250), compras: flow(10,125),
+    transferencias_recibidas: flow(6500,81250), transferencias_enviadas: flow(6500,81250),
+    salidas: flow(20,250), existencia_final: flow(90,1125) };
+  for (const received of [6500, 6600, 6400]) {
+    inventory.transferencias_recibidas = flow(received, received*12.5);
+    const lines = reports.oilInventoryLines(inventory);
+    assert.ok(!lines.some(row => /Transferencias recibidas/.test(row.concepto)));
+    assert.equal(lines.reduce((sum, row) => sum + row.sign*row.cantidad, 0), -10 + received - 6500);
+  }
+}
+{
+  const oil = (fecha, cost) => ({ producto_id: 'oil', material_codigo: 'ACT', material_label: 'Aceite', categoria_costo: 'ACEITE', fecha_referencia: fecha, costo_total: cost, cantidad: cost/12.5, costo_unitario: 12.5 });
+  const row = { work_order_id: 'ot', work_order_code: 'OT-A00575', fecha_referencia: '2026-11-03',
+    aceite_fuente: 'KARDEX', costo_repuestos: 100, costo_aceite: 1050, costo_mano_obra: 10, total_costo: 1160,
+    materiales_detalle: [oil('2026-10-31',1062.5), oil('2026-11-02',-12.5)] };
+  const report = reports.buildMaintenanceFinancialReport({ rows: [row], filtersLabel: '', fileName: 'cross-month' });
+  const months = report.sheets.find(s => s.name === 'Costo por período').rows;
+  assert.equal(months[0].grupo, 'oct 2026'); assert.equal(months[0].aceite, 1062.5); assert.equal(months[0].total,1062.5);
+  assert.equal(months[1].grupo, 'nov 2026'); assert.equal(months[1].aceite,-12.5); assert.equal(months[1].total,97.5);
+  assert.equal(months.at(-1).total,1160);
+  const detail = report.sheets.find(s => s.name === 'Detalle de materiales por OT');
+  assert.match(detail.rows[0].fecha,/31-10-2026/);
+  const boundary=reports.buildMaintenanceFinancialReport({rows:[{...row,fecha_referencia:'2026-11-01T04:59:59.999Z',materiales_detalle:[oil('2026-10-31',1050)]}],filtersLabel:'',fileName:'timezone'});
+  assert.equal(boundary.sheets.find(s=>s.name==='Costo por período').rows.length,2);
+}
+
 console.log("Oil reports: financial report with totals per generator and OT, inventory, reconciliation, spare parts cost composition, local dates, Excel/PDF and cost permissions passed.");
 
 {
