@@ -67,6 +67,15 @@
         </v-expansion-panel>
       </v-expansion-panels>
       <p v-else class="ma-4">No hay compras en el período y categoría seleccionados.</p>
+      <footer class="purchase-category-heading purchase-category-total">
+        <strong>{{ categoryId ? "Total de la categoría" : "Total general" }}</strong>
+        <div class="purchase-category-metrics">
+          <span>Órdenes distintas <b>{{ count(orders.length) }}</b></span>
+          <span>Subtotal neto <b>{{ totals.subtotal }}</b></span>
+          <span>IVA <b>{{ totals.tax }}</b></span>
+          <span>Total con IVA <b>{{ totals.total }}</b></span>
+        </div>
+      </footer>
     </ReportTableCard>
     <ReportTableCard title="Órdenes de compra" :subtitle="`Ámbito: ${scopeLabel}. Seleccione una orden para ver sus líneas.`" icon="mdi-file-document-multiple-outline" wide @preview="preview(undefined, 1)">
       <div class="purchase-pagination"><span>{{ count(orders.length) }} órdenes · página {{ orderPage }} de {{ orderPages }} · totales de todo el filtro</span><v-pagination v-model="orderPage" :length="orderPages" :total-visible="4" density="comfortable" size="small" aria-label="Páginas de órdenes de compra" /></div>
@@ -164,6 +173,12 @@ defineExpose({ buildModuleReport });
 .purchase-category-metrics span {
   display: grid;
   gap: 3px;
+}
+
+.purchase-category-total {
+  padding: 16px 24px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), .12);
+  background: rgba(var(--v-theme-primary), .08);
 }
 
 .purchase-category-detail {
