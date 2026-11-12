@@ -310,6 +310,7 @@
           variant="tonal"
           class="mr-2"
           prepend-icon="mdi-lock-check-outline"
+          :disabled="!canFinalizeCurrent"
           @click="prepareClose"
         >
           Finalizar OT
@@ -637,7 +638,7 @@
               label="Estado de la orden de trabajo"
               variant="outlined"
               :disabled="!editingId || !canCloseOrVoidCurrent || (isReadOnlyWorkflow && !isClosed)"
-              hint="Planificación e inicio de ejecución automáticos. El creador puede finalizar o anular."
+              :hint="showIssuePrintRequired ? issuePrintRequiredText : 'Planificación e inicio de ejecución automáticos. El creador puede finalizar o anular.'"
               persistent-hint
             />
           </v-col>
@@ -3027,6 +3028,12 @@ function canCloseOrVoidWorkOrder(item: any) {
 const canCloseOrVoidCurrent = computed(() =>
   editingId.value ? canCloseOrVoidWorkOrder(currentWorkOrderRecord.value) : true,
 );
+const canFinalizeCurrent = computed(() => currentWorkOrderRecord.value?.can_finalize === true);
+const issuePrintRequiredText = "Para finalizar la OT, Bodega debe confirmar la impresión del egreso y la OT debe haber pasado a En proceso.";
+const showIssuePrintRequired = computed(() =>
+  Boolean(editingId.value && canCloseOrVoidCurrent.value && !canFinalizeCurrent.value &&
+    ["PLANNED", "IN_PROGRESS", "REVIEW"].includes(persistedWorkflow.value)),
+);
 const isReadOnlyWorkflow = computed(() => isPersistedBlocked.value || (isPersistedClosed.value && !closingFlow.value));
 const canManageWorkOrderUploads = computed(
   () => canPersistHeader.value && !isReadOnlyWorkflow.value,
@@ -3089,7 +3096,9 @@ const isEditingLockedFields = computed(() => !!editingId.value);
 const workflowOptionsForCurrent = computed(() => {
   const current = workflowOptions.filter(item => item.value === persistedWorkflow.value || (!editingId.value && item.value === "PLANNED"));
   if (!editingId.value || !canCloseOrVoidCurrent.value) return current;
-  const choices = persistedWorkflow.value === "IN_PROGRESS" ? ["REVIEW", "CLOSED", "ANNULLED"] : ["CLOSED", "ANNULLED"];
+  const choices = ["ANNULLED"];
+  if (persistedWorkflow.value === "IN_PROGRESS") choices.push("REVIEW");
+  if (canFinalizeCurrent.value) choices.push("CLOSED");
   return [...current, ...workflowOptions.filter(item => choices.includes(item.value) && !current.some(row => row.value === item.value))];
 });
 const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.status_workflow)}`);
@@ -7509,16 +7518,24 @@ async function moveToReview() {
   if (String(persistedWorkflow.value) !== "REVIEW") headerForm.status_workflow = persistedWorkflow.value;
 }
 
+function validateWorkOrderClosure() {
+  if (!canCloseOrVoidCurrent.value) {
+    ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
+    return false;
+  }
+  if (!canFinalizeCurrent.value) {
+    ui.error(issuePrintRequiredText);
+    return false;
+  }
+  return true;
+}
+
 async function prepareClose() {
   if (isReadOnlyWorkflow.value) {
     ui.error(readOnlyWorkflowMessage());
     return;
   }
-  if (!canCloseOrVoidCurrent.value) {
-    ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
-    return;
-  }
-  if (!validateClosureResponsibles()) return;
+  if (!validateWorkOrderClosure() || !validateClosureResponsibles()) return;
   if (workOrderMaterialShortfallRows.value.length && !trimmedShortfallReason.value) {
     shortfallReasonTouched.value = false;
     closeShortfallDialog.value = true;
@@ -7564,7 +7581,7 @@ function cancelCloseShortfallReason() {
 }
 
 async function confirmCloseShortfallReason() {
-  if (!validateClosureResponsibles()) return;
+  if (!validateWorkOrderClosure() || !validateClosureResponsibles()) return;
   const trimmedReason = String(headerForm.close_shortfall_reason || "").trim();
   if (!trimmedReason) {
     ui.error("Debes indicar el motivo del menor uso de material reservado.");
@@ -7600,10 +7617,9 @@ async function saveHeader(
   if (
     editingId.value &&
     normalizedWorkflow.value === "CLOSED" &&
-    !canCloseOrVoidCurrent.value &&
-    persistedWorkflow.value !== "CLOSED"
+    persistedWorkflow.value !== "CLOSED" &&
+    !validateWorkOrderClosure()
   ) {
-    ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
     return false;
   }
   if (!isProjectMode.value && !headerForm.equipment_id) {
@@ -7816,10 +7832,9 @@ async function saveAll() {
     if (
       editingId.value &&
       normalizedWorkflow.value === "CLOSED" &&
-      !canCloseOrVoidCurrent.value &&
-      persistedWorkflow.value !== "CLOSED"
+      persistedWorkflow.value !== "CLOSED" &&
+      !validateWorkOrderClosure()
     ) {
-      ui.error(closeRestrictionText.value || "No tienes permiso para cerrar esta orden de trabajo.");
       return;
     }
     if (!isProjectMode.value && !headerForm.equipment_id) {
