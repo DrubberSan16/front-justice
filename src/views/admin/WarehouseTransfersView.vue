@@ -192,6 +192,13 @@
 
           <v-list density="compact" min-width="260">
             <v-list-item
+              v-if="canEditWarehouseTransfer(item)"
+              prepend-icon="mdi-pencil-outline"
+              title="Editar transferencia"
+              :disabled="Boolean(editLoadingId)"
+              @click="openEdit(item)"
+            />
+            <v-list-item
               prepend-icon="mdi-printer-eye"
               title="Previsualizar e imprimir"
               :disabled="!item.id || Boolean(transferPdfDownloadingId)"
@@ -476,11 +483,14 @@
   >
     <v-card rounded="xl" class="enterprise-dialog">
       <v-card-title class="text-subtitle-1 font-weight-bold">
-        Nueva transferencia de bodega
+        {{ editingTransfer ? `Editar transferencia ${editingTransfer.codigo}` : 'Nueva transferencia de bodega' }}
       </v-card-title>
       <v-divider />
       <v-card-text class="pt-4 section-surface">
-        <fieldset class="guide-form-fieldset" :disabled="isCurrentGuideAuthorized">
+        <v-alert v-if="editingTransfer" type="info" variant="tonal" class="mb-4">
+          Puedes editar mientras no exista una guía ni recepciones activas. Al guardar se actualizarán las cantidades reservadas.
+        </v-alert>
+        <fieldset class="guide-form-fieldset" :disabled="saving">
         <v-row dense>
           <v-col cols="12" md="5">
             <v-autocomplete
@@ -492,7 +502,7 @@
               variant="outlined"
               clearable
               :loading="orderLoading"
-              :disabled="saving"
+              :disabled="saving || Boolean(editingTransfer)"
             />
           </v-col>
           <v-col cols="12" md="2">
@@ -523,7 +533,7 @@
             <v-select
               v-else
               v-model="form.bodega_origen_id"
-              :items="sourceWarehouseOptions"
+              :items="editableSourceWarehouseOptions"
               item-title="title"
               item-value="value"
               label="Bodega origen"
@@ -775,9 +785,9 @@
       </v-card-text>
       <v-divider />
       <v-card-actions class="justify-end pa-4">
-        <v-btn variant="text" @click="dialog = false">Cancelar</v-btn>
+        <v-btn variant="text" :disabled="saving" @click="dialog = false">Cancelar</v-btn>
         <v-btn color="primary" :loading="saving" :disabled="orderLoading" @click="saveTransfer">
-          Guardar transferencia
+          {{ editingTransfer ? 'Guardar cambios' : 'Guardar transferencia' }}
         </v-btn>
       </v-card-actions>
     </v-card>
@@ -1444,7 +1454,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useDisplay } from "vuetify";
 import { io, type Socket } from "socket.io-client";
 import { env } from "@/app/config/env";
@@ -1458,6 +1468,7 @@ import { listAllPages } from "@/app/utils/list-all-pages";
 import { fetchPaginatedResource } from "@/app/utils/paginated-resource";
 import { formatDateForInput, formatDateOnly, formatDateTime } from "@/app/utils/date-time";
 import { buildGuideRemisionPdfBlob } from "@/app/utils/guia-remision-documents";
+import { canEditWarehouseTransfer, ownTransferReservation } from "@/app/utils/warehouse-transfer-edit";
 import { hasReportAccess } from "@/app/config/report-access";
 import {
   buildPurchaseOrderPdfBlob,
@@ -1568,6 +1579,8 @@ type TransferGuideSummary = {
 
 type TransferDetailRow = {
   id?: string;
+  orden_compra_det_id?: string | null;
+  condicion_material?: string | null;
   producto_id?: string;
   codigo_producto?: string | null;
   nombre_producto?: string | null;
@@ -1581,6 +1594,11 @@ type TransferDetailRow = {
 type TransferRow = TransferGuideSummary & {
   id: string;
   codigo: string;
+  bodega_origen_id?: string;
+  bodega_destino_id?: string;
+  puede_editar?: boolean;
+  version_edicion?: string;
+  bodegas_origen_editables?: string[] | null;
   fecha_transferencia?: string | null;
   orden_compra_id?: string | null;
   orden_compra_codigo?: string | null;
@@ -1799,6 +1817,9 @@ const canReverseTransferAnnulment = computed(() =>
 
 const loading = ref(false);
 const saving = ref(false);
+const editingTransfer = ref<TransferRow | null>(null);
+const editLoadingId = ref("");
+const editHydrating = ref(false);
 const orderLoading = ref(false);
 const linkedOrderDialog = ref(false);
 const linkedOrderLoading = ref(false);
@@ -2076,6 +2097,13 @@ const allDestinationWarehouseOptions = computed<CatalogOption[]>(() =>
   })),
 );
 
+const editableSourceWarehouseOptions = computed(() => {
+  const allowed = editingTransfer.value?.bodegas_origen_editables;
+  return Array.isArray(allowed)
+    ? sourceWarehouseOptions.value.filter((item) => allowed.includes(item.value))
+    : sourceWarehouseOptions.value;
+});
+
 const effectiveSourceWarehouseId = computed(
   () => String(selectedOrder.value?.bodega_destino_id || form.bodega_origen_id || ""),
 );
@@ -2152,7 +2180,16 @@ const currentStockByProduct = computed(() => {
   if (!sourceWarehouseId) return map;
   for (const row of stockRows.value) {
     if (String(row.bodega_id || "") !== sourceWarehouseId) continue;
-    map.set(String(row.producto_id || ""), row);
+    const own = editingTransfer.value?.bodega_origen_id === sourceWarehouseId
+      ? ownTransferReservation(editingTransfer.value.detalles || [], row.producto_id)
+      : { nuevo: 0, usado: 0, critico: 0, total: 0 };
+    map.set(String(row.producto_id || ""), {
+      ...row,
+      stock_disponible: toNumber(row.stock_disponible ?? row.stock_actual) + own.total,
+      stock_disponible_nuevo: toNumber(row.stock_disponible_nuevo ?? row.stock_nuevo) + own.nuevo,
+      stock_disponible_usado: toNumber(row.stock_disponible_usado ?? row.stock_usado) + own.usado,
+      stock_disponible_critico: toNumber(row.stock_disponible_critico ?? row.stock_critico) + own.critico,
+    });
   }
   return map;
 });
@@ -2167,7 +2204,11 @@ const orderDetailAvailabilityMap = computed(() => {
       toNumber(
         detail?.cantidad_preaprobada_disponible ??
           (toNumber(detail?.cantidad_preaprobada) - toNumber(detail?.cantidad_transferida)),
-      ),
+      ) + (detail.cantidad_preaprobada_disponible != null
+        ? (editingTransfer.value?.detalles || [])
+          .filter((line) => line.orden_compra_det_id === detailId)
+          .reduce((sum, line) => sum + toNumber(line.cantidad), 0)
+        : 0),
     );
   }
   return map;
@@ -3224,6 +3265,7 @@ function detailExceedsStock(detail: TransferDetailForm) {
 }
 
 function resetForm() {
+  editingTransfer.value = null;
   selectedOrder.value = null;
   form.orden_compra_id = "";
   form.bodega_origen_id = "";
@@ -3770,6 +3812,64 @@ async function openCreate() {
     ensurePendingOrdersLoaded(),
     ensureProductsLoaded(),
   ]);
+}
+
+async function openEdit(item: TransferRow) {
+  if (!canEditWarehouseTransfer(item) || editLoadingId.value) return;
+  editLoadingId.value = item.id;
+  editHydrating.value = true;
+  try {
+    const { data } = await api.get(`/kpi_inventory/transferencias-bodega/${item.id}`);
+    const transfer = (data?.data ?? data) as TransferRow;
+    if (!canEditWarehouseTransfer(transfer)) {
+      ui.error("La transferencia ya no se puede editar. Actualiza el listado.");
+      await loadTransfers();
+      return;
+    }
+    await Promise.all([
+      ensureWarehousesLoaded(true), ensureDestinationWarehousesLoaded(true),
+      ensureProductsLoaded(), ensureStockRowsLoaded(true),
+    ]);
+    resetForm();
+    editingTransfer.value = transfer;
+    if (transfer.orden_compra_id) {
+      const response = await api.get(`/kpi_inventory/ordenes-compra/${transfer.orden_compra_id}`);
+      selectedOrder.value = (response.data?.data ?? response.data) as PurchaseOrderRow;
+      if (!pendingOrders.value.some((order) => order.id === selectedOrder.value?.id)) {
+        pendingOrders.value.push(selectedOrder.value);
+      }
+    }
+    form.orden_compra_id = transfer.orden_compra_id || "";
+    form.bodega_origen_id = transfer.bodega_origen_id || "";
+    form.bodega_destino_id = transfer.bodega_destino_id || "";
+    form.fecha_transferencia = String(transfer.fecha_transferencia || "").slice(0, 10);
+    form.observacion = transfer.observacion || "";
+    form.detalles = (transfer.detalles || []).map((detail) => {
+      const condition = String(detail.condicion_material || "NUEVO") as StockCondition;
+      const quantity = String(detail.cantidad || "0");
+      return {
+        ...createEmptyDetail(),
+        orden_compra_det_id: detail.orden_compra_det_id || "",
+        producto_id: detail.producto_id || "",
+        codigo_producto: detail.codigo_producto || "",
+        nombre_producto: detail.nombre_producto || "",
+        condicion_material: condition,
+        cantidad: quantity,
+        cantidad_nuevo: condition === "NUEVO" ? quantity : "0",
+        cantidad_usado: condition === "USADO" ? quantity : "0",
+        cantidad_critico: condition === "CRITICO" ? quantity : "0",
+        costo_unitario: String(detail.costo_unitario || "0"),
+        observacion: detail.observacion || "",
+      };
+    });
+    dialog.value = true;
+    await nextTick();
+  } catch (error: any) {
+    ui.error(error?.response?.data?.message || "No se pudo abrir la transferencia para editar.");
+  } finally {
+    editHydrating.value = false;
+    editLoadingId.value = "";
+  }
 }
 
 async function openSriConfigDialog() {
@@ -4664,9 +4764,9 @@ function validateForm() {
 }
 
 async function saveTransfer() {
-  if (orderLoading.value) return;
+  if (saving.value || orderLoading.value) return;
   if (!validateForm()) return;
-  if (!canCreate.value) {
+  if (editingTransfer.value ? !canEditWarehouseTransfer(editingTransfer.value) : !canCreate.value) {
     ui.error("No tienes permisos para registrar transferencias.");
     return;
   }
@@ -4713,6 +4813,7 @@ async function saveTransfer() {
           if (criticalQuantity > 0) {
             rows.push({
               producto_id: detail.producto_id,
+              condicion_material: "CRITICO",
               cantidad: criticalQuantity,
               observacion: detail.observacion || undefined,
             });
@@ -4720,7 +4821,7 @@ async function saveTransfer() {
           return rows;
         });
 
-    await api.post("/kpi_inventory/transferencias-bodega", {
+    const payload = {
       orden_compra_id: form.orden_compra_id || undefined,
       bodega_origen_id: effectiveSourceWarehouseId.value,
       bodega_destino_id: form.bodega_destino_id,
@@ -4729,8 +4830,17 @@ async function saveTransfer() {
       created_by: getUserName(),
       updated_by: getUserName(),
       detalles: transferDetails,
-    });
-    ui.success("Transferencia registrada y reservada. La bodega destino debe aprobar la recepción para mover el inventario.");
+    };
+    if (editingTransfer.value) {
+      await api.patch(`/kpi_inventory/transferencias-bodega/${editingTransfer.value.id}`, {
+        ...payload, expected_version: editingTransfer.value.version_edicion,
+      });
+      ui.success("Transferencia actualizada. Se recalcularon las cantidades reservadas.");
+    } else {
+      await api.post("/kpi_inventory/transferencias-bodega", payload);
+      ui.success("Transferencia registrada y reservada. La bodega destino debe aprobar la recepción para mover el inventario.");
+    }
+    stockRowsLoaded.value = false;
     dialog.value = false;
     await hydrateView();
   } catch (error: any) {
@@ -4747,6 +4857,7 @@ async function saveTransfer() {
 watch(
   () => form.orden_compra_id,
   (orderId) => {
+    if (editHydrating.value || editingTransfer.value) return;
     void loadSelectedOrder(String(orderId || ""));
   },
 );
@@ -4754,6 +4865,7 @@ watch(
 watch(
   () => effectiveSourceWarehouseId.value,
   () => {
+    if (editHydrating.value) return;
     if (dialog.value && effectiveSourceWarehouseId.value) {
       void ensureStockRowsLoaded();
     }

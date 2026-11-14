@@ -10,6 +10,7 @@
     "test:oil-reports": "node scripts/test-oil-consumption-report.mjs",
     "test:material-costs": "node scripts/test-inventory-cost-reference.mjs",
     "test:reception": "node scripts/test-warehouse-reception.mjs",
+    "test:transfer-edit": "node scripts/test-warehouse-transfer-edit.mjs",
     "preview": "vite preview",
     "test:manual": "node scripts/test-user-manual-flows.mjs"
   },
