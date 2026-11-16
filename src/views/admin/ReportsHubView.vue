@@ -7,11 +7,11 @@
     <template v-else>
       <section class="reports-parameters" aria-label="Parámetros del informe">
         <strong>Parámetros</strong>
-        <div class="reports-parameters__filters">
+        <div class="reports-parameters__filters" :class="{ 'reports-parameters__filters--purchases': isPurchaseReport }">
           <v-text-field
             v-model="draftStartDate"
             type="date"
-            label="Desde"
+            :label="isPurchaseReport ? 'Emisión de OC desde' : 'Desde'"
             variant="outlined"
             density="comfortable"
             hide-details
@@ -19,9 +19,20 @@
           <v-text-field
             v-model="draftEndDate"
             type="date"
-            label="Hasta"
+            :label="isPurchaseReport ? 'Emisión de OC hasta' : 'Hasta'"
             variant="outlined"
             density="comfortable"
+            hide-details
+          />
+          <v-autocomplete
+            v-if="isPurchaseReport"
+            v-model="draftPurchaseSupplier"
+            :items="purchaseSuppliers"
+            label="Proveedor"
+            placeholder="Todos los proveedores"
+            variant="outlined"
+            density="comfortable"
+            clearable
             hide-details
           />
           <v-btn
@@ -29,7 +40,7 @@
             size="default"
             prepend-icon="mdi-filter-check-outline"
             :loading="loading"
-            :disabled="invalidDraftRange"
+            :disabled="invalidDraftRange || (isPurchaseReport && (!draftStartDate || !draftEndDate))"
             @click="applyDateRange"
           >
             Aplicar filtros
@@ -112,6 +123,8 @@
           :start-date="appliedStartDate"
           :end-date="appliedEndDate"
           :material-view="materialView"
+          :purchase-supplier-id="appliedPurchaseSupplier"
+          :purchase-supplier-label="appliedPurchaseSupplierLabel"
         />
         <v-alert
           v-if="!specializedReport && ignoredUndatedCount"
@@ -579,6 +592,7 @@ import ReportsDomainDashboard from "@/components/reports/ReportsDomainDashboard.
 import ReportEquipmentChartTable from "@/components/reports/ReportEquipmentChartTable.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 import { useReportPreview } from "@/app/utils/report-preview";
+import { purchaseSupplierOptions } from "@/app/utils/purchase-report";
 import { buildReportingModuleReport } from "@/app/utils/reporting-module-report";
 import type { ReportDefinition } from "@/app/utils/maintenance-intelligence-reports";
 
@@ -618,6 +632,8 @@ const activeModuleKey = ref(
   getReportingModule(String(route.query.modulo || "")).key,
 );
 const rawRows = ref<AnyRow[]>([]);
+const appliedPurchaseSupplier = ref(typeof route.query.proveedor === "string" ? route.query.proveedor : null);
+const draftPurchaseSupplier = ref(appliedPurchaseSupplier.value);
 const relationshipPayload = ref<AnyRow | null>(null);
 const relationshipError = ref("");
 const loading = ref(false);
@@ -644,6 +660,19 @@ const detailHeaders = [
 ];
 
 const activeModule = computed(() => getReportingModule(activeModuleKey.value));
+const isPurchaseReport = computed(() => activeModule.value.key === "purchase-orders");
+const purchaseSuppliers = computed(() => {
+  if (!isPurchaseReport.value) return [];
+  const options = purchaseSupplierOptions(rawRows.value);
+  const selected = appliedPurchaseSupplier.value;
+  if (selected && !options.some(option => option.value === selected)) {
+    options.unshift({ value: selected, title: "Proveedor seleccionado (sin compras en el período)" });
+  }
+  return options;
+});
+const appliedPurchaseSupplierLabel = computed(() =>
+  purchaseSuppliers.value.find(option => option.value === appliedPurchaseSupplier.value)?.title || "",
+);
 const isProjects = computed(() => activeModule.value.key === "projects");
 const materialView = computed(() => String(route.query.vista || "informativo"));
 const specializedReport = computed(() =>
@@ -1282,14 +1311,16 @@ function syncQuery() {
       modulo: activeModule.value.key,
       desde: appliedStartDate.value,
       hasta: appliedEndDate.value,
+      proveedor: isPurchaseReport.value ? appliedPurchaseSupplier.value || undefined : undefined,
     },
   });
 }
 
 function applyDateRange() {
-  if (invalidDraftRange.value) return;
+  if (invalidDraftRange.value || (isPurchaseReport.value && (!draftStartDate.value || !draftEndDate.value))) return;
   appliedStartDate.value = draftStartDate.value;
   appliedEndDate.value = draftEndDate.value;
+  if (isPurchaseReport.value) appliedPurchaseSupplier.value = draftPurchaseSupplier.value;
   syncQuery();
   void loadActiveModule();
 }
@@ -1443,6 +1474,8 @@ onMounted(() => {
 }
 .reports-parameters > strong { white-space: nowrap; }
 .reports-parameters__filters { display: grid; grid-template-columns: minmax(150px, 190px) minmax(150px, 190px) auto; align-items: center; gap: 10px; }
+.reports-parameters__filters--purchases { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; }
+.reports-parameters__filters--purchases :deep(.v-input) { flex: 1 1 155px; max-width: 250px; }
 .reports-parameters__filters :deep(.v-field) { min-height: 42px; }
 
 .reports-hero,
@@ -1584,6 +1617,8 @@ onMounted(() => {
   .reports-hub { gap: 16px; }
   .reports-parameters { position: static; align-items: stretch; flex-direction: column; }
   .reports-parameters__filters { grid-template-columns: 1fr; }
+  .reports-parameters__filters--purchases { display: grid; }
+  .reports-parameters__filters--purchases :deep(.v-input) { max-width: none; }
   .reports-parameters__filters .v-btn { min-height: 44px; }
   .reports-hero,
   .chart-card,

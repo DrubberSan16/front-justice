@@ -1,15 +1,37 @@
 import { buildProductDisplayTitle } from "@/app/utils/product-display";
 import { formatCountForDisplay, formatCurrencyForDisplay, formatNumberForDisplay } from "@/app/utils/number-format";
-import type { ReportColumn, ReportDefinition, ReportSheet } from "@/app/utils/maintenance-intelligence-reports";
+import { formatDateForInput, parseAppDate } from "@/app/utils/date-time";
+import type { ReportChart, ReportColumn, ReportDefinition, ReportSheet } from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
 export type PurchaseLine = {
-  key: string; orderId: string; code: string; date: string; supplier: string; status: string; currency: string;
+  key: string; orderId: string; code: string; date: string; supplierId: string; supplier: string; status: string; currency: string;
   categoryId: string; category: string; material: string; quantity: number | null;
   unitCost: number | null; subtotal: number; tax: number; total: number; missingDetail: boolean;
 };
 const amount = (value: unknown, fallback = 0) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? fallback : Number(value);
 const active = (row: AnyRow) => !row.is_deleted && !/ANUL|CANCEL|VOID/i.test(String(row.estado || row.status || ""));
+
+function purchaseSupplier(order: AnyRow) {
+  const title = String(order.proveedor_nombre || "").trim() || "Sin proveedor";
+  const value = String(order.proveedor_id || "").trim() || `nombre:${title.toLocaleLowerCase("es-EC")}`;
+  return { value, title };
+}
+
+export function purchaseSupplierOptions(orders: AnyRow[]) {
+  const options = new Map<string, string>();
+  for (const order of orders.filter(active)) {
+    const { value, title } = purchaseSupplier(order);
+    if (!options.has(value)) options.set(value, title);
+  }
+  return [...options].map(([value, title]) => ({ value, title }))
+    .sort((a, b) => a.title.localeCompare(b.title, "es-EC"));
+}
+
+function purchaseDate(value: unknown) {
+  const parsed = parseAppDate(value);
+  return parsed ? formatDateForInput(parsed) : "";
+}
 
 /** Los importes se suman una vez por línea; nunca se replica la cabecera en categorías. */
 export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
@@ -18,6 +40,8 @@ export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
     const orderId = String(order.id || order.codigo || orderIndex);
     if (seen.has(orderId)) return [];
     seen.add(orderId);
+    const date = purchaseDate(order.fecha_emision);
+    const supplier = purchaseSupplier(order);
     const details = (Array.isArray(order.detalles) ? order.detalles : []).filter(active);
     const missingDetail = !details.length;
     return (missingDetail ? [order] : details).map((line: AnyRow, index: number) => {
@@ -27,7 +51,7 @@ export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
       const tax = amount(line.iva_total);
       return {
         key: `${orderId}:${line.id || index}`, orderId, code: String(order.codigo || order.numero || "Sin código"),
-        date: order.fecha_emision || "", supplier: order.proveedor_nombre || "Sin proveedor", status: order.estado || "Sin estado",
+        date, supplierId: supplier.value, supplier: supplier.title, status: order.estado || "Sin estado",
         currency: String(order.moneda || "").trim().toUpperCase() || "USD",
         categoryId: missingDetail ? "missing-detail" : String(line.categoria_id || line.categoria_nombre || "uncategorized"),
         category: missingDetail ? "Sin detalle disponible" : String(line.categoria_nombre || "Sin categoría"),
@@ -36,6 +60,13 @@ export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
       };
     });
   });
+}
+
+export function filterPurchaseLines(lines: PurchaseLine[], from: string, to: string, supplierId: string | null) {
+  return lines.filter(line =>
+    (!supplierId || line.supplierId === supplierId) &&
+    ((!from && !to) || (line.date && (!from || line.date >= from) && (!to || line.date <= to))),
+  );
 }
 
 export function purchaseTotals(lines: PurchaseLine[]) {
@@ -67,6 +98,44 @@ export function purchaseTotalsDisplay(lines: PurchaseLine[]) {
   const display = (key: keyof ReturnType<typeof purchaseTotals>) =>
     groups.length ? groups.map(group => formatPurchaseAmount(group[key], group.key)).join(" · ") : formatPurchaseAmount(0);
   return { subtotal: display("subtotal"), tax: display("tax"), total: display("total") };
+}
+
+export function buildPurchaseCharts(lines: PurchaseLine[]): ReportChart[] {
+  const months = new Map<string, { orders: Set<string>; totals: Map<string, number> }>();
+  const currencies = new Set<string>();
+  for (const line of lines) {
+    if (!line.date) continue;
+    const key = line.date.slice(0, 7);
+    const month = months.get(key) ?? { orders: new Set<string>(), totals: new Map<string, number>() };
+    month.orders.add(line.orderId);
+    month.totals.set(line.currency, (month.totals.get(line.currency) ?? 0) + line.total);
+    months.set(key, month);
+    currencies.add(line.currency);
+  }
+
+  const keys = [...months.keys()].sort();
+  const charts: ReportChart[] = [];
+  const monthlyLabel = (key: string) => `${key.slice(5, 7)}/${key.slice(0, 4)}`;
+  for (let index = 0; index < keys.length; index += 12) {
+    const period = keys.slice(index, index + 12);
+    const subtitle = period.length === 1
+      ? monthlyLabel(period[0]!)
+      : `${monthlyLabel(period[0]!)} a ${monthlyLabel(period[period.length - 1]!)}`;
+    charts.push({
+      title: "Órdenes de compra por mes de emisión",
+      subtitle, type: "bar", unit: "Órdenes distintas",
+      points: period.map(key => ({ label: monthlyLabel(key), value: months.get(key)!.orders.size })),
+    });
+    for (const currency of currencies) {
+      if (!period.some(key => months.get(key)!.totals.has(currency))) continue;
+      charts.push({
+        title: "Importe de compras con IVA por mes",
+        subtitle, type: "bar", unit: currency === "USD" ? "USD ($)" : currency,
+        points: period.map(key => ({ label: monthlyLabel(key), value: months.get(key)!.totals.get(currency) ?? 0 })),
+      });
+    }
+  }
+  return charts;
 }
 
 const moneyColumns: ReportColumn[] = [
@@ -124,7 +193,7 @@ export function buildPurchaseReport(lines: PurchaseLine[], period: string, title
     sheets: [
       categorySheet,
       { name: "Órdenes de compra", note: "Los importes corresponden a las líneas de la categoría seleccionada; una orden puede contener otras categorías.", columns: [{ key: "code", header: "Orden", width: 24 }, { key: "date", header: "Fecha", format: "date", width: 17 }, { key: "supplier", header: "Proveedor", width: 35 }, { key: "status", header: "Estado", width: 20 }, ...currencyColumns, ...moneyColumns], rows: [...orders.map(group => ({ ...group.rows[0], subtotal: group.subtotal, tax: group.tax, total: group.total })), ...totalRows], rowKinds: [...orders.map(() => null), ...totalKinds], fitColumnsToPage: true },
-      { name: "Líneas de compra", columns: [{ key: "code", header: "Orden", width: 22 }, { key: "material", header: "Material", width: 44 }, { key: "category", header: "Categoría", width: 26 }, { key: "quantity", header: "Cantidad", format: "number", width: 14 }, ...currencyColumns, unitCostColumn, ...moneyColumns], rows: [...lines, ...totalRows], rowKinds: [...lines.map(() => null), ...totalKinds], fitColumnsToPage: true },
+      { name: "Líneas de compra", columns: [{ key: "code", header: "Orden", width: 22 }, { key: "date", header: "Emisión de OC", format: "date", width: 17 }, { key: "supplier", header: "Proveedor", width: 28 }, { key: "material", header: "Material", width: 36 }, { key: "category", header: "Categoría", width: 22 }, { key: "quantity", header: "Cantidad", format: "number", width: 14 }, ...currencyColumns, unitCostColumn, ...moneyColumns], rows: [...lines, ...totalRows], rowKinds: [...lines.map(() => null), ...totalKinds], fitColumnsToPage: true },
     ],
   };
 }

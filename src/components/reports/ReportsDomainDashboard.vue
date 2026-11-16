@@ -108,7 +108,16 @@
       </template>
     </section>
 
-    <PurchaseReportBoard v-else-if="moduleKey === 'purchase-orders'" ref="purchaseBoard" :rows="rawRows" :start-date="startDate" :end-date="endDate" @open-order="id => openOperationalDocument({ id }, 'purchase')" />
+    <PurchaseReportBoard
+      v-else-if="moduleKey === 'purchase-orders'"
+      ref="purchaseBoard"
+      :rows="rawRows"
+      :start-date="startDate"
+      :end-date="endDate"
+      :supplier-id="purchaseSupplierId"
+      :supplier-label="purchaseSupplierLabel"
+      @open-order="id => openOperationalDocument({ id }, 'purchase')"
+    />
 
     <section v-else-if="isOperationalDocument" class="domain-stack">
       <div class="metric-grid">
@@ -174,7 +183,7 @@ type OrderMaterial = { key: string; label: string; quantity: number };
 type OrderResponsible = { key: string; label: string; hours: number; hourlyCost: number; cost: number };
 type OrderSummary = { key: string; id: string; code: string; title: string; status: string; equipmentKey: string; equipmentLabel: string; duration: number; openDays: number | null; workedHours: number | null; isPriming: boolean; reserve: boolean; responsibles: OrderResponsible[]; responsibleHours: number; horometerInitial: number | null; horometerFinal: number | null; cost: number; laborCost: number; contractedCost: number; totalCost: number; materials: OrderMaterial[]; startedAt: number };
 type OrderMaterialRow = { key: string; label: string; quantity: number | null; scrap: boolean | null };
-const props = defineProps<{ moduleKey: string; title: string; rawRows: AnyRow[]; relationshipPayload: AnyRow | null; startDate: string; endDate: string; materialView?: string }>();
+const props = defineProps<{ moduleKey: string; title: string; rawRows: AnyRow[]; relationshipPayload: AnyRow | null; startDate: string; endDate: string; materialView?: string; purchaseSupplierId?: string | null; purchaseSupplierLabel?: string }>();
 const purchaseBoard = ref<InstanceType<typeof PurchaseReportBoard> | null>(null);
 const theme = useTheme();
 const reportPreview = useReportPreview({ title: "Previsualización del informe" });

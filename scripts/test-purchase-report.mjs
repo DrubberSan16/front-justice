@@ -9,7 +9,7 @@ const fixture = new Module(path.join(root, "scripts/purchase-report-fixture.cjs"
 fixture.filename = path.join(root, "scripts/purchase-report-fixture.cjs");
 fixture.paths = Module._nodeModulePaths(root);
 fixture._compile(outputFiles[0].text, fixture.filename);
-const { purchaseLines, purchaseTotals, groupPurchaseLines, buildPurchaseReport, purchaseTotalsDisplay } = fixture.exports;
+const { purchaseLines, purchaseTotals, groupPurchaseLines, buildPurchaseReport, purchaseTotalsDisplay, purchaseSupplierOptions, filterPurchaseLines, buildPurchaseCharts } = fixture.exports;
 const mixed = { id: "oc1", codigo: "OC-001", fecha_emision: "2026-11-06", estado: "EMITIDA", total: "9999", detalles: [
   { id: "a", categoria_id: "spares", categoria_nombre: "Repuestos", nombre_producto: "Filtro", descripcion_producto: "Motor", cantidad: "2.5", costo_unitario: "10", subtotal: "20", iva_total: "3", total: "23" },
   { id: "b", categoria_id: "oil", categoria_nombre: "Aceites", nombre_producto: "Aceite", cantidad: "1", costo_unitario: "100", subtotal: "100", iva_total: "15", total: "115" },
@@ -56,4 +56,21 @@ assert.equal(missing[0].category, "Sin detalle disponible");
 assert.equal(purchaseTotals(missing).total, 11.5, "Cabecera sin detalle aparece una sola vez y sin categoría inventada");
 assert.equal(purchaseLines([{ id: "zero", total: 0, subtotal: 10 }])[0].total, 0, "No sustituye cero registrado por valor calculado");
 assert.deepEqual(purchaseTotals(purchaseLines([])), { subtotal: 0, tax: 0, total: 0 });
+const datedOrders = [
+  { ...mixed, proveedor_id: "p1", proveedor_nombre: "Proveedor A", fecha_emision: "2026-11-06", created_at: "2026-12-01" },
+  { ...mixed, id: "oc3", proveedor_id: "p2", proveedor_nombre: "Proveedor B", fecha_emision: "2026-11-30", moneda: "EUR" },
+  { ...mixed, id: "oc4", proveedor_id: "p1", proveedor_nombre: "Proveedor A", fecha_emision: "2026-12-01" },
+  { ...mixed, id: "void", estado: "ANULADA", proveedor_id: "p3", proveedor_nombre: "Anulado", fecha_emision: "2026-11-15" },
+  { ...mixed, id: "undated", fecha_emision: null, created_at: "2026-11-06" },
+];
+assert.deepEqual(purchaseSupplierOptions(datedOrders).map(option => option.title), ["Proveedor A", "Proveedor B", "Sin proveedor"]);
+const datedLines = purchaseLines(datedOrders);
+const november = filterPurchaseLines(datedLines, "2026-11-06", "2026-11-30", null);
+assert.deepEqual(november.map(line => line.orderId), ["oc1", "oc1", "oc3", "oc3"]);
+assert.deepEqual(filterPurchaseLines(datedLines, "2026-11-06", "2026-11-06", "p1").map(line => line.orderId), ["oc1", "oc1"]);
+const charts = buildPurchaseCharts(november);
+assert.deepEqual(charts.map(chart => chart.unit), ["Órdenes distintas", "USD ($)", "EUR"]);
+assert.deepEqual(charts.map(chart => chart.points), [[{ label: "11/2026", value: 2 }], [{ label: "11/2026", value: 138 }], [{ label: "11/2026", value: 138 }]]);
+assert.deepEqual(buildPurchaseCharts([]), []);
+assert.deepEqual(buildPurchaseReport(november, "noviembre").sheets[2].columns.slice(0, 3).map(column => column.key), ["code", "date", "supplier"]);
 console.log("OK compras: categorías, órdenes mixtas, descuentos, IVA, precisión, anulaciones, sin detalle e impresión individual.");

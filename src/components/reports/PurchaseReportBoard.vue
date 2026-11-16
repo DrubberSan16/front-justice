@@ -2,7 +2,7 @@
   <section class="purchase-board">
     <div class="purchase-filters">
       <v-autocomplete v-model="categoryId" :items="categoryOptions" label="Categoría de compra (incluye repuestos)" variant="outlined" density="compact" clearable hide-details />
-      <v-btn variant="outlined" prepend-icon="mdi-filter-remove-outline" @click="resetScope">Ver total de compras</v-btn>
+      <v-btn variant="outlined" prepend-icon="mdi-filter-remove-outline" @click="resetScope">Ver todas las categorías</v-btn>
     </div>
     <v-alert v-if="lines.some(line => line.missingDetail)" type="warning" variant="tonal" density="compact">Hay órdenes sin detalle disponible. Su importe aparece en «Sin detalle disponible».</v-alert>
     <div class="purchase-metrics">
@@ -68,7 +68,7 @@
       </v-expansion-panels>
       <p v-else class="ma-4">No hay compras en el período y categoría seleccionados.</p>
       <footer class="purchase-category-heading purchase-category-total">
-        <strong>{{ categoryId ? "Total de la categoría" : "Total general" }}</strong>
+        <strong>{{ categoryId ? "Total de la categoría" : supplierId ? "Total del proveedor" : "Total general" }}</strong>
         <div class="purchase-category-metrics">
           <span>Órdenes distintas <b>{{ count(orders.length) }}</b></span>
           <span>Subtotal neto <b>{{ totals.subtotal }}</b></span>
@@ -80,14 +80,37 @@
     <ReportTableCard title="Órdenes de compra" :subtitle="`Ámbito: ${scopeLabel}. Seleccione una orden para ver sus líneas.`" icon="mdi-file-document-multiple-outline" wide @preview="preview(undefined, 1)">
       <div class="purchase-pagination"><span>{{ count(orders.length) }} órdenes · página {{ orderPage }} de {{ orderPages }} · totales de todo el filtro</span><v-pagination v-model="orderPage" :length="orderPages" :total-visible="4" density="comfortable" size="small" aria-label="Páginas de órdenes de compra" /></div>
       <table><thead><tr><th>Orden</th><th>Fecha</th><th>Proveedor</th><th>Estado</th><th>Subtotal neto</th><th>IVA</th><th>Total con IVA</th><th>Acciones</th></tr></thead><tbody>
-        <tr v-for="group in visibleOrders" :key="group.key"><td><button class="entity-link" @click="selectedOrderId = group.key">{{ group.label }}</button></td><td>{{ date(group.rows[0]?.date) }}</td><td>{{ group.rows[0]?.supplier }}</td><td>{{ group.rows[0]?.status }}</td><td class="number">{{ currency(group.subtotal, group.rows[0]?.currency) }}</td><td class="number">{{ currency(group.tax, group.rows[0]?.currency) }}</td><td class="number">{{ currency(group.total, group.rows[0]?.currency) }}</td><td><v-btn size="small" variant="text" prepend-icon="mdi-printer-outline" :aria-label="`Imprimir ${group.label}`" @click="preview(group.key)">Imprimir</v-btn><v-btn size="small" variant="text" @click="emit('openOrder', group.key)">Documento</v-btn></td></tr>
+        <tr v-for="group in visibleOrders" :key="group.key"><td><button class="entity-link" :aria-pressed="selectedOrderId === group.key" @click="selectedOrderId = group.key">{{ group.label }}</button></td><td>{{ date(group.rows[0]?.date) }}</td><td>{{ group.rows[0]?.supplier }}</td><td>{{ group.rows[0]?.status }}</td><td class="number">{{ currency(group.subtotal, group.rows[0]?.currency) }}</td><td class="number">{{ currency(group.tax, group.rows[0]?.currency) }}</td><td class="number">{{ currency(group.total, group.rows[0]?.currency) }}</td><td><v-btn size="small" variant="text" prepend-icon="mdi-printer-outline" :aria-label="`Imprimir ${group.label}`" @click="preview(group.key)">Imprimir</v-btn><v-btn size="small" variant="text" @click="emit('openOrder', group.key)">Documento</v-btn></td></tr>
       </tbody><tfoot><tr><th colspan="4">Total filtrado</th><td class="number">{{ totals.subtotal }}</td><td class="number">{{ totals.tax }}</td><td class="number">{{ totals.total }}</td><td /></tr></tfoot></table>
     </ReportTableCard>
-    <ReportTableCard v-if="selectedOrder" :title="`Líneas de ${selectedOrder.label}`" :subtitle="`Ámbito: ${scopeLabel}. Importes de las líneas seleccionadas.`" icon="mdi-format-list-bulleted" wide @preview="preview(selectedOrder.key, 2)">
-      <div class="purchase-pagination"><span>{{ count(selectedOrder.rows.length) }} líneas · página {{ linePage }} de {{ linePages }}</span><v-pagination v-model="linePage" :length="linePages" :total-visible="4" density="comfortable" size="small" aria-label="Páginas de líneas de compra" /></div>
-      <table><thead><tr><th>Material</th><th>Categoría</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal neto</th><th>IVA</th><th>Total con IVA</th></tr></thead><tbody>
-        <tr v-for="line in visibleLines" :key="line.key"><td>{{ line.material }}</td><td>{{ line.category }}</td><td class="number">{{ number(line.quantity) }}</td><td class="number">{{ currency(line.unitCost, line.currency) }}</td><td class="number">{{ currency(line.subtotal, line.currency) }}</td><td class="number">{{ currency(line.tax, line.currency) }}</td><td class="number">{{ currency(line.total, line.currency) }}</td></tr>
-      </tbody><tfoot><tr><th colspan="4">Total de líneas seleccionadas</th><td class="number">{{ currency(selectedOrder.subtotal, selectedOrder.rows[0]?.currency) }}</td><td class="number">{{ currency(selectedOrder.tax, selectedOrder.rows[0]?.currency) }}</td><td class="number">{{ currency(selectedOrder.total, selectedOrder.rows[0]?.currency) }}</td></tr></tfoot></table>
+    <ReportTableCard
+      :title="selectedOrder ? `Líneas de ${selectedOrder.label}` : 'Líneas de compra'"
+      :subtitle="`Emisión de OC: ${periodLabel} · ${scopeLabel}`"
+      icon="mdi-format-list-bulleted"
+      wide
+      @preview="preview(selectedOrder?.key, 2)"
+    >
+      <div class="purchase-pagination">
+        <span>{{ count(detailLines.length) }} líneas · página {{ linePage }} de {{ linePages }}</span>
+        <v-btn v-if="selectedOrder" size="small" variant="text" @click="selectedOrderId = null">Ver todas las líneas</v-btn>
+        <v-pagination v-if="linePages > 1" v-model="linePage" :length="linePages" :total-visible="4" density="comfortable" size="small" aria-label="Páginas de líneas de compra" />
+      </div>
+      <table>
+        <thead>
+          <tr><th>Orden</th><th>Emisión de OC</th><th>Proveedor</th><th>Material</th><th>Categoría</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal neto</th><th>IVA</th><th>Total con IVA</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="line in visibleLines" :key="line.key">
+            <td>{{ line.code }}</td><td>{{ date(line.date) }}</td><td>{{ line.supplier }}</td><td>{{ line.material }}</td><td>{{ line.category }}</td>
+            <td class="number">{{ number(line.quantity) }}</td><td class="number">{{ currency(line.unitCost, line.currency) }}</td>
+            <td class="number">{{ currency(line.subtotal, line.currency) }}</td><td class="number">{{ currency(line.tax, line.currency) }}</td><td class="number">{{ currency(line.total, line.currency) }}</td>
+          </tr>
+          <tr v-if="!detailLines.length"><td colspan="10">No hay líneas de compra para los filtros aplicados.</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><th colspan="7">Total de líneas</th><td class="number">{{ detailTotals.subtotal }}</td><td class="number">{{ detailTotals.tax }}</td><td class="number">{{ detailTotals.total }}</td></tr>
+        </tfoot>
+      </table>
     </ReportTableCard>
     <ReportPreviewDialogs :preview="reportPreview" />
   </section>
@@ -97,18 +120,18 @@
 import { computed, ref, watch } from "vue";
 import { formatNumberForDisplay as number, formatCountForDisplay as count } from "@/app/utils/number-format";
 import { formatDateOnly as date } from "@/app/utils/date-time";
-import { buildPurchaseReport, formatPurchaseAmount as currency, groupPurchaseLines, purchaseLines, purchaseTotalsDisplay } from "@/app/utils/purchase-report";
+import { buildPurchaseCharts, buildPurchaseReport, filterPurchaseLines, formatPurchaseAmount as currency, groupPurchaseLines, purchaseLines, purchaseTotalsDisplay } from "@/app/utils/purchase-report";
 import { useReportPreview } from "@/app/utils/report-preview";
 import ReportTableCard from "@/components/reports/ReportTableCard.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
-const props = defineProps<{ rows: Record<string, any>[]; startDate: string; endDate: string }>();
+const props = defineProps<{ rows: Record<string, any>[]; startDate: string; endDate: string; supplierId?: string | null; supplierLabel?: string }>();
 const emit = defineEmits<{ (event: "openOrder", id: string): void }>();
 const categoryId = ref<string | null>(null);
 const selectedOrderId = ref<string | null>(null);
 const orderPage = ref(1);
 const linePage = ref(1);
 const pageSize = 20;
-const lines = computed(() => purchaseLines(props.rows));
+const lines = computed(() => filterPurchaseLines(purchaseLines(props.rows), props.startDate, props.endDate, props.supplierId ?? null));
 const categoryOptions = computed(() => groupPurchaseLines(lines.value, "categoryId").map(group => ({ value: group.key, title: group.label })));
 const filtered = computed(() => lines.value.filter(line => !categoryId.value || line.categoryId === categoryId.value));
 const categories = computed(() => groupPurchaseLines(filtered.value, "categoryId").map(group => ({
@@ -120,23 +143,36 @@ const orderPages = computed(() => Math.max(1, Math.ceil(orders.value.length / pa
 const visibleOrders = computed(() => orders.value.slice((orderPage.value - 1) * pageSize, orderPage.value * pageSize));
 const totals = computed(() => purchaseTotalsDisplay(filtered.value));
 const selectedOrder = computed(() => orders.value.find(group => group.key === selectedOrderId.value));
-const linePages = computed(() => Math.max(1, Math.ceil((selectedOrder.value?.rows.length || 0) / pageSize)));
-const visibleLines = computed(() => selectedOrder.value?.rows.slice((linePage.value - 1) * pageSize, linePage.value * pageSize) || []);
-const scopeLabel = computed(() => categoryOptions.value.find(option => option.value === categoryId.value)?.title || "Todas las categorías");
+const detailLines = computed(() => selectedOrder.value?.rows ?? filtered.value);
+const detailTotals = computed(() => selectedOrder.value ? purchaseTotalsDisplay(detailLines.value) : totals.value);
+const linePages = computed(() => Math.max(1, Math.ceil(detailLines.value.length / pageSize)));
+const visibleLines = computed(() => detailLines.value.slice((linePage.value - 1) * pageSize, linePage.value * pageSize));
+const periodLabel = computed(() => `${date(props.startDate)} - ${date(props.endDate)}`);
+const scopeLabel = computed(() => [
+  categoryOptions.value.find(option => option.value === categoryId.value)?.title || "Todas las categorías",
+  props.supplierLabel || "Todos los proveedores",
+].join(" · "));
 const reportPreview = useReportPreview({ title: "Informe de compras" });
 function resetScope() { categoryId.value = null; selectedOrderId.value = null; }
-function buildModuleReport(orderId?: string) {
-  return buildPurchaseReport(filtered.value.filter(line => !orderId || line.orderId === orderId), `${date(props.startDate)} - ${date(props.endDate)}`, orderId ? `Compra ${orders.value.find(group => group.key === orderId)?.label || ""}` : "Compras", scopeLabel.value);
+function buildModuleReport(orderId?: string, includeCharts = !orderId) {
+  const rows = orderId ? filtered.value.filter(line => line.orderId === orderId) : filtered.value;
+  const report = buildPurchaseReport(rows, periodLabel.value, orderId ? `Compra ${orders.value.find(group => group.key === orderId)?.label || ""}` : "Compras", scopeLabel.value);
+  if (includeCharts) report.charts = buildPurchaseCharts(rows);
+  return report;
 }
 function preview(orderId?: string, sheetIndex?: number) {
-  const report = buildModuleReport(orderId);
+  const report = buildModuleReport(orderId, !orderId && sheetIndex === undefined);
   if (sheetIndex !== undefined) {
     report.sheets = [report.sheets[sheetIndex]!];
     report.title = report.sheets[0]!.name;
   }
   return reportPreview.open("pdf", report);
 }
-watch(categoryId, () => { selectedOrderId.value = null; orderPage.value = 1; });
+watch([categoryId, () => props.startDate, () => props.endDate, () => props.supplierId], () => {
+  selectedOrderId.value = null;
+  orderPage.value = 1;
+  linePage.value = 1;
+});
 watch(selectedOrderId, () => { linePage.value = 1; });
 watch(orderPages, value => { orderPage.value = Math.min(orderPage.value, value); });
 watch(linePages, value => { linePage.value = Math.min(linePage.value, value); });

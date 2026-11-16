@@ -35,7 +35,10 @@ export function useReportPreview(defaults?: { title?: string }) {
       selection.index = 0;
       selection.options = [
         ...report.sheets.map((sheet, value) => ({ title: sheet.name, value })),
-        ...((report.summary?.length || report.charts?.length) ? [{ title: "Solo resumen y gráficos", value: -2 }] : []),
+        ...((report.summary?.length || report.charts?.length) ? [{
+          title: report.charts?.length ? "Solo resumen y gráficos" : "Solo resumen",
+          value: -2,
+        }] : []),
         { title: "Informe completo (todos los reportes)", value: -1 },
       ];
       selection.visible = true;
