@@ -688,47 +688,49 @@
                 variant="outlined"
                 clearable
                 :loading="loadingWorkOrderCatalog"
-                hint="La programación quedará anexada a esta OT y tomará su equipo y plan operativo."
+                :hint="isProjectSchedulingWorkOrder(form.work_order_id) ? 'La OT de proyecto se programará por fecha, sin requerir equipo ni plan.' : 'La programación quedará anexada a esta OT y tomará su equipo y plan operativo.'"
                 persistent-hint
               />
             </v-col>
-            <v-col cols="12" md="6">
-              <v-select
-                v-model="form.equipo_id"
-                :items="equipmentOptions"
-                item-title="title"
-                item-value="value"
-                label="Equipo"
-                variant="outlined"
-                :disabled="Boolean(form.work_order_id)"
-              />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-select
-                v-model="form.procedimiento_id"
-                :items="procedureOptions"
-                item-title="title"
-                item-value="value"
-                label="Plantilla"
-                variant="outlined"
-                :disabled="Boolean(form.work_order_id)"
-              />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field :model-value="resolvedPlanLabel" label="Plan operativo generado" variant="outlined" readonly />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field :model-value="selectedProcedureFrequency" label="Frecuencia de plantilla" variant="outlined" readonly />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Última ejecución fecha" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="1" label="Última ejecución horas" variant="outlined" />
-            </v-col>
-            <v-col cols="12" md="6">
-              <v-text-field v-model="form.proxima_horas" type="number" step="1" label="Hora objetivo" variant="outlined" />
-            </v-col>
+            <template v-if="!isProjectSchedulingWorkOrder(form.work_order_id)">
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="form.equipo_id"
+                  :items="equipmentOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Equipo"
+                  variant="outlined"
+                  :disabled="Boolean(form.work_order_id)"
+                />
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-select
+                  v-model="form.procedimiento_id"
+                  :items="procedureOptions"
+                  item-title="title"
+                  item-value="value"
+                  label="Plantilla"
+                  variant="outlined"
+                  :disabled="Boolean(form.work_order_id)"
+                />
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-text-field :model-value="resolvedPlanLabel" label="Plan operativo generado" variant="outlined" readonly />
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-text-field :model-value="selectedProcedureFrequency" label="Frecuencia de plantilla" variant="outlined" readonly />
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-text-field v-model="form.ultima_ejecucion_fecha" type="date" label="Última ejecución fecha" variant="outlined" />
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-text-field v-model="form.ultima_ejecucion_horas" type="number" step="1" label="Última ejecución horas" variant="outlined" />
+              </v-col>
+              <v-col cols="12" md="6">
+                <v-text-field v-model="form.proxima_horas" type="number" step="1" label="Hora objetivo" variant="outlined" />
+              </v-col>
+            </template>
             <v-col cols="12" md="6">
               <v-text-field :model-value="programacionSourceMode" label="Modo de programación" variant="outlined" readonly />
             </v-col>
@@ -766,7 +768,7 @@
                 persistent-hint
               />
             </v-col>
-            <v-col cols="12" md="6">
+            <v-col v-if="!isProjectSchedulingWorkOrder(monthlyCell.work_order_id)" cols="12" md="6">
               <v-select
                 v-model="monthlyCell.equipo_id"
                 :items="equipmentOptions"
@@ -816,7 +818,7 @@
                 Activa esta opción para cambiar solo la fecha de la OT mensual y registrar el motivo de reprogramación.
               </div>
             </v-col>
-            <v-col v-if="monthlyCellIsReprogramming" cols="12" md="6">
+            <v-col v-if="monthlyCellIsReprogramming && !isProjectSchedulingWorkOrder(monthlyCell.work_order_id)" cols="12" md="6">
               <v-text-field
                 v-model="monthlyCell.horometro_actual"
                 type="number"
@@ -859,7 +861,7 @@
                 :disabled="monthlyCellRequiresReprogramToggle"
               />
             </v-col>
-            <v-col cols="12" md="6">
+            <v-col v-if="!isProjectSchedulingWorkOrder(monthlyCell.work_order_id)" cols="12" md="6">
               <v-select
                 v-model="monthlyCell.procedimiento_id"
                 :items="procedureOptions"
@@ -1630,6 +1632,12 @@ function normalizeWorkflowStatus(value: unknown) {
   if (["CLOSED", "CERRADA", "CERRADO", "DONE", "COMPLETED"].includes(raw)) return "CLOSED";
   return raw;
 }
+function isProjectWorkOrder(item: any) {
+  return String(item?.maintenance_kind || item?.tipo_mantenimiento || "").trim().toUpperCase() === "PROYECTO";
+}
+function isProjectSchedulingWorkOrder(id: unknown) {
+  return isProjectWorkOrder(workOrderCatalog.value.find((item: any) => String(item?.id || "") === String(id || "")));
+}
 const workOrderOptions = computed(() =>
   workOrderCatalog.value
     .filter((item: any) => {
@@ -1637,7 +1645,7 @@ const workOrderOptions = computed(() =>
         return false;
       }
       const selectedEquipmentId = String(form.equipo_id || "").trim();
-      if (!selectedEquipmentId) return true;
+      if (!selectedEquipmentId || isProjectWorkOrder(item)) return true;
       return String(item?.equipment_id || "") === selectedEquipmentId;
     })
     .map((item: any) => ({
@@ -1656,7 +1664,7 @@ const monthlyWorkOrderOptions = computed(() =>
   workOrderCatalog.value
     .filter((item: any) => {
       const selectedEquipmentId = String(monthlyCell.equipo_id || "").trim();
-      if (selectedEquipmentId && String(item?.equipment_id || "") !== selectedEquipmentId) return false;
+      if (selectedEquipmentId && !isProjectWorkOrder(item) && String(item?.equipment_id || "") !== selectedEquipmentId) return false;
       return ["PLANNED", "IN_PROGRESS"].includes(normalizeWorkflowStatus(item?.status_workflow));
     })
     .map((item: any) => ({
@@ -1677,6 +1685,7 @@ function maintenanceKindLabel(value: unknown) {
     PREVENTIVO: "Preventivo",
     PREDICTIVO: "Predictivo",
     CEBADO: "Cebado",
+    PROYECTO: "Proyecto",
   };
   return labels[normalized] || normalized || "Sin tipo";
 }
@@ -2407,8 +2416,8 @@ watch(
     if (!selected) return;
     const token = programacionWorkOrderSelectionToken.value + 1;
     programacionWorkOrderSelectionToken.value = token;
-    form.equipo_id = selected.equipment_id || form.equipo_id;
-    form.plan_id = selected.plan_id || form.plan_id;
+    form.equipo_id = selected.equipment_id || "";
+    form.plan_id = selected.plan_id || "";
     form.procedimiento_id =
       selected.procedimiento_id ||
       selectedPlanProcedure(form.plan_id)?.id ||
@@ -2416,6 +2425,14 @@ watch(
     const resolvedSucursalId = resolveWorkOrderSucursalId(selected);
     if (resolvedSucursalId) {
       form.sucursal_id = resolvedSucursalId;
+    }
+    if (isProjectWorkOrder(selected)) {
+      programacionSourceMode.value = "CALENDARIO";
+      form.procedimiento_id = "";
+      form.ultima_ejecucion_fecha = "";
+      form.ultima_ejecucion_horas = "";
+      form.proxima_horas = "";
+      return;
     }
     if (hydratingProgramacionForm.value) return;
 
@@ -2490,14 +2507,14 @@ watch(
       (item: any) => String(item?.id || "") === String(value || ""),
     );
     if (selected) {
-      monthlyCell.equipo_id = selected.equipment_id || monthlyCell.equipo_id;
-      monthlyCell.equipo_codigo =
+      monthlyCell.equipo_id = selected.equipment_id || "";
+      monthlyCell.equipo_codigo = isProjectWorkOrder(selected) ? selected.code || selected.id :
         selected.equipment_codigo ||
         selected.equipo_codigo ||
         monthlyCell.equipo_codigo;
       monthlyCell.procedimiento_id =
-        resolveProcedureIdFromWorkOrder(selected) || monthlyCell.procedimiento_id;
-      monthlyCell.horometro_actual = formatHorometerForInput(
+        isProjectWorkOrder(selected) ? "" : resolveProcedureIdFromWorkOrder(selected) || "";
+      monthlyCell.horometro_actual = isProjectWorkOrder(selected) ? "" : formatHorometerForInput(
         resolveCurrentHorometerForMonthlyCell(selected),
       );
     }
@@ -2815,13 +2832,13 @@ const dynamicMonthlyProgramacionDetails = computed(() => {
         programacion_id: item.id,
         estado_programacion: item.estado_programacion ?? null,
         equipo_id: item.equipo_id,
-        equipo_codigo: item.equipo_codigo,
-        equipo_nombre: item.equipo_nombre,
+        equipo_codigo: item.equipo_codigo || item.work_order_code,
+        equipo_nombre: item.equipo_nombre || item.work_order_title,
         work_order_id: item.work_order_id ?? item.payload_json?.work_order_id ?? null,
         work_order_code: item.work_order_code ?? item.payload_json?.work_order_code ?? null,
         work_order_title: item.work_order_title ?? item.payload_json?.work_order_title ?? null,
         fecha_programada: String(item.proxima_fecha || "").slice(0, 10),
-        valor_crudo: formatMonthlyHoursLabel(frequencyHours),
+        valor_crudo: item.plan_tipo === "PROYECTO" ? item.work_order_code || "Proyecto" : formatMonthlyHoursLabel(frequencyHours),
         valor_normalizado: frequencyHours,
         tipo_mantenimiento: item.procedimiento_nombre || item.plan_nombre || "Programación",
         plan_id: item.plan_id,
@@ -3534,7 +3551,7 @@ function getWeeklyItems(slotKey: string, date: string) {
 }
 
 function displayProgramacionName(item: any) {
-  return item?.procedimiento_nombre || item?.plan_nombre || "Sin plantilla";
+  return item?.procedimiento_nombre || item?.plan_nombre || item?.work_order_title || "Sin plantilla";
 }
 
 const selectedProcedure = computed(() =>
@@ -3560,7 +3577,7 @@ watch(
   () => [form.ultima_ejecucion_horas, form.plan_id, form.procedimiento_id],
   () => {
     if (hydratingProgramacionForm.value) return;
-    syncProgramacionTargetHours();
+    if (!isProjectSchedulingWorkOrder(form.work_order_id)) syncProgramacionTargetHours();
   },
 );
 
@@ -3822,7 +3839,7 @@ async function saveMonthlyCell() {
   const monthlyReprogramHorometer = monthlyCellIsReprogramming.value
     ? numericOrNull(monthlyCell.horometro_actual)
     : null;
-  if (monthlyCellIsReprogramming.value && monthlyReprogramHorometer === null) {
+  if (monthlyCellIsReprogramming.value && !isProjectSchedulingWorkOrder(monthlyCell.work_order_id) && monthlyReprogramHorometer === null) {
     ui.error("El equipo no tiene un horometro manual disponible. Actualizalo primero en Equipos.");
     return;
   }
@@ -3842,7 +3859,7 @@ async function saveMonthlyCell() {
   savingMonthlyCell.value = true;
   try {
     const payload = {
-      equipo_id: monthlyCell.equipo_id,
+      equipo_id: monthlyCell.equipo_id || undefined,
       equipo_codigo: String(monthlyCell.equipo_codigo || "").trim() || undefined,
       fecha_programada: monthlyCell.fecha_programada,
       valor_crudo: String(monthlyCell.valor_crudo || "").trim(),
@@ -3885,7 +3902,7 @@ async function saveMonthlyCell() {
           : [];
         await api.patch(`/kpi_maintenance/programaciones/${sourceProgramacionId}`, {
           work_order_id: monthlyCell.work_order_id || undefined,
-          equipo_id: monthlyCell.equipo_id,
+          equipo_id: monthlyCell.equipo_id || undefined,
           procedimiento_id: monthlyCell.procedimiento_id || undefined,
           proxima_fecha: monthlyCell.fecha_programada,
           ...(monthlyReprogramHorometer !== null
@@ -3915,7 +3932,7 @@ async function saveMonthlyCell() {
       if (isProgramacionSource && sourceProgramacionId) {
         await api.patch(`/kpi_maintenance/programaciones/${sourceProgramacionId}`, {
           work_order_id: monthlyCell.work_order_id || undefined,
-          equipo_id: monthlyCell.equipo_id,
+          equipo_id: monthlyCell.equipo_id || undefined,
           procedimiento_id: monthlyCell.procedimiento_id || undefined,
           proxima_fecha: monthlyCell.fecha_programada,
           payload_json: {
@@ -4092,7 +4109,7 @@ function buildPayload() {
       : {};
   return {
     work_order_id: form.work_order_id || undefined,
-    equipo_id: form.equipo_id,
+    equipo_id: form.equipo_id || undefined,
     procedimiento_id: form.procedimiento_id || undefined,
     plan_id: form.plan_id || undefined,
     ultima_ejecucion_fecha: form.ultima_ejecucion_fecha || undefined,
@@ -4124,7 +4141,11 @@ async function save() {
     ui.error("Debes seleccionar la orden de trabajo que ejecutará la programación.");
     return;
   }
-  if (!form.equipo_id || (!form.procedimiento_id && !form.plan_id)) {
+  if (isProjectSchedulingWorkOrder(form.work_order_id) && !form.proxima_fecha) {
+    ui.error("Debes indicar la fecha programada para la OT de proyecto.");
+    return;
+  }
+  if (!isProjectSchedulingWorkOrder(form.work_order_id) && (!form.equipo_id || (!form.procedimiento_id && !form.plan_id))) {
     ui.error("La orden de trabajo debe tener equipo y plantilla o plan operativo vinculados.");
     return;
   }
