@@ -9,10 +9,10 @@ const fixture = new Module(path.join(root, "scripts/purchase-report-fixture.cjs"
 fixture.filename = path.join(root, "scripts/purchase-report-fixture.cjs");
 fixture.paths = Module._nodeModulePaths(root);
 fixture._compile(outputFiles[0].text, fixture.filename);
-const { purchaseLines, purchaseTotals, groupPurchaseLines, buildPurchaseReport, purchaseTotalsDisplay, purchaseSupplierOptions, filterPurchaseLines, buildPurchaseCharts } = fixture.exports;
+const { purchaseLines, purchaseTotals, groupPurchaseLines, groupSparePartsByBrand, SPARE_PARTS_CATEGORY, buildPurchaseReport, purchaseTotalsDisplay, purchaseSupplierOptions, filterPurchaseLines, buildPurchaseCharts } = fixture.exports;
 const mixed = { id: "oc1", codigo: "OC-001", fecha_emision: "2026-11-06", estado: "EMITIDA", total: "9999", detalles: [
-  { id: "a", categoria_id: "spares", categoria_nombre: "Repuestos", nombre_producto: "Filtro", descripcion_producto: "Motor", cantidad: "2.5", costo_unitario: "10", subtotal: "20", iva_total: "3", total: "23" },
-  { id: "b", categoria_id: "oil", categoria_nombre: "Aceites", nombre_producto: "Aceite", cantidad: "1", costo_unitario: "100", subtotal: "100", iva_total: "15", total: "115" },
+  { id: "a", categoria_id: "spares", categoria_nombre: " REPUESTO ", marca_id: "mtu", marca_nombre: "MTU", nombre_producto: "Filtro", descripcion_producto: "Motor", cantidad: "2.5", costo_unitario: "10", subtotal: "20", iva_total: "3", total: "23" },
+  { id: "b", categoria_id: "oil", categoria_nombre: "Aceites", marca_id: "mtu", marca_nombre: "MTU", nombre_producto: "Aceite", cantidad: "1", costo_unitario: "100", subtotal: "100", iva_total: "15", total: "115" },
   { id: "deleted", is_deleted: true, total: "1000" },
 ] };
 const orders = [mixed, mixed, { id: "oc2", codigo: "OC-002", estado: "EMITIDA", detalles: [{ id: "c", categoria_id: "spares", categoria_nombre: "Repuestos", nombre_producto: "Perno", cantidad: "1", costo_unitario: "2.675", subtotal: "2.675", iva_total: "0.4013", total: "3.0763" }] }, { id: "void", estado: "ANULADA", total: "10000" }];
@@ -24,7 +24,8 @@ assert.deepEqual(purchaseTotals(lines), { subtotal: 122.675, tax: 18.4013, total
 const categories = groupPurchaseLines(lines, "categoryId");
 assert.equal(categories.length, 2);
 assert.equal(categories[0].orders, 2, "Cuenta órdenes distintas dentro de la categoría");
-const spares = lines.filter(line => line.categoryId === "spares");
+const spares = lines.filter(line => line.categoryId === SPARE_PARTS_CATEGORY.value);
+assert.deepEqual(groupSparePartsByBrand(lines).map(group => [group.label, group.total]), [["MTU", 23], ["Sin marca", 3.0763]], "Solo suma líneas de repuestos y conserva las que no tienen marca");
 assert.equal(purchaseTotals(spares).total, 26.0763, "Filtrar repuestos no arrastra total cabecera de la orden mixta");
 assert.equal(groupPurchaseLines(spares, "orderId")[0].total, 23);
 const report = buildPurchaseReport(spares, "noviembre", "Compras", "Repuestos");
@@ -39,17 +40,22 @@ for (const sheet of report.sheets) {
 }
 assert.equal(buildPurchaseReport(spares.filter(line => line.orderId === "oc1"), "noviembre").sheets[2].rows.length, 2, "Impresión individual contiene solo las líneas de esa orden más el total");
 const categorySheet = buildPurchaseReport(lines, "noviembre").sheets[0];
-assert.deepEqual(categorySheet.rowKinds, ["group", "detail", "detail", "group", "detail", "total"]);
-assert.deepEqual(categorySheet.rows.map(row => row.material), ["Repuestos", "Filtro (Motor)", "Perno", "Aceites", "Aceite", "TOTAL"]);
+assert.deepEqual(categorySheet.rowKinds, ["group", "group", "detail", "group", "detail", "group", "detail", "total"]);
+assert.deepEqual(categorySheet.rows.map(row => row.material), ["Repuestos", "Marca: MTU", "Filtro (Motor)", "Marca: Sin marca", "Perno", "Aceites", "Aceite", "TOTAL"]);
 assert.equal(categorySheet.rows[0].code, "2 órdenes");
 assert.equal(categorySheet.rows[0].total, 26.0763);
-assert.equal(categorySheet.rows[3].total, 115);
+assert.equal(categorySheet.rows[1].total, 23);
+assert.equal(categorySheet.rows[5].total, 115);
 const foreign = purchaseLines([{ id: "eur", moneda: "eur", detalles: [{ categoria_id: "oil", categoria_nombre: "Aceites", total: 42 }] }]);
 const mixedCurrencyLines = [...lines, ...foreign];
 const mixedCurrency = buildPurchaseReport(mixedCurrencyLines, "noviembre").sheets[0];
 assert.deepEqual(mixedCurrency.rows.slice(-2).map(row => [row.currency, row.total]), [["USD", 141.0763], ["EUR", 42]]);
 assert.match(purchaseTotalsDisplay(mixedCurrencyLines).total, /\$\s*141,08 · 42,00 EUR/);
 assert.ok(mixedCurrency.columns.some(column => column.key === "currency"));
+const foreignSpare = purchaseLines([{ id: "eur-spare", moneda: "eur", detalles: [{ ...mixed.detalles[0], total: 12 }] }]);
+const brandRows = buildPurchaseReport([...spares, ...foreignSpare], "noviembre").sheets[0].rows.filter(row => row.material === "Marca: MTU");
+assert.deepEqual(brandRows.map(row => [row.currency, row.total]), [["USD", 23], ["EUR", 12]]);
+assert.ok(report.sheets[2].columns.some(column => column.key === "brand"));
 const missing = purchaseLines([{ id: "legacy", estado: "EMITIDA", subtotal: "10", iva_total: "1.5", total: "11.5" }]);
 assert.equal(missing[0].missingDetail, true);
 assert.equal(missing[0].category, "Sin detalle disponible");
@@ -73,4 +79,4 @@ assert.deepEqual(charts.map(chart => chart.unit), ["Órdenes distintas", "USD ($
 assert.deepEqual(charts.map(chart => chart.points), [[{ label: "11/2026", value: 2 }], [{ label: "11/2026", value: 138 }], [{ label: "11/2026", value: 138 }]]);
 assert.deepEqual(buildPurchaseCharts([]), []);
 assert.deepEqual(buildPurchaseReport(november, "noviembre").sheets[2].columns.slice(0, 3).map(column => column.key), ["code", "date", "supplier"]);
-console.log("OK compras: categorías, órdenes mixtas, descuentos, IVA, precisión, anulaciones, sin detalle e impresión individual.");
+console.log("OK compras: categorías, marcas de repuesto, órdenes mixtas, descuentos, IVA, precisión, anulaciones, sin detalle e impresión individual.");

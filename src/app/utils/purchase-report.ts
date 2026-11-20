@@ -4,9 +4,11 @@ import { formatDateForInput, parseAppDate } from "@/app/utils/date-time";
 import type { ReportChart, ReportColumn, ReportDefinition, ReportSheet } from "@/app/utils/maintenance-intelligence-reports";
 
 type AnyRow = Record<string, any>;
+export const SPARE_PARTS_CATEGORY = { value: "repuestos", title: "Repuestos" } as const;
 export type PurchaseLine = {
   key: string; orderId: string; code: string; date: string; supplierId: string; supplier: string; status: string; currency: string;
   categoryId: string; category: string; material: string; quantity: number | null;
+  brandId: string; brand: string;
   unitCost: number | null; subtotal: number; tax: number; total: number; missingDetail: boolean;
 };
 const amount = (value: unknown, fallback = 0) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? fallback : Number(value);
@@ -49,12 +51,17 @@ export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
       const unitCost = missingDetail ? null : amount(line.costo_unitario);
       const subtotal = amount(line.subtotal, (quantity || 0) * (unitCost || 0));
       const tax = amount(line.iva_total);
+      const catalogCategory = String(line.categoria_nombre || "").trim();
+      const sparePart = !missingDetail && /^repuestos?$/i.test(catalogCategory);
+      const brand = sparePart ? String(line.marca_nombre || "").trim() : "";
       return {
         key: `${orderId}:${line.id || index}`, orderId, code: String(order.codigo || order.numero || "Sin código"),
         date, supplierId: supplier.value, supplier: supplier.title, status: order.estado || "Sin estado",
         currency: String(order.moneda || "").trim().toUpperCase() || "USD",
-        categoryId: missingDetail ? "missing-detail" : String(line.categoria_id || line.categoria_nombre || "uncategorized"),
-        category: missingDetail ? "Sin detalle disponible" : String(line.categoria_nombre || "Sin categoría"),
+        categoryId: missingDetail ? "missing-detail" : sparePart ? SPARE_PARTS_CATEGORY.value : String(line.categoria_id || catalogCategory || "uncategorized"),
+        category: missingDetail ? "Sin detalle disponible" : sparePart ? SPARE_PARTS_CATEGORY.title : catalogCategory || "Sin categoría",
+        brandId: brand ? String(line.marca_id || `nombre:${brand.toLocaleLowerCase("es-EC")}`) : "no-brand",
+        brand: sparePart ? brand || "Sin marca" : "",
         material: missingDetail ? "Detalle no disponible" : buildProductDisplayTitle({ nombre: line.nombre_producto || line.producto_nombre, descripcion: line.descripcion_producto || line.producto_descripcion }),
         quantity, unitCost, subtotal, tax, total: amount(line.total ?? line.total_final, subtotal + tax), missingDetail,
       };
@@ -72,7 +79,8 @@ export function filterPurchaseLines(lines: PurchaseLine[], from: string, to: str
 export function purchaseTotals(lines: PurchaseLine[]) {
   return lines.reduce((sum, line) => ({ subtotal: sum.subtotal + line.subtotal, tax: sum.tax + line.tax, total: sum.total + line.total }), { subtotal: 0, tax: 0, total: 0 });
 }
-export function groupPurchaseLines(lines: PurchaseLine[], field: "categoryId" | "orderId" | "currency") {
+export function groupPurchaseLines(lines: PurchaseLine[], field: "categoryId" | "orderId" | "currency" | "brandId") {
+  const labelFields = { categoryId: "category", orderId: "code", currency: "currency", brandId: "brand" } as const;
   const grouped = new Map<string, PurchaseLine[]>();
   for (const line of lines) {
     const rows = grouped.get(line[field]);
@@ -81,11 +89,16 @@ export function groupPurchaseLines(lines: PurchaseLine[], field: "categoryId" | 
   }
   return [...grouped].map(([key, rows]) => ({
     key,
-    label: field === "categoryId" ? rows[0]!.category : field === "orderId" ? rows[0]!.code : key,
+    label: rows[0]![labelFields[field]],
     rows,
     orders: new Set(rows.map(row => row.orderId)).size,
     ...purchaseTotals(rows),
   }));
+}
+
+export function groupSparePartsByBrand(lines: PurchaseLine[]) {
+  return groupPurchaseLines(lines.filter(line => line.categoryId === SPARE_PARTS_CATEGORY.value), "brandId")
+    .sort((a, b) => a.label.localeCompare(b.label, "es-EC"));
 }
 
 export function formatPurchaseAmount(value: number | null, currency = "USD") {
@@ -150,6 +163,8 @@ export function buildPurchaseReport(lines: PurchaseLine[], period: string, title
   const categories = groupPurchaseLines(lines, "categoryId");
   const orders = groupPurchaseLines(lines, "orderId");
   const currencies = groupPurchaseLines(lines, "currency");
+  const hasSpareParts = categories.some(group => group.key === SPARE_PARTS_CATEGORY.value);
+  const brandColumns: ReportColumn[] = hasSpareParts ? [{ key: "brand", header: "Marca del repuesto", width: 18 }] : [];
   const currencyColumns: ReportColumn[] = currencies.some(group => group.key !== "USD")
     ? [{ key: "currency", header: "Moneda", width: 11 }]
     : [];
@@ -162,17 +177,27 @@ export function buildPurchaseReport(lines: PurchaseLine[], period: string, title
   const categoryRowKinds: NonNullable<ReportSheet["rowKinds"]> = [];
   for (const category of categories) {
     for (const group of groupPurchaseLines(category.rows, "currency")) {
-      categoryRows.push({
-        material: category.label,
+      const groupRow = (material: string, group: ReturnType<typeof groupPurchaseLines>[number]) => ({
+        material,
         code: `${formatCountForDisplay(group.orders)} ${group.orders === 1 ? "orden" : "órdenes"}`,
-        currency: group.key, subtotal: group.subtotal, tax: group.tax, total: group.total,
-      }, ...group.rows);
-      categoryRowKinds.push("group", ...group.rows.map(() => "detail" as const));
+        currency: group.rows[0]!.currency, subtotal: group.subtotal, tax: group.tax, total: group.total,
+      });
+      categoryRows.push(groupRow(category.label, group));
+      categoryRowKinds.push("group");
+      const brands = groupSparePartsByBrand(group.rows);
+      for (const brand of brands) {
+        categoryRows.push(groupRow(`Marca: ${brand.label}`, brand), ...brand.rows);
+        categoryRowKinds.push("group", ...brand.rows.map(() => "detail" as const));
+      }
+      if (!brands.length) {
+        categoryRows.push(...group.rows);
+        categoryRowKinds.push(...group.rows.map(() => "detail" as const));
+      }
     }
   }
   const categorySheet: ReportSheet = {
     name: "Compras por categoría",
-    note: "El encabezado de cada categoría muestra sus órdenes distintas y sus importes. Debajo se listan las líneas de compra. El subtotal es neto de descuentos.",
+    note: "El subtotal es neto de descuentos. Los repuestos se desglosan por marca del catálogo.",
     columns: [
       { key: "material", header: "Categoría / Material", width: 39 },
       { key: "code", header: "Orden", width: 22 },
@@ -193,7 +218,7 @@ export function buildPurchaseReport(lines: PurchaseLine[], period: string, title
     sheets: [
       categorySheet,
       { name: "Órdenes de compra", note: "Los importes corresponden a las líneas de la categoría seleccionada; una orden puede contener otras categorías.", columns: [{ key: "code", header: "Orden", width: 24 }, { key: "date", header: "Fecha", format: "date", width: 17 }, { key: "supplier", header: "Proveedor", width: 35 }, { key: "status", header: "Estado", width: 20 }, ...currencyColumns, ...moneyColumns], rows: [...orders.map(group => ({ ...group.rows[0], subtotal: group.subtotal, tax: group.tax, total: group.total })), ...totalRows], rowKinds: [...orders.map(() => null), ...totalKinds], fitColumnsToPage: true },
-      { name: "Líneas de compra", columns: [{ key: "code", header: "Orden", width: 22 }, { key: "date", header: "Emisión de OC", format: "date", width: 17 }, { key: "supplier", header: "Proveedor", width: 28 }, { key: "material", header: "Material", width: 36 }, { key: "category", header: "Categoría", width: 22 }, { key: "quantity", header: "Cantidad", format: "number", width: 14 }, ...currencyColumns, unitCostColumn, ...moneyColumns], rows: [...lines, ...totalRows], rowKinds: [...lines.map(() => null), ...totalKinds], fitColumnsToPage: true },
+      { name: "Líneas de compra", columns: [{ key: "code", header: "Orden", width: 22 }, { key: "date", header: "Emisión de OC", format: "date", width: 17 }, { key: "supplier", header: "Proveedor", width: 28 }, { key: "material", header: "Material", width: 36 }, { key: "category", header: "Categoría", width: 22 }, ...brandColumns, { key: "quantity", header: "Cantidad", format: "number", width: 14 }, ...currencyColumns, unitCostColumn, ...moneyColumns], rows: [...lines, ...totalRows], rowKinds: [...lines.map(() => null), ...totalKinds], fitColumnsToPage: true },
     ],
   };
 }

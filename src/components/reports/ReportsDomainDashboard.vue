@@ -128,7 +128,15 @@
           <template v-if="moduleKey === 'warehouse-transfers'"><tr v-for="row in activeDocumentRows" :key="String(row.id)"><td><button class="entity-link" @click="openOperationalDocument(row,'transfer')">{{ row.codigo || '-' }}</button></td><td>{{ date(row.fecha_transferencia) }}</td><td>{{ row.bodega_origen_label || '-' }}</td><td>{{ row.bodega_destino_label || '-' }}</td><td><v-chip size="small" variant="tonal" :color="transferStateColor(row.estado)">{{ transferStateLabel(row.estado) }}</v-chip></td><td class="number">{{ count(row.total_items) }}</td><td class="number">{{ number(transferReceiptTotals(row).sent) }}</td><td class="number">{{ number(transferReceiptTotals(row).received) }}</td><td class="number">{{ number(transferReceiptTotals(row).pending) }}</td><td><button v-if="row.egreso_bodega_codigo" class="entity-link" @click="openKardexByReference(row.movimiento_salida_id,row.egreso_bodega_codigo)">{{ row.egreso_bodega_codigo }}</button><span> </span><button v-if="row.ingreso_bodega_codigo" class="entity-link" @click="openKardexByReference(row.movimiento_ingreso_id,row.ingreso_bodega_codigo)">{{ row.ingreso_bodega_codigo }}</button></td></tr></template>
           <template v-else-if="moduleKey === 'warehouse-reservations'"><tr v-for="row in activeDocumentRows" :key="String(row.reserva_id || row.id)"><td>{{ row.label || [row.codigo,row.nombre].filter(Boolean).join(' - ') }}</td><td><button v-if="row.work_order_id" class="entity-link" @click="openWorkOrderId(row.work_order_id)">{{ row.work_order_code || '-' }}</button></td><td>{{ row.bodega_label || '-' }}</td><td><v-chip size="small" variant="tonal">{{ row.estado || '-' }}</v-chip></td><td class="number">{{ number(row.cantidad_solicitada) }}</td><td class="number">{{ number(row.cantidad_entregada) }}</td><td class="number">{{ number(row.cantidad_pendiente) }}</td></tr></template>
           <template v-else><tr v-for="row in activeDocumentRows" :key="String(row.id)"><td><button class="entity-link" @click="openOperationalDocument(row,moduleKey === 'purchase-orders' ? 'purchase' : 'service')">{{ row.codigo || row.numero || '-' }}</button></td><td>{{ date(row.fecha_emision) }}</td><td>{{ row.proveedor_nombre || '-' }}</td><td>{{ row.bodega_label || row.lugar_entrega || '-' }}</td><td><v-chip size="small" variant="tonal">{{ row.estado || '-' }}</v-chip></td><td class="number">{{ formatDocumentAmount(documentAmount(row), documentCurrency(row)) }}</td><td><button v-if="row.transferencia_id" class="entity-link" @click="openOperationalDocument({id:row.transferencia_id,codigo:row.transferencia_codigo},'transfer')">{{ row.transferencia_codigo || 'Ver TB' }}</button></td></tr></template>
-        </tbody></table>
+        </tbody>
+          <tfoot v-if="moduleKey === 'service-orders' && activeDocumentRows.length">
+            <tr>
+              <th scope="row" colspan="5">Total consolidado</th>
+              <td class="number">{{ documentTotals }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
       </ReportTableCard>
     </section>
 
@@ -441,22 +449,26 @@ function formatDocumentAmount(amount: number | null, code: string) {
   return code === "USD" ? currency(amount) : `${formatNumberForDisplay(amount)} ${code || "(moneda sin registrar)"}`;
 }
 
-function documentTotals(rows: AnyRow[]) {
+const documentConsolidation = computed(() => {
   const totals = new Map<string, number>();
   let missingCurrency = 0;
-  for (const row of rows) {
+  for (const row of activeDocumentRows.value) {
     const amount = documentAmount(row);
     if (amount == null) continue;
     const code = documentCurrency(row);
     if (code) totals.set(code, (totals.get(code) ?? 0) + amount);
     else missingCurrency += 1;
   }
+  return { totals, missingCurrency };
+});
+const documentTotals = computed(() => {
+  const { totals, missingCurrency } = documentConsolidation.value;
   const values = [...totals].map(([code, total]) => formatDocumentAmount(total, code));
   if (missingCurrency) values.push(`${count(missingCurrency)} sin moneda`);
   return values.join(" · ") || "—";
-}
+});
 
-const documentMetrics=computed(()=>{const rows=activeDocumentRows.value; if(props.moduleKey==="warehouse-transfers")return[{label:"Transferencias",value:count(rows.length),helper:"Traslados registrados",icon:"mdi-truck-fast-outline"},{label:"Cantidad transferida",value:number(rows.reduce((s,r)=>s+transferReceiptTotals(r).received,0)),helper:"Unidades aprobadas en destino",icon:"mdi-swap-horizontal-bold"},{label:"Completadas",value:count(rows.filter(r=>isTransferCompleted(r.estado)).length),helper:"Transferencias terminadas",icon:"mdi-check-circle-outline"},{label:"Con guía",value:count(rows.filter(r=>r.guia_remision_numero||r.guia_remision_estado).length),helper:"Documentos de traslado",icon:"mdi-file-sign"}];if(props.moduleKey==="warehouse-reservations")return[{label:"Reservas",value:count(rows.length),helper:"Solicitudes de materiales",icon:"mdi-package-variant"},{label:"Cantidad solicitada",value:number(rows.reduce((s,r)=>s+Number(r.cantidad_solicitada||0),0)),helper:"Total requerido por OT",icon:"mdi-package-up"},{label:"Cantidad entregada",value:number(rows.reduce((s,r)=>s+Number(r.cantidad_entregada||0),0)),helper:"Atendido por bodega",icon:"mdi-package-down"},{label:"Cantidad pendiente",value:number(rows.reduce((s,r)=>s+Number(r.cantidad_pendiente||0),0)),helper:"Aún por despachar",icon:"mdi-clock-alert-outline"}];const done=rows.filter(r=>/COMPLET|APROB|EMIT|REALIZ/.test(normalize(r.estado))||r.servicio_realizado===true).length;return[{label:props.moduleKey==="purchase-orders"?"Órdenes de compra":"Órdenes de servicio",value:count(rows.length),helper:"Documentos del período",icon:"mdi-file-document-multiple-outline"},{label:"Valor total por moneda",value:documentTotals(rows),helper:"Monto gestionado",icon:"mdi-cash-multiple"},{label:"Completadas",value:count(done),helper:"Proceso confirmado",icon:"mdi-check-circle-outline"},{label:"Pendientes",value:count(Math.max(0,rows.length-done)),helper:"Proceso por completar",icon:"mdi-progress-clock"}];});
+const documentMetrics=computed(()=>{const rows=activeDocumentRows.value; if(props.moduleKey==="warehouse-transfers")return[{label:"Transferencias",value:count(rows.length),helper:"Traslados registrados",icon:"mdi-truck-fast-outline"},{label:"Cantidad transferida",value:number(rows.reduce((s,r)=>s+transferReceiptTotals(r).received,0)),helper:"Unidades aprobadas en destino",icon:"mdi-swap-horizontal-bold"},{label:"Completadas",value:count(rows.filter(r=>isTransferCompleted(r.estado)).length),helper:"Transferencias terminadas",icon:"mdi-check-circle-outline"},{label:"Con guía",value:count(rows.filter(r=>r.guia_remision_numero||r.guia_remision_estado).length),helper:"Documentos de traslado",icon:"mdi-file-sign"}];if(props.moduleKey==="warehouse-reservations")return[{label:"Reservas",value:count(rows.length),helper:"Solicitudes de materiales",icon:"mdi-package-variant"},{label:"Cantidad solicitada",value:number(rows.reduce((s,r)=>s+Number(r.cantidad_solicitada||0),0)),helper:"Total requerido por OT",icon:"mdi-package-up"},{label:"Cantidad entregada",value:number(rows.reduce((s,r)=>s+Number(r.cantidad_entregada||0),0)),helper:"Atendido por bodega",icon:"mdi-package-down"},{label:"Cantidad pendiente",value:number(rows.reduce((s,r)=>s+Number(r.cantidad_pendiente||0),0)),helper:"Aún por despachar",icon:"mdi-clock-alert-outline"}];const done=rows.filter(r=>/COMPLET|APROB|EMIT|REALIZ/.test(normalize(r.estado))||r.servicio_realizado===true).length;return[{label:props.moduleKey==="purchase-orders"?"Órdenes de compra":"Órdenes de servicio",value:count(rows.length),helper:"Documentos del período",icon:"mdi-file-document-multiple-outline"},{label:"Valor total por moneda",value:documentTotals.value,helper:"Monto gestionado",icon:"mdi-cash-multiple"},{label:"Completadas",value:count(done),helper:"Proceso confirmado",icon:"mdi-check-circle-outline"},{label:"Pendientes",value:count(Math.max(0,rows.length-done)),helper:"Proceso por completar",icon:"mdi-progress-clock"}];});
 const documentTableTitle=computed(()=>({"warehouse-transfers":"Transferencias de bodega","warehouse-reservations":"Reservas solicitadas por OT","purchase-orders":"Órdenes de compra","service-orders":"Órdenes de servicio"} as Record<string,string>)[props.moduleKey]||props.title);
 const documentTableSubtitle=computed(()=>({"warehouse-transfers":"Cantidades enviadas, aprobadas y pendientes; documentos de cada recepción.","warehouse-reservations":"Material solicitado, entrega de bodega y saldo pendiente.","purchase-orders":"Proveedor, bodega, valor y transferencia relacionada.","service-orders":"Proveedor, lugar de entrega y confirmación del servicio."} as Record<string,string>)[props.moduleKey]||"");
 
@@ -563,7 +575,15 @@ function buildOperationalDocumentsReport(){
     ...(!allUsd ? [{ key: "moneda", header: "Moneda" }] : []),
     { key: "transferencia", header: "TB relacionada" },
   ];
-  return reportDefinition(documentTableTitle.value, rows, columns, [], true);
+  if (props.moduleKey !== "service-orders") return reportDefinition(documentTableTitle.value, rows, columns, [], true);
+
+  const { totals } = documentConsolidation.value;
+  const consolidatedRows: AnyRow[] = [...totals].map(([moneda, total]) => ({ codigo: "Total consolidado", moneda, total }));
+  const report = reportDefinition(documentTableTitle.value, [...rows, ...consolidatedRows], columns, [
+    { label: "Total consolidado", value: documentTotals.value },
+  ], true);
+  report.sheets[0]!.rowKinds = [...rows.map(() => null), ...consolidatedRows.map(() => "total" as const)];
+  return report;
 }
 
 function previewStatus(card:AnyRow){return reportPreview.open("pdf",buildStatusReport(card));}
@@ -607,7 +627,9 @@ async function buildModuleReport(): Promise<ReportDefinition> {
       ...(isEquipment.value ? [{ label: "Equipos con actividad", value: equipmentRows.value.length }, { label: "OT vinculadas", value: totalEquipmentOrders.value }, { label: "Horas trabajadas", value: hours(totalEquipmentHours.value) }, { label: "Costo de mantenimiento", value: currency(totalEquipmentCost.value) }] : []),
       ...(isMaterials.value && materialView.value !== "detalle" ? [{ label: "Materiales registrados", value: materialProducts.value.length }, { label: "Repuestos", value: materialTypeCounts.value.spares }, { label: "Servicios", value: materialTypeCounts.value.services }, { label: "Aceites", value: materialTypeCounts.value.oils }] : []),
       ...(isMaterials.value && materialView.value === "detalle" ? [{ label: "Material", value: selectedMaterialLabel.value }, { label: "Movimientos del período", value: materialMovements.value.length }] : []),
-      ...(isOperationalDocument.value ? documentMetrics.value.map(card => ({ label: card.label, value: card.value })) : []),
+      ...(isOperationalDocument.value ? documentMetrics.value
+        .filter(card => props.moduleKey !== "service-orders" || card.label !== "Valor total por moneda")
+        .map(card => ({ label: card.label, value: card.value })) : []),
     ],
     sheets: reports.flatMap(report => report.sheets.map(sheet => ({ ...sheet, name: report.title, fitColumnsToPage: true }))),
   };
