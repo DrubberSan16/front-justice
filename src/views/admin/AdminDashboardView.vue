@@ -379,7 +379,7 @@
             <template #item.horometro_ultimo_mantenimiento="{ item }">
               <v-tooltip :text="ultimoServicioLabel(row(item))" location="top">
                 <template #activator="{ props: tipProps }">
-                  <span v-bind="tipProps">{{ horometro(row(item).horometro_ultimo_mantenimiento) }}</span>
+                  <span v-bind="tipProps">{{ ultimoMantenimientoValor(row(item)) }}</span>
                 </template>
               </v-tooltip>
               <span v-if="row(item).referencia_estimada" class="text-caption text-warning">
@@ -691,7 +691,7 @@ const headersRepuestos = computed(() => [
   ...(canViewCosts.value ? [{ title: "Costo", key: "costo", align: "end" as const }] : []),
   { title: "", key: "acciones", sortable: false, align: "end" as const },
 ]);
-const NIVEL_ORDEN: Record<string, number> = { ROJO: 0, AMARILLO: 1, VERDE: 2 };
+const NIVEL_ORDEN: Record<string, number> = { ROJO: 0, AMARILLO: 1, PENDIENTE: 2, VERDE: 3 };
 // Las columnas que corren en vivo se ordenan por lo que se ve, no por la carga.
 const headersProyeccion = [
   { title: "Reserva", key: "es_reserva" },
@@ -711,7 +711,8 @@ const headersProyeccion = [
     key: "horas_restantes",
     align: "end" as const,
     sortRaw: (a: any, b: any) =>
-      proyeccionEnVivo(a).horas_restantes - proyeccionEnVivo(b).horas_restantes,
+      (proyeccionEnVivo(a).horas_restantes ?? Number.MAX_SAFE_INTEGER) -
+      (proyeccionEnVivo(b).horas_restantes ?? Number.MAX_SAFE_INTEGER),
   },
   {
     title: "Fecha próximo mant.",
@@ -726,8 +727,8 @@ const headersProyeccion = [
     title: "Estado",
     key: "semaforo",
     sortRaw: (a: any, b: any) =>
-      (NIVEL_ORDEN[proyeccionEnVivo(a).semaforo?.nivel] ?? 3) -
-      (NIVEL_ORDEN[proyeccionEnVivo(b).semaforo?.nivel] ?? 3),
+      (NIVEL_ORDEN[proyeccionEnVivo(a).semaforo?.nivel] ?? 4) -
+      (NIVEL_ORDEN[proyeccionEnVivo(b).semaforo?.nivel] ?? 4),
   },
 ];
 const headersConfiabilidad = [
@@ -851,6 +852,9 @@ function relojHorometro(fila: any) {
 
 function proyeccionEnVivo(fila: any, now = ahora.value) {
   const horas = horasEnVivo(fila, now);
+  if (fila.horometro_pendiente) {
+    return { ...fila, horometro_actual: horas, fecha_proximo_ms: null };
+  }
   // El objetivo sin redondear, como en getProyeccion; el redondeado solo se muestra.
   // Ya no depende del horómetro actual, ni siquiera con base estimada: se le
   // resta el reloj igual que a los demás.
@@ -878,7 +882,8 @@ function proyeccionEnVivo(fila: any, now = ahora.value) {
   };
 }
 
-function horasConSigno(value: number) {
+function horasConSigno(value: number | null) {
+  if (value == null) return "—";
   return `${Number(value).toLocaleString("es-EC", { maximumFractionDigits: 0 })} h`;
 }
 
@@ -901,6 +906,7 @@ function fechaProyectadaLabel(vivo: { fecha_proximo_ms: number | null }) {
 }
 
 function ritmoLabel(fila: any) {
+  if (fila.horometro_pendiente) return "La fecha queda pendiente de la lectura del último servicio.";
   const ritmo = Number(fila.ritmo_horas_dia);
   if (!Number.isFinite(ritmo) || ritmo <= 0) {
     return "Sin horas de funcionamiento en los últimos 30 días: no se puede estimar la fecha.";
@@ -915,6 +921,11 @@ function ultimoServicioLabel(fila: any) {
   return `${fila.ultima_ot}${plan} · ${fechaDia(fila.fecha_ultimo_mantenimiento)}`;
 }
 
+function ultimoMantenimientoValor(fila: any) {
+  if (!fila.horometro_pendiente) return horometro(fila.horometro_ultimo_mantenimiento);
+  return `${fila.ultima_ot} · ${fechaDia(fila.fecha_ultimo_mantenimiento)}`;
+}
+
 /** La exportacion lleva el horometro del momento en que se pide. */
 function reporteProyeccion() {
   return buildSectionReport({
@@ -924,7 +935,14 @@ function reporteProyeccion() {
     columns: headersProyeccion,
     rows: proyeccionAplicable.value.map((fila: any) => {
       const vivo = proyeccionEnVivo(fila, Date.now());
-      return { ...vivo, es_reserva: fila.es_reserva ? 'En reserva' : 'Sin reserva', fecha_proximo_mantenimiento: fechaProyectadaLabel(vivo) };
+      return {
+        ...vivo,
+        es_reserva: fila.es_reserva ? "En reserva" : "Sin reserva",
+        horometro_ultimo_mantenimiento: fila.horometro_pendiente
+          ? ultimoMantenimientoValor(fila)
+          : fila.horometro_ultimo_mantenimiento,
+        fecha_proximo_mantenimiento: fechaProyectadaLabel(vivo),
+      };
     }),
   });
 }
@@ -1601,7 +1619,8 @@ function setMotionRoot(el: unknown) {
 }
 
 /* Estado desconocido: se ve, pero no compite con verde ni rojo. */
-.status-chip--gris {
+.status-chip--gris,
+.status-chip--pendiente {
   color: rgba(var(--v-theme-on-surface), 0.68);
   background: rgba(var(--v-theme-on-surface), 0.08);
 }
