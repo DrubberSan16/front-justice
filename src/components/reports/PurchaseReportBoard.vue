@@ -3,10 +3,10 @@
     <div class="purchase-filters">
       <v-autocomplete v-model="categoryId" :items="categoryOptions" label="Categoría de compra" variant="outlined" density="compact" clearable hide-details />
       <v-autocomplete
-        v-if="categoryId === SPARE_PARTS_CATEGORY.value"
         v-model="selectedBrand"
         :items="brandOptions"
-        :disabled="!brandOptions.length"
+        :loading="loadingBrandCatalog"
+        :no-data-text="brandCatalogFailed ? 'No se pudo cargar el catálogo de marcas.' : 'No se encontraron marcas.'"
         label="Marca del repuesto"
         variant="outlined"
         density="compact"
@@ -105,7 +105,7 @@
           </v-expansion-panel-text>
         </v-expansion-panel>
       </v-expansion-panels>
-      <p v-else class="ma-4" role="status">{{ categoryId === SPARE_PARTS_CATEGORY.value ? "No hay compras de repuestos para los filtros aplicados." : "No hay compras para los filtros aplicados." }}</p>
+      <p v-else class="ma-4" role="status">{{ emptyMessage }}</p>
       <footer class="purchase-category-heading purchase-category-total">
         <strong>{{ selectedBrand ? `Total · ${selectedBrand.title}` : categoryId ? "Total de la categoría" : supplierId ? "Total del proveedor" : "Total general" }}</strong>
         <div class="purchase-category-metrics">
@@ -157,18 +157,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { formatNumberForDisplay as number, formatCountForDisplay as count } from "@/app/utils/number-format";
 import { formatDateOnly as date } from "@/app/utils/date-time";
-import { buildPurchaseCharts, buildPurchaseReport, filterPurchaseLines, formatPurchaseAmount as currency, groupPurchaseLines, groupSparePartsByBrand, purchaseLines, purchaseTotalsDisplay, SPARE_PARTS_CATEGORY } from "@/app/utils/purchase-report";
+import { listAllPages } from "@/app/utils/list-all-pages";
+import { buildPurchaseCharts, buildPurchaseReport, filterPurchaseLines, formatPurchaseAmount as currency, groupPurchaseLines, groupSparePartsByBrand, purchaseBrandNameKey, purchaseLines, purchaseTotalsDisplay, SPARE_PARTS_CATEGORY } from "@/app/utils/purchase-report";
 import { useReportPreview } from "@/app/utils/report-preview";
+import { DEFAULT_CATALOG_CACHE_TTL_MS } from "@/app/utils/request-cache";
 import ReportTableCard from "@/components/reports/ReportTableCard.vue";
 import ReportPreviewDialogs from "@/components/ui/ReportPreviewDialogs.vue";
 const props = defineProps<{ rows: Record<string, any>[]; startDate: string; endDate: string; supplierId?: string | null; supplierLabel?: string }>();
 const emit = defineEmits<{ (event: "openOrder", id: string): void }>();
-const categoryId = ref<string | null>(null);
-const selectedBrand = ref<{ value: string; title: string } | null>(null);
-const expandedCategories = ref<string[]>([]);
+type BrandOption = { value: string; title: string };
+const brandFilterKey = "kpi-reporteria-compras-marca";
+const selectedBrand = ref<BrandOption | null>(readSelectedBrand());
+const categoryId = ref<string | null>(selectedBrand.value ? SPARE_PARTS_CATEGORY.value : null);
+const expandedCategories = ref<string[]>(categoryId.value ? [categoryId.value] : []);
+const brandCatalog = ref<BrandOption[]>([]);
+const loadingBrandCatalog = ref(true);
+const brandCatalogFailed = ref(false);
 const selectedOrderId = ref<string | null>(null);
 const orderPage = ref(1);
 const linePage = ref(1);
@@ -181,15 +188,27 @@ const categoryOptions = computed(() => [
     .map(group => ({ value: group.key, title: group.label })),
 ]);
 const brandOptions = computed(() => {
-  const options = groupSparePartsByBrand(lines.value).map(group => ({ value: group.key, title: group.label }));
+  const options = new Map(brandCatalog.value.map(option => [option.value, option]));
+  const catalogNames = new Set(brandCatalog.value.map(option => purchaseBrandNameKey(option.title)));
+  for (const group of groupSparePartsByBrand(lines.value)) {
+    if (!options.has(group.key) && !catalogNames.has(group.key)) {
+      options.set(group.key, { value: group.key, title: group.label });
+    }
+  }
   const selected = selectedBrand.value;
-  if (selected && !options.some(option => option.value === selected.value)) options.unshift(selected);
-  return options;
+  if (selected && !options.has(selected.value)) options.set(selected.value, selected);
+  return [...options.values()].sort((a, b) => a.title.localeCompare(b.title, "es-EC"));
 });
 const filtered = computed(() => lines.value.filter(line =>
   (!categoryId.value || line.categoryId === categoryId.value) &&
-  (categoryId.value !== SPARE_PARTS_CATEGORY.value || !selectedBrand.value || line.brandId === selectedBrand.value.value),
+  (!selectedBrand.value || line.brandId === selectedBrand.value.value ||
+    line.brandId === purchaseBrandNameKey(selectedBrand.value.title)),
 ));
+const emptyMessage = computed(() => {
+  if (selectedBrand.value) return `No hay compras de repuestos de «${selectedBrand.value.title}» para las fechas y el proveedor seleccionados.`;
+  if (categoryId.value === SPARE_PARTS_CATEGORY.value) return "No hay compras de repuestos para los filtros aplicados.";
+  return "No hay compras para los filtros aplicados.";
+});
 const categories = computed(() => groupPurchaseLines(filtered.value, "categoryId").map(group => ({
   ...group,
   amounts: purchaseTotalsDisplay(group.rows),
@@ -212,10 +231,32 @@ const scopeLabel = computed(() => [
   props.supplierLabel || "Todos los proveedores",
 ].filter(Boolean).join(" · "));
 const reportPreview = useReportPreview({ title: "Informe de compras" });
+
+function readSelectedBrand(): BrandOption | null {
+  try {
+    const selection = JSON.parse(sessionStorage.getItem(brandFilterKey) || "null");
+    if (typeof selection?.value === "string" && typeof selection.title === "string") return selection;
+  } catch { /* El filtro funciona con el almacenamiento de la pestaña deshabilitado. */ }
+  return null;
+}
+
+onMounted(async () => {
+  try {
+    const rows = await listAllPages("/kpi_inventory/marcas", {}, { cacheTtlMs: DEFAULT_CATALOG_CACHE_TTL_MS });
+    brandCatalog.value = rows
+      .map(row => ({ value: String(row?.id ?? ""), title: String(row?.nombre ?? "").trim() }))
+      .filter(option => option.value && option.title);
+  } catch {
+    brandCatalogFailed.value = true;
+  } finally {
+    loadingBrandCatalog.value = false;
+  }
+});
+
 function resetScope() { categoryId.value = null; selectedBrand.value = null; selectedOrderId.value = null; }
 function selectBrand(value: string, title: string) {
-  categoryId.value = SPARE_PARTS_CATEGORY.value;
-  selectedBrand.value = { value, title };
+  selectedBrand.value = brandOptions.value.find(option => option.value === value ||
+    purchaseBrandNameKey(option.title) === value) ?? { value, title };
 }
 function buildModuleReport(orderId?: string, includeCharts = !orderId) {
   const rows = orderId ? filtered.value.filter(line => line.orderId === orderId) : filtered.value;
@@ -234,6 +275,16 @@ function preview(orderId?: string, sheetIndex?: number) {
 watch(categoryId, value => {
   expandedCategories.value = value ? [value] : [];
   if (value !== SPARE_PARTS_CATEGORY.value) selectedBrand.value = null;
+});
+watch(selectedBrand, value => {
+  if (value) {
+    categoryId.value = SPARE_PARTS_CATEGORY.value;
+    expandedCategories.value = [SPARE_PARTS_CATEGORY.value];
+  }
+  try {
+    if (value) sessionStorage.setItem(brandFilterKey, JSON.stringify(value));
+    else sessionStorage.removeItem(brandFilterKey);
+  } catch { /* El filtro funciona con el almacenamiento de la pestaña deshabilitado. */ }
 });
 watch([categoryId, selectedBrand, () => props.startDate, () => props.endDate, () => props.supplierId], () => {
   selectedOrderId.value = null;

@@ -35,6 +35,10 @@ function purchaseDate(value: unknown) {
   return parsed ? formatDateForInput(parsed) : "";
 }
 
+export function purchaseBrandNameKey(brand: string) {
+  return `nombre:${brand.toLocaleLowerCase("es-EC")}`;
+}
+
 /** Los importes se suman una vez por línea; nunca se replica la cabecera en categorías. */
 export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
   const seen = new Set<string>();
@@ -51,7 +55,8 @@ export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
       const unitCost = missingDetail ? null : amount(line.costo_unitario);
       const subtotal = amount(line.subtotal, (quantity || 0) * (unitCost || 0));
       const tax = amount(line.iva_total);
-      const catalogCategory = String(line.categoria_nombre || "").trim();
+      const categoryName = String(line.categoria_nombre || "").trim();
+      const catalogCategory = !line.categoria_id && /^sin categoría$/i.test(categoryName) ? "" : categoryName;
       const sparePart = !missingDetail && /^repuestos?$/i.test(catalogCategory);
       const brand = sparePart ? String(line.marca_nombre || "").trim() : "";
       return {
@@ -60,7 +65,7 @@ export function purchaseLines(orders: AnyRow[]): PurchaseLine[] {
         currency: String(order.moneda || "").trim().toUpperCase() || "USD",
         categoryId: missingDetail ? "missing-detail" : sparePart ? SPARE_PARTS_CATEGORY.value : String(line.categoria_id || catalogCategory || "uncategorized"),
         category: missingDetail ? "Sin detalle disponible" : sparePart ? SPARE_PARTS_CATEGORY.title : catalogCategory || "Sin categoría",
-        brandId: brand ? String(line.marca_id || `nombre:${brand.toLocaleLowerCase("es-EC")}`) : "no-brand",
+        brandId: brand ? String(line.marca_id || purchaseBrandNameKey(brand)) : "no-brand",
         brand: sparePart ? brand || "Sin marca" : "",
         material: missingDetail ? "Detalle no disponible" : buildProductDisplayTitle({ nombre: line.nombre_producto || line.producto_nombre, descripcion: line.descripcion_producto || line.producto_descripcion }),
         quantity, unitCost, subtotal, tax, total: amount(line.total ?? line.total_final, subtotal + tax), missingDetail,

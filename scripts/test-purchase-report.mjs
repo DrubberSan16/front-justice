@@ -62,6 +62,11 @@ assert.equal(missing[0].category, "Sin detalle disponible");
 assert.equal(purchaseTotals(missing).total, 11.5, "Cabecera sin detalle aparece una sola vez y sin categoría inventada");
 assert.equal(purchaseLines([{ id: "zero", total: 0, subtotal: 10 }])[0].total, 0, "No sustituye cero registrado por valor calculado");
 assert.deepEqual(purchaseTotals(purchaseLines([])), { subtotal: 0, tax: 0, total: 0 });
+const uncategorized = purchaseLines([{ id: "uncategorized", detalles: [
+  { id: "default-label", categoria_nombre: "Sin categoría", total: 3 },
+  { id: "no-label", total: 5 },
+] }]);
+assert.deepEqual(groupPurchaseLines(uncategorized, "categoryId").map(group => [group.label, group.total]), [["Sin categoría", 8]]);
 const datedOrders = [
   { ...mixed, proveedor_id: "p1", proveedor_nombre: "Proveedor A", fecha_emision: "2026-11-06", created_at: "2026-12-01" },
   { ...mixed, id: "oc3", proveedor_id: "p2", proveedor_nombre: "Proveedor B", fecha_emision: "2026-11-30", moneda: "EUR" },
