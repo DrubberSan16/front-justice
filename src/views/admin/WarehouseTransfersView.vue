@@ -135,7 +135,7 @@
 
       <template #item.ingreso_bodega_codigo="{ item }">
         <v-chip
-          v-if="item.movimiento_ingreso_id && item.ingreso_bodega_codigo"
+          v-if="getIncomeMovementId(item) && item.ingreso_bodega_codigo"
           size="small"
           variant="tonal"
           color="success"
@@ -244,7 +244,7 @@
               @click="openAnnulTransfer(item)"
             />
             <v-list-item
-              v-if="canReverseTransferAnnulment && isAnnulledTransfer(item)"
+              v-if="canReverseTransfer(item)"
               prepend-icon="mdi-undo-variant"
               title="Reversar anulación"
               base-color="warning"
@@ -406,8 +406,14 @@
       <v-card-text>
         <template v-if="!isForcedAuthorizedGuideAnnulment">
           ¿Seguro que deseas anular la transferencia
-          <strong>{{ annullingTransfer?.codigo || "" }}</strong>? Se liberarán las cantidades pendientes
-          y se revertirá únicamente el inventario de las recepciones aprobadas. Se conservará la auditoría.
+          <strong>{{ annullingTransfer?.codigo || "" }}</strong>?
+          <template v-if="isMatrixReceipt(annullingTransfer)">
+            Las cantidades volverán al saldo pendiente de la OC y el ingreso de compra seguirá vigente.
+          </template>
+          <template v-else>
+            Se liberarán las cantidades pendientes y se revertirá únicamente el inventario de
+            las recepciones aprobadas. Se conservará la auditoría.
+          </template>
         </template>
         <v-alert
           v-if="isForcedAuthorizedGuideAnnulment"
@@ -444,10 +450,15 @@
       </v-card-title>
       <v-card-text>
         ¿Seguro que deseas reversar la anulación de la transferencia
-        <strong>{{ reversingTransfer?.codigo || "" }}</strong>? La transferencia
-        recupera su estado previo: se reaplican las cantidades ya aprobadas y se reservan las pendientes.
-        La orden de compra conserva la diferencia entre cantidades comprometidas y transferidas.
-        <v-alert type="info" variant="tonal" class="mt-3">
+        <strong>{{ reversingTransfer?.codigo || "" }}</strong>?
+        <template v-if="isMatrixReceipt(reversingTransfer)">
+          Se aplicarán otra vez las cantidades al saldo de la OC. El inventario de Matriz conservará el ingreso registrado.
+        </template>
+        <template v-else>
+          La transferencia recupera su estado previo: se reaplican las cantidades ya aprobadas y se reservan las pendientes.
+          La orden de compra conserva la diferencia entre cantidades comprometidas y transferidas.
+        </template>
+        <v-alert v-if="!isMatrixReceipt(reversingTransfer)" type="info" variant="tonal" class="mt-3">
           Si el material ya se consumió después de anular, el stock de origen no
           alcanzará para devolverlo y la operación se detendrá sin cambiar nada.
         </v-alert>
@@ -576,7 +587,9 @@
           <div>
             <div class="text-subtitle-1 font-weight-bold">Materiales de la transferencia</div>
             <div class="text-body-2 text-medium-emphasis">
-              {{ selectedOrder
+              {{ matrixReceiptSelected
+                ? 'Indica las cantidades que quedarán en Matriz. Al guardar se registrará el ingreso pendiente de la OC y se actualizará su saldo.'
+                : selectedOrder
                 ? 'Indica las cantidades a enviar desde la compra. Destino confirmará lo recibido en Recepción de bodega.'
                 : 'Agrega los materiales que quedarán reservados hasta aprobar su recepción en destino.' }}
             </div>
@@ -1609,6 +1622,7 @@ type TransferRow = TransferGuideSummary & {
   ingreso_bodega_codigo?: string | null;
   movimiento_salida_id?: string | null;
   movimiento_ingreso_id?: string | null;
+  movimiento_recepcion_id?: string | null;
   estado?: string | null;
   total_items?: number;
   total_cantidad?: string | number | null;
@@ -1897,6 +1911,7 @@ const transfers = ref<TransferRow[]>([]);
 const pendingOrders = ref<PurchaseOrderRow[]>([]);
 const warehouses = ref<any[]>([]);
 const destinationWarehouses = ref<any[]>([]);
+const matrixReceiptWarehouseIds = ref<string[]>([]);
 const products = ref<ProductRow[]>([]);
 const stockRows = ref<StockRow[]>([]);
 const warehousesLoaded = ref(false);
@@ -2115,14 +2130,28 @@ const sourceWarehouseLabel = computed(() => {
   return source ? `${source.codigo || ""} - ${source.nombre || source.id}`.trim() : "";
 });
 
-const destinationWarehouseOptions = computed<CatalogOption[]>(() =>
-  destinationWarehouses.value
-    .filter((item) => String(item.id) !== effectiveSourceWarehouseId.value)
-    .map((item) => ({
-      value: String(item.id),
-      title: `${item.codigo || ""} - ${item.nombre || item.id}`.trim(),
-    })),
+const canSelectMatrixReceipt = computed(
+  () =>
+    Boolean(selectedOrder.value?.bodega_destino_id) &&
+    matrixReceiptWarehouseIds.value.includes(effectiveSourceWarehouseId.value),
 );
+const matrixReceiptSelected = computed(
+  () => canSelectMatrixReceipt.value &&
+    form.bodega_destino_id === effectiveSourceWarehouseId.value,
+);
+
+const destinationWarehouseOptions = computed<CatalogOption[]>(() => {
+  const options = allDestinationWarehouseOptions.value.filter(
+    (item) => item.value !== effectiveSourceWarehouseId.value,
+  );
+  if (canSelectMatrixReceipt.value) {
+    options.push({
+      value: effectiveSourceWarehouseId.value,
+      title: `${sourceWarehouseLabel.value || "Matriz"} · Ingreso de OC en Matriz`,
+    });
+  }
+  return options;
+});
 
 const pendingOrderOptions = computed<CatalogOption[]>(() =>
   pendingOrders.value.map((item) => ({
@@ -3553,7 +3582,21 @@ function guideSriStateColor(state?: string | null) {
   return guideStateColor(state);
 }
 
+function isMatrixReceipt(item?: TransferRow | null) {
+  return Boolean(item?.bodega_origen_id && item.bodega_origen_id === item.bodega_destino_id);
+}
+
+function getIncomeMovementId(item: TransferRow) {
+  return isMatrixReceipt(item) ? item.movimiento_recepcion_id : item.movimiento_ingreso_id;
+}
+
+function canReverseTransfer(item: TransferRow) {
+  return canReverseTransferAnnulment.value && isAnnulledTransfer(item) &&
+    (!isMatrixReceipt(item) || matrixReceiptWarehouseIds.value.includes(item.bodega_origen_id || ""));
+}
+
 function canGenerateGuide(item: TransferRow) {
+  if (isMatrixReceipt(item)) return false;
   const normalized = String(item.estado || "").toUpperCase();
   return ["PENDIENTE_RECEPCION", "PARCIALMENTE_RECIBIDA", "COMPLETADA", "COMPLETADO", "FINALIZADA", "FINALIZADO", "APROBADA", "APROBADO"].includes(normalized);
 }
@@ -3735,6 +3778,16 @@ async function ensureDestinationWarehousesLoaded(force = false) {
   destinationWarehousesLoaded.value = true;
 }
 
+async function loadMatrixReceiptWarehouses() {
+  try {
+    const { data } = await api.get("/kpi_inventory/transferencias-bodega/bodegas-recepcion-matriz");
+    const ids = data?.data ?? data;
+    matrixReceiptWarehouseIds.value = Array.isArray(ids) ? ids : [];
+  } catch {
+    matrixReceiptWarehouseIds.value = [];
+  }
+}
+
 async function ensurePendingOrdersLoaded(force = false) {
   if (pendingOrdersLoaded.value && !force) return;
   await loadPendingOrders();
@@ -3779,6 +3832,7 @@ async function hydrateView() {
       ensureWarehousesLoaded(true),
       ensureDestinationWarehousesLoaded(true),
       ensurePendingOrdersLoaded(true),
+      loadMatrixReceiptWarehouses(),
     ]);
   } catch (error: any) {
     ui.error(
@@ -3811,6 +3865,7 @@ async function openCreate() {
     ensureDestinationWarehousesLoaded(true),
     ensurePendingOrdersLoaded(),
     ensureProductsLoaded(),
+    loadMatrixReceiptWarehouses(),
   ]);
 }
 
@@ -3829,6 +3884,7 @@ async function openEdit(item: TransferRow) {
     await Promise.all([
       ensureWarehousesLoaded(true), ensureDestinationWarehousesLoaded(true),
       ensureProductsLoaded(), ensureStockRowsLoaded(true),
+      loadMatrixReceiptWarehouses(),
     ]);
     resetForm();
     editingTransfer.value = transfer;
@@ -4366,7 +4422,7 @@ async function confirmAnnulTransfer() {
 }
 
 function openReverseAnnulment(item: TransferRow) {
-  if (!canReverseTransferAnnulment.value || !isAnnulledTransfer(item)) return;
+  if (!canReverseTransfer(item)) return;
   reversingTransfer.value = item;
   reverseAnnulmentDialog.value = true;
 }
@@ -4515,7 +4571,7 @@ async function openMovementDocument(
   kind: "INGRESO" | "SALIDA",
 ) {
   const documentId = String(
-    (kind === "INGRESO" ? item?.movimiento_ingreso_id : item?.movimiento_salida_id) ||
+    (kind === "INGRESO" ? getIncomeMovementId(item) : item.movimiento_salida_id) ||
       "",
   ).trim();
   if (!documentId) return;
@@ -4706,8 +4762,8 @@ function validateForm() {
     ui.error("Debes seleccionar la bodega destino.");
     return false;
   }
-  if (effectiveSourceWarehouseId.value === String(form.bodega_destino_id || "")) {
-    ui.error("La bodega destino debe ser distinta a la bodega origen.");
+  if (effectiveSourceWarehouseId.value === form.bodega_destino_id && !matrixReceiptSelected.value) {
+    ui.error("El ingreso en la misma bodega requiere una OC de Matriz y acceso a esa sucursal.");
     return false;
   }
   if (!form.detalles.length) {
@@ -4771,6 +4827,7 @@ async function saveTransfer() {
     return;
   }
   saving.value = true;
+  const matrixReceipt = matrixReceiptSelected.value;
   try {
     const transferDetails = selectedOrder.value
       ? // Se envian solo las lineas con material elegido y cantidad: desde que
@@ -4835,9 +4892,14 @@ async function saveTransfer() {
       await api.patch(`/kpi_inventory/transferencias-bodega/${editingTransfer.value.id}`, {
         ...payload, expected_version: editingTransfer.value.version_edicion,
       });
-      ui.success("Transferencia actualizada. Se recalcularon las cantidades reservadas.");
     } else {
       await api.post("/kpi_inventory/transferencias-bodega", payload);
+    }
+    if (matrixReceipt) {
+      ui.success("Ingreso en Matriz registrado. Se actualizó el saldo de la orden de compra.");
+    } else if (editingTransfer.value) {
+      ui.success("Transferencia actualizada. Se recalcularon las cantidades reservadas.");
+    } else {
       ui.success("Transferencia registrada y reservada. La bodega destino debe aprobar la recepción para mover el inventario.");
     }
     stockRowsLoaded.value = false;
@@ -4869,12 +4931,12 @@ watch(
     if (dialog.value && effectiveSourceWarehouseId.value) {
       void ensureStockRowsLoaded();
     }
-    const valid = destinationWarehouseOptions.value.some(
-      (item) => String(item.value) === String(form.bodega_destino_id || ""),
+    const otherDestinations = destinationWarehouseOptions.value.filter(
+      (item) => item.value !== effectiveSourceWarehouseId.value,
     );
-    form.bodega_destino_id = valid
-      ? String(form.bodega_destino_id)
-      : String(destinationWarehouseOptions.value[0]?.value || "");
+    if (!otherDestinations.some((item) => item.value === form.bodega_destino_id)) {
+      form.bodega_destino_id = otherDestinations[0]?.value || "";
+    }
   },
 );
 
