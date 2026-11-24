@@ -505,7 +505,15 @@
             />
           </v-col>
           <v-col v-if="!isProjectMode" cols="12" md="4">
-            <v-select v-model="headerForm.maintenance_kind" :items="maintenanceKindOptionsForCurrentUser" item-title="title" item-value="value" label="Tipo mantenimiento" variant="outlined" :disabled="isReadOnlyWorkflow || isOperatorRole" />
+            <v-select
+              v-model="headerForm.maintenance_kind"
+              :items="maintenanceKindOptionsForCurrentUser"
+              item-title="title"
+              item-value="value"
+              label="Tipo mantenimiento"
+              variant="outlined"
+              :disabled="loadingCatalogs || isReadOnlyWorkflow || (isOperatorRole && (!!editingId || maintenanceKindOptionsForCurrentUser.length < 2))"
+            />
           </v-col>
           <v-col v-if="requiresProgramacionDate" cols="12" md="4">
             <v-text-field
@@ -3105,14 +3113,25 @@ const currentWorkflowLabel = computed(() => `Estado: ${workflowLabel(headerForm.
 const detailNoticeText = computed(() => unsupportedDetailMessages.value.join(" "));
 const currentRoleName = computed(() => String(auth.user?.role?.nombre || "").trim().toUpperCase());
 const isOperatorRole = computed(() => currentRoleName.value === "OPERADOR");
+const isSsaUser = computed(() => !!auth.userId && employeeCatalogRows.value.some(
+  (employee) => employee.user_id === auth.userId && /(^|[^A-Z])SSA([^A-Z]|$)/i.test(employee.cargo || ""),
+));
 const operatorMaintenanceKind = computed(() =>
   operatorMaintenanceKindForEquipment(selectedEquipmentRecord.value),
 );
+const defaultMaintenanceKind = computed(() => {
+  if (isProjectMode.value) return PROJECT_MAINTENANCE_KIND;
+  if (isSsaUser.value) return "SSA";
+  return isOperatorRole.value ? operatorMaintenanceKind.value : "CORRECTIVO";
+});
 const canViewAnnulledWorkOrders = computed(() => isSuperAdministrator(auth.user));
 const maintenanceKindOptionsForCurrentUser = computed(() =>
   isOperatorRole.value
-    ? maintenanceKindOptions.filter((item) => item.value === operatorMaintenanceKind.value ||
-        (isReadOnlyWorkflow.value && item.value === headerForm.maintenance_kind))
+    ? maintenanceKindOptions.filter((item) =>
+        item.value === operatorMaintenanceKind.value ||
+        (isSsaUser.value && item.value === "SSA") ||
+        (!!editingId.value && item.value === headerForm.maintenance_kind),
+      )
     : maintenanceKindOptions,
 );
 const blockingWorkOrderOptions = computed(() =>
@@ -7228,11 +7247,7 @@ function resetAllForms() {
   headerForm.equipment_id = "";
   headerForm.equipo_componente_ids = [];
   headerForm.equipo_componentes = [];
-  headerForm.maintenance_kind = isProjectMode.value
-    ? PROJECT_MAINTENANCE_KIND
-    : isOperatorRole.value
-      ? operatorMaintenanceKind.value
-      : "CORRECTIVO";
+  headerForm.maintenance_kind = defaultMaintenanceKind.value;
   headerForm.fecha_programacion = "";
   headerForm.status_workflow = "PLANNED";
   headerForm.procedimiento_id = "";
@@ -7306,10 +7321,9 @@ async function openCreate() {
   dialog.value = true;
   await ensureCatalogsLoaded();
   if (isProjectMode.value) {
-    headerForm.maintenance_kind = PROJECT_MAINTENANCE_KIND;
     await loadProjectEquipment();
-  } else if (isOperatorRole.value) {
-    headerForm.maintenance_kind = operatorMaintenanceKind.value;
+  } else if (dialog.value && !editingId.value) {
+    headerForm.maintenance_kind = defaultMaintenanceKind.value;
   }
   await assignNextWorkOrderCode();
 }
@@ -7403,7 +7417,11 @@ async function openEdit(item: any) {
     );
   } else {
     await loadEquipmentComponents(String(headerForm.equipment_id || ""));
-    if (isOperatorRole.value && !isReadOnlyWorkflow.value) {
+    if (
+      isOperatorRole.value &&
+      !isReadOnlyWorkflow.value &&
+      !["CEBADO", "SSA"].includes(normalizeMaintenanceKindValue(headerForm.maintenance_kind))
+    ) {
       headerForm.maintenance_kind = operatorMaintenanceKind.value;
     }
   }
@@ -7652,10 +7670,6 @@ async function saveHeader(
     ui.error(emergencyHoursError);
     return false;
   }
-  if (isOperatorRole.value) {
-    headerForm.maintenance_kind = operatorMaintenanceKind.value;
-  }
-
   if (!editingId.value && !headerForm.code) {
     await assignNextWorkOrderCode();
   }
@@ -8704,8 +8718,13 @@ watch(
 watch(
   [isOperatorRole, operatorMaintenanceKind],
   () => {
-    if (isOperatorRole.value && !isProjectMode.value && !isReadOnlyWorkflow.value) {
-      headerForm.maintenance_kind = operatorMaintenanceKind.value;
+    if (
+      isOperatorRole.value &&
+      !isProjectMode.value &&
+      !editingId.value &&
+      !maintenanceKindOptionsForCurrentUser.value.some((item) => item.value === headerForm.maintenance_kind)
+    ) {
+      headerForm.maintenance_kind = defaultMaintenanceKind.value;
     }
   },
 );
